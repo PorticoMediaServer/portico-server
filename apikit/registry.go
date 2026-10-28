@@ -210,6 +210,7 @@ type Registry struct {
 	bound        map[string]bool
 	frozen       bool
 	writeErrors  []string
+	routeErrors  []string
 }
 
 // GateScopes installs the check every route passes before access, body
@@ -332,6 +333,13 @@ func (r *Registry) WriteErrors(codes ...string) {
 	r.writeErrors = append(r.writeErrors, codes...)
 }
 
+// RouteErrors names errors every route can answer, reads included, such as a
+// storage layer briefly refusing new work while it recovers. They are added to
+// each later route's declared errors. Call it before registering.
+func (r *Registry) RouteErrors(codes ...string) {
+	r.routeErrors = append(r.routeErrors, codes...)
+}
+
 // Errors is the catalogue routes on this registry write errors from.
 func (r *Registry) Errors() *apierror.Registry { return r.errors }
 
@@ -383,6 +391,11 @@ func (r *Registry) admit(w http.ResponseWriter, q *http.Request, m Metadata) (*h
 func (r *Registry) define(m Metadata, request, response reflect.Type, access bool) error {
 	if r.frozen {
 		return errors.New("registry frozen")
+	}
+	for _, code := range r.routeErrors {
+		if !slices.Contains(m.Errors, code) {
+			m.Errors = append(append([]string{}, m.Errors...), code)
+		}
 	}
 	if m.Method != "GET" && m.Method != "HEAD" {
 		for _, code := range r.writeErrors {

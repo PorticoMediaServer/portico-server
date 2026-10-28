@@ -74,3 +74,30 @@ func TestTypedRouteWriterRefusalAnswersWriterCapacity(t *testing.T) {
 		}
 	}
 }
+
+// A read refused behind a WAL reset answers database_busy on both paths, and
+// every route, reads included, declares it.
+func TestReadPressureAnswersDatabaseBusy(t *testing.T) {
+	refusal := fmt.Errorf("read library: %w", dbwork.ErrReadPressure)
+	w := httptest.NewRecorder()
+	failure(w, refusal)
+	if w.Code != 503 || !strings.Contains(w.Body.String(), `"code":"database_busy"`) || w.Header().Get("Retry-After") != "1" {
+		t.Fatalf("legacy path answered %d %s", w.Code, w.Body.String())
+	}
+	registry := apikit.New(func(context.Context, *http.Request, apikit.Metadata) error { return nil }, policyCatalogue())
+	registry.RouteErrors("database_busy")
+	if err := apikit.Register(registry, apikit.Route[struct{}, struct{}]{Metadata: apikit.Metadata{
+		ID: "read", Method: "GET", Path: "/v1/read", Summary: "Read", Access: apikit.Public, Requires: apikit.ScopeOpen,
+		Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"internal"},
+	}, Handler: func(context.Context, *http.Request, struct{}) (struct{}, error) { return struct{}{}, refusal }}); err != nil {
+		t.Fatal(err)
+	}
+	if errs := registry.Definitions()[0].Errors; !strings.Contains(strings.Join(errs, ","), "database_busy") {
+		t.Fatalf("read route does not declare database_busy: %v", errs)
+	}
+	w = httptest.NewRecorder()
+	registry.ServeHTTP(w, httptest.NewRequest("GET", "/v1/read", nil))
+	if w.Code != 503 || !strings.Contains(w.Body.String(), `"code":"database_busy"`) || w.Header().Get("Retry-After") != "1" {
+		t.Fatalf("typed path answered %d %s", w.Code, w.Body.String())
+	}
+}

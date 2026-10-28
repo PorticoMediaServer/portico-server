@@ -42,6 +42,9 @@ func v1ErrorDefinitions() []apierror.Definition {
 		// The writer refused the change before it began: nothing was saved, and
 		// sending the same request again after Retry-After is safe.
 		{Code: "writer_capacity", Status: 503, Message: "The server is busy saving other changes. Try again shortly.", Retry: apierror.SameRequest},
+		// A new read refused while the database resets its write-ahead log:
+		// nothing ran, and the same request can be sent after Retry-After.
+		{Code: "database_busy", Status: 503, Message: "The server is briefly busy maintaining its database. Try again shortly.", Retry: apierror.SameRequest},
 		{Code: "access_refused", Status: 403, Message: identity.ErrAccessRefused.Error(), Retry: apierror.Never},
 		{Code: "move_collision", Status: 409, Message: identity.ErrMoveCollision.Error(), Retry: apierror.Never},
 		{Code: "move_confirmation", Status: 409, Message: identity.ErrMoveConfirmation.Error(), Retry: apierror.Never},
@@ -115,18 +118,27 @@ func v1Catalogue() *apierror.Registry {
 	if err != nil {
 		panic(err)
 	}
-	catalogue.Translate(writerCapacity)
+	catalogue.Translate(databaseRefusal)
 	return catalogue
 }
 
-// writerCapacity names the typed answer for a write the database writer
-// refused before it began (a full queue) or that met a lock after admission.
-// Retry-After is the writer's own estimate of when its queue drains, 1-30 s.
-func writerCapacity(err error) *apierror.Error {
-	if !dbwork.Overloaded(err) {
-		return nil
+// databaseRefusal names the typed answer for work the database refused before
+// it began: a write the writer turned away (a full queue) or that met a lock
+// after admission, answered writer_capacity with the writer's own estimate of
+// when its queue drains (1-30 s); or a new read refused while a WAL reset held
+// reader admission, answered database_busy.
+func databaseRefusal(err error) *apierror.Error {
+	switch {
+	case dbwork.Overloaded(err):
+		return &apierror.Error{Code: "writer_capacity", RetryAfterSeconds: dbwork.WriteGate().RetryAfterSeconds(), Cause: err}
+	case errors.Is(err, dbwork.ErrReadPressure):
+		return &apierror.Error{Code: "database_busy", RetryAfterSeconds: 1, Cause: err}
+	case errors.Is(err, dbwork.ErrLongReadBusy):
+		// Another whole-database read (an integrity check, another preview)
+		// holds the one permit; it ends on its own.
+		return &apierror.Error{Code: "database_busy", RetryAfterSeconds: 5, Cause: err}
 	}
-	return &apierror.Error{Code: "writer_capacity", RetryAfterSeconds: dbwork.WriteGate().RetryAfterSeconds(), Cause: err}
+	return nil
 }
 
 // v1Error maps a domain or service error to a registered API error. Restricted

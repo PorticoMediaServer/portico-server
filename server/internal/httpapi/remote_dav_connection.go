@@ -23,7 +23,7 @@ type DAVConnectionResponse struct {
 func davConnectionFailure(err error) error {
 	// Neither the response nor the server-log cause may retain transport text.
 	code := "internal"
-	if refused := writerCapacity(err); refused != nil {
+	if refused := databaseRefusal(err); refused != nil {
 		return refused
 	}
 	switch {

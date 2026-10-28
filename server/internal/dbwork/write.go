@@ -515,15 +515,10 @@ func BeginSnapshot(ctx context.Context, db *sql.DB) (*Write, error) {
 	if tx := Snapshot(ctx); tx != nil {
 		return &Write{tx: tx, ctx: ctx, parent: &carried{tx: tx}}, nil
 	}
-	var cancel context.CancelFunc
-	if _, ok := ctx.Deadline(); !ok {
-		ctx, cancel = context.WithTimeout(ctx, ReadSnapshotLifetime)
-	}
+	ctx, cancel := snapshotContext(ctx)
 	tx, err := ReadHandle(ctx, db).BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
-		if cancel != nil {
-			cancel()
-		}
+		cancel()
 		return nil, err
 	}
 	return &Write{tx: tx, ctx: withSnapshot(ctx, tx), readOnly: true, release: cancel, changesAtStart: rowChanges(ctx, tx)}, nil

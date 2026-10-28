@@ -2,9 +2,11 @@ package dbwork
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"testing"
 	"time"
 )
 
@@ -25,6 +27,12 @@ type ReaderLifetimeStats struct {
 	AdmissionPaused     bool   `json:"admissionPaused"`
 	AdmissionWaits      uint64 `json:"admissionWaits"`
 	AdmissionWaitMs     int64  `json:"admissionWaitMs"`
+	// AdmissionRefused counts new reads refused with ErrReadPressure.
+	AdmissionRefused uint64 `json:"admissionRefused"`
+	// OverLifetime counts read leases that outlived their snapshot lifetime
+	// (2 s foreground, 500 ms background), process-wide.
+	OverLifetimeForeground uint64 `json:"overLifetimeForeground"`
+	OverLifetimeBackground uint64 `json:"overLifetimeBackground"`
 }
 
 type readerScope struct {
@@ -42,14 +50,33 @@ type readerScope struct {
 	maxSnapshot, maxImplicit int64
 	nextPressure             time.Time
 	pressureFailures         int
+	refused                  uint64
 }
+
+// ReaderPressureWait is how long a new read waits behind a WAL reset's reader
+// pause before it is refused with ErrReadPressure. A pause normally ends within
+// CheckpointReaderDrainDeadline.
+const ReaderPressureWait = time.Second
+
+// ErrReadPressure is a new read refused while a WAL reset paused reader
+// admission for longer than ReaderPressureWait. Nothing was read; the same
+// request can be sent again shortly.
+var ErrReadPressure = errors.New("dbwork: the database is recovering its write-ahead log")
 
 type readerLease struct {
 	scope    *readerScope
 	start    time.Time
 	class    Class
 	snapshot bool
-	once     sync.Once
+	// long marks an owner-long read; site is who opened the lease, captured
+	// only in test binaries for the lifetime census.
+	long bool
+	site callSite
+	once sync.Once
+	// base and conn mark a reference to a connection's shared implicit-rows
+	// lease: one physical connection holds at most one reader lease.
+	base *readerLease
+	conn *observedConn
 }
 
 var readerScopes = struct {
@@ -90,6 +117,19 @@ func (c *observedConn) admitReader(ctx context.Context, snapshot bool) (*readerL
 	if c.readers == nil || (!snapshot && c.inTx) || ctx.Value(changeKey{}) != nil || ctx.Value(checkpointReaderBypassKey{}) != nil {
 		return nil, nil
 	}
+	if !snapshot {
+		// Rows already open on this connection already hold its lease; a
+		// second set shares it. database/sql serializes calls on a connection.
+		if c.rowsLease == nil {
+			lease, err := c.readers.admit(ctx, false)
+			if err != nil {
+				return nil, err
+			}
+			c.rowsLease = lease
+		}
+		c.rowsRefs++
+		return &readerLease{base: c.rowsLease, conn: c}, nil
+	}
 	return c.readers.admit(ctx, snapshot)
 }
 
@@ -100,11 +140,15 @@ func (s *readerScope) admit(ctx context.Context, snapshot bool) (*readerLease, e
 	// Fresh authority reads share the security class's priority. Keep tracking
 	// their lifetime, but let them pass: a security flood may defer the reset;
 	// it must not wait behind maintenance. Other foreground classes still wait.
+	var refuse <-chan time.Time
 	for s.resume != nil && class != ClassSecurityFence {
 		if waited.IsZero() {
 			waited = time.Now()
 			s.waits++
 			s.waiting++
+			timer := time.NewTimer(ReaderPressureWait)
+			defer timer.Stop()
+			refuse = timer.C
 		}
 		resume := s.resume
 		s.mu.Unlock()
@@ -115,6 +159,15 @@ func (s *readerScope) admit(ctx context.Context, snapshot bool) (*readerLease, e
 			s.waitNanos += int64(time.Since(waited))
 			s.mu.Unlock()
 			return nil, ctx.Err()
+		case <-refuse:
+			// A reset that keeps new reads waiting this long has not found its
+			// gap; answer with retry guidance rather than hold the request.
+			s.mu.Lock()
+			s.waiting--
+			s.waitNanos += int64(time.Since(waited))
+			s.refused++
+			s.mu.Unlock()
+			return nil, ErrReadPressure
 		case <-resume:
 		}
 		s.mu.Lock()
@@ -127,7 +180,10 @@ func (s *readerScope) admit(ctx context.Context, snapshot bool) (*readerLease, e
 		s.mu.Unlock()
 		return nil, err
 	}
-	lease := &readerLease{scope: s, start: time.Now(), class: class, snapshot: snapshot}
+	lease := &readerLease{scope: s, start: time.Now(), class: class, snapshot: snapshot, long: longRead(ctx)}
+	if testing.Testing() {
+		lease.site = captureSite(2)
+	}
 	s.active[lease] = struct{}{}
 	s.mu.Unlock()
 	return lease, nil
@@ -137,11 +193,23 @@ func (r *readerLease) close() {
 	if r == nil {
 		return
 	}
+	if r.base != nil {
+		r.once.Do(func() {
+			c := r.conn
+			c.rowsRefs--
+			if c.rowsRefs == 0 && c.rowsLease == r.base {
+				c.rowsLease = nil
+				r.base.close()
+			}
+		})
+		return
+	}
 	r.once.Do(func() {
 		s := r.scope
 		s.mu.Lock()
 		delete(s.active, r)
 		elapsed := int64(time.Since(r.start))
+		noteReaderLifetime(r, time.Duration(elapsed))
 		if r.snapshot {
 			s.maxSnapshot = max(s.maxSnapshot, elapsed)
 		} else {
@@ -179,7 +247,8 @@ func (s *readerScope) stats() ReaderLifetimeStats {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	out := ReaderLifetimeStats{AdmissionPaused: s.resume != nil, AdmissionWaiting: s.waiting, AdmissionWaits: s.waits, AdmissionWaitMs: s.waitNanos / int64(time.Millisecond), MaxSnapshotMs: s.maxSnapshot / int64(time.Millisecond), MaxImplicitMs: s.maxImplicit / int64(time.Millisecond)}
+	out := ReaderLifetimeStats{AdmissionPaused: s.resume != nil, AdmissionWaiting: s.waiting, AdmissionWaits: s.waits, AdmissionWaitMs: s.waitNanos / int64(time.Millisecond), AdmissionRefused: s.refused, MaxSnapshotMs: s.maxSnapshot / int64(time.Millisecond), MaxImplicitMs: s.maxImplicit / int64(time.Millisecond)}
+	out.OverLifetimeForeground, out.OverLifetimeBackground = ReadersOverLifetime()
 	now := time.Now()
 	for lease := range s.active {
 		age := now.Sub(lease.start).Milliseconds()
@@ -215,4 +284,6 @@ func mergeReaderStats(out *ReaderLifetimeStats, next ReaderLifetimeStats) {
 	out.AdmissionPaused = out.AdmissionPaused || next.AdmissionPaused
 	out.AdmissionWaits += next.AdmissionWaits
 	out.AdmissionWaitMs += next.AdmissionWaitMs
+	out.AdmissionRefused += next.AdmissionRefused
+	out.OverLifetimeForeground, out.OverLifetimeBackground = next.OverLifetimeForeground, next.OverLifetimeBackground
 }

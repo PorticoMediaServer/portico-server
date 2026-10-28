@@ -7,7 +7,8 @@ internal/access/store.go	(*Store).transaction	Begin	ClassSecurityFence	-
 internal/administration/activity_updates.go	(*Service).publishUpdateTransition	WithWriteTx	ClassMaintenance	-
 internal/administration/guide_image_worker.go	(*Service).RunGuideImageImports	ExecWrite	ClassBackgroundMedia	-
 internal/administration/guide_image_worker.go	(*Service).cleanupGuideImages	ExecWrite	ClassBackgroundMedia	-
-internal/administration/guide_image_worker.go	(*Service).importGuideImagesBatch	ExecWrite	ClassBackgroundMedia	-	×2
+internal/administration/guide_image_worker.go	(*Service).importGuideImagesBatch	ExecWrite	ClassBackgroundMedia	-
+internal/administration/guide_image_worker.go	(*Service).importGuideImagesBatch	WithWriteTx	ClassBackgroundMedia	-
 internal/administration/library_channels.go	(*Service).importLogosBatch	ExecWrite	ClassBackgroundMedia	-
 internal/administration/library_channels.go	(*Service).rememberLogoFailure	ExecWrite	ClassBackgroundMedia	-
 internal/administration/live_logo_worker.go	(*Service).RunLogoImports	ExecWrite	ClassBackgroundMedia	-
@@ -339,19 +340,22 @@ internal/mediaanalysis/work.go	(*Service).RunOne	Begin	ClassBackgroundMedia	-	×
 internal/mediaanalysis/work.go	(*Service).RunOne	ExecWrite	ClassBackgroundMedia	-
 internal/mediaanalysis/work.go	(*Service).publish	Begin	ClassBackgroundMedia	-
 internal/mediaanalysis/work.go	(*Service).stageFailure	ExecWrite	ClassBackgroundMedia	-	×2
-internal/metadata/artwork.go	(*Service).ensureArtworkVariant	WithWriteTx	ClassBackgroundMedia	-
 internal/metadata/artwork_compaction.go	(*Service).CompactArtworkStep	ExecWrite	ClassBackgroundMedia	-
-internal/metadata/artwork_compaction.go	(*Service).compactArtworkObject	Begin	ClassBackgroundMedia	-
+internal/metadata/artwork_compaction.go	(*Service).compactArtworkSource	Begin	ClassBackgroundMedia	-
+internal/metadata/artwork_compaction.go	(*Service).compactArtworkSource	ExecWrite	ClassBackgroundMedia	-
 internal/metadata/artwork_discovery.go	(*Service).ArtworkDiscoveryStep	Begin	ClassBackgroundMedia	-	×2
 internal/metadata/artwork_discovery.go	(*Service).seedArtwork	Begin	ClassBackgroundMedia	-
 internal/metadata/artwork_integration.go	(*Service).renewArtworkLease	ExecWrite	ClassBackgroundMedia	-
 internal/metadata/artwork_missing.go	(*Service).RepairMissingArtworkStep	WithWriteTx	ClassBackgroundMedia	-
 internal/metadata/artwork_reading.go	(*Service).AdoptReadingCover	Begin	ClassBackgroundMedia	-
 internal/metadata/artwork_size_sweep.go	(*Service).GlobalArtworkSizeStep	Begin	ClassBackgroundMedia	-
+internal/metadata/artwork_sources.go	recordArtworkRefusal	ExecWrite	ClassBackgroundMedia	-
 internal/metadata/artwork_upload.go	(*Service).DeleteUploadedArtwork	Begin	ClassBackgroundMedia	-
 internal/metadata/artwork_upload.go	(*Service).UploadArtwork	Begin	ClassBackgroundMedia	-
 internal/metadata/artwork_worker.go	(*Service).ArtworkStep	Begin	ClassBackgroundMedia	-	×2
-internal/metadata/artwork_worker.go	(*Service).CleanupArtwork	ExecWrite	ClassBackgroundMedia	-	×4
+internal/metadata/artwork_worker.go	(*Service).CleanupArtwork	ExecWrite	ClassBackgroundMedia	-
+internal/metadata/artwork_worker.go	(*Service).collectArtworkBlobs	ExecWrite	ClassBackgroundMedia	-	×3
+internal/metadata/artwork_worker.go	(*Service).deleteUnreferencedArtworkSource	ExecWrite	ClassBackgroundMedia	-
 internal/metadata/artwork_worker.go	(*Service).failArtwork	ExecWrite	ClassBackgroundMedia	-
 internal/metadata/attention.go	(*Service).AttentionAction	Begin	ClassInteractive	-
 internal/metadata/attention.go	(*Service).PreviewAttentionArtwork	WithWriteTx	ClassInteractive	-
@@ -610,6 +614,8 @@ internal/webhooks/webhooks.go	(*Store).Emit	ExecWrite	ClassMaintenance	-
 internal/webhooks/webhooks.go	(*Store).SetState	ExecWrite	ClassMaintenance	-
 internal/webhooks/webhooks.go	(*Store).write	WithWriteTx	ClassFrom(ctx, dbwork.ClassInteractive)	-
 # every declared plan: plan	file	function	plan
+plan	internal/access/invitations.go	(*Store).Accept	invitationAcceptPlan
+plan	internal/access/invitations.go	(*Store).AcceptPortico	invitationAcceptPlan
 plan	internal/administration/library_settings.go	(*Service).SaveLibrarySettings	librarySettingsPlan
 plan	internal/catalog/admin.go	(*Service).OrderLibraries	libraryOrderPlan
 plan	internal/catalog/delete_title.go	(*Service).RemoveTitle	titleRemovalPlan

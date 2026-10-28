@@ -199,6 +199,12 @@ export const errors = [
     "retry": "after_refresh"
   },
   {
+    "code": "database_busy",
+    "status": 503,
+    "message": "The server is briefly busy maintaining its database. Try again shortly.",
+    "retry": "same_request"
+  },
+  {
     "code": "device_not_found",
     "status": 404,
     "message": "This device isn't available.",

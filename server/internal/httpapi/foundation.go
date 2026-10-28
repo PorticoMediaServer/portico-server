@@ -299,6 +299,8 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	// Any change can meet a full writer queue; its typed answer is part of
 	// every write route's contract.
 	registry.WriteErrors("writer_capacity")
+	// Any route can meet a WAL reset's brief reader pause.
+	registry.RouteErrors("database_busy")
 	registry.GateScopes(registryScopeGate)
 	registry.RewritePathValues(d.mergedTitlePath)
 	registry.RewriteRefs(apikit.Refs{Names: titleRefNames, Resolve: d.mergedTitleRefs})

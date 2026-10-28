@@ -1,7 +1,7 @@
 import {linkAbortSignals, throwIfAborted} from './abort-lifetime.ts';
-import {WRITER_CAPACITY, retryWriterCapacity} from './writer-capacity.ts';
+import {resendableRefusal, retryWriterCapacity} from './writer-capacity.ts';
 export {linkAbortSignals, throwIfAborted} from './abort-lifetime.ts';
-export {WRITER_CAPACITY, WRITER_RETRY_BUDGET_MS, retryWriterCapacity, writerRetryDelayMs} from './writer-capacity.ts';
+export {DATABASE_BUSY, WRITER_CAPACITY, WRITER_RETRY_BUDGET_MS, resendableRefusal, retryWriterCapacity, writerRetryDelayMs} from './writer-capacity.ts';
 export * from './reading-mark-all.ts';
 export {contentEntrySubject} from './presentation/content-entry-subject.ts';
 export * from './reading-reread.ts';
@@ -180,9 +180,9 @@ export function retryAfterSecondsFrom(value: string | null, now = Date.now()): n
   return seconds > 0 ? seconds : undefined;
 }
 
-/** A writer refusal to wait out and resend: the server said nothing was saved. */
+/** A refusal to wait out and resend: the server said nothing ran. */
 function writerRefusal(error: unknown): {retryAfterMs?: number} | undefined {
-  if (!(error instanceof ApiError) || error.code !== WRITER_CAPACITY || !error.retryable) return undefined;
+  if (!(error instanceof ApiError) || !resendableRefusal(error.code) || !error.retryable) return undefined;
   return {retryAfterMs: error.retryAfterSeconds === undefined ? undefined : error.retryAfterSeconds * 1000};
 }
 

@@ -7,6 +7,15 @@
  * the (still retryable, `busy`) failure. Cancelling the request ends the wait at once.
  */
 export const WRITER_CAPACITY = 'writer_capacity';
+/**
+ * `database_busy` is the same promise for any request, reads included: the server refused it before
+ * it began because a write-ahead-log reset briefly held new reads. It is resent on the same terms.
+ */
+export const DATABASE_BUSY = 'database_busy';
+/** The refusals that guarantee nothing ran and ask for the same request again. */
+export function resendableRefusal(code: string): boolean {
+  return code === WRITER_CAPACITY || code === DATABASE_BUSY;
+}
 /** The longest the server may ask for, and the floor it never goes under. */
 export const WRITER_RETRY_MIN_MS = 1_000;
 export const WRITER_RETRY_MAX_MS = 30_000;

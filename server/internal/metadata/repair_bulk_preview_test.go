@@ -124,6 +124,13 @@ func TestBulkMetadataPreviewWholeView48000(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	// A whole-view preview reads its selection in one snapshot, so it holds
+	// the owner-long read permit, as the HTTP route does.
+	ctx, release, err := dbwork.AcquireLongRead(ctx, dbwork.LongReadBulkMetadataPreview)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
 	snapshot, err := dbwork.BeginSnapshot(ctx, db)
 	if err != nil {
 		t.Fatal(err)

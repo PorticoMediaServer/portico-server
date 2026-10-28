@@ -25,6 +25,17 @@ func readerScopeForTest(t *testing.T, db *sql.DB) *readerScope {
 	return scope
 }
 
+// pinnedRead opens a read transaction outside the snapshot helpers, as an
+// external process or a raw caller would: no lifetime cap applies, so it can
+// pin its WAL frame boundary for as long as the test needs.
+func pinnedRead(ctx context.Context, db *sql.DB) (*sql.Tx, func(), error) {
+	tx, err := ReadHandle(ctx, db).BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, nil, err
+	}
+	return tx, func() { _ = tx.Rollback() }, nil
+}
+
 func waitReaderCondition(t *testing.T, fn func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
@@ -141,7 +152,7 @@ func TestCheckpointHardPressureDrainsOverlappingReadersAndShrinksPhysicalWAL(t *
 	if _, err := db.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
 		t.Fatal(err)
 	}
-	first, finishFirst, err := BeginRead(ctx, db)
+	first, finishFirst, err := pinnedRead(ctx, db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +167,7 @@ func TestCheckpointHardPressureDrainsOverlappingReadersAndShrinksPhysicalWAL(t *
 	if _, err = ExecWrite(ctx, db, ClassInteractive, `CREATE TABLE large(id INTEGER PRIMARY KEY, body BLOB); WITH RECURSIVE ids(id) AS (VALUES(1) UNION ALL SELECT id+1 FROM ids WHERE id<25000) INSERT INTO large SELECT id,zeroblob(8192) FROM ids`); err != nil {
 		t.Fatal(err)
 	}
-	second, finishSecond, err := BeginRead(ctx, db)
+	second, finishSecond, err := pinnedRead(ctx, db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +257,7 @@ func TestCheckpointHardPressureDrainsOverlappingReadersAndShrinksPhysicalWAL(t *
 		}()
 		for worker := range initial {
 			var err error
-			initial[worker], finishInitial[worker], err = BeginRead(fixtureCtx, db)
+			initial[worker], finishInitial[worker], err = pinnedRead(fixtureCtx, db)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -281,9 +292,14 @@ func TestCheckpointHardPressureDrainsOverlappingReadersAndShrinksPhysicalWAL(t *
 					err = tx.QueryRowContext(churnCtx, `SELECT count(*) FROM sample`).Scan(&total)
 					// Real finite SQL work staggers request completion, with no
 					// sleeps and no carried snapshot between requests. Varying
-					// bounded row ranges naturally overlap four healthy readers.
+					// bounded row ranges (4-10 rows of rewritten pages) naturally
+					// overlap four healthy readers. The ranges stay small: the
+					// property is continuous overlap, not throughput, and a request
+					// must finish well inside the 250 ms reader drain even under the
+					// race detector on a loaded machine, where hex-encoding hundreds
+					// of 8 KiB rows took about three seconds.
 					for statement := 0; statement < 4 && err == nil; statement++ {
-						err = tx.QueryRowContext(churnCtx, `SELECT sum(length(hex(body))) FROM large WHERE id BETWEEN ? AND ?`, 1+worker*512, 384+worker*576).Scan(&total)
+						err = tx.QueryRowContext(churnCtx, `SELECT sum(length(hex(body))) FROM large WHERE id BETWEEN ? AND ?`, 1+worker*512, 4+worker*514).Scan(&total)
 					}
 					finish() // Release before admitting the next request.
 					if err != nil {
@@ -338,4 +354,29 @@ func TestCheckpointHardPressureDrainsOverlappingReadersAndShrinksPhysicalWAL(t *
 		}
 		t.Logf("four continually reopening readers completed%d snapshots; hard reset%d frames after%dms drain (%dms total); writers progressed before/after", completed.Load(), reset.BeforeLogFrames, reset.DrainMs, reset.DurationMs)
 	})
+}
+
+// A new read kept waiting behind a WAL reset's reader pause for longer than
+// ReaderPressureWait is refused with retry guidance instead of holding its
+// request to its own deadline; a security read still passes.
+func TestReadPauseRefusesANewReadWithRetryGuidance(t *testing.T) {
+	db := readerFixture(t)
+	scope := readerScopeForTest(t, db)
+	reopen, _, _ := scope.pause()
+	if reopen == nil {
+		t.Fatal("pause unavailable")
+	}
+	defer reopen(true)
+	var n int
+	started := time.Now()
+	err := db.QueryRowContext(context.Background(), `SELECT count(*) FROM sample`).Scan(&n)
+	if !errors.Is(err, ErrReadPressure) || time.Since(started) < ReaderPressureWait {
+		t.Fatalf("paused read: %v after %s", err, time.Since(started))
+	}
+	if scope.stats().AdmissionRefused != 1 {
+		t.Fatal("refusal not counted")
+	}
+	if err = db.QueryRowContext(WithClass(context.Background(), ClassSecurityFence), `SELECT count(*) FROM sample`).Scan(&n); err != nil {
+		t.Fatalf("security read waited behind the pause: %v", err)
+	}
 }

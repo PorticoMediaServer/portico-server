@@ -273,12 +273,13 @@ func reportHTTPFailure(status int, code string, err error) {
 	log.Printf("request failed (%d %s): %s", status, code, boundFailureDetail(err))
 }
 
-// writerRefused answers a write the database writer refused (a full queue, or
-// a lock met after admission) with the typed, retryable writer_capacity, so a
-// feature's own error mapping can't present it as that feature being
-// unavailable. It reports whether it answered.
+// writerRefused answers work the database refused before it began — a write
+// the writer turned away (writer_capacity) or a read held behind a WAL reset
+// (database_busy) — with its typed, retryable answer, so a feature's own error
+// mapping can't present it as that feature being unavailable. It reports
+// whether it answered.
 func writerRefused(w http.ResponseWriter, e error) bool {
-	if !dbwork.Overloaded(e) {
+	if !dbwork.Overloaded(e) && !errors.Is(e, dbwork.ErrReadPressure) && !errors.Is(e, dbwork.ErrLongReadBusy) {
 		return false
 	}
 	failure(w, e)
@@ -634,6 +635,14 @@ func failure(w http.ResponseWriter, e error) {
 	if dbwork.Overloaded(e) {
 		status, code, message, retryable = 503, "writer_capacity", "The server is busy saving other changes. Try again shortly.", true
 		w.Header().Set("Retry-After", strconv.Itoa(dbwork.WriteGate().RetryAfterSeconds()))
+	}
+	if errors.Is(e, dbwork.ErrReadPressure) {
+		status, code, message, retryable = 503, "database_busy", "The server is briefly busy maintaining its database. Try again shortly.", true
+		w.Header().Set("Retry-After", "1")
+	}
+	if errors.Is(e, dbwork.ErrLongReadBusy) {
+		status, code, message, retryable = 503, "database_busy", "The server is briefly busy maintaining its database. Try again shortly.", true
+		w.Header().Set("Retry-After", "5")
 	}
 	if errors.Is(e, imagework.ErrBusy) {
 		status, code, message, retryable = 503, "server_busy", "Image processing is busy. Retry shortly.", true

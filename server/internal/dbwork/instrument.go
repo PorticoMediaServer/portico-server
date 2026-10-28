@@ -352,6 +352,10 @@ type observedConn struct {
 	meter *writeMeter
 	// testTx is a write transaction a test opened itself on a read pool.
 	testTx bool
+	// rowsLease is the one reader lease implicit rows on this connection
+	// share, counted by rowsRefs.
+	rowsLease *readerLease
+	rowsRefs  int
 }
 
 func (c *observedConn) Prepare(query string) (driver.Stmt, error) {

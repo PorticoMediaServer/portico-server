@@ -116,3 +116,16 @@ test('a v1 refusal past the budget surfaces as a PlaybackApiError', async () => 
   assert.ok(error instanceof PlaybackApiError);
   assert.deepEqual(waits, [30_000, 30_000]);
 });
+
+test('a read refused behind a WAL reset is resent after its Retry-After', async t => {
+  t.mock.timers.enable({apis: ['setTimeout']});
+  const busy = () => new Response(JSON.stringify({error: {code: 'database_busy', retry: 'same_request', retryAfterMs: 1000}}), {status: 503, headers: {'Content-Type': 'application/json', 'Retry-After': '1'}});
+  const server = scripted([busy, () => new Response(JSON.stringify({ok: true}), {status: 200, headers: {'Content-Type': 'application/json'}})]);
+  const api = new HttpLocalApi('http://192.168.1.20:32500', '', server.fetcher);
+  const pending = api.request<{ok: boolean}>('/v1/libraries');
+  await flush();
+  t.mock.timers.tick(1_000);
+  await flush();
+  assert.deepEqual(await pending, {ok: true});
+  assert.equal(server.bodies.length, 2);
+});

@@ -28166,6 +28166,11 @@ export const schemas = {
                       "admissionPaused": {
                         "type": "boolean"
                       },
+                      "admissionRefused": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "admissionWaitMs": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -28212,6 +28217,16 @@ export const schemas = {
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "overLifetimeBackground": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "overLifetimeForeground": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "snapshots": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -28228,7 +28243,10 @@ export const schemas = {
                       "admissionWaiting",
                       "admissionPaused",
                       "admissionWaits",
-                      "admissionWaitMs"
+                      "admissionWaitMs",
+                      "admissionRefused",
+                      "overLifetimeForeground",
+                      "overLifetimeBackground"
                     ],
                     "type": "object"
                   }
@@ -28289,6 +28307,11 @@ export const schemas = {
               "admissionPaused": {
                 "type": "boolean"
               },
+              "admissionRefused": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "admissionWaitMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -28335,6 +28358,16 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "overLifetimeBackground": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "overLifetimeForeground": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "snapshots": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -28351,7 +28384,10 @@ export const schemas = {
               "admissionWaiting",
               "admissionPaused",
               "admissionWaits",
-              "admissionWaitMs"
+              "admissionWaitMs",
+              "admissionRefused",
+              "overLifetimeForeground",
+              "overLifetimeBackground"
             ],
             "type": "object"
           },
@@ -28690,6 +28726,12 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "recoveryHold": {
+            "type": "boolean"
+          },
+          "recoveryPause": {
+            "type": "boolean"
+          },
           "refused": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -28717,7 +28759,9 @@ export const schemas = {
           "refused",
           "refusedByClass",
           "busyAfterAdmission",
-          "busyAfterAdmissionByClass"
+          "busyAfterAdmissionByClass",
+          "recoveryHold",
+          "recoveryPause"
         ],
         "type": "object"
       }

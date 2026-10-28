@@ -47,10 +47,18 @@ func Integrity(ctx context.Context, db *sql.DB) IntegrityReport {
 		return out
 	}
 	started := time.Now()
+	// A whole-database read: it takes the single owner-long permit and a
+	// background connection, never a foreground reader a request needs.
+	ctx, release, err := AcquireLongRead(ctx, LongReadIntegrity)
+	if err != nil {
+		out.Error = err.Error()
+		return out
+	}
+	defer release()
 	ctx, cancel := context.WithTimeout(ctx, IntegrityCheckDeadline)
 	defer cancel()
 	defer func() { out.DurationMillis = time.Since(started).Milliseconds() }()
-	conn, err := db.Conn(ctx)
+	conn, err := ReadHandle(ctx, db).Conn(ctx)
 	if err != nil {
 		out.Error = err.Error()
 		return out

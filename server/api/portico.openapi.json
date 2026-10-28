@@ -30410,6 +30410,11 @@
                           "admissionPaused": {
                             "type": "boolean"
                           },
+                          "admissionRefused": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "admissionWaitMs": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -30456,6 +30461,16 @@
                             "minimum": -9007199254740991,
                             "type": "integer"
                           },
+                          "overLifetimeBackground": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "overLifetimeForeground": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "snapshots": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -30472,7 +30487,10 @@
                           "admissionWaiting",
                           "admissionPaused",
                           "admissionWaits",
-                          "admissionWaitMs"
+                          "admissionWaitMs",
+                          "admissionRefused",
+                          "overLifetimeForeground",
+                          "overLifetimeBackground"
                         ],
                         "type": "object"
                       }
@@ -30533,6 +30551,11 @@
                   "admissionPaused": {
                     "type": "boolean"
                   },
+                  "admissionRefused": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "admissionWaitMs": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -30579,6 +30602,16 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "overLifetimeBackground": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "overLifetimeForeground": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "snapshots": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -30595,7 +30628,10 @@
                   "admissionWaiting",
                   "admissionPaused",
                   "admissionWaits",
-                  "admissionWaitMs"
+                  "admissionWaitMs",
+                  "admissionRefused",
+                  "overLifetimeForeground",
+                  "overLifetimeBackground"
                 ],
                 "type": "object"
               },
@@ -30934,6 +30970,12 @@
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "recoveryHold": {
+                "type": "boolean"
+              },
+              "recoveryPause": {
+                "type": "boolean"
+              },
               "refused": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -30961,7 +31003,9 @@
               "refused",
               "refusedByClass",
               "busyAfterAdmission",
-              "busyAfterAdmissionByClass"
+              "busyAfterAdmissionByClass",
+              "recoveryHold",
+              "recoveryPause"
             ],
             "type": "object"
           }
@@ -293613,7 +293657,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "open"
@@ -293699,7 +293744,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "open"
@@ -294375,6 +294421,7 @@
           "sign_in_kind_portico",
           "factor_setup_required",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -294528,6 +294575,7 @@
           "rate_limited",
           "invalid_request",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -294707,7 +294755,8 @@
           "unauthorized",
           "not_permitted",
           "invalid_request",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "security",
         "x-scope": "admin"
@@ -294842,7 +294891,8 @@
           "not_permitted",
           "invalid_request",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "security",
         "x-scope": "admin"
@@ -294947,7 +294997,8 @@
           "unauthorized",
           "not_permitted",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -295180,7 +295231,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -295406,6 +295458,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -295568,7 +295621,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -295805,6 +295859,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -295912,6 +295967,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -296099,6 +296155,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -296213,6 +296270,7 @@
           "invitation_not_found",
           "idempotency_key_reused",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -296482,7 +296540,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -296645,6 +296704,7 @@
           "not_permitted",
           "revision_mismatch",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -296980,7 +297040,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -297249,7 +297310,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -297697,6 +297759,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -298060,6 +298123,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -298254,7 +298318,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -298468,6 +298533,7 @@
           "not_found",
           "revision_mismatch",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -298677,6 +298743,7 @@
           "not_found",
           "revision_mismatch",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -298921,6 +298988,7 @@
           "not_found",
           "revision_mismatch",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -299285,6 +299353,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -299954,7 +300023,8 @@
           "unauthorized",
           "not_permitted",
           "invalid_request",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -300116,7 +300186,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "library"
@@ -300289,7 +300360,8 @@
           "session_required",
           "invalid_request",
           "administration_unavailable",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "session"
@@ -300464,6 +300536,7 @@
           "access_tokens_off",
           "administration_unavailable",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -300606,6 +300679,7 @@
           "not_found",
           "administration_unavailable",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -300737,7 +300811,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -300988,7 +301063,8 @@
         "x-error-codes": [
           "unauthorized",
           "administration_unavailable",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -301074,6 +301150,7 @@
           "insufficient_disk",
           "administration_unavailable",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -301169,6 +301246,7 @@
           "administration_unavailable",
           "restore_source_invalid",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -301278,6 +301356,7 @@
           "insufficient_disk",
           "administration_unavailable",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -301357,7 +301436,8 @@
         "x-error-codes": [
           "unauthorized",
           "administration_unavailable",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -301459,6 +301539,7 @@
           "invalid_request",
           "administration_unavailable",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -301524,6 +301605,7 @@
           "not_found",
           "administration_unavailable",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -301628,7 +301710,8 @@
         "x-error-codes": [
           "unauthorized",
           "not_permitted",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -301777,7 +301860,8 @@
         "x-error-codes": [
           "unauthorized",
           "not_permitted",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -302018,6 +302102,7 @@
           "request_in_progress",
           "internal",
           "revision_required",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -302388,7 +302473,8 @@
         "x-error-codes": [
           "unauthorized",
           "not_permitted",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -302487,7 +302573,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -302623,7 +302710,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -302745,6 +302833,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -302879,6 +302968,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -303037,7 +303127,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -303770,6 +303861,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -304475,7 +304567,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -304578,7 +304671,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -304778,7 +304872,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -304978,6 +305073,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -305197,6 +305293,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -305337,7 +305434,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -305479,7 +305577,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -305700,6 +305799,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -306797,7 +306897,8 @@
           "revision_mismatch",
           "idempotency_key_reused",
           "rate_limited",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -308390,6 +308491,7 @@
           "rate_limited",
           "internal",
           "revision_required",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -308517,7 +308619,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -309476,7 +309579,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -309701,7 +309805,8 @@
           "unauthorized",
           "not_permitted",
           "invalid_request",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -309762,7 +309867,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -309853,7 +309959,8 @@
         "x-error-codes": [
           "unauthorized",
           "not_permitted",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -309993,7 +310100,8 @@
         "x-error-codes": [
           "unauthorized",
           "invalid_request",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -310063,6 +310171,7 @@
           "unauthorized",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -310173,7 +310282,8 @@
         "x-error-codes": [
           "unauthorized",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -310285,7 +310395,8 @@
         "x-error-codes": [
           "unauthorized",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -311286,6 +311397,11 @@
                                     "admissionPaused": {
                                       "type": "boolean"
                                     },
+                                    "admissionRefused": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
                                     "admissionWaitMs": {
                                       "maximum": 9007199254740991,
                                       "minimum": -9007199254740991,
@@ -311332,6 +311448,16 @@
                                       "minimum": -9007199254740991,
                                       "type": "integer"
                                     },
+                                    "overLifetimeBackground": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "overLifetimeForeground": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
                                     "snapshots": {
                                       "maximum": 9007199254740991,
                                       "minimum": -9007199254740991,
@@ -311348,7 +311474,10 @@
                                     "admissionWaiting",
                                     "admissionPaused",
                                     "admissionWaits",
-                                    "admissionWaitMs"
+                                    "admissionWaitMs",
+                                    "admissionRefused",
+                                    "overLifetimeForeground",
+                                    "overLifetimeBackground"
                                   ],
                                   "type": "object"
                                 }
@@ -311409,6 +311538,11 @@
                             "admissionPaused": {
                               "type": "boolean"
                             },
+                            "admissionRefused": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "admissionWaitMs": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
@@ -311455,6 +311589,16 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "overLifetimeBackground": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "overLifetimeForeground": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "snapshots": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
@@ -311471,7 +311615,10 @@
                             "admissionWaiting",
                             "admissionPaused",
                             "admissionWaits",
-                            "admissionWaitMs"
+                            "admissionWaitMs",
+                            "admissionRefused",
+                            "overLifetimeForeground",
+                            "overLifetimeBackground"
                           ],
                           "type": "object"
                         },
@@ -311810,6 +311957,12 @@
                           "minimum": -9007199254740991,
                           "type": "integer"
                         },
+                        "recoveryHold": {
+                          "type": "boolean"
+                        },
+                        "recoveryPause": {
+                          "type": "boolean"
+                        },
                         "refused": {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
@@ -311837,7 +311990,9 @@
                         "refused",
                         "refusedByClass",
                         "busyAfterAdmission",
-                        "busyAfterAdmissionByClass"
+                        "busyAfterAdmissionByClass",
+                        "recoveryHold",
+                        "recoveryPause"
                       ],
                       "type": "object"
                     }
@@ -311910,7 +312065,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -312013,6 +312169,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -312114,6 +312271,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -312185,7 +312343,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -312290,6 +312449,7 @@
           "downloads_unavailable",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -312396,6 +312556,7 @@
           "downloads_unavailable",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -312637,7 +312798,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -313032,6 +313194,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -313132,6 +313295,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -313537,6 +313701,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -313661,7 +313826,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -313778,7 +313944,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -313939,6 +314106,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -314060,7 +314228,8 @@
           "password_change_required",
           "revision_mismatch",
           "administration_unavailable",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -314220,6 +314389,7 @@
           "rate_limited",
           "administration_unavailable",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -314460,7 +314630,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -314834,6 +315005,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -315085,7 +315257,8 @@
           "source_network_policy",
           "source_credentials_required",
           "source_unavailable",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -315430,7 +315603,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -315685,7 +315859,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -315973,6 +316148,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -316239,7 +316415,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -316303,6 +316480,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -316419,7 +316597,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "library"
@@ -316549,6 +316728,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -316734,6 +316914,7 @@
           "administration_unavailable",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -316983,6 +317164,7 @@
           "administration_unavailable",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -317174,7 +317356,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "library"
@@ -317554,7 +317737,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "library"
@@ -317647,6 +317831,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -317760,6 +317945,7 @@
           "internal",
           "timeout",
           "revision_required",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -318136,7 +318322,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "library"
@@ -318536,6 +318723,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -318758,7 +318946,8 @@
           "not_found",
           "revision_mismatch",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "library"
@@ -318988,7 +319177,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "library"
@@ -319108,6 +319298,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -319258,6 +319449,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -319423,7 +319615,8 @@
           "revision_mismatch",
           "idempotency_key_reused",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "library"
@@ -320229,7 +320422,8 @@
           "revision_mismatch",
           "idempotency_key_reused",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "library"
@@ -321288,6 +321482,7 @@
           "internal",
           "timeout",
           "revision_required",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -321430,6 +321625,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -321609,7 +321805,8 @@
           "library_configuration_conflict",
           "analysis_conflict",
           "analysis_unavailable",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -321810,6 +322007,7 @@
           "analysis_conflict",
           "analysis_unavailable",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -322001,6 +322199,7 @@
           "analysis_conflict",
           "analysis_unavailable",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -322215,6 +322414,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -322308,6 +322508,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -322528,6 +322729,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -322691,7 +322893,8 @@
           "revision_mismatch",
           "idempotency_key_reused",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "library"
@@ -322842,6 +323045,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -322977,6 +323181,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -323417,7 +323622,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -324196,6 +324402,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -324389,7 +324596,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -324648,6 +324856,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -324748,6 +324957,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -325017,6 +325227,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -325164,7 +325375,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -325574,6 +325786,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -326318,6 +326531,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -326435,6 +326649,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -326864,7 +327079,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -327334,6 +327550,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -327446,6 +327663,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -327599,7 +327817,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -327761,6 +327980,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -328238,6 +328458,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -328368,7 +328589,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "library"
@@ -328590,7 +328812,8 @@
           "source_network_policy",
           "source_credentials_required",
           "source_unavailable",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -328876,6 +329099,7 @@
           "source_credentials_required",
           "source_unavailable",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -329038,6 +329262,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -329288,6 +329513,7 @@
           "source_credentials_required",
           "source_unavailable",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -329592,6 +329818,7 @@
           "source_credentials_required",
           "source_unavailable",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -329802,6 +330029,7 @@
           "source_credentials_required",
           "source_unavailable",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -329978,7 +330206,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -330179,6 +330408,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -330598,7 +330828,8 @@
           "source_network_policy",
           "source_credentials_required",
           "source_unavailable",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -331241,6 +331472,7 @@
           "source_unavailable",
           "internal",
           "revision_required",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -331364,6 +331596,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -331499,6 +331732,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -331607,6 +331841,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -331719,6 +331954,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -331890,7 +332126,8 @@
           "source_network_policy",
           "source_credentials_required",
           "source_unavailable",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -332153,6 +332390,7 @@
           "source_unavailable",
           "internal",
           "revision_required",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -332307,7 +332545,8 @@
           "revision_mismatch",
           "administration_unavailable",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -332460,7 +332699,8 @@
           "revision_mismatch",
           "administration_unavailable",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -332606,7 +332846,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -332757,6 +332998,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -332829,7 +333071,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "realtime",
         "x-scope": "admin"
@@ -332955,7 +333198,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -333139,6 +333383,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -333423,6 +333668,7 @@
           "revision_mismatch",
           "administration_unavailable",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -333681,7 +333927,8 @@
         "x-error-codes": [
           "unauthorized",
           "administration_unavailable",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -334051,6 +334298,7 @@
           "administration_unavailable",
           "internal",
           "revision_required",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -334244,6 +334492,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -334489,6 +334738,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -334608,7 +334858,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "library"
@@ -334858,7 +335109,8 @@
           "revision_mismatch",
           "rate_limited",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "library"
@@ -334952,7 +335204,8 @@
           "revision_mismatch",
           "rate_limited",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "library"
@@ -335189,7 +335442,8 @@
           "invalid_request",
           "revision_mismatch",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -335526,6 +335780,7 @@
           "internal",
           "timeout",
           "revision_required",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -335639,6 +335894,7 @@
           "rate_limited",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -335795,7 +336051,8 @@
           "not_found",
           "invalid_request",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -335898,6 +336155,7 @@
           "invalid_request",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -336116,6 +336374,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -336245,7 +336504,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -336410,6 +336670,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -336612,7 +336873,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -336904,7 +337166,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -337191,7 +337454,8 @@
           "invalid_request",
           "unauthorized",
           "not_permitted",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -337446,7 +337710,8 @@
           "invalid_request",
           "unauthorized",
           "not_permitted",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -337673,7 +337938,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -337789,7 +338055,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "playback"
@@ -338010,7 +338277,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "playback"
@@ -338151,6 +338419,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -338592,7 +338861,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "admin"
@@ -338766,7 +339036,8 @@
         "x-error-codes": [
           "unauthorized",
           "not_permitted",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -338977,7 +339248,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -339038,7 +339310,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "admin"
@@ -339157,7 +339430,8 @@
           "unauthorized",
           "not_permitted",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -339221,6 +339495,7 @@
           "invalid_request",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -339401,7 +339676,8 @@
         "x-error-codes": [
           "unauthorized",
           "not_permitted",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -339471,6 +339747,7 @@
         "x-error-codes": [
           "unauthorized",
           "administration_unavailable",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -339714,7 +339991,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -339915,7 +340193,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -340156,7 +340435,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -340287,6 +340567,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -340385,6 +340666,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -341218,7 +341500,8 @@
           "invalid_request",
           "unauthorized",
           "not_permitted",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -341326,7 +341609,8 @@
           "revision_mismatch",
           "session_ended",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "admin"
@@ -341460,6 +341744,7 @@
           "session_ended",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "media",
@@ -341540,6 +341825,7 @@
           "not_permitted",
           "not_found",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -341715,7 +342001,8 @@
           "revision_mismatch",
           "idempotency_key_reused",
           "rate_limited",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -341915,7 +342202,8 @@
           "move_collision",
           "move_confirmation",
           "move_code_invalid",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "security",
         "x-scope": "session"
@@ -342080,7 +342368,8 @@
           "move_collision",
           "move_confirmation",
           "move_code_invalid",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "security",
         "x-scope": "session"
@@ -342209,6 +342498,7 @@
           "move_confirmation",
           "move_code_invalid",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -342665,6 +342955,7 @@
           "move_confirmation",
           "move_code_invalid",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -342843,6 +343134,7 @@
           "move_confirmation",
           "move_code_invalid",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -342948,7 +343240,8 @@
           "move_collision",
           "move_confirmation",
           "move_code_invalid",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "security",
         "x-scope": "session"
@@ -343037,6 +343330,7 @@
           "move_confirmation",
           "move_code_invalid",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -343127,6 +343421,7 @@
           "move_confirmation",
           "move_code_invalid",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -343285,7 +343580,8 @@
           "revision_required",
           "revision_mismatch",
           "factor_setup_required",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "security",
         "x-scope": "admin"
@@ -343546,6 +343842,7 @@
           "revision_mismatch",
           "factor_setup_required",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -343625,6 +343922,7 @@
           "unauthorized",
           "administration_unavailable",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -343835,7 +344133,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -343986,6 +344285,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -344056,6 +344356,7 @@
           "not_found",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -344148,7 +344449,8 @@
           "not_found",
           "invalid_request",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -344266,7 +344568,8 @@
           "not_permitted",
           "not_found",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -344610,7 +344913,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -344830,7 +345134,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -344964,7 +345269,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -345056,6 +345362,7 @@
           "invalid_request",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -345148,6 +345455,7 @@
           "invalid_request",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -345688,7 +345996,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -346239,6 +346548,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -346402,7 +346712,8 @@
         "x-cost": "constant",
         "x-error-codes": [
           "unauthorized",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -346577,6 +346888,7 @@
           "unauthorized",
           "invalid_request",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -346729,7 +347041,8 @@
           "insufficient_scope",
           "invalid_request",
           "administration_unavailable",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -346908,6 +347221,7 @@
           "invalid_request",
           "administration_unavailable",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -346975,6 +347289,7 @@
           "invalid_request",
           "administration_unavailable",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -347111,7 +347426,8 @@
           "insufficient_scope",
           "invalid_request",
           "administration_unavailable",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -347303,6 +347619,7 @@
           "administration_unavailable",
           "internal",
           "revision_required",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -347459,7 +347776,8 @@
           "insufficient_scope",
           "invalid_request",
           "administration_unavailable",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -347580,6 +347898,7 @@
           "invalid_request",
           "administration_unavailable",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -348085,7 +348404,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "library"
@@ -348190,6 +348510,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -348312,6 +348633,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -348416,6 +348738,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -348520,6 +348843,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -349023,7 +349347,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -349148,7 +349473,8 @@
           "not_permitted",
           "revision_mismatch",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -349337,6 +349663,7 @@
           "revision_mismatch",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -349411,7 +349738,8 @@
           "not_permitted",
           "revision_mismatch",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -349573,7 +349901,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -349647,7 +349976,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "open"
@@ -349742,7 +350072,8 @@
         "x-admission": "auth",
         "x-cost": "constant",
         "x-error-codes": [
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "open"
@@ -349846,6 +350177,7 @@
           "move_confirmation",
           "move_code_invalid",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -350199,6 +350531,7 @@
           "move_confirmation",
           "move_code_invalid",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -350300,6 +350633,7 @@
           "move_confirmation",
           "move_code_invalid",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -350713,6 +351047,7 @@
           "move_confirmation",
           "move_code_invalid",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -350825,6 +351160,7 @@
           "internal",
           "rate_limited",
           "owner_reset_file_unavailable",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -351423,6 +351759,7 @@
           "internal",
           "rate_limited",
           "owner_reset_expired",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -351934,6 +352271,7 @@
           "move_code_invalid",
           "portico_services_unavailable",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -352102,6 +352440,7 @@
           "sign_in_kind_local",
           "portico_services_unavailable",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -352268,6 +352607,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -352615,6 +352955,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -352736,6 +353077,7 @@
         "x-error-codes": [
           "invalid_request",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -352808,7 +353150,8 @@
         "x-admission": "auth",
         "x-cost": "constant",
         "x-error-codes": [
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "security",
         "x-scope": "open"
@@ -353151,6 +353494,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -353287,7 +353631,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -353789,7 +354134,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -354083,7 +354429,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -354610,7 +354957,8 @@
           "unauthorized",
           "not_permitted",
           "invalid_request",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -356912,6 +357260,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -357621,7 +357970,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -357849,6 +358199,7 @@
           "not_found",
           "stale_continuation",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -358022,7 +358373,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -358119,7 +358471,8 @@
         "x-cost": "constant",
         "x-error-codes": [
           "unauthorized",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -358355,6 +358708,7 @@
           "receiver_key_mismatch",
           "revision_conflict",
           "target_unavailable",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -358543,6 +358897,7 @@
           "receiver_key_mismatch",
           "revision_conflict",
           "target_unavailable",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -358727,7 +359082,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "session"
@@ -358843,7 +359199,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -358980,6 +359337,7 @@
           "receiver_key_mismatch",
           "revision_conflict",
           "target_unavailable",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -359193,6 +359551,7 @@
           "receiver_key_mismatch",
           "revision_conflict",
           "target_unavailable",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -359398,6 +359757,7 @@
           "receiver_key_mismatch",
           "revision_conflict",
           "target_unavailable",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -359662,6 +360022,7 @@
           "receiver_key_mismatch",
           "revision_conflict",
           "target_unavailable",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -359767,6 +360128,7 @@
           "receiver_key_mismatch",
           "revision_conflict",
           "target_unavailable",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -359934,6 +360296,7 @@
           "receiver_key_mismatch",
           "revision_conflict",
           "target_unavailable",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -360167,6 +360530,7 @@
           "receiver_key_mismatch",
           "revision_conflict",
           "target_unavailable",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -360408,6 +360772,7 @@
           "receiver_key_mismatch",
           "revision_conflict",
           "target_unavailable",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -360528,6 +360893,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -360593,6 +360959,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -360693,7 +361060,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -360812,6 +361180,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -361347,7 +361716,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -361419,6 +361789,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -361489,6 +361860,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -361676,6 +362048,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -361811,6 +362184,7 @@
           "not_found",
           "revision_mismatch",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -362030,7 +362404,8 @@
           "revision_mismatch",
           "idempotency_key_reused",
           "rate_limited",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -362153,7 +362528,8 @@
           "revision_mismatch",
           "rate_limited",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -362295,6 +362671,7 @@
           "internal",
           "timeout",
           "revision_required",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -362435,6 +362812,7 @@
           "internal",
           "operation_expired",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -366610,7 +366988,8 @@
           "not_permitted",
           "not_found",
           "rate_limited",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -366750,7 +367129,8 @@
         "x-error-codes": [
           "unauthorized",
           "invalid_request",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "security",
         "x-scope": "admin"
@@ -366902,6 +367282,7 @@
           "unauthorized",
           "invalid_request",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -366966,6 +367347,7 @@
           "invalid_request",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -367116,6 +367498,7 @@
           "invalid_request",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -367180,6 +367563,7 @@
           "invalid_request",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -367265,6 +367649,7 @@
           "invalid_request",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -367405,6 +367790,7 @@
           "device_session_required",
           "client_log_budget",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -367616,7 +368002,8 @@
         "x-error-codes": [
           "unauthorized",
           "password_change_required",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "security",
         "x-scope": "read"
@@ -367733,7 +368120,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "security",
         "x-scope": "admin"
@@ -367871,6 +368259,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -367958,6 +368347,7 @@
           "revision_mismatch",
           "internal",
           "revision_required",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -368060,6 +368450,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -368190,7 +368581,8 @@
           "not_permitted",
           "invalid_request",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "security",
         "x-scope": "admin"
@@ -368265,6 +368657,7 @@
           "invalid_request",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -368349,6 +368742,7 @@
           "invalid_request",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -368468,6 +368862,7 @@
           "internal",
           "rate_limited",
           "profile_changed",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -368645,6 +369040,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -368797,6 +369193,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -368881,6 +369278,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -369219,6 +369617,7 @@
           "not_found",
           "internal",
           "rate_limited",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -369296,7 +369695,8 @@
           "password_change_required",
           "factor_setup_required",
           "not_permitted",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "security",
         "x-scope": "session"
@@ -369404,6 +369804,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -369481,6 +369882,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -369717,6 +370119,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -369813,7 +370216,8 @@
         "x-error-codes": [
           "unauthorized",
           "password_change_required",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -370061,6 +370465,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -370150,6 +370555,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -370415,6 +370821,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -370480,6 +370887,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -370618,6 +371026,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -370723,7 +371132,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "security",
         "x-scope": "admin"
@@ -370966,6 +371376,7 @@
           "invalid_request",
           "request_in_progress",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -371091,7 +371502,8 @@
           "unauthorized",
           "password_change_required",
           "invalid_request",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "security",
         "x-scope": "read"
@@ -371272,6 +371684,7 @@
           "revision_mismatch",
           "internal",
           "revision_required",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -371513,6 +371926,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -371580,7 +371994,8 @@
         "x-error-codes": [
           "unauthorized",
           "not_permitted",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "security",
         "x-scope": "admin"
@@ -371664,6 +372079,7 @@
           "not_permitted",
           "invalid_request",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -371792,6 +372208,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -371874,6 +372291,7 @@
           "not_permitted",
           "invalid_request",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -371963,6 +372381,7 @@
           "password_change_required",
           "factor_setup_required",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -372052,6 +372471,7 @@
           "password_change_required",
           "factor_setup_required",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -372168,6 +372588,7 @@
           "password_change_required",
           "factor_setup_required",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -372301,6 +372722,7 @@
           "password_change_required",
           "factor_setup_required",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -372405,7 +372827,8 @@
           "unauthorized",
           "password_change_required",
           "not_permitted",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "security",
         "x-scope": "admin"
@@ -372458,6 +372881,7 @@
           "password_change_required",
           "not_permitted",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -372522,6 +372946,7 @@
           "not_permitted",
           "invalid_request",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -372940,6 +373365,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -373017,6 +373443,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -373094,6 +373521,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -373171,7 +373599,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "security",
         "x-scope": "session"
@@ -373269,6 +373698,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -373373,6 +373803,7 @@
           "factor_setup_required",
           "authentication_busy",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -373475,6 +373906,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -373551,7 +373983,8 @@
           "download_source_offline",
           "downloads_unavailable",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -373624,7 +374057,8 @@
           "download_source_offline",
           "downloads_unavailable",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -373707,7 +374141,8 @@
           "download_source_offline",
           "downloads_unavailable",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -373798,7 +374233,8 @@
           "download_source_offline",
           "downloads_unavailable",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -373889,7 +374325,8 @@
           "download_source_offline",
           "downloads_unavailable",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -373988,7 +374425,8 @@
           "download_source_offline",
           "downloads_unavailable",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -374071,7 +374509,8 @@
           "download_source_offline",
           "downloads_unavailable",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -374162,7 +374601,8 @@
           "download_source_offline",
           "downloads_unavailable",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -374361,6 +374801,7 @@
           "internal",
           "downloads_unavailable",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -374685,7 +375126,8 @@
           "downloads_not_allowed",
           "downloads_unavailable",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -375049,6 +375491,7 @@
           "downloads_unavailable",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -375326,7 +375769,8 @@
           "downloads_not_allowed",
           "downloads_unavailable",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -375636,6 +376080,7 @@
           "downloads_unavailable",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -376134,7 +376579,8 @@
           "downloads_not_allowed",
           "downloads_unavailable",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -376310,6 +376756,7 @@
           "downloads_unavailable",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -376483,6 +376930,7 @@
           "downloads_unavailable",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -376582,7 +377030,8 @@
           "downloads_not_allowed",
           "downloads_unavailable",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -376884,6 +377333,7 @@
           "downloads_unavailable",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -377187,6 +377637,7 @@
           "downloads_unavailable",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -377327,7 +377778,8 @@
           "downloads_not_allowed",
           "downloads_unavailable",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "security",
         "x-scope": "read"
@@ -377635,6 +378087,7 @@
           "downloads_unavailable",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -377780,7 +378233,8 @@
           "downloads_not_allowed",
           "downloads_unavailable",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -378213,6 +378667,7 @@
           "rate_limited",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -378584,7 +379039,8 @@
           "idempotency_key_reused",
           "rate_limited",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -378711,7 +379167,8 @@
           "downloads_not_allowed",
           "downloads_unavailable",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -378879,6 +379336,7 @@
           "internal",
           "timeout",
           "revision_required",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -379090,7 +379548,8 @@
           "downloads_not_allowed",
           "downloads_unavailable",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -380039,7 +380498,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -380176,7 +380636,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -380781,7 +381242,8 @@
           "invalid_request",
           "unauthorized",
           "not_permitted",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -381388,6 +381850,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -381939,6 +382402,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -382605,7 +383069,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -383191,6 +383656,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -383742,6 +384208,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -383861,7 +384328,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -383963,7 +384431,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "read"
@@ -384517,6 +384986,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -384886,6 +385356,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -385005,6 +385476,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -385579,6 +386051,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -385762,7 +386235,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -385933,6 +386407,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -386049,7 +386524,8 @@
           "invalid_request",
           "unauthorized",
           "not_permitted",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -386286,7 +386762,8 @@
           "event_wait_limit",
           "event_stream_exists",
           "stream_unavailable",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "realtime",
         "x-scope": "read"
@@ -386495,7 +386972,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -386840,7 +387318,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -387165,6 +387644,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -387421,7 +387901,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -388034,7 +388515,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -388671,6 +389153,7 @@
           "receiver_key_mismatch",
           "revision_conflict",
           "target_unavailable",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -389308,6 +389791,7 @@
           "receiver_key_mismatch",
           "revision_conflict",
           "target_unavailable",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -389929,7 +390413,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -390572,6 +391057,7 @@
           "receiver_key_mismatch",
           "revision_conflict",
           "target_unavailable",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -390730,7 +391216,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "database_busy"
         ],
         "x-lane": "realtime",
         "x-scope": "read"
@@ -391351,6 +391838,7 @@
           "receiver_key_mismatch",
           "revision_conflict",
           "target_unavailable",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -391998,6 +392486,7 @@
           "receiver_key_mismatch",
           "revision_conflict",
           "target_unavailable",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -392196,6 +392685,7 @@
           "receiver_key_mismatch",
           "revision_conflict",
           "target_unavailable",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -392309,6 +392799,7 @@
           "receiver_key_mismatch",
           "revision_conflict",
           "target_unavailable",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -392930,6 +393421,7 @@
           "receiver_key_mismatch",
           "revision_conflict",
           "target_unavailable",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -393165,7 +393657,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -393448,6 +393941,7 @@
           "receiver_key_mismatch",
           "revision_conflict",
           "target_unavailable",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -393662,6 +394156,7 @@
           "receiver_key_mismatch",
           "revision_conflict",
           "target_unavailable",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -394316,6 +394811,7 @@
           "receiver_key_mismatch",
           "revision_conflict",
           "target_unavailable",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -394638,6 +395134,7 @@
           "receiver_key_mismatch",
           "revision_conflict",
           "target_unavailable",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -395120,7 +395617,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -395682,7 +396180,8 @@
           "invalid_request",
           "unauthorized",
           "not_permitted",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -396171,7 +396670,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -396591,7 +397091,8 @@
           "invalid_request",
           "unauthorized",
           "not_permitted",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -397011,7 +397512,8 @@
           "invalid_request",
           "unauthorized",
           "not_permitted",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -397122,7 +397624,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "read"
@@ -397603,7 +398106,8 @@
           "invalid_request",
           "unauthorized",
           "not_permitted",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -398086,6 +398590,7 @@
           "unauthorized",
           "not_permitted",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -398196,6 +398701,7 @@
           "unauthorized",
           "not_permitted",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -398403,7 +398909,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -398643,6 +399150,7 @@
           "receiver_key_mismatch",
           "revision_conflict",
           "target_unavailable",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -398853,7 +399361,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -399085,6 +399594,7 @@
           "receiver_key_mismatch",
           "revision_conflict",
           "target_unavailable",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -399329,6 +399839,7 @@
           "receiver_key_mismatch",
           "revision_conflict",
           "target_unavailable",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -399564,6 +400075,7 @@
           "receiver_key_mismatch",
           "revision_conflict",
           "target_unavailable",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -415851,7 +416363,8 @@
           "not_permitted",
           "not_found",
           "rate_limited",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -417764,6 +418277,7 @@
           "revision_mismatch",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -419722,6 +420236,7 @@
           "revision_mismatch",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -419896,7 +420411,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -420022,6 +420538,7 @@
           "not_found",
           "home_layout_conflict",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -420150,6 +420667,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -432920,7 +433438,8 @@
           "not_permitted",
           "not_found",
           "rate_limited",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -433046,6 +433565,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -433549,7 +434069,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -433829,6 +434350,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -434301,7 +434823,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -434741,7 +435264,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -434949,7 +435473,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -435108,6 +435633,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -435364,6 +435890,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -435520,6 +436047,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -435718,6 +436246,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -435846,7 +436375,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "read"
@@ -435948,7 +436478,8 @@
           "subtitle_provider_sign_in_failed",
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
-          "subtitle_provider_busy"
+          "subtitle_provider_busy",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -436116,7 +436647,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -436318,6 +436850,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -436552,6 +437085,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -441132,7 +441666,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -441286,7 +441821,8 @@
           "not_permitted",
           "not_found",
           "invalid_request",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -441435,6 +441971,7 @@
           "revision_mismatch",
           "source_unavailable",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -441875,7 +442412,8 @@
           "not_found",
           "stale_continuation",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -442008,7 +442546,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -442671,7 +443210,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -442938,6 +443478,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -443120,6 +443661,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -443379,6 +443921,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -443657,6 +444200,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -443935,6 +444479,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -444167,7 +444712,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -444316,6 +444862,7 @@
           "revision_mismatch",
           "source_unavailable",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -444427,6 +444974,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -444577,7 +445125,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "library"
@@ -444789,6 +445338,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -445295,7 +445845,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "library"
@@ -445400,6 +445951,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -445522,6 +446074,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -445626,6 +446179,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -445730,6 +446284,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -445826,6 +446381,7 @@
           "invalid_request",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -446626,7 +447182,8 @@
           "not_permitted",
           "not_found",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "library"
@@ -446735,6 +447292,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -446839,6 +447397,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -446951,6 +447510,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -447131,6 +447691,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -447556,6 +448117,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -449414,7 +449976,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "read"
@@ -449849,7 +450412,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -462605,7 +463169,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -475341,7 +475906,8 @@
           "not_found",
           "stale_continuation",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -477233,7 +477799,8 @@
           "not_permitted",
           "not_found",
           "stale_continuation",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -477315,7 +477882,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -477528,7 +478096,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -477607,7 +478176,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "read"
@@ -477717,7 +478287,8 @@
           "subtitle_provider_sign_in_failed",
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
-          "subtitle_provider_busy"
+          "subtitle_provider_busy",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -477990,7 +478561,8 @@
           "downloads_not_allowed",
           "downloads_unavailable",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -478945,7 +479517,8 @@
           "invalid_request",
           "unauthorized",
           "not_found",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "read"
@@ -479449,7 +480022,8 @@
           "subtitle_provider_sign_in_failed",
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
-          "subtitle_provider_busy"
+          "subtitle_provider_busy",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -479558,7 +480132,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -479705,6 +480280,7 @@
           "operation_expired",
           "idempotency_key_reused",
           "stale_continuation",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -479815,7 +480391,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -479962,6 +480539,7 @@
           "operation_expired",
           "idempotency_key_reused",
           "stale_continuation",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -480072,7 +480650,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -480219,6 +480798,7 @@
           "operation_expired",
           "idempotency_key_reused",
           "stale_continuation",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -480352,6 +480932,7 @@
           "internal",
           "metadata_conflict",
           "source_unavailable",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "media",
@@ -480472,7 +481053,8 @@
           "revision_mismatch",
           "request_in_progress",
           "body_too_large",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -480832,7 +481414,8 @@
           "subtitle_provider_sign_in_failed",
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
-          "subtitle_provider_busy"
+          "subtitle_provider_busy",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -481029,6 +481612,7 @@
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
           "subtitle_provider_busy",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -481182,6 +481766,7 @@
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
           "subtitle_provider_busy",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -481344,6 +481929,7 @@
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
           "subtitle_provider_busy",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -481724,6 +482310,7 @@
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
           "subtitle_provider_busy",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -481893,6 +482480,7 @@
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
           "subtitle_provider_busy",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -482067,6 +482655,7 @@
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
           "subtitle_provider_busy",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -482222,6 +482811,7 @@
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
           "subtitle_provider_busy",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -482428,6 +483018,7 @@
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
           "subtitle_provider_busy",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -483115,6 +483706,7 @@
           "rate_limited",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -483233,7 +483825,8 @@
           "revision_mismatch",
           "rate_limited",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -483341,7 +483934,8 @@
           "rate_limited",
           "internal",
           "invalid_cursor",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -483516,7 +484110,8 @@
           "not_permitted",
           "not_found",
           "revision_mismatch",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -483750,6 +484345,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -483932,6 +484528,7 @@
           "body_too_large",
           "administration_unavailable",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -484050,7 +484647,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -484197,7 +484795,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -484731,7 +485330,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -487042,6 +487642,7 @@
           "not_found",
           "internal",
           "revision_mismatch",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -487760,7 +488361,8 @@
           "not_permitted",
           "not_found",
           "revision_mismatch",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -487999,6 +488601,7 @@
           "stale_continuation",
           "internal",
           "revision_mismatch",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -488105,7 +488708,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -488238,7 +488842,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -488357,6 +488962,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -492371,7 +492977,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -494362,7 +494969,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -494498,6 +495106,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -494616,7 +495225,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "library"
@@ -494789,7 +495399,8 @@
           "not_permitted",
           "not_found",
           "internal",
-          "revision_mismatch"
+          "revision_mismatch",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -494942,7 +495553,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -495244,7 +495856,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -495424,6 +496037,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -495560,7 +496174,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "library"
@@ -495718,6 +496333,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -495977,7 +496593,8 @@
           "revision_mismatch",
           "rate_limited",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "library"
@@ -496104,6 +496721,7 @@
           "rate_limited",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -496249,7 +496867,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "library"
@@ -496386,6 +497005,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -496486,7 +497106,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "library"
@@ -496607,6 +497228,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -496735,6 +497357,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -502844,7 +503467,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -503069,7 +503693,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -503189,7 +503814,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "library"
@@ -503332,6 +503958,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -503482,7 +504109,8 @@
           "not_found",
           "revision_mismatch",
           "stale_continuation",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -503666,6 +504294,7 @@
           "personal_state_conflict",
           "idempotency_key_reused",
           "operation_expired",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -503789,7 +504418,8 @@
           "not_permitted",
           "not_found",
           "stale_continuation",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "playback"
@@ -503998,6 +504628,7 @@
           "personal_needs_resolution",
           "operation_expired",
           "idempotency_key_reused",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -504312,7 +504943,8 @@
           "not_found",
           "revision_mismatch",
           "request_in_progress",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -504714,7 +505346,8 @@
           "not_found",
           "revision_mismatch",
           "request_in_progress",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -505025,7 +505658,8 @@
           "not_found",
           "revision_mismatch",
           "request_in_progress",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -505144,6 +505778,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -505216,7 +505851,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -505334,7 +505970,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -505446,7 +506083,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -505608,6 +506246,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -505712,6 +506351,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -505780,7 +506420,8 @@
         "x-admission": "default",
         "x-cost": "constant",
         "x-error-codes": [
-          "method_not_allowed"
+          "method_not_allowed",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "open"
@@ -505871,6 +506512,7 @@
           "body_too_large",
           "unsupported_media_type",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -505964,7 +506606,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -506137,7 +506780,8 @@
           "session_required",
           "invalid_request",
           "administration_unavailable",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "session"
@@ -506312,6 +506956,7 @@
           "access_tokens_off",
           "administration_unavailable",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -506454,6 +507099,7 @@
           "not_found",
           "administration_unavailable",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -506557,7 +507203,8 @@
         "x-error-codes": [
           "unauthorized",
           "session_required",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "session"
@@ -507453,7 +508100,8 @@
         "x-error-codes": [
           "unauthorized",
           "not_found",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -508338,6 +508986,7 @@
           "unauthorized",
           "revision_mismatch",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -508416,7 +509065,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -508519,6 +509169,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -508627,6 +509278,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -508706,6 +509358,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -508803,7 +509456,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -508952,7 +509606,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -509047,7 +509702,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "playback"
@@ -509204,7 +509860,8 @@
           "subtitle_provider_sign_in_failed",
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
-          "subtitle_provider_busy"
+          "subtitle_provider_busy",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -509314,7 +509971,8 @@
           "subtitle_provider_sign_in_failed",
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
-          "subtitle_provider_busy"
+          "subtitle_provider_busy",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -509451,7 +510109,8 @@
           "subtitle_provider_sign_in_failed",
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
-          "subtitle_provider_busy"
+          "subtitle_provider_busy",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -509569,7 +510228,8 @@
           "subtitle_provider_sign_in_failed",
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
-          "subtitle_provider_busy"
+          "subtitle_provider_busy",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -509685,7 +510345,8 @@
           "subtitle_provider_sign_in_failed",
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
-          "subtitle_provider_busy"
+          "subtitle_provider_busy",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -509810,7 +510471,8 @@
           "subtitle_provider_sign_in_failed",
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
-          "subtitle_provider_busy"
+          "subtitle_provider_busy",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -509920,7 +510582,8 @@
           "subtitle_provider_sign_in_failed",
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
-          "subtitle_provider_busy"
+          "subtitle_provider_busy",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -510028,7 +510691,8 @@
           "subtitle_provider_sign_in_failed",
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
-          "subtitle_provider_busy"
+          "subtitle_provider_busy",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -510138,7 +510802,8 @@
           "subtitle_provider_sign_in_failed",
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
-          "subtitle_provider_busy"
+          "subtitle_provider_busy",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -510246,7 +510911,8 @@
           "subtitle_provider_sign_in_failed",
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
-          "subtitle_provider_busy"
+          "subtitle_provider_busy",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -510356,7 +511022,8 @@
           "subtitle_provider_sign_in_failed",
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
-          "subtitle_provider_busy"
+          "subtitle_provider_busy",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -510464,7 +511131,8 @@
           "subtitle_provider_sign_in_failed",
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
-          "subtitle_provider_busy"
+          "subtitle_provider_busy",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -510574,7 +511242,8 @@
           "subtitle_provider_sign_in_failed",
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
-          "subtitle_provider_busy"
+          "subtitle_provider_busy",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -510682,7 +511351,8 @@
           "subtitle_provider_sign_in_failed",
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
-          "subtitle_provider_busy"
+          "subtitle_provider_busy",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -510792,7 +511462,8 @@
           "subtitle_provider_sign_in_failed",
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
-          "subtitle_provider_busy"
+          "subtitle_provider_busy",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -510900,7 +511571,8 @@
           "subtitle_provider_sign_in_failed",
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
-          "subtitle_provider_busy"
+          "subtitle_provider_busy",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -511010,7 +511682,8 @@
           "subtitle_provider_sign_in_failed",
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
-          "subtitle_provider_busy"
+          "subtitle_provider_busy",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -511118,7 +511791,8 @@
           "subtitle_provider_sign_in_failed",
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
-          "subtitle_provider_busy"
+          "subtitle_provider_busy",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -511189,7 +511863,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "playback"
@@ -511260,7 +511935,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "playback"
@@ -511329,7 +512005,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "playback"
@@ -511408,7 +512085,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "playback"
@@ -511505,7 +512183,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "playback"
@@ -511584,7 +512263,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "playback"
@@ -511801,6 +512481,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -512435,6 +513116,7 @@
           "revision_mismatch",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -513084,7 +513766,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "library"
@@ -513883,6 +514566,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -514035,7 +514719,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "read"
@@ -514719,6 +515404,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -515393,6 +516079,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -515552,7 +516239,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "library"
@@ -515785,7 +516473,8 @@
           "not_permitted",
           "not_found",
           "stale_continuation",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -515923,6 +516612,7 @@
           "playlist_capacity",
           "idempotency_key_reused",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -516088,7 +516778,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "security",
         "x-scope": "admin"
@@ -516297,6 +516988,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -516463,6 +517155,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -516765,7 +517458,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "security",
         "x-scope": "session"
@@ -517105,6 +517799,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -517443,6 +518138,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "realtime",
@@ -517784,6 +518480,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -518125,6 +518822,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -518238,6 +518936,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -518604,6 +519303,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -519049,6 +519749,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -519133,7 +519834,8 @@
         "x-admission": "default",
         "x-cost": "constant",
         "x-error-codes": [
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "open"
@@ -519260,6 +519962,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -519354,6 +520057,7 @@
           "invalid_request",
           "rate_limited",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -519593,7 +520297,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "security",
         "x-scope": "admin"
@@ -519832,6 +520537,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -520139,6 +520845,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -520299,7 +521006,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -520447,7 +521155,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "realtime",
         "x-scope": "read"
@@ -520789,7 +521498,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -520997,6 +521707,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "realtime",
@@ -521143,7 +521854,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -521241,6 +521953,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "realtime",
@@ -521406,6 +522119,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -521572,6 +522286,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -521726,7 +522441,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -525448,7 +526164,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -525527,7 +526244,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -527406,7 +528124,8 @@
           "not_permitted",
           "not_found",
           "rate_limited",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -527535,6 +528254,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -527826,7 +528546,8 @@
           "revision_mismatch",
           "session_ended",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "playback"
@@ -527905,6 +528626,7 @@
           "session_ended",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "media",
@@ -528133,7 +528855,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "read"
@@ -536723,6 +537446,7 @@
           "no_tuner_available",
           "queue_building",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "media",
@@ -536831,6 +537555,7 @@
           "not_found",
           "revision_mismatch",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "media",
@@ -538146,7 +538871,8 @@
         "x-error-codes": [
           "unauthorized",
           "not_found",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "read"
@@ -539607,6 +540333,7 @@
           "unsupported_media",
           "connection_too_slow",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "media",
@@ -539837,7 +540564,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "security",
         "x-scope": "read"
@@ -541397,6 +542125,7 @@
           "observation_epoch_changed",
           "rate_limited",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "media",
@@ -541515,6 +542244,7 @@
           "observation_owned",
           "observation_capacity",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "media",
@@ -541782,6 +542512,7 @@
           "revision_mismatch",
           "rate_limited",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "media",
@@ -541948,6 +542679,7 @@
           "idempotency_key_reused",
           "rate_limited",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -542125,6 +542857,7 @@
           "idempotency_key_reused",
           "rate_limited",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -542307,7 +543040,8 @@
           "not_permitted",
           "not_found",
           "stale_continuation",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -542481,6 +543215,7 @@
           "idempotency_key_reused",
           "rate_limited",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -546457,7 +547192,8 @@
           "not_found",
           "stale_continuation",
           "invalid_cursor",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -546634,6 +547370,7 @@
           "rate_limited",
           "operation_expired",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -546819,6 +547556,7 @@
           "idempotency_key_reused",
           "rate_limited",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -546942,7 +547680,8 @@
           "idempotency_key_reused",
           "rate_limited",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -547095,6 +547834,7 @@
           "internal",
           "timeout",
           "revision_required",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -547241,7 +547981,8 @@
           "not_found",
           "stale_continuation",
           "invalid_cursor",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -547417,6 +548158,7 @@
           "idempotency_key_reused",
           "rate_limited",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -547592,6 +548334,7 @@
           "idempotency_key_reused",
           "rate_limited",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -547875,7 +548618,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -548187,6 +548931,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -548421,6 +549166,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -548501,7 +549247,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -550694,6 +551441,7 @@
           "unsupported_media",
           "source_unavailable",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "media",
@@ -550757,6 +551505,7 @@
           "unauthorized",
           "not_found",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -550986,7 +551735,8 @@
           "unauthorized",
           "not_found",
           "revision_mismatch",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -552613,6 +553363,7 @@
           "queue_too_large",
           "queue_building",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -554482,6 +555233,7 @@
           "queue_too_large",
           "queue_building",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "media",
@@ -554719,7 +555471,8 @@
           "unauthorized",
           "not_found",
           "revision_mismatch",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -556327,6 +557080,7 @@
           "queue_too_large",
           "queue_building",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -557953,6 +558707,7 @@
           "queue_too_large",
           "queue_building",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -558143,7 +558898,8 @@
           "not_found",
           "queue_building",
           "revision_mismatch",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -560024,6 +560780,7 @@
           "queue_too_large",
           "queue_building",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "media",
@@ -560261,7 +561018,8 @@
           "unauthorized",
           "not_found",
           "revision_mismatch",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -561895,6 +562653,7 @@
           "transcode_not_allowed",
           "unsupported_media",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "media",
@@ -563517,6 +564276,7 @@
           "prepared_canceled",
           "not_implemented",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "media",
@@ -564206,6 +564966,7 @@
           "conversion_capacity",
           "not_implemented",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "media",
@@ -564335,6 +565096,7 @@
           "idempotency_key_required",
           "idempotency_key_reused",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -564463,6 +565225,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -564536,6 +565299,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -564617,6 +565381,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -564729,6 +565494,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -564887,6 +565653,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -565004,7 +565771,8 @@
         "x-cost": "constant",
         "x-error-codes": [
           "unauthorized",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -565098,7 +565866,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "open"
@@ -565505,7 +566274,8 @@
           "revision_mismatch",
           "request_in_progress",
           "body_too_large",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -566536,7 +567306,8 @@
           "revision_mismatch",
           "request_in_progress",
           "body_too_large",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -566786,7 +567557,8 @@
           "revision_mismatch",
           "request_in_progress",
           "body_too_large",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -567536,6 +568308,7 @@
           "request_in_progress",
           "body_too_large",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "media",
@@ -568039,6 +568812,7 @@
           "request_in_progress",
           "body_too_large",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -568181,6 +568955,7 @@
           "personal_state_conflict",
           "idempotency_key_reused",
           "operation_expired",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -568409,7 +569184,8 @@
           "request_in_progress",
           "body_too_large",
           "internal",
-          "search_busy"
+          "search_busy",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -568806,6 +569582,7 @@
           "request_in_progress",
           "body_too_large",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "media",
@@ -568875,6 +569652,7 @@
           "request_in_progress",
           "body_too_large",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -569168,7 +569946,8 @@
           "revision_mismatch",
           "request_in_progress",
           "body_too_large",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -569458,6 +570237,7 @@
           "request_in_progress",
           "body_too_large",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "media",
@@ -569569,7 +570349,8 @@
           "revision_mismatch",
           "request_in_progress",
           "body_too_large",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "playback"
@@ -569672,6 +570453,7 @@
           "request_in_progress",
           "body_too_large",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "media",
@@ -569791,7 +570573,8 @@
           "revision_mismatch",
           "request_in_progress",
           "body_too_large",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "playback"
@@ -569950,7 +570733,8 @@
           "revision_mismatch",
           "request_in_progress",
           "body_too_large",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -570166,6 +570950,7 @@
           "request_in_progress",
           "body_too_large",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "media",
@@ -570367,7 +571152,8 @@
           "request_in_progress",
           "body_too_large",
           "internal",
-          "search_busy"
+          "search_busy",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -570480,7 +571266,8 @@
           "revision_mismatch",
           "request_in_progress",
           "body_too_large",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "playback"
@@ -570580,7 +571367,8 @@
           "revision_mismatch",
           "request_in_progress",
           "body_too_large",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "playback"
@@ -570758,7 +571546,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -570973,6 +571762,7 @@
           "receiver_key_mismatch",
           "revision_conflict",
           "target_unavailable",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -571078,6 +571868,7 @@
           "receiver_key_mismatch",
           "revision_conflict",
           "target_unavailable",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -571265,7 +572056,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -571478,6 +572270,7 @@
           "receiver_key_mismatch",
           "revision_conflict",
           "target_unavailable",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -571694,6 +572487,7 @@
           "receiver_key_mismatch",
           "revision_conflict",
           "target_unavailable",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -571903,6 +572697,7 @@
           "receiver_key_mismatch",
           "revision_conflict",
           "target_unavailable",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -572185,7 +572980,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -572474,7 +573270,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "database_busy"
         ],
         "x-lane": "realtime",
         "x-scope": "read"
@@ -572581,7 +573378,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -572716,6 +573514,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -572869,6 +573668,7 @@
           "not_found",
           "revision_mismatch",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -575009,7 +575809,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -575400,6 +576201,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -575805,6 +576607,7 @@
           "not_found",
           "revision_mismatch",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -576122,7 +576925,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -576524,6 +577328,7 @@
           "not_found",
           "revision_mismatch",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -580899,7 +581704,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -581303,6 +582109,7 @@
           "not_found",
           "revision_mismatch",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -581708,6 +582515,7 @@
           "not_found",
           "revision_mismatch",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -581844,7 +582652,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -582248,6 +583057,7 @@
           "not_found",
           "revision_mismatch",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -582651,6 +583461,7 @@
           "not_found",
           "revision_mismatch",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -584787,7 +585598,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -584953,7 +585765,8 @@
           "not_permitted",
           "not_found",
           "stale_continuation",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -585051,6 +585864,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -585136,7 +585950,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -585646,7 +586461,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -585738,7 +586554,8 @@
         "x-admission": "default",
         "x-cost": "constant",
         "x-error-codes": [
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "open"
@@ -585792,6 +586609,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -586003,6 +586821,7 @@
           "rate_limited",
           "setup_already_complete",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -586430,6 +587249,7 @@
           "not_permitted",
           "rate_limited",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -586515,6 +587335,7 @@
           "rate_limited",
           "setup_already_complete",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -586600,6 +587421,7 @@
           "rate_limited",
           "setup_already_complete",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -586708,6 +587530,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "security",
@@ -586905,6 +587728,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -586994,7 +587818,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "session"
@@ -587508,7 +588333,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -587603,6 +588429,7 @@
           "invalid_request",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -588403,7 +589230,8 @@
           "not_permitted",
           "not_found",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "library"
@@ -588512,6 +589340,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -588616,6 +589445,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -588728,6 +589558,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -588842,6 +589673,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -589026,7 +589858,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "library"
@@ -589137,6 +589970,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -589241,6 +590075,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",
@@ -601987,7 +602822,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -614723,7 +615559,8 @@
           "not_found",
           "stale_continuation",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -614853,7 +615690,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -615036,7 +615874,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -615296,6 +616135,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -615569,6 +616409,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -615842,6 +616683,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -616035,7 +616877,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -616119,7 +616962,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -617035,7 +617879,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -617183,7 +618028,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -617330,6 +618176,7 @@
           "request_in_progress",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -617447,7 +618294,8 @@
           "invalid_request",
           "administration_unavailable",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -617588,6 +618436,7 @@
           "storage_allocation_recovery_required",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -617693,6 +618542,7 @@
           "administration_unavailable",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -617809,6 +618659,7 @@
           "administration_unavailable",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -617922,6 +618773,7 @@
           "administration_unavailable",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -618037,6 +618889,7 @@
           "administration_unavailable",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -618161,7 +619014,8 @@
           "storage_command_conflict",
           "storage_operation_expired",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -618249,7 +619103,8 @@
           "invalid_request",
           "administration_unavailable",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -618367,6 +619222,7 @@
           "request_in_progress",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -618517,6 +619373,7 @@
           "storage_command_capacity",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -618678,6 +619535,7 @@
           "request_in_progress",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -619635,6 +620493,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -619769,6 +620628,7 @@
           "administration_unavailable",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -620736,6 +621596,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -621701,6 +622562,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -621890,7 +622752,8 @@
           "source_folders_unsupported",
           "administration_unavailable",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -622158,7 +623021,8 @@
           "request_in_progress",
           "administration_unavailable",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -622570,6 +623434,7 @@
           "storage_executable_too_old",
           "timeout",
           "revision_required",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -622728,6 +623593,7 @@
           "internal",
           "timeout",
           "revision_required",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -623570,7 +624436,8 @@
           "request_in_progress",
           "administration_unavailable",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -624609,6 +625476,7 @@
           "internal",
           "timeout",
           "revision_required",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -624951,7 +625819,8 @@
           "administration_unavailable",
           "source_folders_unsupported",
           "internal",
-          "timeout"
+          "timeout",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -625078,6 +625947,7 @@
           "administration_unavailable",
           "internal",
           "timeout",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "default",
@@ -625139,7 +626009,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -626988,7 +627859,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -627099,7 +627971,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "default",
         "x-scope": "open"
@@ -627328,7 +628201,8 @@
           "invalid_cursor",
           "cursor_expired",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -627521,7 +628395,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "browsing",
         "x-scope": "read"
@@ -627600,7 +628475,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "database_busy"
         ],
         "x-lane": "media",
         "x-scope": "read"
@@ -627695,6 +628571,7 @@
           "not_permitted",
           "not_found",
           "internal",
+          "database_busy",
           "writer_capacity"
         ],
         "x-lane": "browsing",

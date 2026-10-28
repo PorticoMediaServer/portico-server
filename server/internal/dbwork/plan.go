@@ -205,7 +205,7 @@ func (p WritePlan) overBy(cost WriteCost, factor int64) []string {
 // callSite is the stack of whoever began a write, captured cheaply at BEGIN
 // and resolved only when the write overruns.
 type callSite struct {
-	pcs [12]uintptr
+	pcs [20]uintptr
 	n   int
 }
 

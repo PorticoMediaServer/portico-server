@@ -288,3 +288,38 @@ func TestReaderLifetimeDirectTransactionCancellationLateRelease(t *testing.T) {
 	waitReaderCondition(t, func() bool { return scope.stats().Snapshots == baseline })
 	check(0)
 }
+
+// Two implicit result sets open on one physical connection share its single
+// reader lease, which ends when the last of them closes.
+func TestImplicitRowsShareOneLeasePerConnection(t *testing.T) {
+	db := readerFixture(t)
+	ctx := context.Background()
+	scope := readerScopeForTest(t, db)
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	first, err := conn.QueryContext(ctx, `SELECT value FROM json_each('[1,2,3]')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first.Next()
+	second, err := conn.QueryContext(ctx, `SELECT value FROM json_each('[4,5,6]')`)
+	if err != nil {
+		first.Close()
+		t.Fatalf("second result set on one connection: %v", err)
+	}
+	second.Next()
+	if stats := scope.stats(); stats.ImplicitRows != 1 {
+		t.Fatalf("two result sets on one connection hold %d leases", stats.ImplicitRows)
+	}
+	first.Close()
+	if stats := scope.stats(); stats.ImplicitRows != 1 {
+		t.Fatal("closing one result set ended the shared lease")
+	}
+	second.Close()
+	if stats := scope.stats(); stats.ImplicitRows != 0 {
+		t.Fatal("the shared lease outlived its last result set")
+	}
+}

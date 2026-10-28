@@ -17,7 +17,9 @@ import (
 // Read-only transactions are deliberately allowed: they take no gate, cannot
 // block the writer, and are the right shape for a consistent projection.
 var (
-	rawWriteBegin = regexp.MustCompile(`\.BeginTx\(([^)]*), nil\)|\.Begin\(\)`)
+	// The context argument may itself be a call (`r.Context()`), so the match
+	// runs to the transaction options rather than to the first parenthesis.
+	rawWriteBegin = regexp.MustCompile(`\.BeginTx\(.*,\s*nil\)|\.Begin\(\)`)
 	readOnlyBegin = regexp.MustCompile(`\.BeginTx\([^)]*&sql\.TxOptions\{ReadOnly: true\}\)`)
 )
 
@@ -25,6 +27,9 @@ var (
 var allowed = map[string]bool{
 	// Upstream virtual-table Begin is SQLite's transaction callback, not sql.DB.Begin.
 	"internal/thirdparty/sqlite/vtab.go": true,
+	// The programme spool writes its own private single-connection temporary
+	// database file, never the server's; no gate applies to it.
+	"internal/livechannels/programme_spool.go": true,
 	// OperationScope.Begin is a goroutine lease, not a transaction.
 	"internal/storage/observed_playback.go":         true,
 	"internal/storage/inventory_page_stream.go":     true,

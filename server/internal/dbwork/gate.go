@@ -94,7 +94,24 @@ type Gate struct {
 	// holdAverage is a moving average of hold durations in nanoseconds, under
 	// mu. It turns a queue length into the wait a refused caller is told.
 	holdAverage uint64
+
+	// WAL recovery (r3 §7 with the lead errata): under hard WAL pressure the
+	// checkpoint owner first holds new non-security acquisitions (security
+	// fences may still take a bounded number of turns), then pauses every
+	// acquisition while it proves the log is copied, and finally takes the one
+	// reserved turn that may reset it. All under mu; epoch 0 means none.
+	recoveryEpoch  uint64
+	holdEpoch      uint64
+	pauseEpoch     uint64
+	holdSecurity   int
+	recoveryTicket *ticket
 }
+
+// RecoverySecurityReserve is how many security-fence turns a pressure hold
+// still grants before its final pause. A revocation is never kept waiting
+// behind a checkpoint for long, and a stream of them cannot defer the reset
+// for ever.
+const RecoverySecurityReserve = 256
 
 type gateClassCounters struct {
 	acquired, queued, cancelled, refused, busy uint64
@@ -109,6 +126,9 @@ type ticket struct {
 	owner   string
 	since   time.Time
 	refused bool
+	// recovery marks the checkpoint owner's reserved turn. It is never in a
+	// class queue and is the only ticket a BEGIN pause selects.
+	recovery bool
 }
 
 // classQueue rotates between owners, first in first out for one owner. The
@@ -180,6 +200,15 @@ func (g *Gate) acquire(ctx context.Context, class Class, stuck stuckClock) (func
 		g.grant = g.pickWinnerLocked()
 		g.signalLocked()
 	}
+	g.mu.Unlock()
+	return g.acquireTicket(ctx, t, stuck)
+}
+
+// acquireTicket waits for t's grant: the shared loop of an ordinary
+// acquisition and the reserved recovery turn.
+func (g *Gate) acquireTicket(ctx context.Context, t *ticket, stuck stuckClock) (func(), error) {
+	class, start := t.class, t.since
+	g.mu.Lock()
 	queued := false
 	for {
 		if t.refused {
@@ -196,6 +225,9 @@ func (g *Gate) acquire(ctx context.Context, class Class, stuck stuckClock) (func
 		if !g.active && g.grant == t {
 			g.removeWaiterLocked(t, true)
 			g.grant = nil
+			if g.holdEpoch != 0 && t.class == ClassSecurityFence {
+				g.holdSecurity++
+			}
 			g.active = true
 			g.holding.Store(true)
 			g.holderProbe, _ = ctx.Value(writerProbeKey{}).(bool)
@@ -388,6 +420,12 @@ func (g *Gate) enqueueLocked(t *ticket) {
 // removeWaiterLocked takes t out of its queue. A served owner moves to the back
 // of its class's rotation; an owner with nothing left leaves it.
 func (g *Gate) removeWaiterLocked(t *ticket, served bool) {
+	if t.recovery {
+		if g.recoveryTicket == t {
+			g.recoveryTicket = nil
+		}
+		return
+	}
 	queue := &g.queues[t.class]
 	owner := queue.byOwner[t.owner]
 	if owner == nil {
@@ -455,6 +493,18 @@ func promotedPriority(class Class, since, now time.Time) int {
 // ticket waits do the background classes compete, by promoted rung and then
 // by arrival.
 func (g *Gate) pickWinnerLocked() *ticket {
+	if g.pauseEpoch != 0 {
+		// The final recovery interval: nothing begins but the reserved turn.
+		return g.recoveryTicket
+	}
+	if g.holdEpoch != 0 {
+		// Hard WAL pressure: no new writer but a bounded number of security
+		// fences until the recovery attempt has had its chance.
+		if g.holdSecurity < RecoverySecurityReserve {
+			return g.queues[ClassSecurityFence].front()
+		}
+		return nil
+	}
 	if g.userQueued > 0 {
 		for _, class := range Classes() {
 			if class.Background() {
@@ -560,13 +610,17 @@ type AdmissionStats struct {
 	// never ordinary contention.
 	BusyAfterAdmission        uint64            `json:"busyAfterAdmission"`
 	BusyAfterAdmissionByClass map[string]uint64 `json:"busyAfterAdmissionByClass"`
+	// RecoveryHold and RecoveryPause are a WAL recovery attempt in force: new
+	// writers (then every acquisition) wait for its reserved reset turn.
+	RecoveryHold  bool `json:"recoveryHold"`
+	RecoveryPause bool `json:"recoveryPause"`
 }
 
 // Admission snapshots the ticket pool.
 func (g *Gate) Admission() AdmissionStats {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	out := AdmissionStats{Capacity: WriterQueueCapacity, UserQueued: g.userQueued, Refused: g.refused.Load(), BusyAfterAdmission: g.busy.Load(), RefusedByClass: map[string]uint64{}, BusyAfterAdmissionByClass: map[string]uint64{}}
+	out := AdmissionStats{Capacity: WriterQueueCapacity, UserQueued: g.userQueued, Refused: g.refused.Load(), BusyAfterAdmission: g.busy.Load(), RefusedByClass: map[string]uint64{}, BusyAfterAdmissionByClass: map[string]uint64{}, RecoveryHold: g.holdEpoch != 0, RecoveryPause: g.pauseEpoch != 0}
 	for _, class := range Classes() {
 		if class.Background() {
 			out.BackgroundQueued += g.queues[class].count
@@ -582,6 +636,120 @@ func (g *Gate) Admission() AdmissionStats {
 		out.Deferred = out.BackgroundQueued - max(room, 0)
 	}
 	return out
+}
+
+// errRecoveryEnded reports a recovery step whose hold or pause has already
+// ended (or belongs to another owner).
+var errRecoveryEnded = errors.New("dbwork: WAL recovery hold ended")
+
+// enterPressureHold starts a recovery attempt: new acquisitions other than a
+// bounded number of security fences stay queued, unselected and unbegun. Only
+// the checkpoint owner calls it, and it must call endRecovery with the epoch.
+// A grant already reserved for a ticket the hold now excludes is withdrawn; the
+// holder of the gate, if any, finishes normally.
+func (g *Gate) enterPressureHold() (uint64, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.recoveryEpoch != 0 {
+		return 0, errors.New("dbwork: a WAL recovery attempt is already in progress")
+	}
+	g.nextID++
+	g.recoveryEpoch, g.holdEpoch, g.holdSecurity = g.nextID, g.nextID, 0
+	if g.grant != nil && g.grant.class != ClassSecurityFence {
+		g.grant = nil
+	}
+	if !g.active && g.grant == nil {
+		g.grant = g.pickWinnerLocked()
+		g.signalLocked()
+	}
+	return g.recoveryEpoch, nil
+}
+
+// enterBeginPause turns the hold into the final pause: no acquisition of any
+// class is selected except the reserved recovery turn.
+func (g *Gate) enterBeginPause(epoch uint64) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if epoch == 0 || g.recoveryEpoch != epoch {
+		return errRecoveryEnded
+	}
+	g.pauseEpoch = epoch
+	if g.grant != nil && !g.grant.recovery {
+		g.grant = nil
+	}
+	return nil
+}
+
+// endRecovery ends the hold and the pause of epoch, and lets the queue run.
+// It is idempotent and ignores another owner's epoch.
+func (g *Gate) endRecovery(epoch uint64) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if epoch == 0 || g.recoveryEpoch != epoch {
+		return
+	}
+	g.recoveryEpoch, g.holdEpoch, g.pauseEpoch, g.holdSecurity = 0, 0, 0, 0
+	if g.recoveryTicket != nil {
+		// Its acquisition sees the pause end and gives up (acquireRecoveryTurn).
+		g.recoveryTicket.refused = true
+		g.recoveryTicket = nil
+	}
+	if !g.active {
+		g.grant = g.pickWinnerLocked()
+	}
+	g.signalLocked()
+}
+
+// waitIdle waits until no one holds the gate, or ctx ends. During a hold or
+// pause no new holder can start, so this is the current holder finishing.
+func (g *Gate) waitIdle(ctx context.Context) error {
+	for {
+		g.mu.Lock()
+		if !g.active {
+			g.mu.Unlock()
+			return nil
+		}
+		notify := g.notify
+		g.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-notify:
+		}
+	}
+}
+
+// acquireRecoveryTurn takes the single reserved turn of a BEGIN pause. It is
+// the only acquisition the pause selects, and like any acquisition it moves
+// the write generation exactly once, which is what the checkpoint's
+// generation==copyFence+1 proof expects.
+func (g *Gate) acquireRecoveryTurn(ctx context.Context, epoch uint64) (func(), error) {
+	g.mu.Lock()
+	if epoch == 0 || g.pauseEpoch != epoch || g.recoveryTicket != nil {
+		g.mu.Unlock()
+		return nil, errRecoveryEnded
+	}
+	g.nextID++
+	t := &ticket{id: g.nextID, class: ClassMaintenance, since: time.Now(), recovery: true}
+	g.recoveryTicket = t
+	if !g.active && g.grant == nil {
+		g.grant = t
+		g.signalLocked()
+	}
+	g.mu.Unlock()
+	release, err := g.acquireTicket(ctx, t, stuckClock{})
+	if err != nil && errors.Is(err, ErrWriterCapacity) {
+		// endRecovery withdrew the turn; it was never a capacity refusal.
+		return nil, errRecoveryEnded
+	}
+	return release, err
+}
+
+// RecoveryState reports whether a WAL recovery hold or pause is in force.
+func (g *Gate) RecoveryState() (hold, pause bool) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.holdEpoch != 0, g.pauseEpoch != 0
 }
 
 // Held reports whether some caller holds the gate now. It takes no lock.

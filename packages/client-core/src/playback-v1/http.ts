@@ -1,5 +1,5 @@
 import {randomId} from '../random-id.ts';
-import {WRITER_CAPACITY, retryWriterCapacity} from '../writer-capacity.ts';
+import {resendableRefusal, retryWriterCapacity} from '../writer-capacity.ts';
 /**
  * The HTTP seam for playback v1. Modules speak in `V1Request`/`V1Response` so the same code runs
  * against the real server (an adapter over `HttpLocalApi`/`fetch`, phase 2 wiring) and
@@ -72,7 +72,7 @@ const defaultRetry = (status: number): RetryClass => (status === 412 || status =
 export function call(http: V1Http, request: V1Request, ok?: readonly number[]): Promise<V1Response> {
   return retryWriterCapacity(
     () => callOnce(http, request, ok),
-    error => error instanceof PlaybackApiError && error.code === WRITER_CAPACITY && error.retry === 'same_request' ? {retryAfterMs: error.retryAfterMs} : undefined,
+    error => error instanceof PlaybackApiError && resendableRefusal(error.code) && error.retry === 'same_request' ? {retryAfterMs: error.retryAfterMs} : undefined,
     request.signal,
   );
 }

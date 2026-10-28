@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -53,19 +54,22 @@ func WithReadSnapshot(ctx context.Context, db *sql.DB, fn func(context.Context) 
 	}
 	if Snapshot(ctx) != nil {
 		// Already inside one: joining costs no second connection and so needs no
-		// second permit.
+		// second permit, and it does not renew the parent's lifetime.
 		return fn(ctx)
 	}
-	if _, ok := ctx.Deadline(); !ok {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, ReadSnapshotLifetime)
-		defer cancel()
+	if !longRead(ctx) {
+		// The owner-long read has its own single permit; it must not hold the
+		// background snapshot permit for minutes. Waiting for a permit is
+		// bounded by the caller's deadline; the snapshot's own lifetime starts
+		// once it has one.
+		release, err := acquireSnapshot(ctx)
+		if err != nil {
+			return err
+		}
+		defer release()
 	}
-	release, err := acquireSnapshot(ctx)
-	if err != nil {
-		return err
-	}
-	defer release()
+	ctx, cancel := snapshotContext(ctx)
+	defer cancel()
 	tx, err := ReadHandle(ctx, db).BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return err
@@ -89,18 +93,22 @@ func snapshotError(ctx context.Context, err error) error {
 	if err == nil {
 		return nil
 	}
+	// A long read ended by a WAL recovery reports that refusal, whatever the
+	// interrupted statement said.
+	if cause := context.Cause(ctx); errors.Is(cause, ErrReadPressure) {
+		return fmt.Errorf("%w: %w", ErrReadPressure, err)
+	}
 	if cause := ctx.Err(); cause != nil && errors.Is(err, sql.ErrTxDone) {
 		return cause
 	}
 	return err
 }
 
-// ReadSnapshotLifetime bounds a read transaction opened without a deadline of
-// its own. A read snapshot pins one WAL frame boundary, and a PASSIVE checkpoint
-// silently does nothing while any reader holds a snapshot older than the log
-// head — so a snapshot that outlives the response it exists for is the mechanism
-// by which the write-ahead log grows without limit. Thirty seconds is far longer
-// than any request here and far shorter than "forever".
+// ReadSnapshotLifetime bounds waiting for a pooled read connection on a path
+// that then detaches its own transaction lifetime. Snapshots themselves are
+// bounded by snapshot_lifetime.go: a read snapshot pins one WAL frame boundary,
+// and a PASSIVE checkpoint silently does nothing while any reader holds a
+// snapshot older than the log head.
 const ReadSnapshotLifetime = 30 * time.Second
 
 // BeginRead opens a read-only transaction for call sites that still hold their
@@ -111,26 +119,19 @@ func BeginRead(ctx context.Context, db *sql.DB) (*sql.Tx, func(), error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	// A caller with its own deadline keeps it; one without gets this bound rather
-	// than an unbounded hold on the log.
-	var cancel context.CancelFunc
-	if _, ok := ctx.Deadline(); !ok {
-		ctx, cancel = context.WithTimeout(ctx, ReadSnapshotLifetime)
-	}
+	// The snapshot lifetime bounds this read even when the caller's deadline
+	// is later, or absent.
+	ctx, cancel := snapshotContext(ctx)
 	tx, err := ReadHandle(ctx, db).BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
-		if cancel != nil {
-			cancel()
-		}
+		cancel()
 		return nil, nil, err
 	}
 	var once sync.Once
 	return tx, func() {
 		once.Do(func() {
 			_ = tx.Rollback()
-			if cancel != nil {
-				cancel()
-			}
+			cancel()
 		})
 	}, nil
 }

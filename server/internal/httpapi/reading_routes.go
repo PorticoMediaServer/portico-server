@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"database/sql"
 	"net/http"
 	"net/url"
 	"slices"
@@ -215,7 +216,7 @@ func (d Dependencies) prepareReadingSession(w http.ResponseWriter, r *http.Reque
 		saveSize = document.Conversion.OriginalSize
 	}
 	if saveSize > 0 && saveSize <= 64<<20 {
-		tx, err := d.DB.BeginTx(r.Context(), nil)
+		tx, err := d.DB.BeginTx(r.Context(), &sql.TxOptions{ReadOnly: true})
 		if err == nil {
 			out.CanSaveFile, _ = downloads.ProfileAllowsDownloads(tx, p.Viewer)
 			tx.Rollback()

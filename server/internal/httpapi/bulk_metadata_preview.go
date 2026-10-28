@@ -44,7 +44,16 @@ func registerBulkMetadataPreview(registry *apikit.Registry, d Dependencies) {
 				return out, err
 			}
 			var fence string
-			err = dbwork.WithReadSnapshot(ctx, d.DB, func(snapshot context.Context) error {
+			// The preview reads the whole selection in one snapshot, so it
+			// takes the single owner-long read permit (background connection,
+			// at most ten minutes, ended with a retryable refusal under hard
+			// WAL pressure). The request's own deadline still applies.
+			long, release, err := dbwork.AcquireLongRead(ctx, dbwork.LongReadBulkMetadataPreview)
+			if err != nil {
+				return out, err
+			}
+			defer release()
+			err = dbwork.WithReadSnapshot(long, d.DB, func(snapshot context.Context) error {
 				request := r.WithContext(snapshot)
 				libraries, bound, err := d.homeScopeFor(request, p)
 				if err != nil {
