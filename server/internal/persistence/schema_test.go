@@ -14,7 +14,7 @@ import (
 
 // Updating the pre-release schema means directly editing the baseline and this
 // expected digest. Existing state must then be reset, never upgraded.
-const schemaSourceDigest = "dfbfa1e094f2e882762e262c11540214aa19c1cf7cd6f9b7129671dfd628c624"
+const schemaSourceDigest = "fa217c627de0e2d45ff9ab8df1ac3e5338aa7a0bd8b02fd87c0339c7badff96d"
 
 func TestSchemaBaselineDigest(t *testing.T) {
 	if BaselineDigest() != schemaSourceDigest {

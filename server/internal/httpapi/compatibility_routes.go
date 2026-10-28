@@ -1,0 +1,465 @@
+package httpapi
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
+
+	"portico.local/apikit"
+	"portico.local/apikit/apierror"
+	"portico.local/server/internal/identity"
+	"portico.local/server/internal/integrationids"
+)
+
+// Compatibility is an exact, integration-only protocol vocabulary. It has no
+// player routes, discovery service, plugin framework or independent behaviour.
+type compatibilityRoute struct {
+	method, path, id string
+	scope            apikit.Scope
+	public           bool
+}
+
+var compatibilityRoutes = []compatibilityRoute{
+	{"GET", "/System/Configuration", "configuration", apikit.ScopeRead, false},
+	{"GET", "/System/Info", "info", apikit.ScopeRead, false},
+	{"GET", "/System/Info/Public", "public_info", apikit.ScopeOpen, true},
+	{"POST", "/Users/AuthenticateByName", "authenticate", apikit.ScopeSession, true},
+	{"POST", "/Auth/Keys", "mint_key", apikit.ScopeRead, false},
+	{"GET", "/Auth/Keys", "keys", apikit.ScopeRead, false},
+	{"GET", "/Users", "users", apikit.ScopeRead, false},
+	{"GET", "/Users/{id}", "user", apikit.ScopeRead, false},
+	{"GET", "/Users/{id}/Views", "views", apikit.ScopeRead, false},
+	{"GET", "/Users/{id}/Items", "user_items", apikit.ScopeRead, false},
+	{"GET", "/Users/{id}/Items/Latest", "user_latest", apikit.ScopeRead, false},
+	{"GET", "/Users/{id}/Items/{item}", "user_item", apikit.ScopeRead, false},
+	{"GET", "/Users/{id}/Images/Primary", "user_image", apikit.ScopeRead, false},
+	{"GET", "/Library/MediaFolders", "media_folders", apikit.ScopeRead, false},
+	{"GET", "/Library/VirtualFolders", "virtual_folders", apikit.ScopeRead, false},
+	{"POST", "/Library/Media/Updated", "media_updated", apikit.ScopeLibrary, false},
+	{"POST", "/Library/Refresh", "untargeted_refresh", apikit.ScopeLibrary, false},
+	{"POST", "/Notifications/Admin", "notify", apikit.ScopeLibrary, false},
+	{"GET", "/Items", "items", apikit.ScopeRead, false},
+	{"GET", "/Items/Latest", "latest", apikit.ScopeRead, false},
+	{"POST", "/Items/{id}/Refresh", "refresh_item", apikit.ScopeLibrary, false},
+	{"GET", "/Items/{id}/PlaybackInfo", "media_info", apikit.ScopeRead, false},
+	{"GET", "/Items/{id}/Images/{type}", "image", apikit.ScopeRead, false},
+	{"GET", "/Items/{id}/Images/{type}/{index}", "indexed_image", apikit.ScopeRead, false},
+	{"GET", "/Shows/{id}/Seasons", "seasons", apikit.ScopeRead, false},
+	{"GET", "/Shows/{id}/Episodes", "episodes", apikit.ScopeRead, false},
+	{"GET", "/Sessions", "sessions", apikit.ScopeRead, false},
+	{"POST", "/Sessions/{id}/Playing/{command}", "transport", apikit.ScopePlayback, false},
+	{"POST", "/Sessions/{id}/Command", "command", apikit.ScopePlayback, false},
+	{"POST", "/Sessions/{id}/Playing", "play_request", apikit.ScopePlayback, false},
+	{"GET", "/DisplayPreferences/usersettings", "display_preferences", apikit.ScopeRead, false},
+	{"GET", "/Plugins", "plugins", apikit.ScopeRead, false},
+}
+
+var compatibilityQueries = []string{"App", "app", "userId", "UserId", "userid", "ids", "Ids", "parentId", "ParentId", "fields", "Fields", "recursive", "Recursive", "includeItemTypes", "IncludeItemTypes", "excludeItemTypes", "ExcludeItemTypes", "years", "Years", "sortBy", "SortBy", "sortOrder", "SortOrder", "startIndex", "StartIndex", "limit", "Limit", "searchTerm", "SearchTerm", "anyProviderIdEquals", "AnyProviderIdEquals", "isMissing", "IsMissing", "excludeLocationTypes", "ExcludeLocationTypes", "collapseBoxSetItems", "CollapseBoxSetItems", "enableTotalRecordCount", "EnableTotalRecordCount", "minDateCreated", "MinDateCreated", "season", "Season", "seasonId", "SeasonId", "metadataRefreshMode", "MetadataRefreshMode", "imageRefreshMode", "ImageRefreshMode", "replaceAllMetadata", "ReplaceAllMetadata", "replaceAllImages", "ReplaceAllImages", "refreshRecursive", "RecursiveRefresh", "client", "Client", "maxWidth", "MaxWidth", "maxHeight", "MaxHeight", "fillWidth", "FillWidth", "quality", "Quality", "blur", "Blur", "tag", "Tag", "seekPositionTicks", "SeekPositionTicks", "playCommand", "PlayCommand", "itemIds", "ItemIds"}
+
+func registerCompatibilityRoutes(registry *apikit.Registry, d Dependencies) error {
+	for _, spec := range compatibilityRoutes {
+		for _, alias := range []struct{ prefix, path, suffix string }{{"", spec.path, ""}, {"/mediabrowser", spec.path, "_legacy"}, {"", strings.ToLower(spec.path), "_lower"}, {"/mediabrowser", strings.ToLower(spec.path), "_legacy_lower"}} {
+			spec := spec
+			path := alias.prefix + alias.path
+			id := "compat_" + spec.id + alias.suffix
+			access := apikit.Device
+			if spec.public {
+				access = apikit.Public
+			}
+			body := int64(0)
+			if spec.method == "POST" {
+				body = 1 << 20
+			}
+			m := apikit.Metadata{ID: id, Method: spec.method, Path: path, Summary: "Integration compatibility: " + spec.id, Access: access, Requires: spec.scope, Lane: apikit.Default, Cost: apikit.PageSized, Admission: laneDefault, Status: 200, BodyLimit: body, Query: compatibilityQueries, Errors: []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "internal", "insufficient_scope", "session_required"}}
+			// Audience/Protocol are filled explicitly once the registry extension lands.
+			if err := apikit.RegisterRaw[json.RawMessage, json.RawMessage](registry, apikit.RawRoute[json.RawMessage, json.RawMessage]{Metadata: m, Serve: func(w http.ResponseWriter, r *http.Request) { d.serveCompatibility(w, r, spec) }}); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (d Dependencies) compatibilityID(r *http.Request, kind, native string) (string, error) {
+	return (integrationids.Store{DB: d.DB}).Encode(r.Context(), kind, native)
+}
+func (d Dependencies) compatibilityNativeID(r *http.Request, kind, guid string) (string, error) {
+	return (integrationids.Store{DB: d.DB}).Decode(r.Context(), kind, guid)
+}
+func (d Dependencies) integrationCall(r *http.Request, method, path string, query url.Values, body any) (map[string]any, error) {
+	status, _, raw, err := d.mcpInvoke(r)(mcpCall{Method: method, Path: path, Query: query, Body: body})
+	if err != nil {
+		return nil, err
+	}
+	if status >= 400 {
+		var doc struct {
+			Error struct {
+				Code string `json:"code"`
+			} `json:"error"`
+		}
+		_ = json.Unmarshal(raw, &doc)
+		code := doc.Error.Code
+		if code == "" {
+			code = "internal"
+		}
+		return nil, &apierror.Error{Code: code}
+	}
+	if len(raw) == 0 {
+		return map[string]any{}, nil
+	}
+	var out map[string]any
+	if err = json.Unmarshal(raw, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+func compatibilityFailure(w http.ResponseWriter, err error) { policyErrors.Write(w, "", err) }
+func compatibilityDecode(w http.ResponseWriter, r *http.Request, out any) error {
+	reader := http.MaxBytesReader(w, r.Body, 1<<20)
+	decoder := json.NewDecoder(reader)
+	if err := decoder.Decode(out); err != nil {
+		return &apierror.Error{Code: "invalid_request"}
+	}
+	var extra any
+	if decoder.Decode(&extra) != io.EOF {
+		return &apierror.Error{Code: "invalid_request"}
+	}
+	return nil
+}
+func compatObject(value any) map[string]any {
+	out, _ := value.(map[string]any)
+	if out == nil {
+		return map[string]any{}
+	}
+	return out
+}
+func compatObjects(value any) []map[string]any {
+	values, _ := value.([]any)
+	out := make([]map[string]any, 0, len(values))
+	for _, v := range values {
+		out = append(out, compatObject(v))
+	}
+	return out
+}
+func compatText(v any) string {
+	if v == nil {
+		return ""
+	}
+	return fmt.Sprint(v)
+}
+func compatNumber(v any) float64 { n, _ := v.(float64); return n }
+
+func (d Dependencies) compatibilityInfo(r *http.Request) (map[string]any, error) {
+	doc, err := d.integrationCall(r, "GET", "/v1/system", nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	guid, err := d.compatibilityID(r, "server", compatText(doc["id"]))
+	if err != nil {
+		return nil, err
+	}
+	version := compatText(doc["version"])
+	if version == "" || version == "dev" {
+		version = "0.0.0+portico"
+	}
+	return map[string]any{"Id": guid, "ServerName": doc["name"], "Name": doc["name"], "Version": version, "ProductName": "Portico", "StartupWizardCompleted": doc["setupRequired"] == false, "SupportsLocalPorticoIntegrations": true}, nil
+}
+func (d Dependencies) compatibilityUser(r *http.Request, native map[string]any) (map[string]any, error) {
+	id := compatText(native["profileId"])
+	if id == "" {
+		id = compatText(native["id"])
+	}
+	guid, err := d.compatibilityID(r, "user", id)
+	if err != nil {
+		return nil, err
+	}
+	info, err := d.compatibilityInfo(r)
+	if err != nil {
+		return nil, err
+	}
+	role := compatText(native["role"])
+	name := native["username"]
+	if name == nil {
+		name = native["name"]
+	}
+	return map[string]any{"Id": guid, "Name": name, "ServerId": info["Id"], "HasPassword": true, "HasConfiguredPassword": true, "Policy": map[string]any{"IsAdministrator": role == "owner" || role == "admin", "IsDisabled": native["disabled"] == true, "EnableAllFolders": native["allLibraries"] == true}}, nil
+}
+func (d Dependencies) requireCompatibilityUser(r *http.Request, guid string) error {
+	if guid == "" || strings.EqualFold(guid, "me") {
+		return nil
+	}
+	id, err := d.compatibilityNativeID(r, "user", guid)
+	if err != nil {
+		return &apierror.Error{Code: "not_found"}
+	}
+	p, err := d.foundationCaller(r)
+	if err != nil {
+		return foundationAuthError(err)
+	}
+	if id == p.ProfileID {
+		return nil
+	}
+	c, _ := identity.APICredentialFrom(r.Context())
+	if p.Role == identity.TierOwner || p.Role == identity.TierAdmin {
+		for _, s := range c.Scopes {
+			if s == "admin" {
+				return nil
+			}
+		}
+	}
+	return &apierror.Error{Code: "not_permitted"}
+}
+
+func (d Dependencies) serveCompatibility(w http.ResponseWriter, r *http.Request, spec compatibilityRoute) {
+	if err := d.requireIntegrations(r.Context()); err != nil {
+		compatibilityFailure(w, err)
+		return
+	}
+	q, ok := compatibilityQuery(r)
+	if !ok {
+		compatibilityFailure(w, &apierror.Error{Code: "invalid_request"})
+		return
+	}
+	if strings.HasPrefix(spec.id, "user_") || spec.id == "views" || spec.id == "user" {
+		if err := d.requireCompatibilityUser(r, r.PathValue("id")); err != nil {
+			compatibilityFailure(w, err)
+			return
+		}
+	}
+	if user := q.Get("userid"); user != "" {
+		if err := d.requireCompatibilityUser(r, user); err != nil {
+			compatibilityFailure(w, err)
+			return
+		}
+	}
+	var result any
+	var err error
+	switch spec.id {
+	case "info", "public_info", "configuration":
+		result, err = d.compatibilityInfo(r)
+	case "authenticate":
+		var in struct {
+			Username string
+			Pw       string
+			Password string
+		}
+		if err = compatibilityDecode(w, r, &in); err == nil {
+			if in.Pw != "" && in.Password != "" && in.Pw != in.Password {
+				err = &apierror.Error{Code: "invalid_request"}
+				break
+			}
+			password := in.Pw
+			if password == "" {
+				password = in.Password
+			}
+			var login map[string]any
+			login, err = d.integrationCall(r, "POST", "/v1/integrations/authenticate", nil, IntegrationLogin{Username: in.Username, Password: password, Name: "Integration"})
+			if err == nil {
+				var user map[string]any
+				user, err = d.integrationCallWithToken(r, compatText(login["token"]), "GET", "/v1/integrations/users", nil, nil)
+				if err == nil {
+					users := compatObjects(user["items"])
+					var selected map[string]any
+					for _, candidate := range users {
+						if compatText(candidate["profileId"]) == compatText(login["userId"]) || compatText(candidate["id"]) == compatText(login["userId"]) {
+							selected = candidate
+							break
+						}
+					}
+					if selected == nil {
+						err = &apierror.Error{Code: "not_permitted"}
+					} else {
+						var translated map[string]any
+						rr := r.Clone(r.Context())
+						rr.Header.Set("Authorization", "Bearer "+compatText(login["token"]))
+						translated, err = d.compatibilityUser(rr, selected)
+						result = map[string]any{"AccessToken": login["token"], "User": translated, "ServerId": translated["ServerId"]}
+					}
+				}
+			}
+		}
+	case "mint_key":
+		var issued map[string]any
+		issued, err = d.integrationCall(r, "POST", "/v1/integrations/keys", nil, IntegrationTokenRequest{Name: q.Get("app")})
+		if err == nil {
+			result = map[string]any{"AccessToken": issued["secret"], "AppName": q.Get("app")}
+		}
+	case "keys":
+		var keys map[string]any
+		keys, err = d.integrationCall(r, "GET", "/v1/integrations/keys", nil, nil)
+		if err == nil {
+			items := []any{}
+			for _, key := range compatObjects(keys["items"]) {
+				items = append(items, map[string]any{"Id": key["id"], "AppName": key["name"], "AccessToken": key["secret"]})
+			}
+			result = map[string]any{"Items": items, "TotalRecordCount": len(items)}
+		}
+	case "users", "user", "display_preferences":
+		var users map[string]any
+		users, err = d.integrationCall(r, "GET", "/v1/integrations/users", nil, nil)
+		if err == nil {
+			items := []any{}
+			for _, u := range compatObjects(users["items"]) {
+				var user map[string]any
+				user, err = d.compatibilityUser(r, u)
+				if err != nil {
+					break
+				}
+				if spec.id == "users" {
+					items = append(items, user)
+				} else {
+					want := r.PathValue("id")
+					if strings.EqualFold(want, "me") || want == "" {
+						p, e := d.foundationCaller(r)
+						if e != nil {
+							err = foundationAuthError(e)
+							break
+						}
+						if compatText(u["profileId"]) == p.ProfileID || compatText(u["id"]) == p.ProfileID {
+							result = user
+						}
+					} else if user["Id"] == strings.ReplaceAll(want, "-", "") {
+						result = user
+					}
+				}
+			}
+			if spec.id == "users" {
+				result = items
+			} else if result == nil {
+				err = &apierror.Error{Code: "not_found"}
+			}
+		}
+	case "media_folders", "virtual_folders", "views":
+		result, err = d.compatibilityLibraries(r, spec.id)
+	case "items", "user_items", "latest", "user_latest":
+		d.compatibilityItems(w, r, q, spec.id)
+		return
+	case "user_item":
+		var id string
+		id, err = d.compatibilityNativeID(r, "item", r.PathValue("item"))
+		if err == nil {
+			var item map[string]any
+			item, err = d.integrationCall(r, "GET", "/v1/integrations/items", url.Values{"ids": {id}}, nil)
+			if err == nil {
+				rows := compatObjects(item["items"])
+				if len(rows) == 0 {
+					err = &apierror.Error{Code: "not_found"}
+				} else {
+					result, err = d.compatibilityItem(r, rows[0])
+				}
+			}
+		}
+	case "seasons", "episodes":
+		result, err = d.compatibilityHierarchy(r, q, spec.id)
+	case "sessions":
+		result, err = d.compatibilitySessions(r)
+	case "media_info":
+		var id string
+		id, err = d.compatibilityNativeID(r, "item", r.PathValue("id"))
+		if err == nil {
+			var media map[string]any
+			media, err = d.integrationCall(r, "GET", "/v1/integrations/items/"+url.PathEscape(id)+"/media-info", nil, nil)
+			if err == nil {
+				result = map[string]any{"MediaSources": foreignMediaSources(media["mediaSources"])}
+			}
+		}
+	case "media_updated":
+		var in struct {
+			Updates []struct {
+				Path       string
+				UpdateType *string
+			}
+		}
+		if err = compatibilityDecode(w, r, &in); err == nil {
+			changes := []PathChange{}
+			for _, p := range in.Updates {
+				change := "changed"
+				if p.UpdateType != nil {
+					switch strings.ToLower(*p.UpdateType) {
+					case "created":
+						change = "added"
+					case "deleted":
+						change = "removed"
+					case "modified", "":
+					default:
+						err = &apierror.Error{Code: "invalid_request"}
+					}
+				}
+				changes = append(changes, PathChange{Path: p.Path, Change: change})
+			}
+			if err == nil {
+				result, err = d.integrationCall(r, "POST", "/v1/libraries/paths-changed", nil, map[string]any{"paths": changes, "targetedOnly": true})
+			}
+		}
+	case "untargeted_refresh":
+		err = &apierror.Error{Code: "invalid_request", Message: "Send the changed media paths. An untargeted refresh is unavailable."}
+	case "refresh_item":
+		result, err = d.compatibilityRefresh(r, q)
+	case "transport", "command", "play_request":
+		result, err = d.compatibilityControl(r, q, spec.id)
+	case "plugins":
+		result = []any{}
+	case "notify":
+		err = &apierror.Error{Code: "not_found", Message: "This server has no native inbound administrator-message operation."}
+	case "image", "indexed_image", "user_image":
+		d.compatibilityImage(w, r, q, spec.id)
+		return
+	default:
+		err = &apierror.Error{Code: "not_found"}
+	}
+	if err != nil {
+		if errors.Is(err, identity.ErrUnauthorized) {
+			err = &apierror.Error{Code: "unauthorized"}
+		}
+		compatibilityFailure(w, err)
+		return
+	}
+	write(w, 200, result)
+}
+func (d Dependencies) integrationCallWithToken(r *http.Request, token, method, path string, query url.Values, body any) (map[string]any, error) {
+	inner := r.Clone(r.Context())
+	inner.Header.Set("Authorization", "Bearer "+token)
+	return d.integrationCall(inner, method, path, query, body)
+}
+func (d Dependencies) compatibilityLibraries(r *http.Request, shape string) (any, error) {
+	page, err := d.integrationCall(r, "GET", "/v1/integrations/libraries", nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	items := []any{}
+	for _, lib := range compatObjects(page["items"]) {
+		guid, err := d.compatibilityID(r, "library", compatText(lib["id"]))
+		if err != nil {
+			return nil, err
+		}
+		kind := compatText(lib["kind"])
+		collection := ""
+		switch kind {
+		case "movie", "movies":
+			collection = "movies"
+		case "tv", "show", "anime":
+			collection = "tvshows"
+		case "music":
+			collection = "music"
+		case "audiobook", "book":
+			collection = "books"
+		}
+		paths := lib["paths"]
+		if paths == nil {
+			paths = []string{}
+		}
+		if shape == "virtual_folders" {
+			items = append(items, map[string]any{"ItemId": guid, "Name": lib["name"], "CollectionType": collection, "Locations": paths})
+		} else {
+			items = append(items, map[string]any{"Id": guid, "Name": lib["name"], "CollectionType": collection, "Type": "CollectionFolder", "IsFolder": true, "Locations": paths})
+		}
+	}
+	if shape == "virtual_folders" {
+		return items, nil
+	}
+	return map[string]any{"Items": items, "TotalRecordCount": len(items), "StartIndex": 0}, nil
+}

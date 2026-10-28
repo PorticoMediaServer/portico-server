@@ -6724,13 +6724,20 @@ CREATE TABLE audio_render_fact_requests(
  asset_id TEXT PRIMARY KEY REFERENCES catalog_assets(token) ON DELETE CASCADE,
  item_id TEXT NOT NULL,requested_ms INTEGER NOT NULL) STRICT;
 CREATE INDEX audio_render_fact_requests_order ON audio_render_fact_requests(requested_ms);
+CREATE TABLE integration_ids(
+ kind TEXT NOT NULL CHECK(kind IN('library','user','server','session','key')),
+ native_id TEXT NOT NULL,guid TEXT NOT NULL,expires_ms INTEGER NOT NULL DEFAULT 0,
+ PRIMARY KEY(kind,native_id),UNIQUE(kind,guid)) STRICT;
+CREATE INDEX integration_ids_expiry ON integration_ids(expires_ms) WHERE expires_ms>0;
 CREATE TABLE api_credentials(
- id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK(kind IN('key','token')),
+ id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK(kind IN('key','token','app_password','integration')),
  account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE, profile_id TEXT NOT NULL,
- name TEXT NOT NULL, scopes TEXT NOT NULL, secret_hash TEXT NOT NULL UNIQUE, hint TEXT NOT NULL,
+ name TEXT NOT NULL, scopes TEXT NOT NULL, secret_hash TEXT NOT NULL UNIQUE, secret TEXT NOT NULL DEFAULT '', hint TEXT NOT NULL,
  family_id TEXT NOT NULL UNIQUE, device_id TEXT NOT NULL,
  created_ms INTEGER NOT NULL, expires_ms INTEGER NOT NULL DEFAULT 0, revoked_ms INTEGER NOT NULL DEFAULT 0,
- ended_reason TEXT NOT NULL DEFAULT '') STRICT;
+ ended_reason TEXT NOT NULL DEFAULT '',
+ parent_id TEXT REFERENCES api_credentials(id) ON DELETE CASCADE) STRICT;
+CREATE INDEX api_credentials_parent ON api_credentials(parent_id) WHERE parent_id IS NOT NULL;
 CREATE INDEX api_credentials_page ON api_credentials(kind,created_ms DESC,id DESC);
 CREATE INDEX api_credentials_account ON api_credentials(account_id,kind,created_ms DESC,id DESC);
 CREATE TRIGGER api_credential_family_guard AFTER UPDATE OF revoked ON authorization_session_families
@@ -9065,6 +9072,7 @@ CREATE TABLE server_settings(singleton INTEGER PRIMARY KEY CHECK(singleton=1), u
  "jobDays" INTEGER,
  "playHistoryDays" INTEGER,
  "apiRequestsPerMinute" INTEGER,
+ "integrations.compatibilityEnabled" INTEGER CHECK("integrations.compatibilityEnabled" IN(0,1)),
  "home.communityActivityEnabled" INTEGER,
  "updates.releaseChannel" TEXT,
  "updates.feedUrl" TEXT,
