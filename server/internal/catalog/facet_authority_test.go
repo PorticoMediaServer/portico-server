@@ -66,8 +66,8 @@ func TestFacetAuthoritySeparatesContentFromRestrictedVisibility(t *testing.T) {
 	if capture(restricted) != before || capture(genre) != unrestrictedGenre {
 		t.Fatal("ordinary title materialization revoked a retained content basis")
 	}
-	if capture(privateGenre) == privateGenreBefore {
-		t.Fatal("active genre empty-member authority did not capture first membership")
+	if capture(privateGenre) != privateGenreBefore {
+		t.Fatal("new movie first membership revoked active genre content basis")
 	}
 	c.Attributes(item.ID, "label", "Adult")
 	if capture(restricted) == before {

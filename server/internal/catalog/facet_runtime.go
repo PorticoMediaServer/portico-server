@@ -612,6 +612,9 @@ func (r *FacetRuntime) Run(ctx context.Context) error {
 			if ctx.Err() != nil {
 				return 0
 			}
+			if facetRuntimeTemporary(err) {
+				return time.Second
+			}
 			fatal = err
 			cancel()
 			return 0
@@ -636,7 +639,7 @@ func (r *FacetRuntime) Run(ctx context.Context) error {
 			if errors.Is(err, errFacetRuntimeDeferred) {
 				return 2 * time.Second
 			}
-			if dbwork.Overloaded(err) {
+			if facetRuntimeTemporary(err) {
 				return time.Second
 			}
 			fatal = err
@@ -695,6 +698,14 @@ func (r *FacetRuntime) nextDemand(pendingOnly ...bool) *facetRuntimeDemand {
 		selected.turn = r.turn
 	}
 	return selected
+}
+
+// A bounded read snapshot may expire while the process context is still live.
+// Retry that quantum after releasing it; it must not stop the process worker or
+// discard a durable build. Corruption/input/capacity errors keep their existing
+// terminal handling, and process cancellation still exits Run directly.
+func facetRuntimeTemporary(err error) bool {
+	return dbwork.Overloaded(err) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, dbwork.ErrReadPressure)
 }
 
 func runtimeTerminal(err error) error {
@@ -883,7 +894,7 @@ func (r *FacetRuntime) maintenanceFailure(ctx context.Context, d *facetRuntimeDe
 	if errors.Is(err, errFacetRuntimeDeferred) {
 		return 2 * time.Second
 	}
-	if ctx.Err() != nil || dbwork.Overloaded(err) {
+	if ctx.Err() != nil || facetRuntimeTemporary(err) {
 		return time.Second
 	}
 	r.mu.Lock()

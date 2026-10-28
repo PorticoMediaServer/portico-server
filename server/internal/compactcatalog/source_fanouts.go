@@ -36,9 +36,12 @@ func queueSource(ctx context.Context, tx *sql.Tx, domain int, id int64, token st
 	return TouchTx(ctx, tx, domain, id)
 }
 
+// An unlinked asset has no source consumers. Link ingress queues its current
+// owners independently, so earlier unlinked changes need no speculative marker.
 func queueAssetSource(ctx context.Context, tx *sql.Tx, asset int64, flags int64) error {
 	var token string
-	err := tx.QueryRowContext(ctx, `SELECT token FROM catalog_assets WHERE id=?`, asset).Scan(&token)
+	err := tx.QueryRowContext(ctx, `SELECT a.token FROM catalog_assets a WHERE a.id=?
+ AND EXISTS(SELECT 1 FROM catalog_asset_links INDEXED BY catalog_asset_links_asset WHERE asset_id=a.id)`, asset).Scan(&token)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}

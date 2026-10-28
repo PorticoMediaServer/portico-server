@@ -84,6 +84,8 @@ func TestFacetGenreEpochFirstMemberIsSeparateAuthority(t *testing.T) {
 	lib := cc1Library(t, db, "genre-policy", "Genre policy", "tv", "/genre-policy")
 	show := cc1Entity(t, db, Entity{Library: lib, Kind: Show, Key: "show", Title: "Empty show"}, map[string]any{"local_key": "show"})
 	cc1Drain(t, db)
+	// Unit setup of the library metadata normally accepted by genre publication.
+	cc1Exec(t, db, `INSERT INTO catalog_search_genre_accepted_targets(library_id,max_entity_id) VALUES(?,?)`, lib, show)
 	policy, err := FacetPolicyEpoch(context.Background(), db)
 	if err != nil {
 		t.Fatal(err)
@@ -107,6 +109,7 @@ func TestFacetGenreEpochFirstMemberIsSeparateAuthority(t *testing.T) {
 	if current != policy || nextGenre <= genre {
 		t.Fatal("first raw member was not isolated to genre authority")
 	}
+	cc1Exec(t, db, `CREATE TABLE genre_epoch_stamps(n INTEGER); CREATE TRIGGER observe_genre_epoch_stamp AFTER UPDATE OF genre_epoch ON catalog_facet_source_state BEGIN INSERT INTO genre_epoch_stamps VALUES(1); END;`)
 	// Another source for the same member cannot revoke an existential witness.
 	cc1Exec(t, db, `INSERT INTO catalog_browse_memberships(entity_id,item_id,source) VALUES(?,?,1)`, show, child)
 	after, err := FacetGenreEpoch(context.Background(), db)
@@ -115,6 +118,14 @@ func TestFacetGenreEpochFirstMemberIsSeparateAuthority(t *testing.T) {
 	}
 	if after != nextGenre {
 		t.Fatal("later membership inserted a genre revocation")
+	}
+	// Exercise the opposite full-PK range as well: a larger member sees an
+	// existing lower member, while source=1 above saw the existing higher key.
+	nextChild := facetTestEntity(t, db, lib, "movie:later-child")
+	cc1Exec(t, db, `INSERT INTO catalog_browse_memberships(entity_id,item_id,source) VALUES(?,?,8)`, show, nextChild)
+	var stamps int
+	if err = db.QueryRow(`SELECT count(*) FROM genre_epoch_stamps`).Scan(&stamps); err != nil || stamps != 0 {
+		t.Fatal("false WHEN predicate still stamped genre authority", stamps, err)
 	}
 	cc1Exec(t, db, `DELETE FROM catalog_browse_memberships WHERE entity_id=? AND item_id=? AND source=1`, show, child)
 	current, err = FacetPolicyEpoch(context.Background(), db)
@@ -160,7 +171,7 @@ func TestFacetPolicyEpochBulkContentMaterializationDoesNotRevokeSimple(t *testin
 	if before != after {
 		t.Fatal("bulk new content/materialization blanket-revoked SIMPLE authority")
 	}
-	if genreAfter <= genreBefore {
-		t.Fatal("Search first-member revocation seam did not move independently")
+	if genreAfter != genreBefore {
+		t.Fatal("new unaccepted targets revoked Search genre authority")
 	}
 }
