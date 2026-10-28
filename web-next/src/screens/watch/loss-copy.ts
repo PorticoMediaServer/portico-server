@@ -2,6 +2,7 @@ import type {I18n} from '@i18n';
 import {videoAudioChannelName, videoTrackWords} from '@core/video-track-labels.ts';
 import type {PlaybackInfo} from '@core/playback-v1/playback-info.ts';
 import type {ObservedPlayback} from '@core/playback-v1/observed-playback.ts';
+import {reconciledPlaybackLosses} from '@core/playback-info-projection.ts';
 import type {PlaybackLossNotice} from '../../kit/media';
 
 type Feature = PlaybackInfo['losses'][number]['feature'];
@@ -23,9 +24,10 @@ function playing(i18n: I18n, info: PlaybackInfo, observed: ObservedPlayback | un
   return audio ? videoAudioChannelName(audio, videoTrackWords(i18n.t, i18n.locale)) : undefined;
 }
 
-/** The drawn loss sentence for one kind of loss, from the server's own losses. */
+/** The drawn loss sentence for one kind of loss: the server's losses, less object audio this
+ * occurrence's output is observed to have kept (the same answer as the comparison). */
 export function lossSentences(i18n: I18n, info: PlaybackInfo, observed: ObservedPlayback | undefined, kind: 'picture' | 'sound' | 'all'): Readonly<{loss: string; replacement: string}> | undefined {
-  const losses = info.losses.filter(value => kind === 'all' || (kind === 'picture' ? value.feature === 'dolbyVision' || value.feature === 'hdr10plus' || value.feature === 'hdr' : value.feature === 'atmos' || value.feature === 'dtsx'));
+  const losses = reconciledPlaybackLosses(info, observed).filter(value => kind === 'all' || (kind === 'picture' ? value.feature === 'dolbyVision' || value.feature === 'hdr10plus' || value.feature === 'hdr' : value.feature === 'atmos' || value.feature === 'dtsx'));
   if (!losses.length) return undefined;
   const list = new Intl.ListFormat(i18n.locale ?? 'en-US', {type: 'conjunction', style: 'long'});
   const groups = new Map<Where, Feature[]>();
@@ -45,8 +47,8 @@ export function lossSentences(i18n: I18n, info: PlaybackInfo, observed: Observed
 /** One note per playback: both losses share one line, as frame 6 draws. The icon
  * follows the picture when a picture loss is among them. */
 export function watchLossNotice(i18n: I18n, info: PlaybackInfo | undefined, observed: ObservedPlayback | undefined, playbackId: string): PlaybackLossNotice | undefined {
-  if (!info || !playbackId || !info.losses.length) return undefined;
-  const picture = info.losses.some(value => value.feature === 'dolbyVision' || value.feature === 'hdr10plus' || value.feature === 'hdr');
+  if (!info || !playbackId) return undefined;
+  const picture = reconciledPlaybackLosses(info, observed).some(value => value.feature === 'dolbyVision' || value.feature === 'hdr10plus' || value.feature === 'hdr');
   const sentences = lossSentences(i18n, info, observed, 'all');
   if (!sentences) return undefined;
   return Object.freeze({playbackId, cause: 'automatic', kind: picture ? 'picture' : 'sound', loss: sentences.loss, replacement: sentences.replacement});
