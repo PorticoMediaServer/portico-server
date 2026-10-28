@@ -1,3 +1,4 @@
+import {validSelectionUnavailableActions} from './unavailable-actions.ts';
 import {validSelectionBasis} from '../selection-basis.ts';
 import {selectionCapabilities, selectionCapabilityNames, selectionKinds, selectionKindAllowsCapability} from './capabilities.ts';
 import {summarizeQuerySelection} from './query-summary.ts';
@@ -143,6 +144,7 @@ function validateQuery(input: SelectionQuery, expectedRevision: string): Selecti
   requireSelection(Array.isArray(summary.types) && summary.types.length <= selectionKinds.length
     && record(summary.every) && selectionCapabilityNames.every(name => typeof summary.every[name] === 'boolean')
     && record(summary.library), 'invalid-query');
+  requireSelection(summary.unavailableActions === undefined || validSelectionUnavailableActions(summary.unavailableActions), 'invalid-query');
   const kinds = new Set<string>();
   let total = 0;
   let libraryFacts = 0;
@@ -193,6 +195,7 @@ function validateQuery(input: SelectionQuery, expectedRevision: string): Selecti
     && selectionCapabilityNames.every(name => summary.every[name] === facts.every[name]), 'invalid-query');
   return Object.freeze({
     id: input.id, selector, total: input.total, catalogRevision: input.catalogRevision,
-    summary: Object.freeze({types: Object.freeze(types), library: facts.library, every: facts.every}),
+    summary: Object.freeze({types: Object.freeze(types), library: facts.library, every: facts.every,
+      ...(summary.unavailableActions === undefined ? {} : {unavailableActions: Object.freeze({...summary.unavailableActions})})}),
   });
 }

@@ -6,6 +6,7 @@ export function summarizeQuerySelection(
   facts: readonly SelectionQueryType[],
   kind: SelectionKind | null,
   exclusions: Iterable<SelectedItem>,
+  unavailableActions?: SelectionSummary['unavailableActions'],
 ): SelectionSummary {
   const types = new Map<SelectionKind, number>(facts.filter(row => kind === null || kind === row.kind).map(row => [row.kind, row.count]));
   const libraries = new Map<string, number>();
@@ -28,6 +29,7 @@ export function summarizeQuerySelection(
   const presentLibraries = [...libraries].filter(([, total]) => total > 0);
   return Object.freeze({
     count,
+    ...(unavailableActions === undefined ? {} : {unavailableActions}),
     types: Object.freeze(selectionKinds.flatMap(value => {
       const total = types.get(value) ?? 0;
       return total > 0 ? [Object.freeze({kind: value, count: total})] : [];

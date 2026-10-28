@@ -330,7 +330,7 @@ class WindowedSelectionModel<C> {
   }
 
   private querySummary() {
-    return summarizeQuerySelection(this.whole!.summary.types, this.wholeKind, this.excluded.values());
+    return summarizeQuerySelection(this.whole!.summary.types, this.wholeKind, this.excluded.values(), this.whole!.summary.unavailableActions);
   }
 
   private isQueryMember(windowId: string, key: string): boolean {
