@@ -63,7 +63,11 @@ export function createShellFactOwner(o: Readonly<{
       ...(background ? {background: 'whenRetained' as const} : {})});
     interests.push(interest); return interest;
   };
-  const sameRequest = (captured: LocalSession, signal: AbortSignal) => current() && !signal.aborted && o.session() === captured;
+  const sameRequest = (captured: LocalSession, signal: AbortSignal) => {
+    const now = o.session();
+    return current() && !signal.aborted && captured.sessionFamilyId === now.sessionFamilyId
+      && (['serverId','authority','accountId','profileId','role'] as const).every(key => captured.viewer[key] === now.viewer[key]);
+  };
   const publish = async (context: InterestReadContext, captured: LocalSession, project: () => void): Promise<InterestOutcome> => {
     if (!sameRequest(captured, context.signal)) return {kind: 'superseded'};
     await o.hub.settled(context.signal);

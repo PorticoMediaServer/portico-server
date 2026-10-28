@@ -7,7 +7,6 @@ import type {HomeChannel, HomeDocument, HomeReason, HomeRow, HomeSeeAll, HomeSpo
 import type {ContentEntry} from '@core/library-content.ts';
 import type {GuideChannel} from '@core/channel-guide.ts';
 import {dependsOn, type FreshDocument} from '@core/freshness-hub.ts';
-import {createShellHomeDocument} from '../../shell/home-freshness';
 import {serverTextLabel} from '@core/presentation/server-text.ts';
 import {homeChannelSelection, homeEntryCapabilities} from '@core/home-selection.ts';
 import {homeCollectionCaption} from '@core/presentation/home-spotlight.ts';
@@ -93,19 +92,24 @@ function useVisible() {
 }
 
 export function HomeScreen(bindings: HomeBindings) {
-  const service = bindings.service, {hub} = useFreshness();
-  const fallback = useMemo(() => bindings.displayDocument ? undefined : createShellHomeDocument(hub, service), [bindings.displayDocument, hub, service]);
-  const display = bindings.displayDocument ?? fallback!.document;
+  const service = bindings.service, {hub} = useFreshness(), display = bindings.displayDocument;
+  if (!display) throw new Error('A shell Home display registration is required.');
   useEffect(() => {
     display.setOpen(true);
     if (service.getSnapshot().phase === 'idle') void service.load().catch(bindings.effects.reportError);
-    return () => {display.setOpen(false); fallback?.dispose();};
-  }, [display, fallback, service]);
+    return () => display.setOpen(false);
+  }, [display, service]);
   const actual = useSyncExternalStore(service.subscribe, service.getSnapshot), recovering = useRecovering(display);
   const snapshot: HomeSnapshot = recovering && actual.phase === 'error' ? {...actual, phase: 'loading', error: null} : actual;
   useEffect(() => {
-    const timer = setInterval(() => {if (hub.isActive()) hub.note(dependsOn.clock('home-time'));}, 60000);
-    return () => clearInterval(timer);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const schedule = () => {
+      if (timer !== undefined) clearTimeout(timer); timer = undefined;
+      if (globalThis.document.hidden || !hub.isActive()) return;
+      timer = setTimeout(() => {timer = undefined; if (hub.isActive()) hub.note(dependsOn.clock('home-time')); schedule();}, 60000);
+    };
+    schedule(); globalThis.document.addEventListener('visibilitychange', schedule);
+    return () => {if (timer !== undefined) clearTimeout(timer); globalThis.document.removeEventListener('visibilitychange', schedule);};
   }, [hub]);
   const refreshLive = useCallback(() => display.invalidate(), [display]);
   const [now, setNow] = useState(Date.now);
