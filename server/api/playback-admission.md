@@ -31,6 +31,9 @@ shorter than the reporting cadence.
 General request admission also bounds the number of active and waiting requests.
 An overloaded lane responds with `503 server_busy`, `retryable: true`, and
 `Retry-After: 1`. Clients should pause and retry rather than increase concurrency.
+A change the database writer refused before it began answers `503
+writer_capacity` with `Retry-After` from 1 to 30 seconds; nothing was saved, and
+the same request (with the same `Idempotency-Key`) should be sent again.
 Short API responses have a rolling write budget: a client that makes no response
 progress for fifteen seconds releases the request instead of occupying a lane
 indefinitely. Media transfers and event streams retain their own streaming

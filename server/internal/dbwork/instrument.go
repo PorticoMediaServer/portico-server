@@ -104,6 +104,8 @@ var global struct {
 	transactions atomic.Uint64
 	acquisitions atomic.Uint64
 	slow         atomic.Uint64
+	heavy        atomic.Uint64
+	heavyLogged  atomic.Int64
 
 	mu      sync.Mutex
 	byClass map[Class]*classReads
@@ -127,10 +129,15 @@ type ClassReadStats struct {
 // pool and gate statistics: those say how long callers waited, this says how
 // much work they asked for.
 type ReadStats struct {
-	Statements     uint64              `json:"statements"`
-	Transactions   uint64              `json:"transactions"`
-	Acquisitions   uint64              `json:"acquisitions"`
-	SlowReads      uint64              `json:"slowReads"`
+	Statements   uint64 `json:"statements"`
+	Transactions uint64 `json:"transactions"`
+	Acquisitions uint64 `json:"acquisitions"`
+	SlowReads    uint64 `json:"slowReads"`
+	// HeavyReads counts reads that ran more SQLite VM steps than their
+	// ceiling (1,000,000 foreground, 250,000 background): the work-bound
+	// guard that does not depend on the machine's speed. They are counted and
+	// logged, never interrupted.
+	HeavyReads     uint64              `json:"heavyReads"`
 	ByClass        []ClassReadStats    `json:"byClass"`
 	StatementCache StatementCacheStats `json:"statementCache"`
 }
@@ -142,6 +149,7 @@ func Reads() ReadStats {
 		Transactions:   global.transactions.Load(),
 		Acquisitions:   global.acquisitions.Load(),
 		SlowReads:      global.slow.Load(),
+		HeavyReads:     global.heavy.Load(),
 		ByClass:        []ClassReadStats{},
 		StatementCache: statementCacheStats(),
 	}
@@ -170,6 +178,7 @@ func ResetReads() {
 	global.transactions.Store(0)
 	global.acquisitions.Store(0)
 	global.slow.Store(0)
+	global.heavy.Store(0)
 	global.mu.Lock()
 	global.byClass = nil
 	global.mu.Unlock()
@@ -269,6 +278,29 @@ func observe(ctx context.Context, query string, elapsed time.Duration, inTx bool
 	}
 }
 
+// Read work ceilings (F §4): a foreground query may run 1,000,000 VM steps and
+// a background one 250,000 before it counts as heavy.
+const (
+	foregroundReadVMCeiling = 1_000_000
+	backgroundReadVMCeiling = 250_000
+)
+
+func noteReadSteps(ctx context.Context, steps int64) {
+	class := ClassFrom(ctx, ClassInteractive)
+	ceiling := int64(foregroundReadVMCeiling)
+	if class.Background() {
+		ceiling = backgroundReadVMCeiling
+	}
+	if steps <= ceiling {
+		return
+	}
+	global.heavy.Add(1)
+	now := time.Now().UnixNano()
+	if last := global.heavyLogged.Load(); slowReadLog.Load() && now-last >= int64(time.Minute) && global.heavyLogged.CompareAndSwap(last, now) {
+		log.Printf("heavy database read: %d VM steps on the %s class (%d so far)", steps, class, global.heavy.Load())
+	}
+}
+
 // slowReadLog keeps the slow-read line out of test output by default. The server
 // turns it on at startup.
 var slowReadLog atomic.Bool
@@ -290,6 +322,7 @@ func observeTransaction(ctx context.Context) {
 type observedDriver struct{ inner driver.Driver }
 
 func (d observedDriver) Open(name string) (driver.Conn, error) {
+	name, role := connRoleOf(name)
 	readers := acquireReaderScope(name)
 	generation := readers.plannerGeneration.Load()
 	inner, err := d.inner.Open(name)
@@ -297,7 +330,7 @@ func (d observedDriver) Open(name string) (driver.Conn, error) {
 		releaseReaderScope(readers)
 		return nil, err
 	}
-	return &observedConn{inner: inner, readers: readers, plannerGeneration: generation}, nil
+	return &observedConn{inner: inner, readers: readers, plannerGeneration: generation, role: role}, nil
 }
 
 type observedConn struct {
@@ -312,6 +345,13 @@ type observedConn struct {
 	// the old snapshot after a statement bump and before its commit. Only an
 	// authority-writing transaction needs a second bump when it commits.
 	authorityDirty bool
+	// role is which pool of an OpenHandle database this connection belongs
+	// to; an unmanaged handle is not checked for ungated writes.
+	role connRole
+	// meter is the open gated transaction's budget meter, if it has one.
+	meter *writeMeter
+	// testTx is a write transaction a test opened itself on a read pool.
+	testTx bool
 }
 
 func (c *observedConn) Prepare(query string) (driver.Stmt, error) {
@@ -375,6 +415,12 @@ func (c *observedConn) BeginTx(ctx context.Context, opts driver.TxOptions) (driv
 	if err != nil {
 		return nil, err
 	}
+	if !opts.ReadOnly {
+		if err := c.checkWriter(ctx, "BEGIN"); err != nil {
+			lease.close()
+			return nil, err
+		}
+	}
 	inner, err := beginner.BeginTx(ctx, opts)
 	if err != nil {
 		lease.close()
@@ -385,6 +431,12 @@ func (c *observedConn) BeginTx(ctx context.Context, opts driver.TxOptions) (driv
 	c.inTx = true
 	c.authorityDirty = false
 	c.changes, _ = ctx.Value(changeKey{}).(*changeSet)
+	// Only the write transaction itself is metered: a read snapshot a helper
+	// opens with the write's context is another connection's work.
+	if meter, _ := ctx.Value(meterKey{}).(*writeMeter); meter != nil && !opts.ReadOnly && c.role != roleReader && !meter.started {
+		c.meter = meter
+		c.meter.begin(c.inner)
+	}
 	return &observedTx{inner: inner, conn: c}, nil
 }
 
@@ -392,6 +444,9 @@ func (c *observedConn) ExecContext(ctx context.Context, query string, args []dri
 	_, ok := c.inner.(driver.ExecerContext)
 	if !ok {
 		return nil, driver.ErrSkip
+	}
+	if err := c.checkWriter(ctx, query); err != nil {
+		return nil, err
 	}
 	start := time.Now()
 	traceStatement(ctx, query)
@@ -407,6 +462,9 @@ func (c *observedConn) QueryContext(ctx context.Context, query string, args []dr
 	_, ok := c.inner.(driver.QueryerContext)
 	if !ok {
 		return nil, driver.ErrSkip
+	}
+	if err := c.checkWriter(ctx, query); err != nil {
+		return nil, err
 	}
 	lease, err := c.admitReader(ctx, false)
 	if err != nil {
@@ -436,6 +494,8 @@ func (c *observedConn) Ping(ctx context.Context) error {
 func (c *observedConn) ResetSession(ctx context.Context) error {
 	c.finishReadTransaction()
 	c.inTx = false
+	c.meter = nil
+	c.testTx = false
 	c.authorityDirty = false
 	// SQLite caches statistics and prepared plans per physical connection.
 	// Retire an idle connection only when it is borrowed again; a snapshot
@@ -463,6 +523,12 @@ type observedTx struct {
 
 func (t *observedTx) Commit() error {
 	err := t.inner.Commit()
+	if t.conn.meter != nil {
+		if err == nil {
+			t.conn.meter.end(t.conn.inner)
+		}
+		t.conn.meter = nil
+	}
 	if err == nil && t.conn.authorityDirty {
 		// Invalidate verdicts obtained after the statement bump while other
 		// connections could still see the old committed authority.
@@ -470,12 +536,15 @@ func (t *observedTx) Commit() error {
 	}
 	t.conn.inTx = false
 	t.conn.authorityDirty = false
+	t.conn.testTx = false
 	t.conn.finishReadTransaction()
 	return err
 }
 
 func (t *observedTx) Rollback() error {
 	t.conn.inTx = false
+	t.conn.meter = nil
+	t.conn.testTx = false
 	err := t.inner.Rollback()
 	t.conn.authorityDirty = false
 	t.conn.finishReadTransaction()
@@ -492,6 +561,9 @@ func (s *observedStmt) Close() error  { return s.inner.Close() }
 func (s *observedStmt) NumInput() int { return s.inner.NumInput() }
 
 func (s *observedStmt) Exec(args []driver.Value) (driver.Result, error) {
+	if err := s.conn.checkWriter(context.Background(), s.query); err != nil {
+		return nil, err
+	}
 	if invalidatingStatement(s.query) {
 		s.conn.statements.invalidate()
 	}
@@ -505,6 +577,9 @@ func (s *observedStmt) Exec(args []driver.Value) (driver.Result, error) {
 }
 
 func (s *observedStmt) Query(args []driver.Value) (driver.Rows, error) {
+	if err := s.conn.checkWriter(context.Background(), s.query); err != nil {
+		return nil, err
+	}
 	if invalidatingStatement(s.query) {
 		s.conn.statements.invalidate()
 	}
@@ -524,6 +599,9 @@ func (s *observedStmt) Query(args []driver.Value) (driver.Rows, error) {
 }
 
 func (s *observedStmt) ExecContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
+	if err := s.conn.checkWriter(ctx, s.query); err != nil {
+		return nil, err
+	}
 	if invalidatingStatement(s.query) {
 		s.conn.statements.invalidate()
 	}
@@ -541,6 +619,9 @@ func (s *observedStmt) ExecContext(ctx context.Context, args []driver.NamedValue
 }
 
 func (s *observedStmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
+	if err := s.conn.checkWriter(ctx, s.query); err != nil {
+		return nil, err
+	}
 	if invalidatingStatement(s.query) {
 		s.conn.statements.invalidate()
 	}
@@ -596,9 +677,11 @@ func (r *observedRows) Close() error {
 	}
 	r.closed = true
 	if counter, ok := r.inner.(interface{ VMSteps() int64 }); ok {
+		steps := counter.VMSteps()
 		if c := costFrom(r.ctx); c != nil {
-			c.vmSteps.Add(counter.VMSteps())
+			c.vmSteps.Add(steps)
 		}
+		noteReadSteps(r.ctx, steps)
 	}
 	if !r.observed {
 		r.observed = true

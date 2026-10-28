@@ -123,8 +123,8 @@ func TestAudioGenreCatchUpBatchCursorIsDurable(t *testing.T) {
 		t.Fatal(err)
 	}
 	music := cc1Library(t, db, "music", "Music", "music", "/music")
-	// 600 items: one full batch of 500 plus a 100-item remainder.
-	for i := 0; i < 600; i++ {
+	// 60 items: many full batches plus a remainder.
+	for i := 0; i < 60; i++ {
 		id := "item-" + string(rune('a'+i/26)) + string(rune('a'+i%26))
 		genreItem(t, db, music, id, "Track "+id, Track, "Jazz")
 	}
@@ -161,11 +161,15 @@ func TestAudioGenreCatchUpBatchCursorIsDurable(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db2.Close()
-	more, err = ProjectAudioLocalGenresBatch(ctx, db2, "music")
-	if err != nil || more {
-		t.Fatalf("the second pass must complete the remaining 100 items: %v %v", more, err)
+	for passes := 1; more; passes++ {
+		if passes > 60/audioGenreBatch+1 {
+			t.Fatal("the catch-up did not finish in as many passes as it has batches")
+		}
+		if more, err = ProjectAudioLocalGenresBatch(ctx, db2, "music"); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if n := audioGenreScalarQuery(t, db2); n != 600 {
+	if n := audioGenreScalarQuery(t, db2); n != 60 {
 		t.Fatalf("the catch-up did not project every item: %d rows", n)
 	}
 	if due, err = AudioLocalGenreProjectionDue(ctx, db2); err != nil || len(due) != 0 {

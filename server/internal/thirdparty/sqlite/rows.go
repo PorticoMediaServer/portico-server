@@ -57,7 +57,9 @@ func (r *rows) VMSteps() int64 {
 	if r.pstmt == 0 {
 		return 0
 	}
-	return int64(sqlite3.Xsqlite3_stmt_status(r.c.tls, r.pstmt, sqlite3.SQLITE_STMTSTATUS_VM_STEP, 1))
+	steps := int64(sqlite3.Xsqlite3_stmt_status(r.c.tls, r.pstmt, sqlite3.SQLITE_STMTSTATUS_VM_STEP, 1))
+	r.c.vmSteps.Add(steps)
+	return steps
 }
 
 func newRows(c *conn, pstmt uintptr, allocs *[]uintptr, empty bool, ctx context.Context) (r *rows, err error) {
@@ -366,8 +368,25 @@ func (r *rows) ColumnTypeScanType(index int) reflect.Type {
 //
 //	int sqlite3_reset(sqlite3_stmt *pStmt);
 func (c *conn) reset(pstmt uintptr) error {
+	c.harvestVMSteps(pstmt)
 	if rc := sqlite3.Xsqlite3_reset(c.tls, pstmt); rc != sqlite3.SQLITE_OK {
 		return c.errstr(rc)
 	}
 	return nil
 }
+
+// harvestVMSteps moves a finished statement's VM step count into the
+// connection's running total, through SQLite's public
+// SQLITE_STMTSTATUS_VM_STEP diagnostic. It runs when a statement is reset or
+// finalized, so every statement is counted exactly once, including trigger and
+// foreign-key programs, which run inside the same VM.
+func (c *conn) harvestVMSteps(pstmt uintptr) {
+	if pstmt != 0 {
+		c.vmSteps.Add(int64(sqlite3.Xsqlite3_stmt_status(c.tls, pstmt, sqlite3.SQLITE_STMTSTATUS_VM_STEP, 1)))
+	}
+}
+
+// VMOperations is the total VM steps every statement on this connection has
+// run, as of its last reset or finalize. A caller reads it before and after a
+// unit of work; the difference is that work's VM cost.
+func (c *conn) VMOperations() int64 { return c.vmSteps.Load() }

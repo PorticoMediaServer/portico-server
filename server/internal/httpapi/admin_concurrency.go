@@ -30,13 +30,21 @@ type ConcurrencyDiagnostics struct {
 	// pooled connection right now, how many may, and how long callers waited for
 	// a permit. It is the number that says whether composite reads are starving
 	// the writer.
-	Snapshots dbwork.SnapshotStats   `json:"readSnapshots"`
-	WriteGate dbwork.GateStats       `json:"writeGate"`
-	Pressure  dbwork.PressureStats   `json:"pressure"`
-	Health    dbwork.HealthReport    `json:"health"`
-	Lanes     []LaneDiagnostics      `json:"httpLanes"`
-	JobLanes  []operations.LaneState `json:"jobLanes"`
-	Search    SearchDiagnostics      `json:"search"`
+	Snapshots dbwork.SnapshotStats `json:"readSnapshots"`
+	WriteGate dbwork.GateStats     `json:"writeGate"`
+	// WriterAdmission is the writer's bounded ticket pool: how full it is,
+	// what users displaced, and what it refused (each a writer_capacity).
+	WriterAdmission dbwork.AdmissionStats `json:"writerAdmission"`
+	// WritePlans is every committed write measured against its work budget,
+	// with the recent overruns; UngatedWrites counts changes that bypassed
+	// the gate. Both say where the writer's time went when a hold was long.
+	WritePlans    dbwork.PlanStats       `json:"writePlans"`
+	UngatedWrites dbwork.UngatedStats    `json:"ungatedWrites"`
+	Pressure      dbwork.PressureStats   `json:"pressure"`
+	Health        dbwork.HealthReport    `json:"health"`
+	Lanes         []LaneDiagnostics      `json:"httpLanes"`
+	JobLanes      []operations.LaneState `json:"jobLanes"`
+	Search        SearchDiagnostics      `json:"search"`
 	// Reads is the process-wide statement picture: how much work callers asked
 	// for, next to the pool and gate numbers that say how long they waited.
 	Reads dbwork.ReadStats `json:"reads"`
@@ -191,17 +199,20 @@ type SearchDiagnostics struct {
 
 func (d Dependencies) concurrencyDiagnostics(ctx context.Context) ConcurrencyDiagnostics {
 	out := ConcurrencyDiagnostics{
-		Process:      processDiagnostics(),
-		WAL:          dbwork.WAL(ctx, d.DB),
-		Pool:         dbwork.Pool(d.DB),
-		Snapshots:    dbwork.Snapshots(),
-		WriteGate:    dbwork.WriteGate().Stats(),
-		Pressure:     dbwork.Pressure(),
-		Lanes:        []LaneDiagnostics{},
-		JobLanes:     []operations.LaneState{},
-		Search:       SearchDiagnostics{PerViewerLimit: maxSearchesPerViewer, GlobalLimit: maxSearchesGlobal},
-		Reads:        dbwork.Reads(),
-		Publications: dbwork.Publications(),
+		Process:         processDiagnostics(),
+		WAL:             dbwork.WAL(ctx, d.DB),
+		Pool:            dbwork.Pool(d.DB),
+		Snapshots:       dbwork.Snapshots(),
+		WriteGate:       dbwork.WriteGate().Stats(),
+		WriterAdmission: dbwork.WriteGate().Admission(),
+		WritePlans:      dbwork.Plans(),
+		UngatedWrites:   dbwork.Ungated(),
+		Pressure:        dbwork.Pressure(),
+		Lanes:           []LaneDiagnostics{},
+		JobLanes:        []operations.LaneState{},
+		Search:          SearchDiagnostics{PerViewerLimit: maxSearchesPerViewer, GlobalLimit: maxSearchesGlobal},
+		Reads:           dbwork.Reads(),
+		Publications:    dbwork.Publications(),
 		Authorization: AuthorizationCacheDiagnostics{
 			Principals:          d.principals.stats(),
 			LibraryGrants:       d.access.size(),

@@ -217,11 +217,11 @@ func (s *Service) ConfigureDAV(ctx context.Context, actor, id string, in DAVInpu
 	}
 	receipt := Receipt{OperationID: in.OperationID, Accepted: true, Source: source}
 	response, _ := json.Marshal(receipt)
-	if _, err = tx.Exec(`DELETE FROM remote_source_operations WHERE created_at<?`, time.Now().Add(-30*24*time.Hour).Unix()); err != nil {
+	if err = expireSourceOperationsTx(tx); err != nil {
 		return zero, err
 	}
 	var count int
-	if err = tx.QueryRow(`SELECT count(*) FROM remote_source_operations`).Scan(&count); err != nil {
+	if err = tx.QueryRow(`SELECT count(*) FROM remote_source_operations WHERE created_at>=?`, sourceOperationExpiry()).Scan(&count); err != nil {
 		return zero, err
 	}
 	if count >= 4096 {
@@ -294,11 +294,11 @@ func (s *Service) RemoveDAV(ctx context.Context, actor, id, op string, generatio
 	source.Generation++
 	receipt := Receipt{OperationID: op, Accepted: true, Removed: true, Source: source}
 	response, _ := json.Marshal(receipt)
-	if _, err = tx.Exec(`DELETE FROM remote_source_operations WHERE created_at<?`, time.Now().Add(-30*24*time.Hour).Unix()); err != nil {
+	if err = expireSourceOperationsTx(tx); err != nil {
 		return zero, err
 	}
 	var count int
-	if err = tx.QueryRow(`SELECT count(*) FROM remote_source_operations`).Scan(&count); err != nil {
+	if err = tx.QueryRow(`SELECT count(*) FROM remote_source_operations WHERE created_at>=?`, sourceOperationExpiry()).Scan(&count); err != nil {
 		return zero, err
 	}
 	if count >= 4096 {
@@ -314,4 +314,15 @@ func (s *Service) RemoveDAV(ctx context.Context, actor, id, op string, generatio
 	_ = s.clearSourceCache(context.Background(), id)
 	_ = s.refreshBindings(ctx)
 	return receipt, nil
+}
+
+// sourceOperationExpiry is when a source command receipt stops replaying.
+func sourceOperationExpiry() int64 { return time.Now().Add(-30 * 24 * time.Hour).Unix() }
+
+// expireSourceOperationsTx retires a bounded slice of expired receipts inside
+// a command's own transaction, so a backlog never lengthens one command's
+// write; only unexpired receipts count against the capacity.
+func expireSourceOperationsTx(tx *sql.Tx) error {
+	_, err := tx.Exec(`DELETE FROM remote_source_operations WHERE rowid IN(SELECT rowid FROM remote_source_operations WHERE created_at<? LIMIT 32)`, sourceOperationExpiry())
+	return err
 }

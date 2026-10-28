@@ -57,10 +57,14 @@ func OpenFresh(path string) (*sql.DB, error) {
 	return db, nil
 }
 
+// baselinePlan is the whole schema in one transaction: an empty database is
+// either fully installed or untouched.
+var baselinePlan = dbwork.WritePlan{Name: "install-baseline", Why: "a fresh database installs its whole schema atomically before the server accepts any request"}
+
 // installBaseline performs DDL only for an empty database. Existing databases
 // must name this exact baseline; they are never upgraded, copied or reset here.
 func installBaseline(ctx context.Context, db *sql.DB) error {
-	gated, err := dbwork.Begin(ctx, db, dbwork.ClassMaintenance)
+	gated, err := dbwork.Begin(dbwork.WithPlan(ctx, baselinePlan), db, dbwork.ClassMaintenance)
 	if err != nil {
 		return err
 	}

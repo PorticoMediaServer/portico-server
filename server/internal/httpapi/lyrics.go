@@ -50,6 +50,9 @@ func lyricDecode(w http.ResponseWriter, r *http.Request, out any) error {
 	return requireRevisionJSON(raw, out)
 }
 func lyricFailure(w http.ResponseWriter, e error) {
+	if writerRefused(w, e) {
+		return
+	}
 	status, code := 0, ""
 	switch {
 	case errors.Is(e, lyrics.ErrConflict):

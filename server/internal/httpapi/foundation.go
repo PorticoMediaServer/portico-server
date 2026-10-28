@@ -296,6 +296,9 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	// Integration merge: BE-playback's contextual v1 authorizer and error
 	// catalogue (bf54a83) plus lane C's /v1/capabilities route (2a92fa3).
 	registry := apikit.NewContextual(d.v1Authorize, policyCatalogue())
+	// Any change can meet a full writer queue; its typed answer is part of
+	// every write route's contract.
+	registry.WriteErrors("writer_capacity")
 	registry.GateScopes(registryScopeGate)
 	registry.RewritePathValues(d.mergedTitlePath)
 	registry.RewriteRefs(apikit.Refs{Names: titleRefNames, Resolve: d.mergedTitleRefs})

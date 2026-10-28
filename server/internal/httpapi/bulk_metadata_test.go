@@ -85,7 +85,9 @@ func TestBulkOwnerMetadataCommandsRestartAndReplay(t *testing.T) {
 			}
 			jobID := j.JobID
 			j, e = d.Catalog.AdvanceBulkJob(ctx, j.JobID, d.bulkAccess)
-			firstBatch := int64(20)
+			// An owner metadata command applies two members per transaction (its
+			// fan-out is about sixty rows a member).
+			firstBatch := int64(2)
 			if e != nil || j.Done != firstBatch {
 				failures, _ := d.Catalog.BulkFailures(v.Profile, jobID, "", v)
 				t.Fatalf("first bulk batch for %s: job=%+v error=%v failures=%+v", jobID, j, e, failures)

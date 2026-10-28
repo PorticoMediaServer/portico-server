@@ -20,6 +20,9 @@ import (
 )
 
 func dvrFailure(w http.ResponseWriter, e error) {
+	if writerRefused(w, e) {
+		return
+	}
 	if revisionFailure(w, e) {
 		return
 	}

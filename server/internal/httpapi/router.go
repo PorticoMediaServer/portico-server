@@ -272,6 +272,19 @@ func reportHTTPFailure(status int, code string, err error) {
 	}
 	log.Printf("request failed (%d %s): %s", status, code, boundFailureDetail(err))
 }
+
+// writerRefused answers a write the database writer refused (a full queue, or
+// a lock met after admission) with the typed, retryable writer_capacity, so a
+// feature's own error mapping can't present it as that feature being
+// unavailable. It reports whether it answered.
+func writerRefused(w http.ResponseWriter, e error) bool {
+	if !dbwork.Overloaded(e) {
+		return false
+	}
+	failure(w, e)
+	return true
+}
+
 func failure(w http.ResponseWriter, e error) {
 	if errors.Is(e, identity.ErrOwnerResetExpired) {
 		policyErrors.Write(w, w.Header().Get("X-Request-Id"), &apierror.Error{Code: "owner_reset_expired"})
@@ -616,10 +629,11 @@ func failure(w http.ResponseWriter, e error) {
 	}
 	// The writer turned the write away before it began, or met a lock it
 	// should never meet; either way nothing was saved and a retry is safe.
-	// The typed writer_capacity answer replaces this shared busy code later.
+	// server_busy stays the answer for a full HTTP lane; this one is the
+	// writer's own, with its estimate of when the queue drains.
 	if dbwork.Overloaded(e) {
-		status, code, message, retryable = 503, "server_busy", "The server is busy handling other requests. Try again shortly.", true
-		w.Header().Set("Retry-After", "1")
+		status, code, message, retryable = 503, "writer_capacity", "The server is busy saving other changes. Try again shortly.", true
+		w.Header().Set("Retry-After", strconv.Itoa(dbwork.WriteGate().RetryAfterSeconds()))
 	}
 	if errors.Is(e, imagework.ErrBusy) {
 		status, code, message, retryable = 503, "server_busy", "Image processing is busy. Retry shortly.", true

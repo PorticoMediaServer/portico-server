@@ -341,7 +341,14 @@ func (s *Service) prepareMoveMembersKeepingFamilyTx(ctx context.Context, tx *sql
 	_, e = s.revokeWhereTx(ctx, tx, RevokedExplicitSignout, `authority='local' AND account_id=? AND id<>?`, c.account.ID, keepFamily)
 	return e
 }
+
+// accountMovePlan bounds the move's security fence: the account's sign-in,
+// profile and session rows move together, touching more indexed pages than a
+// single revocation does.
+var accountMovePlan = dbwork.WritePlan{Name: "account-move", Rows: 160, Pages: 128, VMOps: 500_000, Why: "an account moves atomically with its sign-in, profiles and sessions; it is a single security fence"}
+
 func (s *Service) ConfirmLocalMove(ctx context.Context, bearer string, q MoveConfirmRequest) (out DirectSignIn, err error) {
+	ctx = dbwork.WithPlan(ctx, accountMovePlan)
 	if !directPassword(q.Password) {
 		return out, ErrDirectInput
 	}

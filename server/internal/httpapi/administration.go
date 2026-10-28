@@ -22,6 +22,9 @@ import (
 // administrationFailure maps this area's errors onto stable codes. A validation
 // failure names the exact fields so a client can mark them.
 func administrationFailure(w http.ResponseWriter, err error) {
+	if writerRefused(w, err) {
+		return
+	}
 	if revisionFailure(w, err) {
 		return
 	}

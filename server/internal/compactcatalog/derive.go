@@ -211,7 +211,14 @@ type Worker struct {
 	// unitCost is each domain's recent cost per unit (key -1: step workers).
 	holdTarget time.Duration
 	unitCost   map[int]time.Duration
-	last       lastBatch
+	// unitRows is each domain's recent rows changed per unit, so a paced batch
+	// also stays inside the maintenance write plan's row budget.
+	unitRows map[int]float64
+	// lastUnits is each domain's previous paced batch size: a batch may at
+	// most double it, so a domain whose units suddenly grow can't overshoot
+	// by more than one doubling.
+	lastUnits map[int]int
+	last      lastBatch
 }
 
 type lastBatch struct {
@@ -244,16 +251,26 @@ func (w *Worker) batchFor(domain, limit int) int {
 	if w.holdTarget <= 0 {
 		return limit
 	}
+	if last, ok := w.lastUnits[domain]; ok {
+		limit = min(limit, max(1, 2*last))
+	}
+	if rows := w.unitRows[domain]; rows > 0 {
+		// Rows are the harder bound: a domain whose units each change many rows
+		// gets fewer of them, down to one, whatever the clock says.
+		limit = min(limit, max(1, int(float64(dbwork.DefaultPlan(dbwork.ClassMaintenance).Rows)/rows)))
+	}
 	cost, ok := w.unitCost[domain]
 	if !ok || cost <= 0 {
-		return min(limit, BatchLimit)
+		// Nothing is known about this domain's units yet: start with one, so
+		// a first batch of expensive units can't overshoot the plan.
+		return 1
 	}
 	return max(min(limit, batchFloor), min(limit, BatchMax, int(w.holdTarget/cost)))
 }
 
 // observeBatch folds a committed batch's cost per unit into its domain's
 // estimate (an even blend of the last estimate and this batch).
-func (w *Worker) observeBatch(domain, units int, took time.Duration) {
+func (w *Worker) observeBatch(domain, units int, took time.Duration, rows int64) {
 	if units <= 0 {
 		return
 	}
@@ -262,6 +279,17 @@ func (w *Worker) observeBatch(domain, units int, took time.Duration) {
 	if w.holdTarget <= 0 {
 		return
 	}
+	if w.unitRows == nil {
+		w.unitRows, w.lastUnits = map[int]float64{}, map[int]int{}
+	}
+	w.lastUnits[domain] = units
+	// Rows per unit rise at once and fall by halves: a spike shrinks the next
+	// batch immediately, and one cheap batch can't undo it.
+	perUnit := float64(max(rows, 0)) / float64(units)
+	if old, ok := w.unitRows[domain]; ok && perUnit < old {
+		perUnit = (old + perUnit) / 2
+	}
+	w.unitRows[domain] = perUnit
 	if w.unitCost == nil {
 		w.unitCost = map[int]time.Duration{}
 	}
@@ -418,6 +446,14 @@ func (w *Worker) Step(ctx context.Context, limit int) (int, error) {
 	if err := w.prepare(ctx); err != nil {
 		return 0, err
 	}
+	w.mu.Lock()
+	unpaced := w.holdTarget <= 0
+	w.mu.Unlock()
+	if unpaced {
+		// Only fixtures and tools step without pacing; the server's Run always
+		// paces to the hold target and stays inside the maintenance plan.
+		ctx = dbwork.WithPlan(ctx, DrainPlan)
+	}
 	n := 0
 	domain, failed := -1, int64(0)
 	step := -1
@@ -426,8 +462,25 @@ func (w *Worker) Step(ctx context.Context, limit int) (int, error) {
 	// The hold runs from the gate's acquisition (the transaction function
 	// starting) through the commit.
 	var began time.Time
+	var rows int64
 	err := dbwork.WithWriteTx(ctx, w.db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
 		began = time.Now()
+		var before int64
+		if e := tx.QueryRowContext(ctx, `SELECT total_changes()`).Scan(&before); e != nil {
+			return e
+		}
+		defer func() {
+			var after int64
+			if tx.QueryRowContext(ctx, `SELECT total_changes()`).Scan(&after) == nil {
+				rows = after - before
+			}
+			if n == 1 && !unpaced {
+				// One unit is as small as a batch gets: its fan-out is the
+				// unit's own, held to the unit plan rather than the batch plan.
+				// The transaction is live here, so UsePlan cannot fail.
+				_ = dbwork.UsePlan(tx, derivationUnitPlan)
+			}
+		}()
 		n, domain, failed, step, retried, backfilled = 0, -1, 0, -1, false, false
 		paced = -2
 		var rebuilding int
@@ -477,6 +530,7 @@ func (w *Worker) Step(ctx context.Context, limit int) (int, error) {
 		if err != nil {
 			return err
 		}
+
 		_, err = tx.ExecContext(ctx, `UPDATE catalog_derivations SET served_ms=? WHERE domain=?`, time.Now().UnixMilli(), domain)
 		if err != nil {
 			return err
@@ -489,7 +543,7 @@ func (w *Worker) Step(ctx context.Context, limit int) (int, error) {
 	}
 	took := time.Since(began)
 	if paced > -2 {
-		w.observeBatch(paced, n, took)
+		w.observeBatch(paced, n, took, rows)
 	}
 	w.mu.Lock()
 	w.last = lastBatch{paced, n, took}
@@ -569,6 +623,16 @@ func (w *Worker) workable(ctx context.Context, tx *sql.Tx) (int, int, error) {
 	}
 	return -1, 0, nil
 }
+
+// derivationUnitPlan bounds a paced batch of a single unit. A unit (a show's,
+// album's or collection's derived rows) is indivisible today, so a large one
+// can exceed the maintenance plan on its own; this keeps it measured against a
+// reviewed bound instead of passing unnoticed.
+var derivationUnitPlan = dbwork.WritePlan{Name: "catalogue-derivation-unit", Rows: 8192, Pages: 2048, VMOps: 8_000_000, Why: "one derived unit is written atomically with its dependents; splitting a unit's fan-out is writer-discipline item H"}
+
+// DrainPlan is the write plan of an unpaced Step, as Drain and fixtures take:
+// up to 500 units in one transaction, which the server's paced loop never takes.
+var DrainPlan = dbwork.WritePlan{Name: "catalogue-drain", Why: "fixtures and tools build a whole catalogue before anything reads it, with nothing else waiting on the writer; the server's loop uses paced batches inside the maintenance plan"}
 
 // Drain runs the worker to completion: every queued id and every pending step.
 // It is for fixtures, tools and tests that build a catalogue and then read it;
@@ -784,7 +848,21 @@ func (w *Worker) runSteps(ctx context.Context, tx *sql.Tx, limit int) (int, int,
 	kind := w.stepTurn % len(steps)
 	w.mu.Unlock()
 	total, idle := 0, 0
+	// Stop adding steps once the batch has changed a write plan's worth of
+	// rows; the next batch takes the rest.
+	var before int64
+	if err := tx.QueryRowContext(ctx, `SELECT total_changes()`).Scan(&before); err != nil {
+		return 0, kind, err
+	}
+	budget := dbwork.DefaultPlan(dbwork.ClassMaintenance).Rows
 	for total < limit && idle < len(steps) {
+		var changed int64
+		if err := tx.QueryRowContext(ctx, `SELECT total_changes()`).Scan(&changed); err != nil {
+			return 0, kind, err
+		}
+		if total > 0 && changed-before >= budget {
+			break
+		}
 		n, err := steps[kind](ctx, tx, limit-total)
 		if err != nil {
 			return 0, kind, err

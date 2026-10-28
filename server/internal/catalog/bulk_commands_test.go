@@ -49,7 +49,7 @@ func TestBulkResourceCommandsRestartReplayAndDestinationFence(t *testing.T) {
 			}
 			j = finishCapture(t, s, j, access)
 			j, e = s.AdvanceBulkJob(context.Background(), j.JobID, access)
-			if e != nil || j.Done != 20 {
+			if e != nil || j.Done != bulkApplyBatch {
 				t.Fatal(j, e)
 			}
 			s = restartBulkService(t, s)
@@ -92,14 +92,6 @@ func TestBulkResourceCommandsRestartReplayAndDestinationFence(t *testing.T) {
 				}
 				rows.Close()
 			}
-			in.Args.ExpectedRevision = &[]int64{4}[0]
-			in.OperationID = "race"
-			// Job admission is allowed, but an external destination edit before apply is not.
-			j, e = s.CreateBulkJob(context.Background(), p, v, in, scheduler, access)
-			if e != nil {
-				t.Fatal(e)
-			}
-			j = finishCapture(t, s, j, access)
 			resourceTable := "saved_resources"
 			resourceIDField := "id"
 			if command == "collection-add" {
@@ -108,6 +100,20 @@ func TestBulkResourceCommandsRestartReplayAndDestinationFence(t *testing.T) {
 				resourceTable = "catalog_playlists"
 				resourceIDField = "token"
 			}
+			// Each apply batch moves the destination's revision; the race job
+			// names the revision the first job left behind.
+			var current int64
+			if e = s.db.QueryRow(`SELECT revision FROM `+resourceTable+` WHERE `+resourceIDField+`=?`, target).Scan(&current); e != nil {
+				t.Fatal(e)
+			}
+			in.Args.ExpectedRevision = &current
+			in.OperationID = "race"
+			// Job admission is allowed, but an external destination edit before apply is not.
+			j, e = s.CreateBulkJob(context.Background(), p, v, in, scheduler, access)
+			if e != nil {
+				t.Fatal(e)
+			}
+			j = finishCapture(t, s, j, access)
 			if _, e = s.db.Exec(`UPDATE `+resourceTable+` SET revision=revision+1 WHERE `+resourceIDField+`=?`, target); e != nil {
 				t.Fatal(e)
 			}

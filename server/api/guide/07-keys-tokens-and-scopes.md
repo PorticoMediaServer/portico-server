@@ -185,6 +185,11 @@ for the people using it.
 A `503` `server_busy` with `Retry-After` is the server itself being busy, not
 your limit; retry after the stated delay.
 
+A `503` `writer_capacity` on a change means the server's database writer
+refused it before it began: nothing was saved. Send the same request again
+after `Retry-After`, which is between 1 and 30 seconds. Any route that changes
+something can answer it.
+
 ## Browsers
 
 A key or token is a bearer secret. Do not put one in a web page other people can

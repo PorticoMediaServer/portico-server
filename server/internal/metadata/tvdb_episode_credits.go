@@ -21,6 +21,10 @@ type tvdbEpisodeCharacterProvider interface {
 // tvdbEpisodeCreditPage bounds one step: one upstream request per episode.
 const tvdbEpisodeCreditPage = 8
 
+// tvdbEpisodeCreditsPlan bounds the step's one write: up to eight episodes'
+// credits, about forty-five rows each.
+var tvdbEpisodeCreditsPlan = dbwork.WritePlan{Name: "tvdb-episode-credits", Rows: 1024, Pages: 256, VMOps: 500_000, Why: "the episodes fetched in one step publish their replaced credit sets in one writer turn, after the fetch and outside any snapshot"}
+
 // tvdbEpisodeCreditAttempts bounds retries for an episode TVDB cannot supply
 // (a deleted upstream record must not be refetched forever).
 const tvdbEpisodeCreditAttempts = 5
@@ -104,7 +108,7 @@ func (s *Service) tvdbEpisodeCreditsStep(ctx context.Context) error {
 		}
 		results[i].credits, results[i].err = provider.EpisodeCharacters(ctx, c.providerID)
 	}
-	return dbwork.WithWriteTx(ctx, s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
+	return dbwork.WithWriteTx(dbwork.WithPlan(ctx, tvdbEpisodeCreditsPlan), s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
 		if err := checkLookupContextTx(ctx, tx); err != nil {
 			return err
 		}

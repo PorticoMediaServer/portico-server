@@ -569,65 +569,110 @@ func (s *Store) Acknowledge(ctx context.Context, p identity.Principal, auth Auth
 		return SaveReceipt(tx, scope, c.IdempotencyKey, digest, map[string]bool{"acknowledged": true}, s.now())
 	})
 }
+// retentionBatch bounds one retention transaction to 16 parent rows, so a
+// parent's cascading children (report events, alert parameters, played
+// intervals) still fit a maintenance write plan. Each batch commits on its own:
+// a large backlog clears over as many batches as it needs, keeping every one it
+// finished even when the caller's deadline ends the run, instead of being one
+// transaction that never fits the deadline and so never deletes anything.
+const retentionBatch = 16
+
 func (s *Store) Prune(ctx context.Context) error {
-	gated3, e := dbwork.Begin(ctx, s.DB, dbwork.ClassFrom(ctx, dbwork.ClassInteractive))
-	if e != nil {
-		return e
-	}
-	tx := gated3.Tx()
-	defer gated3.Rollback()
-	v, e := readSettings(tx)
-	if e != nil {
-		return e
-	}
+	class := dbwork.ClassFrom(ctx, dbwork.ClassMaintenance)
 	now := s.now()
-	statements := []struct {
-		sql  string
-		args []any
-	}{
-		{`DELETE FROM console_receipts WHERE expires_ms<=?`, []any{now}},
-		{`DELETE FROM console_exports WHERE expires_ms<=?`, []any{now}},
-		{`DELETE FROM console_alerts WHERE status='resolved' AND last_ms<?`, []any{now - days(v.Effective.JobDays)}},
-		{`DELETE FROM console_records WHERE time_ms<?`, []any{now - days(v.Effective.DiagnosticDays)}},
-		{`DELETE FROM console_reports WHERE expires_ms<=?`, []any{now}},
-		{`DELETE FROM app_reports WHERE expires_ms<=?`, []any{now}},
-		{`DELETE FROM console_notifications WHERE expires_ms<=? OR created_ms<?`, []any{now, now - days(v.Effective.NotificationDays)}},
-		{`DELETE FROM console_operations WHERE state IN ('succeeded','failed','cancelled') AND updated_ms<?`, []any{now - days(v.Effective.JobDays)}},
-		{`DELETE FROM console_documents WHERE scope LIKE 'session:%' AND NOT EXISTS(SELECT 1 FROM authorization_access WHERE hash=substr(console_documents.scope,9) AND revoked=0 AND expires_at>?)`, []any{s.Now().UTC().Format(time.RFC3339)}},
+	var v SettingsDocument
+	auditThrough := int64(-1)
+	// One short transaction reads the retention settings and keeps a
+	// trusted-host checkpoint before old links are dropped from the audit chain.
+	if e := dbwork.WithWriteTx(ctx, s.DB, class, func(tx *sql.Tx) error {
+		var e error
+		if v, e = readSettings(tx); e != nil {
+			return e
+		}
+		var sequence int64
+		var hash string
+		e = tx.QueryRow(`SELECT sequence,hash FROM console_audit WHERE time_ms<? AND sequence<COALESCE((SELECT min(sequence) FROM console_audit WHERE time_ms>=?),9223372036854775807) ORDER BY sequence DESC LIMIT 1`, now-days(90), now-days(90)).Scan(&sequence, &hash)
+		if errors.Is(e, sql.ErrNoRows) {
+			return nil
+		}
+		if e != nil {
+			return e
+		}
+		b, _ := json.Marshal(map[string]any{"sequence": sequence, "hash": hash})
+		if _, e = tx.Exec(`INSERT INTO console_documents VALUES('audit-anchor',1,?,?) ON CONFLICT(scope) DO UPDATE SET revision=revision+1,body=excluded.body,updated_ms=excluded.updated_ms`, string(b), now); e != nil {
+			return e
+		}
+		auditThrough = sequence
+		return nil
+	}); e != nil {
+		return e
+	}
+	// Each condition selects at most one batch of rowids; the delete repeats
+	// until a batch comes back short.
+	type sweep struct {
+		table, where string
+		args         []any
+	}
+	sweeps := []sweep{
+		{`console_receipts`, `expires_ms<=?`, []any{now}},
+		{`console_exports`, `expires_ms<=?`, []any{now}},
+		{`console_alerts`, `status='resolved' AND last_ms<?`, []any{now - days(v.Effective.JobDays)}},
+		{`console_records`, `time_ms<?`, []any{now - days(v.Effective.DiagnosticDays)}},
+		{`console_reports`, `expires_ms<=?`, []any{now}},
+		{`app_reports`, `expires_ms<=?`, []any{now}},
+		{`console_notifications`, `expires_ms<=? OR created_ms<?`, []any{now, now - days(v.Effective.NotificationDays)}},
+		{`console_operations`, `state IN ('succeeded','failed','cancelled') AND updated_ms<?`, []any{now - days(v.Effective.JobDays)}},
+		{`console_documents`, `scope LIKE 'session:%' AND NOT EXISTS(SELECT 1 FROM authorization_access WHERE hash=substr(console_documents.scope,9) AND revoked=0 AND expires_at>?)`, []any{s.Now().UTC().Format(time.RFC3339)}},
+	}
+	if auditThrough >= 0 {
+		sweeps = append(sweeps, sweep{`console_audit`, `sequence<=?`, []any{auditThrough}})
+	}
+	for _, q := range sweeps {
+		statement := `DELETE FROM ` + q.table + ` WHERE rowid IN(SELECT rowid FROM ` + q.table + ` WHERE ` + q.where + ` LIMIT ` + strconv.Itoa(retentionBatch) + `)`
+		if e := s.sweepRetention(ctx, class, statement, q.args...); e != nil {
+			return e
+		}
 	}
 	if keep := v.Effective.PlayHistoryDays; keep > 0 {
-		// The server's play history is kept in full unless the owner asks for less.
-		// A bounded batch per tick: shortening the setting on a long history must
-		// not hold the write lock while a million rows go.
-		statements = append(statements, struct {
-			sql  string
-			args []any
-		}{`DELETE FROM play_history WHERE id IN(SELECT id FROM play_history WHERE started_ms<? ORDER BY started_ms LIMIT 5000)`, []any{now - days(keep)}})
-	}
-	for _, q := range statements {
-		if _, e = tx.ExecContext(ctx, q.sql, q.args...); e != nil {
+		// The server's play history is kept in full unless the owner asks for
+		// less; shortening the setting on a long history goes in batches too.
+		if e := s.sweepRetention(ctx, class, `DELETE FROM play_history WHERE id IN(SELECT id FROM play_history WHERE started_ms<? ORDER BY started_ms LIMIT `+strconv.Itoa(retentionBatch)+`)`, now-days(keep)); e != nil {
 			return e
 		}
 	}
 	// The notification inbox prunes with its own revision bookkeeping, so a
 	// client parked on a revision learns that its counts moved.
-	if e = s.pruneNotifications(tx, now, v.Effective.NotificationDays); e != nil {
-		return e
-	}
-	// Keep a trusted-host checkpoint before dropping old links from the chain.
-	var sequence int64
-	var hash string
-	e = tx.QueryRow(`SELECT sequence,hash FROM console_audit WHERE time_ms<? AND sequence<COALESCE((SELECT min(sequence) FROM console_audit WHERE time_ms>=?),9223372036854775807) ORDER BY sequence DESC LIMIT 1`, now-days(90), now-days(90)).Scan(&sequence, &hash)
-	if e == nil {
-		b, _ := json.Marshal(map[string]any{"sequence": sequence, "hash": hash})
-		if _, e = tx.Exec(`INSERT INTO console_documents VALUES('audit-anchor',1,?,?) ON CONFLICT(scope) DO UPDATE SET revision=revision+1,body=excluded.body,updated_ms=excluded.updated_ms`, string(b), now); e != nil {
+	for {
+		var removed int
+		if e := dbwork.WithWriteTx(ctx, s.DB, class, func(tx *sql.Tx) error {
+			var e error
+			removed, e = s.pruneNotifications(tx, now, v.Effective.NotificationDays)
+			return e
+		}); e != nil {
 			return e
 		}
-		if _, e = tx.Exec(`DELETE FROM console_audit WHERE sequence<=?`, sequence); e != nil {
+		if removed < retentionBatch {
+			return nil
+		}
+		if !dbwork.Yield(ctx) {
+			return ctx.Err()
+		}
+	}
+}
+
+// sweepRetention repeats one bounded delete, each batch its own transaction,
+// until a batch removes fewer than retentionBatch rows.
+func (s *Store) sweepRetention(ctx context.Context, class dbwork.Class, statement string, args ...any) error {
+	for {
+		result, e := dbwork.ExecWrite(ctx, s.DB, class, statement, args...)
+		if e != nil {
 			return e
 		}
-	} else if !errors.Is(e, sql.ErrNoRows) {
-		return e
+		if n, _ := result.RowsAffected(); n < retentionBatch {
+			return nil
+		}
+		if !dbwork.Yield(ctx) {
+			return ctx.Err()
+		}
 	}
-	return gated3.Commit()
 }

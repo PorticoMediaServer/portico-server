@@ -1,4 +1,5 @@
 import {randomId} from '../random-id.ts';
+import {WRITER_CAPACITY, retryWriterCapacity} from '../writer-capacity.ts';
 /**
  * The HTTP seam for playback v1. Modules speak in `V1Request`/`V1Response` so the same code runs
  * against the real server (an adapter over `HttpLocalApi`/`fetch`, phase 2 wiring) and
@@ -58,8 +59,20 @@ function retryAfter(r: V1Response, body: {retryAfterMs?: unknown} | undefined): 
 
 const defaultRetry = (status: number): RetryClass => (status === 412 || status === 409 ? 'after_refresh' : status === 401 ? 'after_reauth' : status >= 500 || status === 429 ? 'same_request' : 'never');
 
-/** Send and require one of `ok` statuses (default 2xx); anything else throws `PlaybackApiError`. */
-export async function call(http: V1Http, request: V1Request, ok?: readonly number[]): Promise<V1Response> {
+/**
+ * Send and require one of `ok` statuses (default 2xx); anything else throws `PlaybackApiError`. A
+ * change the writer refused before it began (`writer_capacity`) is resent after its Retry-After,
+ * with the same Idempotency-Key, rather than dropped (`writer-capacity.ts`).
+ */
+export function call(http: V1Http, request: V1Request, ok?: readonly number[]): Promise<V1Response> {
+  return retryWriterCapacity(
+    () => callOnce(http, request, ok),
+    error => error instanceof PlaybackApiError && error.code === WRITER_CAPACITY && error.retry === 'same_request' ? {retryAfterMs: error.retryAfterMs} : undefined,
+    request.signal,
+  );
+}
+
+async function callOnce(http: V1Http, request: V1Request, ok?: readonly number[]): Promise<V1Response> {
   const r = await http.send(request);
   const good = ok ? ok.includes(r.status) : r.status >= 200 && r.status < 300;
   if (good) return r;

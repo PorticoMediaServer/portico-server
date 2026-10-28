@@ -131,7 +131,9 @@ func DeleteTitleMembersTx(ctx context.Context, tx *sql.Tx, item string, limit in
 			return 0, err
 		}
 	}
-	if more {
+	if more || len(members) > 0 && limit > 0 {
+		// The container goes in a transaction of its own, so the last batch
+		// of members and the container's own cascade are never one write.
 		return 1, nil
 	}
 	// The container itself, when removing its members did not already take it.
@@ -165,16 +167,25 @@ func DeleteTitleMembersTx(ctx context.Context, tx *sql.Tx, item string, limit in
 	return 0, nil
 }
 
+// removeTitleBatch is how many members one removal transaction deletes.
+const removeTitleBatch = 12
+
+// titleRemovalPlan bounds one removal batch. Removing even one playable item
+// takes its derived rows (browse, sort, search and listening projections)
+// with it through triggers: hundreds of rows for a single song.
+var titleRemovalPlan = dbwork.WritePlan{Name: "title-removal", Rows: 8192, Pages: 2048, VMOps: 2_000_000, Why: "an item's delete cascades through its derived rows by trigger; child-first removal of that fan-out is writer-discipline item H (parent cascades)"}
+
 // RemoveTitle removes a title (and everything that plays beneath it) from the
 // catalogue in short transactions. Each profile's state is kept under the
 // title's identities. Files on disk are not touched: the owner's delete route
 // removes those first.
 func (s *Service) RemoveTitle(ctx context.Context, item string) error {
+	ctx = dbwork.WithPlan(ctx, titleRemovalPlan)
 	for {
 		remaining := 0
 		err := dbwork.WithWriteTx(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive), func(tx *sql.Tx) error {
 			var e error
-			remaining, e = DeleteTitleMembersTx(ctx, tx, item, 40)
+			remaining, e = DeleteTitleMembersTx(ctx, tx, item, removeTitleBatch)
 			return e
 		})
 		if err != nil || remaining == 0 {

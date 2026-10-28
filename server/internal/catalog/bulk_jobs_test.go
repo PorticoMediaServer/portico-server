@@ -119,7 +119,7 @@ func TestBulkJobReceiptRestartAndAtomicProgress(t *testing.T) {
 	}
 	j = finishCapture(t, s, j, access)
 	j, e = s.AdvanceBulkJob(context.Background(), j.JobID, access)
-	if e != nil || j.Done != bulkBatchSize {
+	if e != nil || j.Done != bulkApplyBatch {
 		t.Fatal(j, e)
 	}
 	s = restartBulkService(t, s)

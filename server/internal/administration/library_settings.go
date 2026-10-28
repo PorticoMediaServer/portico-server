@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"portico.local/server/internal/catalog"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/mediaanalysis"
 	"portico.local/server/internal/metadata"
 	"reflect"
@@ -864,7 +865,12 @@ func (s *Service) LibrarySettingsFor(ctx context.Context, auth Authorize, id str
 // SaveLibrarySettings applies one library configuration write. An empty apiKey
 // keeps whatever key is already stored, so a client that never receives a key
 // can still save the rest of the form.
+// librarySettingsPlan bounds one library settings save, which applies the whole
+// document and its dependent policy rows in one transaction.
+var librarySettingsPlan = dbwork.WritePlan{Name: "library-settings", Rows: 2048, Pages: 256, VMOps: 1_000_000, Why: "a library's settings are one atomic document with its dependent policy rows; their count follows the library's settings, not its content"}
+
 func (s *Service) SaveLibrarySettings(ctx context.Context, auth Authorize, id string, change Change[LibrarySettings], sonic ...LibrarySonicAuthority) (LibraryDocument, error) {
+	ctx = dbwork.WithPlan(ctx, librarySettingsPlan)
 	var out LibraryDocument
 	if !validOperationID(change.OperationID) {
 		return out, ErrInput

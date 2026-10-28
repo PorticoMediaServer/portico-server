@@ -11,6 +11,7 @@ import (
 
 	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/persistence"
 )
 
@@ -163,12 +164,18 @@ func TestPersonalReceiptExpiryCASAndBoundedCleanup(t *testing.T) {
 	if _, e = db.Exec(`WITH RECURSIVE n(x) AS(VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<1005) INSERT INTO personal_receipts SELECT 'a','p',?,'old-'||x,'h','{}','2000-01-01T00:00:00Z' FROM n`, item.ID); e != nil {
 		t.Fatal(e)
 	}
+	dbwork.ResetPlans()
 	if e = s.CleanupPersonalReceipts(); e != nil {
 		t.Fatal(e)
 	}
+	// The whole expired backlog goes, in transactions that each stay inside a
+	// maintenance write plan.
 	var remaining int
-	if e = db.QueryRow(`SELECT count(*) FROM personal_receipts`).Scan(&remaining); e != nil || remaining != 5 {
-		t.Fatal("cleanup unbounded", remaining, e)
+	if e = db.QueryRow(`SELECT count(*) FROM personal_receipts`).Scan(&remaining); e != nil || remaining != 0 {
+		t.Fatal("expired receipts retained", remaining, e)
+	}
+	if plans := dbwork.Plans(); plans.Overruns != 0 || plans.Largest.Rows > receiptCleanupBatch {
+		t.Fatal("cleanup batch unbounded", plans.Largest)
 	}
 	if e = s.CleanupPersonalReceipts(); e != nil {
 		t.Fatal(e)

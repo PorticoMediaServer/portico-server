@@ -20,6 +20,9 @@ func (d Dependencies) ContinuePreparedMedia(ctx context.Context, tx *sql.Tx, p i
 	return d.playbackFamilyAuthorityTx(ctx, tx, p, item)
 }
 func preparedFailure(w http.ResponseWriter, e error) {
+	if writerRefused(w, e) {
+		return
+	}
 	if errors.Is(e, catalog.ErrVisibilityBuilding) {
 		// A catalogue change is still publishing: the shared retryable code.
 		failure(w, e)

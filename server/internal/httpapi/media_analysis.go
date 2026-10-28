@@ -29,6 +29,9 @@ func (d Dependencies) analysisAccess(r *http.Request) (mediaanalysis.Access, err
 	}}, nil
 }
 func analysisFailure(w http.ResponseWriter, e error) {
+	if writerRefused(w, e) {
+		return
+	}
 	status, code := 0, ""
 	switch {
 	case errors.Is(e, mediaanalysis.ErrClock):

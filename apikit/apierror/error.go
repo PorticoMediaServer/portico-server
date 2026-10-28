@@ -54,7 +54,16 @@ type Error struct {
 func (e *Error) Error() string { return e.Code }
 func (e *Error) Unwrap() error { return e.Cause }
 
-type Registry struct{ codes map[string]Definition }
+type Registry struct {
+	codes     map[string]Definition
+	translate func(error) *Error
+}
+
+// Translate installs fn to name a public error for a cause that is not one
+// already, such as a storage layer's typed overload. fn returns nil for an
+// error it does not know, which then answers as internal. Install it before
+// the registry serves requests.
+func (r *Registry) Translate(fn func(error) *Error) { r.translate = fn }
 
 var codePattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
@@ -122,7 +131,10 @@ func (r *Registry) Write(w http.ResponseWriter, requestID string, err error) {
 	d := r.codes["internal"]
 	out := Error{}
 	var public *Error
-	if errors.As(err, &public) {
+	if !errors.As(err, &public) && err != nil && r.translate != nil {
+		public = r.translate(err)
+	}
+	if public != nil {
 		if known, ok := r.codes[public.Code]; ok {
 			d = known
 			out = *public

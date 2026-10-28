@@ -88,7 +88,17 @@ type JobFailures struct {
 	NextCursor string       `json:"nextCursor,omitempty"`
 }
 
+// bulkBatchSize is how many selected keys one capture transaction records.
 const bulkBatchSize = 20
+
+// bulkApplyBatch is how many members one apply transaction changes. Applying
+// one member's personal state changes about fifteen rows once its triggers
+// run, so eight keep a batch inside a background write plan (160 rows). An
+// owner metadata command changes about sixty rows a member, so it takes two.
+const (
+	bulkApplyBatch      = 8
+	bulkOwnerApplyBatch = 2
+)
 
 // MaxActiveBulkJobs is how many bulk jobs one profile may have capturing,
 // queued or running at once (PERF-S22). It bounds work in flight, never work
@@ -96,8 +106,8 @@ const bulkBatchSize = 20
 const MaxActiveBulkJobs = 32
 
 // bulkPurgeBatch is how many captured-membership (or failure) rows one short
-// write removes.
-const bulkPurgeBatch = 2000
+// write removes: within a maintenance write plan (160 rows).
+const bulkPurgeBatch = 128
 
 // bulkPurgeGrace is how far past a worker slice a terminal job's purge may run
 // before the operation yields and comes back (a variable only for tests).
@@ -518,7 +528,11 @@ func (s *Service) AdvanceBulkJob(ctx context.Context, id string, access BulkAcce
 			}
 			return bulkEvent(tx, p, id)
 		}
-		args := append(append([]any{}, bound...), id, cursor, bulkBatchSize)
+		batch := bulkApplyBatch
+		if jobOwnerCommand(j.Command) {
+			batch = bulkOwnerApplyBatch
+		}
+		args := append(append([]any{}, bound...), id, cursor, batch)
 		// Limit membership first, then check live visibility. Revoked members cannot
 		// disappear from the cursor and make the job loop indefinitely.
 		memberSQL := `SELECT m.ordinal,m.item_id,i.id IS NOT NULL AND i.retired=0 AND (` + visible + `),COALESCE(pid(i.public_id),'') FROM (SELECT ordinal,item_id FROM personal_job_items WHERE job_id=? AND ordinal>? ORDER BY ordinal LIMIT ?) m LEFT JOIN catalog_entities i ON i.id=m.item_id`

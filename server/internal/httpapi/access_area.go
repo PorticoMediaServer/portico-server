@@ -123,6 +123,9 @@ func (d Dependencies) accessAuthority(p identity.Principal, needed string) acces
 // shape, including the currentRevision and fields detail a client needs in order
 // to recover from a conflict or a rejected value without a second read.
 func accessFailure(w http.ResponseWriter, e error) {
+	if writerRefused(w, e) {
+		return
+	}
 	if revisionFailure(w, e) {
 		return
 	}

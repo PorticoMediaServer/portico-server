@@ -88,6 +88,12 @@ type Gate struct {
 	busy        atomic.Uint64
 	heldNanos   atomic.Uint64
 	maxHeld     atomic.Uint64
+	// holding mirrors active for readers that must not take mu: the driver's
+	// check that a write on the writer connection is inside a gate hold.
+	holding atomic.Bool
+	// holdAverage is a moving average of hold durations in nanoseconds, under
+	// mu. It turns a queue length into the wait a refused caller is told.
+	holdAverage uint64
 }
 
 type gateClassCounters struct {
@@ -191,6 +197,7 @@ func (g *Gate) acquire(ctx context.Context, class Class, stuck stuckClock) (func
 			g.removeWaiterLocked(t, true)
 			g.grant = nil
 			g.active = true
+			g.holding.Store(true)
 			g.holderProbe, _ = ctx.Value(writerProbeKey{}).(bool)
 			if !g.holderProbe {
 				g.writeGeneration++
@@ -236,7 +243,13 @@ func (g *Gate) acquire(ctx context.Context, class Class, stuck stuckClock) (func
 					if elapsed > metrics.maxHeld {
 						metrics.maxHeld = elapsed
 					}
+					if g.holdAverage == 0 {
+						g.holdAverage = elapsed
+					} else {
+						g.holdAverage = g.holdAverage - g.holdAverage/8 + elapsed/8
+					}
 					g.active = false
+					g.holding.Store(false)
 					g.holderProbe = false
 					g.holderClass, g.heldSince = 0, time.Time{}
 					g.grant = g.pickWinnerLocked()
@@ -569,6 +582,39 @@ func (g *Gate) Admission() AdmissionStats {
 		out.Deferred = out.BackgroundQueued - max(room, 0)
 	}
 	return out
+}
+
+// Held reports whether some caller holds the gate now. It takes no lock.
+func (g *Gate) Held() bool { return g.holding.Load() }
+
+// Retry-After bounds for a refused write (F §3): never less than a second, and
+// never more than thirty however deep the queue.
+const (
+	minWriterRetry = time.Second
+	maxWriterRetry = 30 * time.Second
+)
+
+// RetryAfter is how long a refused write should wait before it is sent again:
+// the time the queue ahead of it would take to drain at the recent average
+// hold, clamped to 1-30 s. A full pool of 99 short writes rounds up to the
+// one-second floor; the same pool behind slow storage asks for longer.
+func (g *Gate) RetryAfter() time.Duration {
+	g.mu.Lock()
+	queued := g.userQueued
+	if g.active {
+		queued++
+	}
+	average := g.holdAverage
+	g.mu.Unlock()
+	wait := time.Duration(uint64(queued) * average)
+	return min(max(wait, minWriterRetry), maxWriterRetry)
+}
+
+// RetryAfterSeconds is RetryAfter in the whole seconds an HTTP Retry-After
+// header carries, rounded up.
+func (g *Gate) RetryAfterSeconds() int {
+	wait := g.RetryAfter()
+	return int((wait + time.Second - 1) / time.Second)
 }
 
 // noteBusyAfterAdmission counts a lock error met while holding the gate.

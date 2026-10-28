@@ -15,7 +15,12 @@ import (
 	"portico.local/server/internal/metadataprovider"
 )
 
+// screenPublishPlan bounds one title's publication: its provider evidence (up
+// to 75 candidates) is replaced and its accepted record applied together.
+var screenPublishPlan = dbwork.WritePlan{Name: "screen-publish", Rows: 2048, Pages: 512, VMOps: 1_000_000, Why: "a title's candidates and accepted record replace the previous evidence atomically; splitting record application is writer-discipline item H"}
+
 func (s *Service) publishScreen(ctx context.Context, p *screenClaim, cs []screenCandidate, winner int, status string) error {
+	ctx = dbwork.WithPlan(ctx, screenPublishPlan)
 	if len(cs) > 75 || winner >= len(cs) {
 		return s.failScreen(ctx, p, &metadataprovider.Error{Code: "invalid_screen_evidence"})
 	}

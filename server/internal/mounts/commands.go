@@ -194,12 +194,15 @@ func (s *Service) command(ctx context.Context, actor, id string, c Command, auth
 			return zero, e
 		}
 	}
-	if _, e = tx.Exec(`DELETE FROM mount_operations WHERE created_at<?`, time.Now().Add(-30*24*time.Hour).Unix()); e != nil {
+	// Each command retires a bounded slice of expired receipts on the
+	// retention index; only unexpired receipts count against the capacity.
+	expired := time.Now().Add(-30 * 24 * time.Hour).Unix()
+	if _, e = tx.Exec(`DELETE FROM mount_operations WHERE rowid IN(SELECT rowid FROM mount_operations WHERE created_at<? ORDER BY created_at LIMIT 32)`, expired); e != nil {
 		gated2.Rollback()
 		return zero, e
 	}
 	var count int
-	if e = tx.QueryRow(`SELECT count(*) FROM mount_operations`).Scan(&count); e != nil {
+	if e = tx.QueryRow(`SELECT count(*) FROM mount_operations WHERE created_at>=?`, expired).Scan(&count); e != nil {
 		gated2.Rollback()
 		return zero, e
 	}

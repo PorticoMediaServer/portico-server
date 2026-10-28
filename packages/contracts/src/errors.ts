@@ -1037,5 +1037,11 @@ export const errors = [
     "status": 409,
     "message": "There are too many of these already. Remove one you no longer use.",
     "retry": "never"
+  },
+  {
+    "code": "writer_capacity",
+    "status": 503,
+    "message": "The server is busy saving other changes. Try again shortly.",
+    "retry": "same_request"
   }
 ] as const;

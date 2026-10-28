@@ -36,6 +36,9 @@ func (d Dependencies) consoleAuthority(p identity.Principal, owner bool) operati
 	}
 }
 func consoleError(w http.ResponseWriter, e error) {
+	if writerRefused(w, e) {
+		return
+	}
 	if revisionFailure(w, e) {
 		return
 	}

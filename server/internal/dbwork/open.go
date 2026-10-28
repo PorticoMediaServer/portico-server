@@ -71,7 +71,7 @@ func OpenHandle(path string, policy Policy) (*sql.DB, error) {
 			return nil, closeErr
 		}
 	}
-	dsn, err := policy.DSN(path)
+	dsn, err := policy.readerDSN(path)
 	if err != nil {
 		return nil, err
 	}

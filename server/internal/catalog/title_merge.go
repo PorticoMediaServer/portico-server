@@ -284,8 +284,10 @@ func moveContainerStateTx(ctx context.Context, tx *sql.Tx, from, into int64) err
 
 // showMergeBatch is how many of a show's episodes one write transaction of
 // the owner's merge moves, so merging a very large show never holds the write
-// gate for the whole show.
-const showMergeBatch = 100
+// gate for the whole show. Moving one episode changes about fifty rows once its
+// triggers and derived rows follow, so three keep a batch inside an
+// interactive write plan.
+const showMergeBatch = 3
 
 // mergeShowChildrenTx moves a show's seasons and episodes under another show.
 // A season or episode the other show already has at the same number absorbs
@@ -476,7 +478,12 @@ func AdoptProviderIdentityTx(ctx context.Context, tx *sql.Tx, entity int64, p co
 // part of into. Both are public ids of titles in one library. A show's
 // episodes move in bounded write transactions, each authorized and resolved
 // afresh, and the show itself is absorbed in the last one.
+// titleMergePlan bounds one merge batch. A batch moves at most showMergeBatch
+// episodes, but a season it re-parents carries its episodes' derived rows.
+var titleMergePlan = dbwork.WritePlan{Name: "title-merge-batch", Rows: 1024, Pages: 512, VMOps: 1_000_000, Why: "a season moves with its episodes' derived rows in one batch; splitting a season's fan-out is writer-discipline item H (parent cascades)"}
+
 func (s *Service) MergeTitles(ctx context.Context, from, into string, authorize func(*sql.Tx) error) error {
+	ctx = dbwork.WithPlan(ctx, titleMergePlan)
 	if from == "" || into == "" || from == into || authorize == nil {
 		return ErrAdminQuery
 	}

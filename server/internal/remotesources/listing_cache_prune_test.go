@@ -47,7 +47,7 @@ func pruneCount(t *testing.T, s *Service, query string, args ...any) int {
 	return count
 }
 
-// An expired session leaves in 1024-entry batches, and only the batch that
+// An expired session leaves in pruneEntryBatch-entry batches, and only the batch that
 // exhausts its entries also removes the session, its check and its cursor.
 func TestListingCachePruneExpiredListingLeavesBoundedBatches(t *testing.T) {
 	f := newObservationFixture(t)
@@ -62,16 +62,16 @@ func TestListingCachePruneExpiredListingLeavesBoundedBatches(t *testing.T) {
 		t.Fatal(err)
 	}
 	calls := 0
-	for calls < 8 && pruneCount(t, f.s, `SELECT count(*) FROM remote_listing_sessions WHERE id='old'`) == 1 {
+	for calls < 3000/pruneEntryBatch+2 && pruneCount(t, f.s, `SELECT count(*) FROM remote_listing_sessions WHERE id='old'`) == 1 {
 		before := pruneCount(t, f.s, `SELECT count(*) FROM remote_listing_entries WHERE listing_id='old'`)
 		f.s.pruneListingCache(ctx)
 		after := pruneCount(t, f.s, `SELECT count(*) FROM remote_listing_entries WHERE listing_id='old'`)
-		if before-after > 1024 {
+		if before-after > pruneEntryBatch {
 			t.Fatalf("one call deleted %d entries", before-after)
 		}
 		calls++
 	}
-	if calls < 3 {
+	if calls < 3000/pruneEntryBatch {
 		t.Fatalf("3000 entries left in %d calls", calls)
 	}
 	for _, query := range []string{

@@ -31,6 +31,11 @@ import (
 // builder looks at other work.
 const saveStepEntries = 25 * WindowMax
 
+// saveWriteEntries is how many queue entries one write transaction appends to
+// the playlist: each changes about three rows, so 48 stay inside a background
+// write plan.
+const saveWriteEntries = 48
+
 // saveInterruptedAfter is how long a save row may wait for its playlist before
 // it is taken as a request that died between recording it and creating the
 // playlist.
@@ -268,8 +273,8 @@ func (s *Service) readSaveWindows(ctx context.Context, r saveRow, p identity.Pri
 			return ErrRevision
 		}
 		windows = []saveWindow{}
-		for from := r.next; from < r.total && from < r.next+saveStepEntries; from += WindowMax {
-			n := min(int64(WindowMax), r.total-from)
+		for from := r.next; from < r.total && from < r.next+saveStepEntries; from += saveWriteEntries {
+			n := min(int64(saveWriteEntries), r.total-from)
 			entries, e := s.window(ctx, l, p, from, n)
 			if errors.Is(e, identity.ErrUnauthorized) || errors.Is(e, identity.ErrNotVisible) {
 				windows, code = nil, "authority_revoked"

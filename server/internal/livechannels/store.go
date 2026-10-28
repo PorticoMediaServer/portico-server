@@ -115,7 +115,9 @@ func authorize(ctx context.Context, tx *sql.Tx, a Authority, owner bool) (string
 func (s *Store) transaction(ctx context.Context, a Authority, owner bool, work func(*sql.Tx) error) error {
 	gated, e := dbwork.Begin(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive))
 	if e != nil {
-		return ErrUnavailable
+		// Keep the cause: a writer refusal answers as the retryable
+		// writer_capacity, not as the guide being unavailable.
+		return fmt.Errorf("%w: %w", ErrUnavailable, e)
 	}
 	tx := gated.Tx()
 	defer gated.Rollback()
@@ -129,7 +131,7 @@ func (s *Store) transaction(ctx context.Context, a Authority, owner bool, work f
 		return e
 	}
 	if e = gated.Commit(); e != nil {
-		return ErrUnavailable
+		return fmt.Errorf("%w: %w", ErrUnavailable, e)
 	}
 	return nil
 }

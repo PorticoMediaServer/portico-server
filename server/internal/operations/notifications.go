@@ -857,45 +857,52 @@ func (s *Store) BroadcastNotice(ctx context.Context, p identity.Principal, auth 
 // pruneNotifications enforces retention. It runs from the maintenance tick, not
 // from a read, and bumps the revision of every inbox it actually changed so a
 // parked client learns its counts moved.
-func (s *Store) pruneNotifications(tx *sql.Tx, now int64, retentionDays int) error {
+// pruneNotifications removes one batch of expired notification records and
+// bumps the revision of each inbox it touched. It reports how many records it
+// removed; the caller repeats it until a batch comes back short.
+func (s *Store) pruneNotifications(tx *sql.Tx, now int64, retentionDays int) (int, error) {
 	if _, err := tx.Exec(`DELETE FROM notice_broadcast_work WHERE (scope,operation_id) IN(SELECT scope,operation_id FROM notice_broadcast_work WHERE expires_ms<=? ORDER BY expires_ms LIMIT 100)`, now); err != nil {
-		return err
+		return 0, err
 	}
 
 	cutoff := now - days(retentionDays)
-	rows, e := tx.Query(`SELECT DISTINCT scope,audience FROM notification_records WHERE expires_ms<=? OR created_ms<?`, now, cutoff)
+	rows, e := tx.Query(`SELECT rowid,scope,audience FROM notification_records WHERE expires_ms<=? OR created_ms<? LIMIT ?`, now, cutoff, retentionBatch)
 	if e != nil {
-		return e
+		return 0, e
 	}
 	type inbox struct{ scope, audience string }
 	affected := []inbox{}
+	seen := map[inbox]bool{}
+	ids := []any{}
 	for rows.Next() {
+		var id int64
 		var v inbox
-		if e = rows.Scan(&v.scope, &v.audience); e != nil {
+		if e = rows.Scan(&id, &v.scope, &v.audience); e != nil {
 			rows.Close()
-			return e
+			return 0, e
 		}
-		affected = append(affected, v)
+		ids = append(ids, id)
+		if !seen[v] {
+			seen[v] = true
+			affected = append(affected, v)
+		}
 	}
 	e = rows.Err()
 	rows.Close()
-	if e != nil {
-		return e
+	if e != nil || len(ids) == 0 {
+		return 0, e
 	}
-	if len(affected) == 0 {
-		return nil
-	}
-	if _, e = tx.Exec(`DELETE FROM notification_records WHERE expires_ms<=? OR created_ms<?`, now, cutoff); e != nil {
-		return e
+	if _, e = tx.Exec(`DELETE FROM notification_records WHERE rowid IN(`+strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")+`)`, ids...); e != nil {
+		return 0, e
 	}
 	for _, v := range affected {
 		if _, e = notify.Bump(tx, now, v.scope, v.audience); e != nil {
-			return e
+			return 0, e
 		}
 	}
 	// An inbox with no records left keeps its revision row: it is a few bytes and
 	// it is what lets a client tell "nothing yet" from "everything expired".
-	return nil
+	return len(ids), nil
 }
 
 // NotificationSettings folds the notification retention control onto the single
@@ -1061,7 +1068,7 @@ func (s *Store) NotificationMaintenance(ctx context.Context, freeBytes, totalByt
 		}
 		changed = true
 	}
-	if e = s.pruneNotifications(tx, now, settings.RetentionDays); e != nil {
+	if _, e = s.pruneNotifications(tx, now, settings.RetentionDays); e != nil {
 		return e
 	}
 	if e = gated.Commit(); e != nil {

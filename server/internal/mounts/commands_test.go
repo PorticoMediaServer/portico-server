@@ -277,8 +277,19 @@ func TestCommandReceiptCapacityAndRetentionCleanup(t *testing.T) {
 	if _, e = s.Command(context.Background(), "owner", "absent", command, allowCommand); !errors.Is(e, sql.ErrNoRows) {
 		t.Fatal("retention not cleared", e)
 	}
+	// Expired receipts no longer count against the capacity, and each command
+	// retires a bounded slice of them rather than the whole backlog at once.
 	var n int
 	s.db.QueryRow(`SELECT count(*) FROM mount_operations`).Scan(&n)
+	if n != 4096-32 {
+		t.Fatal("expected one bounded slice of expired receipts retired", n)
+	}
+	for i := 0; n > 0 && i < 4096/32+1; i++ {
+		if _, e = s.Command(context.Background(), "owner", "absent", Command{OperationID: operation(901 + i), Action: "stop", ExpectedRevision: 1}, allowCommand); !errors.Is(e, sql.ErrNoRows) {
+			t.Fatal("command refused while expired receipts drain", e)
+		}
+		s.db.QueryRow(`SELECT count(*) FROM mount_operations`).Scan(&n)
+	}
 	if n != 0 {
 		t.Fatal("old receipts retained", n)
 	}

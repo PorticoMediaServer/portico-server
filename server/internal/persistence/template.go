@@ -1,6 +1,7 @@
 package persistence
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -111,14 +112,16 @@ func schemaTemplate() ([]byte, error) {
 // generated for this database alone. Copying them would make every database in
 // the process share one cursor-signing key, which is true of no real install.
 func regenerateDatabaseSecrets(db *sql.DB) error {
-	for _, name := range []string{"chapter_cursor_key", "activity_cursor_key", "catalog_cursor_key"} {
-		key := make([]byte, 32)
-		if _, err := rand.Read(key); err != nil {
-			return err
+	return dbwork.WithWriteTx(context.Background(), db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
+		for _, name := range []string{"chapter_cursor_key", "activity_cursor_key", "catalog_cursor_key"} {
+			key := make([]byte, 32)
+			if _, err := rand.Read(key); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(`UPDATE configuration SET value=? WHERE key=?`, hex.EncodeToString(key), name); err != nil {
+				return err
+			}
 		}
-		if _, err := db.Exec(`UPDATE configuration SET value=? WHERE key=?`, hex.EncodeToString(key), name); err != nil {
-			return err
-		}
-	}
-	return nil
+		return nil
+	})
 }

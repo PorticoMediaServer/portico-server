@@ -189,3 +189,39 @@ func TestProgressTokenWrapCannotReplaceAnotherConnectionsState(t *testing.T) {
 	}
 	second.Close()
 }
+
+func TestVMOperationsCountEveryFinishedStatementExactly(t *testing.T) {
+	c := progressTestConn(t, nil)
+	if c.VMOperations() != 0 {
+		t.Fatalf("unused connection counted work: %d", c.VMOperations())
+	}
+	// Many tiny statements: each is far below any sampling interval, and
+	// every one must still count.
+	if _, err := c.ExecContext(context.Background(), `CREATE TABLE t(x)`, nil); err != nil {
+		t.Fatal(err)
+	}
+	before := c.VMOperations()
+	for i := 0; i < 200; i++ {
+		if _, err := c.ExecContext(context.Background(), `INSERT INTO t VALUES (?)`, []driver.NamedValue{{Ordinal: 1, Value: int64(i)}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	small := c.VMOperations() - before
+	if small < 200*5 {
+		t.Fatalf("200 small inserts counted %d VM steps", small)
+	}
+	// A read's steps count once, whether or not the reader asked for them.
+	before = c.VMOperations()
+	r, err := c.QueryContext(context.Background(), `WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<20000) SELECT sum(x) FROM n`, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dest := make([]driver.Value, 1)
+	for r.Next(dest) == nil {
+	}
+	reported := r.(*rows).VMSteps()
+	r.Close()
+	if spent := c.VMOperations() - before; spent < 20000 || spent != reported {
+		t.Fatalf("a 20,000-row recursion counted %d (reported %d)", spent, reported)
+	}
+}

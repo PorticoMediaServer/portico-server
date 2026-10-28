@@ -3,6 +3,7 @@ package persistence
 import (
 	"context"
 	"database/sql"
+	"strconv"
 	"time"
 
 	"portico.local/server/internal/dbwork"
@@ -15,17 +16,29 @@ import (
 // recommendation queries use the identical text.
 func FoldFacetSQL(v string) string { return facettext.FoldFacetSQL(v) }
 
+// identityProofBatch bounds one reclaim transaction. A factor challenge has at
+// most one cascaded child, so a batch changes at most 128 rows.
+const identityProofBatch = 64
+
 // PruneIdentityProofs deletes expired factor challenges and Top Shelf tokens.
 func PruneIdentityProofs(ctx context.Context, db *sql.DB, now string) error {
-	for _, statement := range []string{
-		`DELETE FROM identity_factor_challenges WHERE expires_at<=?`,
-		`DELETE FROM topshelf_tokens WHERE expires_at<=?`,
-	} {
-		// Retention is maintenance-class work. Each statement stays its own
-		// autocommit write, in this order, so a failure in the second leaves the
-		// first reclaimed exactly as the raw shape did.
-		if _, err := dbwork.ExecWrite(ctx, db, dbwork.ClassMaintenance, statement, now); err != nil {
-			return err
+	for _, table := range []string{"identity_factor_challenges", "topshelf_tokens"} {
+		// Retention is maintenance-class work. Each table is reclaimed in bounded
+		// autocommit batches, in this order, so a failure in the second leaves
+		// the first reclaimed exactly as before, and a large backlog never holds
+		// the writer for longer than one batch.
+		statement := `DELETE FROM ` + table + ` WHERE rowid IN(SELECT rowid FROM ` + table + ` WHERE expires_at<=? LIMIT ` + strconv.Itoa(identityProofBatch) + `)`
+		for {
+			result, err := dbwork.ExecWrite(ctx, db, dbwork.ClassMaintenance, statement, now)
+			if err != nil {
+				return err
+			}
+			if n, _ := result.RowsAffected(); n < identityProofBatch {
+				break
+			}
+			if !dbwork.Yield(ctx) {
+				return ctx.Err()
+			}
 		}
 	}
 	return nil

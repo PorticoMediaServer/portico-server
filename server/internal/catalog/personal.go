@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"portico.local/server/internal/requestinput"
+	"strconv"
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/entityid"
@@ -564,14 +565,31 @@ func (s *Service) setPersonal(account, profile, item string, m PersonalMutation,
 	return out, gated.Commit()
 }
 
+// receiptCleanupBatch bounds one receipt-retention transaction to a
+// maintenance write plan.
+const receiptCleanupBatch = 128
+
+// CleanupPersonalReceipts removes receipts and snapshots older than 30 days, in
+// bounded maintenance batches until none are left.
 func (s *Service) CleanupPersonalReceipts() error {
 	cutoff := time.Now().UTC().Add(-30 * 24 * time.Hour).Format(time.RFC3339)
+	limit := ` LIMIT ` + strconv.Itoa(receiptCleanupBatch) + `)`
+	statements := []string{}
 	for _, table := range []string{"personal_receipts", "personal_batch_receipts", "playlist_receipts", "saved_resource_receipts", "reading_saved_group_receipts", "personal_activity_receipts", "personal_snapshots"} {
-		if _, e := dbwork.ExecWrite(context.Background(), s.db, dbwork.ClassFrom(context.Background(), dbwork.ClassInteractive), `DELETE FROM `+table+` WHERE rowid IN(SELECT rowid FROM `+table+` WHERE created_at<? LIMIT 1000)`, cutoff); e != nil {
-			return e
-		}
+		statements = append(statements, `DELETE FROM `+table+` WHERE rowid IN(SELECT rowid FROM `+table+` WHERE created_at<?`+limit)
 	}
 	// Unresolved conflict evidence remains available regardless of age.
-	_, e := dbwork.ExecWrite(context.Background(), s.db, dbwork.ClassFrom(context.Background(), dbwork.ClassInteractive), `DELETE FROM personal_explicit_events WHERE rowid IN(SELECT e.rowid FROM personal_explicit_events e WHERE created_at<? AND NOT EXISTS(SELECT 1 FROM personal_conflicts c WHERE c.profile_id=e.profile_id AND c.item_id=e.item_id AND c.field=e.field AND c.base_revision=e.base_revision AND c.resolved=0) LIMIT 1000)`, cutoff)
-	return e
+	statements = append(statements, `DELETE FROM personal_explicit_events WHERE rowid IN(SELECT e.rowid FROM personal_explicit_events e WHERE created_at<? AND NOT EXISTS(SELECT 1 FROM personal_conflicts c WHERE c.profile_id=e.profile_id AND c.item_id=e.item_id AND c.field=e.field AND c.base_revision=e.base_revision AND c.resolved=0)`+limit)
+	for _, statement := range statements {
+		for {
+			result, e := dbwork.ExecWrite(context.Background(), s.db, dbwork.ClassMaintenance, statement, cutoff)
+			if e != nil {
+				return e
+			}
+			if n, _ := result.RowsAffected(); n < receiptCleanupBatch {
+				break
+			}
+		}
+	}
+	return nil
 }

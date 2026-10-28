@@ -8,6 +8,9 @@ import (
 	"time"
 )
 
+// generationPruneBatch caps each child delete inside a maintenance write plan.
+const generationPruneBatch = 128
+
 // PruneGenerations releases at most one unreferenced generation per pass. Each
 // child delete is capped, so a large candidate set cannot monopolize the writer.
 // Active schedules, pending copy bases and live playback references are pinned.
@@ -32,7 +35,7 @@ func (s *Store) PruneGenerations(ctx context.Context) (bool, error) {
 		return false, err
 	}
 	for _, table := range []string{"lc_candidates", "lc_entries", "lc_rule_state", "lc_used", "lc_playback_refs"} {
-		result, e := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE rowid IN(SELECT rowid FROM `+table+` WHERE generation_id=? LIMIT 512)`, id)
+		result, e := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE rowid IN(SELECT rowid FROM `+table+` WHERE generation_id=? LIMIT ?)`, id, generationPruneBatch)
 		if e != nil {
 			return false, e
 		}
@@ -40,7 +43,7 @@ func (s *Store) PruneGenerations(ctx context.Context) (bool, error) {
 		if e != nil {
 			return false, e
 		}
-		if count == 512 {
+		if count == generationPruneBatch {
 			return true, gated.Commit()
 		}
 	}

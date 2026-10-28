@@ -633,8 +633,9 @@ func (s *Service) SegmentRedetect(ctx context.Context, authorize func(*sql.Tx) e
 	}
 }
 
-// redetectBatchSize bounds the files one redetect transaction requeues.
-const redetectBatchSize = 256
+// redetectBatchSize bounds the files one redetect transaction requeues: each
+// file changes about two rows, so 64 stays inside an interactive write plan.
+const redetectBatchSize = 64
 
 func (s *Service) redetectBatch(ctx context.Context, authorize func(*sql.Tx) error, id, after string) (int, string, bool, error) {
 	gated, err := dbwork.Begin(ctx, s.db, dbwork.ClassInteractive)

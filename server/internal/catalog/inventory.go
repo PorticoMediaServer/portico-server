@@ -105,6 +105,11 @@ type InventoryPageWrite struct {
 	DiscRoot *storage.Snapshot
 }
 
+// inventoryPagesPlan bounds one inventory publication: at most one folder
+// page's worth of entries (128 at the fastest scan speed), each with its
+// catalogue, reading-path and dirty-work effects.
+var inventoryPagesPlan = dbwork.WritePlan{Name: "inventory-pages", Rows: 8192, Pages: 1024, VMOps: 2_000_000, Why: "a folder page's entries publish atomically with their reading-path effects; bounding a page's fan-out is DB-001's publication redesign (writer-discipline item H)"}
+
 // CommitInventoryPages publishes the pages of several folders in one
 // transaction, each exactly as CommitInventoryPage would: a page that is a
 // replay of one already published leaves nothing behind. Any page's error
@@ -112,7 +117,7 @@ type InventoryPageWrite struct {
 // library of one folder per title commits once per batch of folders instead
 // of once per title.
 func (s *Service) CommitInventoryPages(ctx context.Context, job string, pages []InventoryPageWrite) error {
-	gated, err := dbwork.Begin(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive))
+	gated, err := dbwork.Begin(dbwork.WithPlan(ctx, inventoryPagesPlan), s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive))
 	if err != nil {
 		return err
 	}

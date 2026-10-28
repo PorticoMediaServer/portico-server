@@ -23,6 +23,9 @@ func (d Dependencies) storageOwner(r *http.Request) (identity.Principal, catalog
 	return p, scope, e
 }
 func storageFailure(w http.ResponseWriter, e error) {
+	if writerRefused(w, e) {
+		return
+	}
 	if errors.Is(e, storage.ErrBusy) || errors.Is(e, storage.ErrRemoteConfig) || errors.Is(e, storage.ErrRemoteChanged) || errors.Is(e, storage.ErrRemoteOffline) || errors.Is(e, storage.ErrRemoteCredentials) || errors.Is(e, storage.ErrRemoteRange) || errors.Is(e, storage.ErrRemoteCursor) || errors.Is(e, storage.ErrRemoteLimit) || errors.Is(e, storage.ErrRemoteBinary) {
 		remoteSourceFailure(w, e)
 		return

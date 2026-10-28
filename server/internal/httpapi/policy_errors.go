@@ -62,6 +62,7 @@ func policyCatalogue() *apierror.Registry {
 	if err != nil {
 		panic(err)
 	}
+	registry.Translate(writerCapacity)
 	return registry
 }
 

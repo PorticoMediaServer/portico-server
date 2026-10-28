@@ -75,6 +75,9 @@ func (d Dependencies) libraryAuthority(expected identity.Principal) librarychann
 }
 
 func libraryFailure(w http.ResponseWriter, e error) {
+	if writerRefused(w, e) {
+		return
+	}
 	// A builder field that is wrong says which one and why (the owner's words, not a code).
 	var issue *librarychannels.ValidationError
 	if errors.As(e, &issue) {

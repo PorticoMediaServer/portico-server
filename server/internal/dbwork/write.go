@@ -70,6 +70,11 @@ type Write struct {
 	done        bool
 	mu          sync.Mutex
 	afterCommit []func()
+	// plan, meter and site measure this transaction against its WritePlan
+	// once it commits; see plan.go.
+	plan  WritePlan
+	meter *writeMeter
+	site  callSite
 }
 
 // Begin acquires the write gate for class and opens a transaction. It is the
@@ -98,12 +103,14 @@ func Begin(ctx context.Context, db *sql.DB, class Class) (*Write, error) {
 		parent.mu.Unlock()
 		return &Write{tx: parent.tx, ctx: ctx, parent: parent}, nil
 	}
+	site := captureSite(2)
 	release, err := gate.Acquire(ctx, class)
 	if err != nil {
 		return nil, err
 	}
 	changes := &changeSet{}
-	ctx = context.WithValue(ctx, changeKey{}, changes)
+	meter := &writeMeter{}
+	ctx = context.WithValue(context.WithValue(ctx, changeKey{}, changes), meterKey{}, meter)
 	var (
 		tx   *sql.Tx
 		conn *sql.Conn
@@ -118,7 +125,7 @@ func Begin(ctx context.Context, db *sql.DB, class Class) (*Write, error) {
 		return nil, err
 	}
 	held := &carried{tx: tx, class: class}
-	w := &Write{changes: changes, tx: tx, conn: conn, ctx: context.WithValue(ctx, writeKey{}, held), release: release, owned: held}
+	w := &Write{changes: changes, tx: tx, conn: conn, ctx: context.WithValue(ctx, writeKey{}, held), release: release, owned: held, plan: planFor(ctx, class), meter: meter, site: site}
 	liveWrites.Store(tx, w)
 	w.changesAtStart = rowChanges(ctx, tx)
 	return w, nil
@@ -243,7 +250,8 @@ func (w *Write) Commit() error {
 		w.finish()
 		return ErrAborted
 	}
-	changed := rowChanges(w.ctx, w.tx) != w.changesAtStart
+	changesAtEnd := rowChanges(w.ctx, w.tx)
+	changed := changesAtEnd != w.changesAtStart
 	if w.readOnly && changed {
 		_ = w.tx.Rollback()
 		w.finish()
@@ -283,6 +291,14 @@ func (w *Write) Commit() error {
 		// had. A transaction that wrote nothing — the shape a "nothing to do" pass
 		// has — says nothing, which is what keeps an idle server idle. See commit.go.
 		notifyCommit(w.changes)
+	}
+	if err == nil && w.meter != nil {
+		// Last, with the gate already released: nothing here can hold a writer.
+		cost, measured := w.meter.cost(max(changesAtEnd-w.changesAtStart, 0))
+		w.mu.Lock()
+		plan := w.plan
+		w.mu.Unlock()
+		notePlan(w.owned.class, plan, cost, measured, w.site)
 	}
 	return err
 }
@@ -420,6 +436,7 @@ func ExecWrite(ctx context.Context, db *sql.DB, class Class, query string, args 
 		}
 		return parent.tx.ExecContext(ctx, query, args...)
 	}
+	site := captureSite(2)
 	release, err := gate.Acquire(ctx, class)
 	if err != nil {
 		return nil, err
@@ -429,6 +446,8 @@ func ExecWrite(ctx context.Context, db *sql.DB, class Class, query string, args 
 		release()
 		return nil, err
 	}
+	meter := &writeMeter{}
+	_ = conn.Raw(func(inner any) error { meter.begin(inner); return nil })
 	changes := &changeSet{}
 	writeCtx := context.WithValue(ctx, changeKey{}, changes)
 	var result sql.Result
@@ -445,12 +464,15 @@ func ExecWrite(ctx context.Context, db *sql.DB, class Class, query string, args 
 			// running it again could execute a non-idempotent write twice.
 			after, changes = before+1, nil
 		}
+		_ = conn.Raw(func(inner any) error { meter.end(inner); return nil })
 	}
 	_ = conn.Close()
 	release()
 	if err != nil {
 		return result, noteAdmittedFailure(class, err)
 	}
+	cost, measured := meter.cost(max(after-before, 0))
+	defer notePlan(class, planFor(ctx, class), cost, measured, site)
 	noteCommitted(class)
 	if after != before {
 		// An autocommit statement that changed rows is a committed gated
@@ -549,14 +571,16 @@ func BeginConn(ctx context.Context, conn *sql.Conn, class Class) (*Write, error)
 	if !ok || reserved.conn != conn {
 		return nil, errors.New("dbwork: BeginConn requires a reserved writer connection")
 	}
+	site := captureSite(2)
 	changes := &changeSet{}
-	ctx = context.WithValue(ctx, changeKey{}, changes)
+	meter := &writeMeter{}
+	ctx = context.WithValue(context.WithValue(ctx, changeKey{}, changes), meterKey{}, meter)
 	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 	held := &carried{tx: tx, class: class}
-	w := &Write{tx: tx, changes: changes, ctx: context.WithValue(ctx, writeKey{}, held), owned: held, changesAtStart: rowChanges(ctx, tx)}
+	w := &Write{tx: tx, changes: changes, ctx: context.WithValue(ctx, writeKey{}, held), owned: held, changesAtStart: rowChanges(ctx, tx), plan: planFor(ctx, class), meter: meter, site: site}
 	liveWrites.Store(tx, w)
 	return w, nil
 }

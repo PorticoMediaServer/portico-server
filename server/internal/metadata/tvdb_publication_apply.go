@@ -39,6 +39,11 @@ func tvdbTargetAuthority(v tvdbProjectionTarget) tvdbProjectionTarget {
 	return v
 }
 
+// tvdbProjectionTargets is how many episodes one projection page stages and
+// one apply transaction publishes. Publishing an episode changes about six
+// rows, so 24 keep a page inside a background write plan.
+const tvdbProjectionTargets = 24
+
 const tvdbTargetColumns = `e.entity_id,h.incarnation,cl.library_id,e.show_id,h.source_revision,h.identity_revision,h.metadata_revision,e.season_id,se.number,e.numbering,e.number,e.local_identity_status,COALESCE(pe.provider_id,link.provider_id,0)`
 const tvdbTargetJoins = ` FROM catalog_episodes e JOIN catalog_entities i ON i.id=e.entity_id JOIN catalog_libraries cl ON cl.id=i.library_id JOIN metadata_publication_heads h ON h.item_id=i.id LEFT JOIN catalog_seasons se ON se.entity_id=e.season_id LEFT JOIN provider_evidence pe ON pe.item_id=i.id AND pe.provider='tvdb' LEFT JOIN tvdb_episode_links link ON link.item_id=i.id `
 
@@ -105,7 +110,7 @@ func (s *Service) resolveTVDBTarget(ctx context.Context, tx *sql.Tx, p tvdbPubli
 	return nil
 }
 func (s *Service) stageTVDBProjection(ctx context.Context, tx *sql.Tx, p tvdbPublication) ([]tvdbProjectionTarget, error) {
-	rows, err := tx.QueryContext(ctx, `SELECT `+tvdbTargetColumns+tvdbTargetJoins+` WHERE e.show_id=? AND e.entity_id>CAST(? AS INTEGER) AND i.kind=4 ORDER BY e.entity_id LIMIT 100`, p.ShowID, p.After)
+	rows, err := tx.QueryContext(ctx, `SELECT `+tvdbTargetColumns+tvdbTargetJoins+` WHERE e.show_id=? AND e.entity_id>CAST(? AS INTEGER) AND i.kind=4 ORDER BY e.entity_id LIMIT ?`, p.ShowID, p.After, tvdbProjectionTargets)
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +150,7 @@ func (s *Service) stageTVDBProjection(ctx context.Context, tx *sql.Tx, p tvdbPub
 	return targets, nil
 }
 func readTVDBTargets(ctx context.Context, tx *sql.Tx, p tvdbPublication) ([]tvdbProjectionTarget, error) {
-	rows, err := tx.QueryContext(ctx, `SELECT ordinal,item_id,item_incarnation,library_id,show_id,source_revision,identity_revision,metadata_revision,season_id,season_number,numbering,number,local_identity_status,accepted_provider_id,result_status,result_provider_id,title,overview,evidence_payload FROM tvdb_projection_targets WHERE operation_id=? ORDER BY ordinal LIMIT 101`, p.ID)
+	rows, err := tx.QueryContext(ctx, `SELECT ordinal,item_id,item_incarnation,library_id,show_id,source_revision,identity_revision,metadata_revision,season_id,season_number,numbering,number,local_identity_status,accepted_provider_id,result_status,result_provider_id,title,overview,evidence_payload FROM tvdb_projection_targets WHERE operation_id=? ORDER BY ordinal LIMIT ?`, p.ID, tvdbProjectionTargets+1)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +164,7 @@ func readTVDBTargets(ctx context.Context, tx *sql.Tx, p tvdbPublication) ([]tvdb
 			return nil, err
 		}
 		bytes += len(v.Payload)
-		if ordinal != len(out) || len(out) >= 100 || bytes > 16<<20 {
+		if ordinal != len(out) || len(out) >= tvdbProjectionTargets || bytes > 16<<20 {
 			return nil, errTVDBStale
 		}
 		out = append(out, v)
@@ -355,7 +360,7 @@ func (s *Service) publishTVDBProjection(ctx context.Context, p tvdbPublication) 
 	if len(targets) > 0 {
 		after = strconv.FormatInt(targets[len(targets)-1].Item, 10)
 	}
-	complete = len(targets) < 100
+	complete = len(targets) < tvdbProjectionTargets
 	status := "pending_apply"
 	if complete {
 		status = "complete"

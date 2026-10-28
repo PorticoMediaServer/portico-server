@@ -25,6 +25,12 @@ type Policy struct {
 	ConnMaxLifetime   time.Duration
 	BusyTimeoutMilli  int
 	WALAutocheckpoint int
+	// WriterBusyTimeoutMilli is the writer connection's own busy timeout.
+	// The gate has already admitted exactly one writer, so the writer should
+	// never wait on SQLite's lock; when it does, an outside opener or an
+	// ungated write holds it, and a short timeout reports that as a typed,
+	// retryable writer_capacity instead of a hidden 15 s stall.
+	WriterBusyTimeoutMilli int
 }
 
 const (
@@ -35,6 +41,9 @@ const (
 	safeConnMaxLifetime   = 30 * time.Minute
 	safeBusyTimeoutMilli  = 15000
 	safeWALAutocheckpoint = 1000
+	// safeWriterBusyTimeoutMilli (F §3) applies only to the writer connection,
+	// from the moment it is created; readers keep safeBusyTimeoutMilli.
+	safeWriterBusyTimeoutMilli = 25
 )
 
 // ErrPolicy reports a resource policy that would exceed the validated envelope.
@@ -54,6 +63,8 @@ func DefaultPolicy() Policy {
 		ConnMaxLifetime:   safeConnMaxLifetime,
 		BusyTimeoutMilli:  safeBusyTimeoutMilli,
 		WALAutocheckpoint: safeWALAutocheckpoint,
+
+		WriterBusyTimeoutMilli: safeWriterBusyTimeoutMilli,
 	}
 }
 
@@ -81,6 +92,9 @@ func (p Policy) Validate() error {
 	}
 	if p.WALAutocheckpoint < 1 || p.WALAutocheckpoint > 10000 {
 		return fmt.Errorf("%w: wal autocheckpoint %d", ErrPolicy, p.WALAutocheckpoint)
+	}
+	if p.WriterBusyTimeoutMilli < 10 || p.WriterBusyTimeoutMilli > 1000 {
+		return fmt.Errorf("%w: writer busy timeout %d ms", ErrPolicy, p.WriterBusyTimeoutMilli)
 	}
 	return nil
 }
@@ -126,6 +140,16 @@ func (p Policy) DSN(path string) (string, error) {
 	return sqliteFileURI(path) + "?" + values.Encode(), nil
 }
 
+// readerDSN is DSN marked as a read pool, so the observed driver refuses a
+// change made through it (see writer_discipline.go).
+func (p Policy) readerDSN(path string) (string, error) {
+	dsn, err := p.DSN(path)
+	if err != nil {
+		return "", err
+	}
+	return withRole(dsn, "reader"), nil
+}
+
 // sqliteFileURI treats path as a literal filename, including any %, ? or #.
 // Escape only the path; the driver's separately encoded policy query follows it.
 func sqliteFileURI(path string) string {
@@ -138,14 +162,17 @@ func sqliteFileURI(path string) string {
 // controller owns copying and pressure resets outside that commit path.
 const writerWALAutocheckpoint = 0
 
-// WriterDSN is DSN for the one writer connection.
+// WriterDSN is DSN for the one writer connection: no automatic checkpoint, and
+// its own short busy timeout.
 func (p Policy) WriterDSN(path string) (string, error) {
 	dsn, err := p.DSN(path)
 	if err != nil {
 		return "", err
 	}
 	filename, query, _ := strings.Cut(dsn, "?")
-	return filename + "?" + strings.Replace(query, url.QueryEscape(fmt.Sprintf("wal_autocheckpoint(%d)", p.WALAutocheckpoint)), url.QueryEscape(fmt.Sprintf("wal_autocheckpoint(%d)", writerWALAutocheckpoint)), 1), nil
+	query = strings.Replace(query, url.QueryEscape(fmt.Sprintf("wal_autocheckpoint(%d)", p.WALAutocheckpoint)), url.QueryEscape(fmt.Sprintf("wal_autocheckpoint(%d)", writerWALAutocheckpoint)), 1)
+	query = strings.Replace(query, url.QueryEscape(fmt.Sprintf("busy_timeout(%d)", p.BusyTimeoutMilli)), url.QueryEscape(fmt.Sprintf("busy_timeout(%d)", p.WriterBusyTimeoutMilli)), 1)
+	return withRole(filename+"?"+query, "writer"), nil
 }
 
 // RuntimePragmas is the same set as statements. It is executed once after open

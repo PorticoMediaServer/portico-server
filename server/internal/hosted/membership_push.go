@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/networking"
 )
@@ -301,6 +302,10 @@ func (s *Service) buildMemberPush(ctx context.Context, q memberSync) (MemberPush
 	return MemberPush{After: q.acked, Through: through, Members: members}, nil
 }
 
+// memberPushPlan bounds recording Portico Services' answer to one member push:
+// up to memberPushPage accounts' index flags.
+var memberPushPlan = dbwork.WritePlan{Name: "member-push", Rows: 2048, Pages: 128, VMOps: 500_000, Why: "Portico Services acknowledges a page of up to 200 members at once, and the answer is recorded atomically"}
+
 // pushMembers sends one push (or one page of a full list) and records
 // Hosted's answer. It is called from the control step, under the
 // installed-claim runner.
@@ -316,7 +321,7 @@ func (s *Service) pushMembers(ctx context.Context, v networking.Intent, q member
 	if e = s.current.transport.CallServer(ctx, v, networking.PushMembers, push, &result); e != nil {
 		return e
 	}
-	return s.current.store.WithInstalledTransaction(ctx, v, func(ctx context.Context, tx *sql.Tx) error {
+	return s.current.store.WithInstalledTransaction(dbwork.WithPlan(ctx, memberPushPlan), v, func(ctx context.Context, tx *sql.Tx) error {
 		if !result.Applied {
 			// Hosted holds something else: replace it with the full list.
 			_, e := tx.ExecContext(ctx, `UPDATE hosted_membership_sync SET full_pending=1,full_page=0,full_cursor='',full_through=0,attempts=0,next_at=0 WHERE singleton=1`)

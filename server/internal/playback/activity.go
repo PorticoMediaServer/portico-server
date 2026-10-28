@@ -278,11 +278,15 @@ func (s *Service) ActivityStop(ctx context.Context, p identity.Principal, scope 
 	if recoverOnly {
 		return out, sql.ErrNoRows
 	}
-	if _, e = tx.ExecContext(ctx, `DELETE FROM playback_admin_operations WHERE created_at<?`, time.Now().Add(-30*24*time.Hour).Unix()); e != nil {
+	// Each stop retires a bounded slice of expired receipts on the retention
+	// index, so the playback writer never pays for a backlog in one go; only
+	// unexpired receipts count against the capacity.
+	expired := time.Now().Add(-30 * 24 * time.Hour).Unix()
+	if _, e = tx.ExecContext(ctx, `DELETE FROM playback_admin_operations WHERE operation_id IN(SELECT operation_id FROM playback_admin_operations WHERE created_at<? ORDER BY created_at LIMIT 32)`, expired); e != nil {
 		return out, e
 	}
 	var count int
-	if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM playback_admin_operations`).Scan(&count); e != nil {
+	if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM playback_admin_operations WHERE created_at>=?`, expired).Scan(&count); e != nil {
 		return out, e
 	}
 	if count >= 65536 {

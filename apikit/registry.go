@@ -138,22 +138,22 @@ type Metadata struct {
 	AdminScope string `json:"adminScope,omitempty"`
 	// Requires is the scope an API key or personal access token needs. It is
 	// mandatory: a route that has not decided cannot be registered.
-	Requires            Scope    `json:"requires"`
-	Lane                Lane     `json:"lane"`
-	Cost                Cost     `json:"cost"`
-	BodyLimit           int64    `json:"bodyLimit"`
-	Query               []string `json:"query,omitempty"`
+	Requires  Scope    `json:"requires"`
+	Lane      Lane     `json:"lane"`
+	Cost      Cost     `json:"cost"`
+	BodyLimit int64    `json:"bodyLimit"`
+	Query     []string `json:"query,omitempty"`
 	// QueryIntegers publishes bounds for integer query parameters named in
 	// Query. The handler parses and applies them; this is their contract.
-	QueryIntegers []QueryInteger `json:"queryIntegers,omitempty"`
-	Headers             []string `json:"headers,omitempty"`
-	NoResponseBody      bool     `json:"noResponseBody,omitempty"`
-	Errors              []string `json:"errors"`
-	Status              int      `json:"status"`
-	ResponseContentType string   `json:"responseContentType,omitempty"`
-	RequestContentTypes []string `json:"requestContentTypes,omitempty"`
-	SuccessStatuses     []int    `json:"successStatuses,omitempty"`
-	ResponseStatuses    []int    `json:"responseStatuses,omitempty"`
+	QueryIntegers       []QueryInteger `json:"queryIntegers,omitempty"`
+	Headers             []string       `json:"headers,omitempty"`
+	NoResponseBody      bool           `json:"noResponseBody,omitempty"`
+	Errors              []string       `json:"errors"`
+	Status              int            `json:"status"`
+	ResponseContentType string         `json:"responseContentType,omitempty"`
+	RequestContentTypes []string       `json:"requestContentTypes,omitempty"`
+	SuccessStatuses     []int          `json:"successStatuses,omitempty"`
+	ResponseStatuses    []int          `json:"responseStatuses,omitempty"`
 	// OptionalBody lets a route with a body contract also accept no body at all
 	// (a DELETE whose body is optional); the handler then sees the zero Request.
 	OptionalBody bool `json:"optionalBody,omitempty"`
@@ -163,6 +163,7 @@ type Metadata struct {
 	// Admission names the server pool; Lane describes its broad API work class.
 	Admission string `json:"admission,omitempty"`
 }
+
 // QueryInteger is an optional integer query parameter, such as a page-size
 // limit. An absent value means Default; one below Minimum is refused. A value
 // above Maximum is refused too, unless Clamped, when it is treated as Maximum.
@@ -208,6 +209,7 @@ type Registry struct {
 	routes       []Definition
 	bound        map[string]bool
 	frozen       bool
+	writeErrors  []string
 }
 
 // GateScopes installs the check every route passes before access, body
@@ -323,6 +325,13 @@ func NewContextual(authorize AuthorizeContext, catalogue *apierror.Registry) *Re
 	return r
 }
 
+// WriteErrors names errors every route that changes something can answer, such
+// as a storage layer refusing a write it has no room to queue. They are added
+// to each later non-GET route's declared errors. Call it before registering.
+func (r *Registry) WriteErrors(codes ...string) {
+	r.writeErrors = append(r.writeErrors, codes...)
+}
+
 // Errors is the catalogue routes on this registry write errors from.
 func (r *Registry) Errors() *apierror.Registry { return r.errors }
 
@@ -374,6 +383,13 @@ func (r *Registry) admit(w http.ResponseWriter, q *http.Request, m Metadata) (*h
 func (r *Registry) define(m Metadata, request, response reflect.Type, access bool) error {
 	if r.frozen {
 		return errors.New("registry frozen")
+	}
+	if m.Method != "GET" && m.Method != "HEAD" {
+		for _, code := range r.writeErrors {
+			if !slices.Contains(m.Errors, code) {
+				m.Errors = append(append([]string{}, m.Errors...), code)
+			}
+		}
 	}
 	if err := validate(m); err != nil {
 		return err

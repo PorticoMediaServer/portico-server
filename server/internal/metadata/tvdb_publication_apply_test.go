@@ -225,13 +225,13 @@ func TestTVDBProjectionBoundedContinuationRestartsBeforeCursor(t *testing.T) {
 	}
 	names = tvdbLocalEpisodes(t, c, show, episodes)
 	p := tvdbProjectionClaim(t, s)
-	if tvdbPublicationText(t, db, `SELECT count(*) FROM tvdb_projection_targets WHERE operation_id=?`, p.ID) != "100" {
+	if tvdbPublicationText(t, db, `SELECT count(*) FROM tvdb_projection_targets WHERE operation_id=?`, p.ID) != fmt.Sprint(tvdbProjectionTargets) {
 		t.Fatal("target batch unbounded")
 	}
 	if err := s.publishTVDBProjection(context.Background(), *p); err != nil {
 		t.Fatal(err)
 	}
-	if tvdbPublicationText(t, db, `SELECT apply_after FROM tvdb_jobs WHERE show_id=?`, show.ID) != fmt.Sprint(names["episode-100"].ID) {
+	if tvdbPublicationText(t, db, `SELECT apply_after FROM tvdb_jobs WHERE show_id=?`, show.ID) != fmt.Sprint(names[fmt.Sprintf("episode-%03d", tvdbProjectionTargets)].ID) {
 		t.Fatal("wrong cursor")
 	}
 	parked["before"] = c.Entity(compactcatalog.Entity{Library: c.Handle("lib"), Kind: compactcatalog.Episode, Parent: show.ID, Key: "tvdb-publication:before", Title: "Before"}, map[string]any{
@@ -245,11 +245,16 @@ func TestTVDBProjectionBoundedContinuationRestartsBeforeCursor(t *testing.T) {
 	if err := s.publishTVDBProjection(context.Background(), *p); err != nil {
 		t.Fatal(err)
 	}
-	p = tvdbProjectionClaim(t, s)
-	if err := s.publishTVDBProjection(context.Background(), *p); err != nil {
-		t.Fatal(err)
+	for pages := 0; tvdbPublicationText(t, db, `SELECT status FROM tvdb_jobs WHERE show_id=?`, show.ID) != "complete"; pages++ {
+		if pages > 106/tvdbProjectionTargets+1 {
+			t.Fatal("projection did not finish in as many pages as it has targets")
+		}
+		p = tvdbProjectionClaim(t, s)
+		if err := s.publishTVDBProjection(context.Background(), *p); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if tvdbPublicationText(t, db, `SELECT status FROM tvdb_jobs WHERE show_id=?`, show.ID) != "complete" || tvdbPublicationText(t, db, `SELECT count(*) FROM tvdb_episode_links`) != "106" {
+	if tvdbPublicationText(t, db, `SELECT count(*) FROM tvdb_episode_links`) != "106" {
 		t.Fatal("bounded coverage missed target")
 	}
 }

@@ -96,6 +96,9 @@ func (d Dependencies) liveAuthority(expected identity.Principal) livechannels.Au
 	}
 }
 func liveFailure(w http.ResponseWriter, e error) {
+	if writerRefused(w, e) {
+		return
+	}
 	if revisionFailure(w, e) {
 		return
 	}

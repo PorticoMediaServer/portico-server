@@ -3,6 +3,7 @@ package persistence_test
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,8 +14,8 @@ import (
 )
 
 const (
-	pruneChallengesStatement = `DELETE FROM identity_factor_challenges WHERE expires_at<=?`
-	pruneTokensStatement     = `DELETE FROM topshelf_tokens WHERE expires_at<=?`
+	pruneChallengesStatement = `DELETE FROM identity_factor_challenges WHERE rowid IN(SELECT rowid FROM identity_factor_challenges WHERE expires_at<=? LIMIT 64)`
+	pruneTokensStatement     = `DELETE FROM topshelf_tokens WHERE rowid IN(SELECT rowid FROM topshelf_tokens WHERE expires_at<=? LIMIT 64)`
 )
 
 func writerAdmissionDB(t *testing.T) *sql.DB {
@@ -236,6 +237,32 @@ func TestPruneIdentityProofsAdmitsBothDeletesAtMaintenanceClass(t *testing.T) {
 	}
 	if challengesAt > tokensAt {
 		t.Fatalf("prune order changed: challenges %d, tokens %d", challengesAt, tokensAt)
+	}
+}
+
+// A backlog larger than one batch is reclaimed in bounded batches, each its own
+// maintenance admission, until a batch comes back short.
+func TestPruneIdentityProofsReclaimsABacklogInBatches(t *testing.T) {
+	db := writerAdmissionDB(t)
+	const now = "2026-10-27T00:00:00Z"
+	seedProofRows(t, db, now, "2026-10-27T00:00:01Z")
+	for i := 0; i < 140; i++ {
+		mustExec(t, db, `INSERT INTO identity_factor_challenges(token_hash,account_id,expires_at) VALUES(?,?,?)`, fmt.Sprintf("backlog-%d", i), "acct-writer", now)
+	}
+	before := classAdmissions(dbwork.ClassMaintenance)
+	if err := persistence.PruneIdentityProofs(context.Background(), db, now); err != nil {
+		t.Fatal(err)
+	}
+	// 141 expired challenges: 64 + 64 + 13, then one short token batch.
+	if got := classAdmissions(dbwork.ClassMaintenance) - before; got != 4 {
+		t.Fatalf("PruneIdentityProofs took %d maintenance admissions, want 4", got)
+	}
+	var left int
+	if err := db.QueryRow(`SELECT count(*) FROM identity_factor_challenges WHERE expires_at<=?`, now).Scan(&left); err != nil || left != 0 {
+		t.Fatalf("%d expired challenges left: %v", left, err)
+	}
+	if !proofHashExists(t, db, "identity_factor_challenges", "challenge-future") {
+		t.Fatal("future challenge was reclaimed")
 	}
 }
 

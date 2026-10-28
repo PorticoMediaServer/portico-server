@@ -406,7 +406,12 @@ func (s *Service) AdminLibrary(ctx context.Context, r AdminRequest, inspect bool
 // OrderLibraries stores the owner's order of the libraries: the listed ids first, in that
 // order, and any library not listed after them in the order it already had. Every listed id
 // must be a library; an id may appear once.
+// libraryOrderPlan bounds one reorder: every library row is renumbered in one
+// transaction, so its size follows the number of libraries, not their content.
+var libraryOrderPlan = dbwork.WritePlan{Name: "library-order", Rows: 2048, Pages: 256, VMOps: 500_000, Why: "an order is one atomic renumbering of every library; it is bounded by the library count"}
+
 func (s *Service) OrderLibraries(ctx context.Context, ids []string, authorize func(*sql.Tx) error) error {
+	ctx = dbwork.WithPlan(ctx, libraryOrderPlan)
 	if len(ids) == 0 || len(ids) > 1000 || authorize == nil {
 		return ErrAdminQuery
 	}

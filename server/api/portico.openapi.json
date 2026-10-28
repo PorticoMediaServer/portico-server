@@ -29700,6 +29700,11 @@
                 },
                 "type": "array"
               },
+              "heavyReads": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "slowReads": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -29752,6 +29757,7 @@
               "transactions",
               "acquisitions",
               "slowReads",
+              "heavyReads",
               "byClass",
               "statementCache"
             ],
@@ -29930,6 +29936,25 @@
               "queued",
               "refused",
               "queueWaitMillis"
+            ],
+            "type": "object"
+          },
+          "ungatedWrites": {
+            "properties": {
+              "reader": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "writer": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "writer",
+              "reader"
             ],
             "type": "object"
           },
@@ -30367,12 +30392,227 @@
               "queueAgeMillis"
             ],
             "type": "object"
+          },
+          "writePlans": {
+            "properties": {
+              "largest": {
+                "properties": {
+                  "pages": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "rows": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "vmOps": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "rows",
+                  "pages",
+                  "vmOps"
+                ],
+                "type": "object"
+              },
+              "measured": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "overruns": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "overrunsByClass": {
+                "additionalProperties": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              "overrunsByDimension": {
+                "additionalProperties": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              "recent": {
+                "items": {
+                  "properties": {
+                    "atMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "budget": {
+                      "properties": {
+                        "pages": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "rows": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "vmOps": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "rows",
+                        "pages",
+                        "vmOps"
+                      ],
+                      "type": "object"
+                    },
+                    "class": {
+                      "type": "string"
+                    },
+                    "cost": {
+                      "properties": {
+                        "pages": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "rows": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "vmOps": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "rows",
+                        "pages",
+                        "vmOps"
+                      ],
+                      "type": "object"
+                    },
+                    "over": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "plan": {
+                      "type": "string"
+                    },
+                    "site": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "site",
+                    "class",
+                    "plan",
+                    "over",
+                    "cost",
+                    "budget",
+                    "atMs"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "measured",
+              "overruns",
+              "overrunsByClass",
+              "overrunsByDimension",
+              "largest",
+              "recent"
+            ],
+            "type": "object"
+          },
+          "writerAdmission": {
+            "properties": {
+              "backgroundQueued": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "busyAfterAdmission": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "busyAfterAdmissionByClass": {
+                "additionalProperties": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              "capacity": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "deferred": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "refused": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "refusedByClass": {
+                "additionalProperties": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              "userQueued": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "capacity",
+              "userQueued",
+              "backgroundQueued",
+              "deferred",
+              "refused",
+              "refusedByClass",
+              "busyAfterAdmission",
+              "busyAfterAdmissionByClass"
+            ],
+            "type": "object"
           }
         },
         "required": [
           "pool",
           "readSnapshots",
           "writeGate",
+          "writerAdmission",
+          "writePlans",
+          "ungatedWrites",
           "pressure",
           "health",
           "httpLanes",
@@ -279157,7 +279397,8 @@
           "sign_in_kind_local",
           "sign_in_kind_portico",
           "factor_setup_required",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -279309,7 +279550,8 @@
           "invitation_not_found",
           "rate_limited",
           "invalid_request",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
@@ -280082,7 +280324,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -280376,7 +280619,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 8192,
@@ -280482,7 +280726,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 8192,
@@ -280633,7 +280878,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
@@ -280746,7 +280992,8 @@
           "revision_mismatch",
           "invitation_not_found",
           "idempotency_key_reused",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
@@ -281177,7 +281424,8 @@
           "unauthorized",
           "not_permitted",
           "revision_mismatch",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
@@ -282228,7 +282476,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -282590,7 +282839,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 8192,
@@ -282953,7 +283203,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -284131,7 +284382,8 @@
           "credential_unavailable",
           "access_tokens_off",
           "administration_unavailable",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
@@ -284272,7 +284524,8 @@
           "invalid_request",
           "not_found",
           "administration_unavailable",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-scope": "session"
@@ -284739,7 +284992,8 @@
           "request_in_progress",
           "insufficient_disk",
           "administration_unavailable",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -284833,7 +285087,8 @@
           "unauthorized",
           "administration_unavailable",
           "restore_source_invalid",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -284941,7 +285196,8 @@
           "restore_not_portico",
           "insufficient_disk",
           "administration_unavailable",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -285121,7 +285377,8 @@
           "unauthorized",
           "invalid_request",
           "administration_unavailable",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 8192,
@@ -285185,7 +285442,8 @@
           "invalid_request",
           "not_found",
           "administration_unavailable",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -285678,7 +285936,8 @@
           "revision_mismatch",
           "request_in_progress",
           "internal",
-          "revision_required"
+          "revision_required",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 32768,
@@ -286404,7 +286663,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -286537,7 +286797,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 1048576,
@@ -287427,7 +287688,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 1048576,
@@ -288634,7 +288896,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 1048576,
@@ -288852,7 +289115,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 1048576,
@@ -289354,7 +289618,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 1048576,
@@ -292043,7 +292308,8 @@
           "idempotency_key_reused",
           "rate_limited",
           "internal",
-          "revision_required"
+          "revision_required",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -293715,7 +293981,8 @@
         "x-error-codes": [
           "unauthorized",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -294588,6 +294855,11 @@
                           },
                           "type": "array"
                         },
+                        "heavyReads": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
                         "slowReads": {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
@@ -294640,6 +294912,7 @@
                         "transactions",
                         "acquisitions",
                         "slowReads",
+                        "heavyReads",
                         "byClass",
                         "statementCache"
                       ],
@@ -294818,6 +295091,25 @@
                         "queued",
                         "refused",
                         "queueWaitMillis"
+                      ],
+                      "type": "object"
+                    },
+                    "ungatedWrites": {
+                      "properties": {
+                        "reader": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "writer": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "writer",
+                        "reader"
                       ],
                       "type": "object"
                     },
@@ -295255,12 +295547,227 @@
                         "queueAgeMillis"
                       ],
                       "type": "object"
+                    },
+                    "writePlans": {
+                      "properties": {
+                        "largest": {
+                          "properties": {
+                            "pages": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "rows": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "vmOps": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "rows",
+                            "pages",
+                            "vmOps"
+                          ],
+                          "type": "object"
+                        },
+                        "measured": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "overruns": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "overrunsByClass": {
+                          "additionalProperties": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "type": "object"
+                        },
+                        "overrunsByDimension": {
+                          "additionalProperties": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "type": "object"
+                        },
+                        "recent": {
+                          "items": {
+                            "properties": {
+                              "atMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "budget": {
+                                "properties": {
+                                  "pages": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "rows": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "vmOps": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "rows",
+                                  "pages",
+                                  "vmOps"
+                                ],
+                                "type": "object"
+                              },
+                              "class": {
+                                "type": "string"
+                              },
+                              "cost": {
+                                "properties": {
+                                  "pages": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "rows": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "vmOps": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "rows",
+                                  "pages",
+                                  "vmOps"
+                                ],
+                                "type": "object"
+                              },
+                              "over": {
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              },
+                              "plan": {
+                                "type": "string"
+                              },
+                              "site": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "site",
+                              "class",
+                              "plan",
+                              "over",
+                              "cost",
+                              "budget",
+                              "atMs"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "measured",
+                        "overruns",
+                        "overrunsByClass",
+                        "overrunsByDimension",
+                        "largest",
+                        "recent"
+                      ],
+                      "type": "object"
+                    },
+                    "writerAdmission": {
+                      "properties": {
+                        "backgroundQueued": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "busyAfterAdmission": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "busyAfterAdmissionByClass": {
+                          "additionalProperties": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "type": "object"
+                        },
+                        "capacity": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "deferred": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "refused": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "refusedByClass": {
+                          "additionalProperties": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "type": "object"
+                        },
+                        "userQueued": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "capacity",
+                        "userQueued",
+                        "backgroundQueued",
+                        "deferred",
+                        "refused",
+                        "refusedByClass",
+                        "busyAfterAdmission",
+                        "busyAfterAdmissionByClass"
+                      ],
+                      "type": "object"
                     }
                   },
                   "required": [
                     "pool",
                     "readSnapshots",
                     "writeGate",
+                    "writerAdmission",
+                    "writePlans",
+                    "ungatedWrites",
                     "pressure",
                     "health",
                     "httpLanes",
@@ -295424,7 +295931,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -295524,7 +296032,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -295699,7 +296208,8 @@
           "idempotency_key_reused",
           "downloads_unavailable",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -295804,7 +296314,8 @@
           "idempotency_key_reused",
           "downloads_unavailable",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
@@ -296439,7 +296950,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -296538,7 +297050,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -296942,7 +297455,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -297343,7 +297857,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -297623,7 +298138,8 @@
           "revision_mismatch",
           "rate_limited",
           "administration_unavailable",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 16384,
@@ -298236,7 +298752,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -299538,7 +300055,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 1048576,
@@ -299959,7 +300477,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 1048576,
@@ -300288,7 +300807,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-scope": "library"
@@ -300533,7 +301053,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-scope": "library"
@@ -300717,7 +301238,8 @@
           "confirmation_mismatch",
           "administration_unavailable",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -300965,7 +301487,8 @@
           "confirmation_mismatch",
           "administration_unavailable",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -301628,7 +302151,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -301740,7 +302264,8 @@
           "invalid_request",
           "internal",
           "timeout",
-          "revision_required"
+          "revision_required",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -302515,7 +303040,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -303086,7 +303612,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -303235,7 +303762,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -305264,7 +305792,8 @@
           "idempotency_key_reused",
           "internal",
           "timeout",
-          "revision_required"
+          "revision_required",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -305405,7 +305934,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -305784,7 +306314,8 @@
           "library_configuration_conflict",
           "analysis_conflict",
           "analysis_unavailable",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -305974,7 +306505,8 @@
           "library_configuration_conflict",
           "analysis_conflict",
           "analysis_unavailable",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 1024,
@@ -306187,7 +306719,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -306279,7 +306812,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -306498,7 +307032,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -306811,7 +307346,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-scope": "library"
@@ -306945,7 +307481,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-scope": "library"
@@ -308163,7 +308700,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 1048576,
@@ -308614,7 +309152,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -308713,7 +309252,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -308981,7 +309521,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -309537,7 +310078,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -310280,7 +310822,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 1048576,
@@ -310396,7 +310939,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 32768,
@@ -311294,7 +311838,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -311405,7 +311950,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -311719,7 +312265,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 11534336,
@@ -312195,7 +312742,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -312832,7 +313380,8 @@
           "source_network_policy",
           "source_credentials_required",
           "source_unavailable",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 50331648,
@@ -312993,7 +313542,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -313242,7 +313792,8 @@
           "source_network_policy",
           "source_credentials_required",
           "source_unavailable",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 50331648,
@@ -313545,7 +314096,8 @@
           "source_network_policy",
           "source_credentials_required",
           "source_unavailable",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 8388608,
@@ -313754,7 +314306,8 @@
           "source_network_policy",
           "source_credentials_required",
           "source_unavailable",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -314130,7 +314683,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -315191,7 +315745,8 @@
           "source_credentials_required",
           "source_unavailable",
           "internal",
-          "revision_required"
+          "revision_required",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 8388608,
@@ -315313,7 +315868,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -315447,7 +316003,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -315554,7 +316111,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -315665,7 +316223,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -316098,7 +316657,8 @@
           "source_credentials_required",
           "source_unavailable",
           "internal",
-          "revision_required"
+          "revision_required",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -316701,7 +317261,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -317082,7 +317643,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -317365,7 +317927,8 @@
           "invalid_request",
           "revision_mismatch",
           "administration_unavailable",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -317992,7 +318555,8 @@
           "request_in_progress",
           "administration_unavailable",
           "internal",
-          "revision_required"
+          "revision_required",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -318184,7 +318748,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -318428,7 +318993,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -319464,7 +320030,8 @@
           "revision_mismatch",
           "internal",
           "timeout",
-          "revision_required"
+          "revision_required",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 262144,
@@ -319576,7 +320143,8 @@
           "not_permitted",
           "rate_limited",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -319834,7 +320402,8 @@
           "not_found",
           "invalid_request",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -320051,7 +320620,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -320344,7 +320914,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -322084,7 +322655,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -323153,7 +323725,8 @@
           "not_permitted",
           "invalid_request",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -323402,7 +323975,8 @@
         "x-cost": "constant",
         "x-error-codes": [
           "unauthorized",
-          "administration_unavailable"
+          "administration_unavailable",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -324217,7 +324791,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 2097152,
@@ -324314,7 +324889,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -325388,7 +325964,8 @@
           "revision_mismatch",
           "session_ended",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "media",
         "x-max-body-bytes": 4096,
@@ -325467,7 +326044,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -326135,7 +326713,8 @@
           "move_collision",
           "move_confirmation",
           "move_code_invalid",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 16384,
@@ -326590,7 +327169,8 @@
           "move_collision",
           "move_confirmation",
           "move_code_invalid",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 16384,
@@ -326767,7 +327347,8 @@
           "move_collision",
           "move_confirmation",
           "move_code_invalid",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 16384,
@@ -326960,7 +327541,8 @@
           "move_collision",
           "move_confirmation",
           "move_code_invalid",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 16384,
@@ -327049,7 +327631,8 @@
           "move_collision",
           "move_confirmation",
           "move_code_invalid",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 16384,
@@ -327467,7 +328050,8 @@
           "revision_required",
           "revision_mismatch",
           "factor_setup_required",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
@@ -327545,7 +328129,8 @@
         "x-error-codes": [
           "unauthorized",
           "administration_unavailable",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -327876,7 +328461,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -327945,7 +328531,8 @@
           "not_permitted",
           "not_found",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -328944,7 +329531,8 @@
           "not_found",
           "invalid_request",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -329035,7 +329623,8 @@
           "not_found",
           "invalid_request",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 8192,
@@ -330125,7 +330714,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -330462,7 +331052,8 @@
         "x-error-codes": [
           "unauthorized",
           "invalid_request",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -330792,7 +331383,8 @@
           "insufficient_scope",
           "invalid_request",
           "administration_unavailable",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 8192,
@@ -330858,7 +331450,8 @@
           "insufficient_scope",
           "invalid_request",
           "administration_unavailable",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -331185,7 +331778,8 @@
           "invalid_request",
           "administration_unavailable",
           "internal",
-          "revision_required"
+          "revision_required",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 8192,
@@ -331461,7 +332055,8 @@
           "insufficient_scope",
           "invalid_request",
           "administration_unavailable",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -332070,7 +332665,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -332191,7 +332787,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -332294,7 +332891,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -332397,7 +332995,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -333213,7 +333812,8 @@
           "not_permitted",
           "revision_mismatch",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 16384,
@@ -333721,7 +334321,8 @@
           "move_collision",
           "move_confirmation",
           "move_code_invalid",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 16384,
@@ -334073,7 +334674,8 @@
           "move_collision",
           "move_confirmation",
           "move_code_invalid",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 16384,
@@ -334173,7 +334775,8 @@
           "move_collision",
           "move_confirmation",
           "move_code_invalid",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 16384,
@@ -334585,7 +335188,8 @@
           "move_collision",
           "move_confirmation",
           "move_code_invalid",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 16384,
@@ -334696,7 +335300,8 @@
           "not_found",
           "internal",
           "rate_limited",
-          "owner_reset_file_unavailable"
+          "owner_reset_file_unavailable",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
@@ -335293,7 +335898,8 @@
           "not_found",
           "internal",
           "rate_limited",
-          "owner_reset_expired"
+          "owner_reset_expired",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
@@ -335803,7 +336409,8 @@
           "move_collision",
           "move_code_invalid",
           "portico_services_unavailable",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 16384,
@@ -335970,7 +336577,8 @@
           "rate_limited",
           "sign_in_kind_local",
           "portico_services_unavailable",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 2048,
@@ -336135,7 +336743,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
@@ -336481,7 +337090,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
@@ -336601,7 +337211,8 @@
         "x-cost": "constant",
         "x-error-codes": [
           "invalid_request",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
@@ -337015,7 +337626,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
@@ -340775,7 +341387,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -341711,7 +342324,8 @@
           "not_permitted",
           "not_found",
           "stale_continuation",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -342216,7 +342830,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 262144,
@@ -342403,7 +343018,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-scope": "session"
@@ -342839,7 +343455,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 262144,
@@ -343051,7 +343668,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 262144,
@@ -343255,7 +343873,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 262144,
@@ -343518,7 +344137,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 262144,
@@ -343622,7 +344242,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -343788,7 +344409,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 262144,
@@ -344020,7 +344642,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 262144,
@@ -344260,7 +344883,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 262144,
@@ -344379,7 +345003,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -344443,7 +345068,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-scope": "library"
@@ -344661,7 +345287,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -345267,7 +345894,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-scope": "library"
@@ -345336,7 +345964,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-scope": "library"
@@ -345522,7 +346151,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -345656,7 +346286,8 @@
           "not_permitted",
           "not_found",
           "revision_mismatch",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -346139,7 +346770,8 @@
           "rate_limited",
           "internal",
           "timeout",
-          "revision_required"
+          "revision_required",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 2048,
@@ -346278,7 +346910,8 @@
           "rate_limited",
           "internal",
           "operation_expired",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 2048,
@@ -350744,7 +351377,8 @@
         "x-error-codes": [
           "unauthorized",
           "invalid_request",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
@@ -350807,7 +351441,8 @@
           "unauthorized",
           "invalid_request",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-scope": "admin"
@@ -350956,7 +351591,8 @@
           "unauthorized",
           "invalid_request",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
@@ -351019,7 +351655,8 @@
           "unauthorized",
           "invalid_request",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-scope": "admin"
@@ -351103,7 +351740,8 @@
           "unauthorized",
           "invalid_request",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
@@ -351242,7 +351880,8 @@
           "invalid_request",
           "device_session_required",
           "client_log_budget",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 1576960,
@@ -351707,7 +352346,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
@@ -351793,7 +352433,8 @@
           "not_found",
           "revision_mismatch",
           "internal",
-          "revision_required"
+          "revision_required",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
@@ -351894,7 +352535,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
@@ -352098,7 +352740,8 @@
           "not_permitted",
           "invalid_request",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
@@ -352181,7 +352824,8 @@
           "not_permitted",
           "invalid_request",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
@@ -352299,7 +352943,8 @@
           "not_found",
           "internal",
           "rate_limited",
-          "profile_changed"
+          "profile_changed",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
@@ -352475,7 +353120,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
@@ -352626,7 +353272,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
@@ -352709,7 +353356,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
@@ -353046,7 +353694,8 @@
           "not_permitted",
           "not_found",
           "internal",
-          "rate_limited"
+          "rate_limited",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
@@ -353230,7 +353879,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
@@ -353306,7 +353956,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
@@ -353541,7 +354192,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
@@ -353884,7 +354536,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
@@ -353972,7 +354625,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
@@ -354236,7 +354890,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
@@ -354300,7 +354955,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-scope": "admin"
@@ -354437,7 +355093,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 5242880,
@@ -354784,7 +355441,8 @@
           "not_permitted",
           "invalid_request",
           "request_in_progress",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
@@ -355089,7 +355747,8 @@
           "invalid_request",
           "revision_mismatch",
           "internal",
-          "revision_required"
+          "revision_required",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 32768,
@@ -355329,7 +355988,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
@@ -355479,7 +356139,8 @@
           "unauthorized",
           "not_permitted",
           "invalid_request",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
@@ -355606,7 +356267,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
@@ -355687,7 +356349,8 @@
           "unauthorized",
           "not_permitted",
           "invalid_request",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
@@ -355775,7 +356438,8 @@
           "portico_services_unavailable",
           "password_change_required",
           "factor_setup_required",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
@@ -355863,7 +356527,8 @@
           "portico_services_unavailable",
           "password_change_required",
           "factor_setup_required",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
@@ -355978,7 +356643,8 @@
           "portico_services_unavailable",
           "password_change_required",
           "factor_setup_required",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
@@ -356110,7 +356776,8 @@
           "portico_services_unavailable",
           "password_change_required",
           "factor_setup_required",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
@@ -356266,7 +356933,8 @@
           "unauthorized",
           "password_change_required",
           "not_permitted",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-scope": "session"
@@ -356329,7 +356997,8 @@
           "password_change_required",
           "not_permitted",
           "invalid_request",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-scope": "admin"
@@ -356746,7 +357415,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
@@ -356822,7 +357492,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
@@ -356898,7 +357569,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
@@ -357072,7 +357744,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
@@ -357175,7 +357848,8 @@
           "password_change_required",
           "factor_setup_required",
           "authentication_busy",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
@@ -357276,7 +357950,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
@@ -358161,7 +358836,8 @@
           "rate_limited",
           "internal",
           "downloads_unavailable",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 8192,
@@ -358848,7 +359524,8 @@
           "downloads_not_allowed",
           "downloads_unavailable",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 32768,
@@ -359434,7 +360111,8 @@
           "downloads_not_allowed",
           "downloads_unavailable",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -360107,7 +360785,8 @@
           "downloads_not_allowed",
           "downloads_unavailable",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -360279,7 +360958,8 @@
           "downloads_not_allowed",
           "downloads_unavailable",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -360679,7 +361359,8 @@
           "downloads_not_allowed",
           "downloads_unavailable",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 32768,
@@ -360981,7 +361662,8 @@
           "downloads_not_allowed",
           "downloads_unavailable",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 32768,
@@ -361428,7 +362110,8 @@
           "downloads_not_allowed",
           "downloads_unavailable",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 32768,
@@ -362005,7 +362688,8 @@
           "idempotency_key_reused",
           "rate_limited",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 8192,
@@ -362670,7 +363354,8 @@
           "downloads_unavailable",
           "internal",
           "timeout",
-          "revision_required"
+          "revision_required",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -365178,7 +365863,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -365728,7 +366414,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -366979,7 +367666,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -367529,7 +368217,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -368271,7 +368960,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -368639,7 +369329,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -368757,7 +369448,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -369330,7 +370022,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -369683,7 +370376,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -370484,7 +371178,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 1048576,
@@ -371309,7 +372004,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 1048576,
@@ -372991,7 +373687,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 262144,
@@ -373627,7 +374324,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 262144,
@@ -374890,7 +375588,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 262144,
@@ -375668,7 +376367,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-scope": "playback"
@@ -376314,7 +377014,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 262144,
@@ -376511,7 +377212,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 262144,
@@ -376623,7 +377325,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-scope": "playback"
@@ -377243,7 +377946,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-scope": "playback"
@@ -377760,7 +378464,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 262144,
@@ -377973,7 +378678,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 262144,
@@ -378626,7 +379332,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 262144,
@@ -378947,7 +379654,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 262144,
@@ -382362,7 +383070,8 @@
           "invalid_request",
           "unauthorized",
           "not_permitted",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 4096,
@@ -382471,7 +383180,8 @@
           "invalid_request",
           "unauthorized",
           "not_permitted",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 4096,
@@ -382917,7 +383627,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 262144,
@@ -383358,7 +384069,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 262144,
@@ -383601,7 +384313,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 262144,
@@ -383835,7 +384548,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 262144,
@@ -402034,7 +402748,8 @@
           "not_found",
           "revision_mismatch",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -403991,7 +404706,8 @@
           "not_found",
           "revision_mismatch",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -404290,7 +405006,8 @@
           "not_permitted",
           "not_found",
           "home_layout_conflict",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -404417,7 +405134,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -417312,7 +418030,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
@@ -418094,7 +418813,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 1048576,
@@ -419372,7 +420092,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 2097152,
@@ -419627,7 +420348,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 2097152,
@@ -419782,7 +420504,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 2097152,
@@ -419979,7 +420702,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 2097152,
@@ -420554,7 +421278,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -420787,7 +421512,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-scope": "library"
@@ -425663,7 +426389,8 @@
           "invalid_request",
           "revision_mismatch",
           "source_unavailable",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-scope": "playback"
@@ -427165,7 +427892,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 2097152,
@@ -427346,7 +428074,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 2097152,
@@ -427604,7 +428333,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 2097152,
@@ -427881,7 +428611,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 2097152,
@@ -428158,7 +428889,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 2097152,
@@ -428538,7 +429270,8 @@
           "invalid_request",
           "revision_mismatch",
           "source_unavailable",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-scope": "library"
@@ -428648,7 +429381,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -429009,7 +429743,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 262144,
@@ -429619,7 +430354,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -429740,7 +430476,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -429843,7 +430580,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -429946,7 +430684,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -430041,7 +430780,8 @@
           "not_found",
           "invalid_request",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 4096,
@@ -430949,7 +431689,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -431052,7 +431793,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -431163,7 +431905,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -431342,7 +432085,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -431766,7 +432510,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 1048576,
@@ -463899,7 +464644,8 @@
           "personal_needs_review",
           "operation_expired",
           "idempotency_key_reused",
-          "stale_continuation"
+          "stale_continuation",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -464155,7 +464901,8 @@
           "personal_needs_review",
           "operation_expired",
           "idempotency_key_reused",
-          "stale_continuation"
+          "stale_continuation",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -464411,7 +465158,8 @@
           "personal_needs_review",
           "operation_expired",
           "idempotency_key_reused",
-          "stale_continuation"
+          "stale_continuation",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -464543,7 +465291,8 @@
           "body_too_large",
           "internal",
           "metadata_conflict",
-          "source_unavailable"
+          "source_unavailable",
+          "writer_capacity"
         ],
         "x-lane": "media",
         "x-max-body-bytes": 4096,
@@ -465216,7 +465965,8 @@
           "subtitle_provider_sign_in_failed",
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
-          "subtitle_provider_busy"
+          "subtitle_provider_busy",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 805306368,
@@ -465368,7 +466118,8 @@
           "subtitle_provider_sign_in_failed",
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
-          "subtitle_provider_busy"
+          "subtitle_provider_busy",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 805306368,
@@ -465529,7 +466280,8 @@
           "subtitle_provider_sign_in_failed",
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
-          "subtitle_provider_busy"
+          "subtitle_provider_busy",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 805306368,
@@ -465908,7 +466660,8 @@
           "subtitle_provider_sign_in_failed",
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
-          "subtitle_provider_busy"
+          "subtitle_provider_busy",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 805306368,
@@ -466076,7 +466829,8 @@
           "subtitle_provider_sign_in_failed",
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
-          "subtitle_provider_busy"
+          "subtitle_provider_busy",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 805306368,
@@ -466249,7 +467003,8 @@
           "subtitle_provider_sign_in_failed",
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
-          "subtitle_provider_busy"
+          "subtitle_provider_busy",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 805306368,
@@ -466403,7 +467158,8 @@
           "subtitle_provider_sign_in_failed",
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
-          "subtitle_provider_busy"
+          "subtitle_provider_busy",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 805306368,
@@ -466608,7 +467364,8 @@
           "subtitle_provider_sign_in_failed",
           "subtitle_provider_sign_in_required",
           "subtitle_provider_quota",
-          "subtitle_provider_busy"
+          "subtitle_provider_busy",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 805306368,
@@ -467294,7 +468051,8 @@
           "revision_mismatch",
           "rate_limited",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -467928,7 +468686,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -468109,7 +468868,8 @@
           "invalid_request",
           "body_too_large",
           "administration_unavailable",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 1048576,
@@ -471218,7 +471978,8 @@
           "not_permitted",
           "not_found",
           "internal",
-          "revision_mismatch"
+          "revision_mismatch",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -472174,7 +472935,8 @@
           "not_found",
           "stale_continuation",
           "internal",
-          "revision_mismatch"
+          "revision_mismatch",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -472531,7 +473293,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -478671,7 +479434,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -479596,7 +480360,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 2097152,
@@ -479889,7 +480654,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -480274,7 +481040,8 @@
           "revision_mismatch",
           "rate_limited",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 4096,
@@ -480555,7 +481322,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -480775,7 +481543,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -480902,7 +481671,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-scope": "library"
@@ -487498,7 +488268,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -487831,7 +488602,8 @@
           "rate_limited",
           "personal_state_conflict",
           "idempotency_key_reused",
-          "operation_expired"
+          "operation_expired",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -488162,7 +488934,8 @@
           "personal_state_conflict",
           "personal_needs_resolution",
           "operation_expired",
-          "idempotency_key_reused"
+          "idempotency_key_reused",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -489307,7 +490080,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -489770,7 +490544,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -489873,7 +490648,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 2097152,
@@ -490031,7 +490807,8 @@
           "invalid_request",
           "body_too_large",
           "unsupported_media_type",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 1048576,
@@ -490471,7 +491248,8 @@
           "credential_unavailable",
           "access_tokens_off",
           "administration_unavailable",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
@@ -490612,7 +491390,8 @@
           "invalid_request",
           "not_found",
           "administration_unavailable",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-scope": "session"
@@ -492495,7 +493274,8 @@
           "invalid_request",
           "unauthorized",
           "revision_mismatch",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -492675,7 +493455,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -492782,7 +493563,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -492860,7 +493642,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-scope": "playback"
@@ -495954,7 +496737,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 524288,
@@ -496587,7 +497371,8 @@
           "not_found",
           "revision_mismatch",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 524288,
@@ -498042,7 +498827,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 1048576,
@@ -498857,7 +499643,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 11534336,
@@ -499534,7 +500321,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-scope": "library"
@@ -500063,7 +500851,8 @@
           "not_found",
           "playlist_capacity",
           "idempotency_key_reused",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -500436,7 +501225,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -500601,7 +501391,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -501242,7 +502033,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -501579,7 +502371,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "realtime",
         "x-max-body-bytes": 65536,
@@ -501919,7 +502712,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -502259,7 +503053,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -502371,7 +503166,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
@@ -502736,7 +503532,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -503180,7 +503977,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
@@ -503390,7 +504188,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
@@ -503483,7 +504282,8 @@
         "x-error-codes": [
           "invalid_request",
           "rate_limited",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
@@ -503960,7 +504760,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -504266,7 +505067,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -505123,7 +505925,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "realtime",
         "x-max-body-bytes": 65536,
@@ -505366,7 +506169,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "realtime",
         "x-scope": "playback"
@@ -505530,7 +506334,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -505695,7 +506500,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -511657,7 +512463,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -512026,7 +512833,8 @@
           "revision_mismatch",
           "session_ended",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "media",
         "x-max-body-bytes": 4096,
@@ -520729,7 +521537,8 @@
           "feature_restricted",
           "no_tuner_available",
           "queue_building",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "media",
         "x-max-body-bytes": 8192,
@@ -520836,7 +521645,8 @@
           "unauthorized",
           "not_found",
           "revision_mismatch",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "media",
         "x-max-body-bytes": 1024,
@@ -523575,7 +524385,8 @@
           "transcode_not_allowed",
           "unsupported_media",
           "connection_too_slow",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "media",
         "x-max-body-bytes": 4096,
@@ -524070,7 +524881,8 @@
           "revision_required",
           "revision_mismatch",
           "rate_limited",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "media",
         "x-max-body-bytes": 4096,
@@ -524235,7 +525047,8 @@
           "playlist_capacity",
           "idempotency_key_reused",
           "rate_limited",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -524411,7 +525224,8 @@
           "playlist_capacity",
           "idempotency_key_reused",
           "rate_limited",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -524766,7 +525580,8 @@
           "playlist_capacity",
           "idempotency_key_reused",
           "rate_limited",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -528918,7 +529733,8 @@
           "idempotency_key_reused",
           "rate_limited",
           "operation_expired",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -529102,7 +529918,8 @@
           "playlist_capacity",
           "idempotency_key_reused",
           "rate_limited",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -529377,7 +530194,8 @@
           "rate_limited",
           "internal",
           "timeout",
-          "revision_required"
+          "revision_required",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -529698,7 +530516,8 @@
           "playlist_capacity",
           "idempotency_key_reused",
           "rate_limited",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -529872,7 +530691,8 @@
           "playlist_capacity",
           "idempotency_key_reused",
           "rate_limited",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -530466,7 +531286,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -530699,7 +531520,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -532953,7 +533775,8 @@
           "transcode_not_allowed",
           "unsupported_media",
           "source_unavailable",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "media",
         "x-max-body-bytes": 65536,
@@ -533015,7 +533838,8 @@
         "x-error-codes": [
           "unauthorized",
           "not_found",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-scope": "playback"
@@ -534852,7 +535676,8 @@
           "unsupported_selector",
           "queue_too_large",
           "queue_building",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 1024,
@@ -536702,7 +537527,8 @@
           "unsupported_selector",
           "queue_too_large",
           "queue_building",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "media",
         "x-max-body-bytes": 32768,
@@ -538528,7 +539354,8 @@
           "unsupported_selector",
           "queue_too_large",
           "queue_building",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-scope": "playback"
@@ -540135,7 +540962,8 @@
           "unsupported_selector",
           "queue_too_large",
           "queue_building",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 1024,
@@ -542187,7 +543015,8 @@
           "unsupported_selector",
           "queue_too_large",
           "queue_building",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "media",
         "x-max-body-bytes": 32768,
@@ -544039,7 +544868,8 @@
           "conversion_capacity",
           "transcode_not_allowed",
           "unsupported_media",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "media",
         "x-max-body-bytes": 1024,
@@ -545642,7 +546472,8 @@
           "prepared_expired",
           "prepared_canceled",
           "not_implemented",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "media",
         "x-max-body-bytes": 1024,
@@ -546327,7 +547158,8 @@
           "prepare_not_allowed",
           "conversion_capacity",
           "not_implemented",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "media",
         "x-max-body-bytes": 1024,
@@ -546455,7 +547287,8 @@
           "queue_building",
           "idempotency_key_required",
           "idempotency_key_reused",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 8192,
@@ -546582,7 +547415,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -546654,7 +547488,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -546734,7 +547569,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -546845,7 +547681,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -547002,7 +547839,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -549631,7 +550469,8 @@
           "revision_mismatch",
           "request_in_progress",
           "body_too_large",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "media",
         "x-max-body-bytes": 32768,
@@ -549772,7 +550611,8 @@
           "rate_limited",
           "personal_state_conflict",
           "idempotency_key_reused",
-          "operation_expired"
+          "operation_expired",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -550396,7 +551236,8 @@
           "revision_mismatch",
           "request_in_progress",
           "body_too_large",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "media",
         "x-max-body-bytes": 4096,
@@ -550464,7 +551305,8 @@
           "revision_mismatch",
           "request_in_progress",
           "body_too_large",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-scope": "playback"
@@ -551046,7 +551888,8 @@
           "revision_mismatch",
           "request_in_progress",
           "body_too_large",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "media",
         "x-max-body-bytes": 32768,
@@ -551259,7 +552102,8 @@
           "revision_mismatch",
           "request_in_progress",
           "body_too_large",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "media",
         "x-max-body-bytes": 4096,
@@ -551752,7 +552596,8 @@
           "revision_mismatch",
           "request_in_progress",
           "body_too_large",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "media",
         "x-max-body-bytes": 8192,
@@ -552558,7 +553403,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 262144,
@@ -552662,7 +553508,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-scope": "playback"
@@ -553061,7 +553908,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 262144,
@@ -553276,7 +554124,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 262144,
@@ -553484,7 +554333,8 @@
           "rate_limited",
           "receiver_key_mismatch",
           "revision_conflict",
-          "target_unavailable"
+          "target_unavailable",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 262144,
@@ -554296,7 +555146,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -554448,7 +555299,8 @@
           "not_permitted",
           "not_found",
           "revision_mismatch",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -556978,7 +557830,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -557382,7 +558235,8 @@
           "not_permitted",
           "not_found",
           "revision_mismatch",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -558100,7 +558954,8 @@
           "not_permitted",
           "not_found",
           "revision_mismatch",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -562878,7 +563733,8 @@
           "not_permitted",
           "not_found",
           "revision_mismatch",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -563282,7 +564138,8 @@
           "not_permitted",
           "not_found",
           "revision_mismatch",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -563821,7 +564678,8 @@
           "not_permitted",
           "not_found",
           "revision_mismatch",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -564223,7 +565081,8 @@
           "not_permitted",
           "not_found",
           "revision_mismatch",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -566622,7 +567481,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-scope": "playback"
@@ -567362,7 +568222,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-scope": "session"
@@ -567572,7 +568433,8 @@
           "invalid_request",
           "rate_limited",
           "setup_already_complete",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
@@ -567998,7 +568860,8 @@
           "unauthorized",
           "not_permitted",
           "rate_limited",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 16384,
@@ -568082,7 +568945,8 @@
           "invalid_request",
           "rate_limited",
           "setup_already_complete",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
@@ -568166,7 +569030,8 @@
           "invalid_request",
           "rate_limited",
           "setup_already_complete",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
@@ -568273,7 +569138,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
@@ -568469,7 +569335,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -569166,7 +570033,8 @@
           "not_found",
           "invalid_request",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 4096,
@@ -570074,7 +570942,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -570177,7 +571046,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -570288,7 +571158,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -570401,7 +571272,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -570695,7 +571567,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -570798,7 +571671,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,
@@ -584116,7 +584990,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -584388,7 +585263,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -584660,7 +585536,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -586147,7 +587024,8 @@
           "storage_allocation_recovery_required",
           "request_in_progress",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -586404,7 +587282,8 @@
           "storage_command_capacity",
           "storage_allocation_recovery_required",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -586508,7 +587387,8 @@
           "invalid_request",
           "administration_unavailable",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 8192,
@@ -586623,7 +587503,8 @@
           "source_credentials_required",
           "administration_unavailable",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 8192,
@@ -586735,7 +587616,8 @@
           "invalid_request",
           "administration_unavailable",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 8192,
@@ -586849,7 +587731,8 @@
           "source_credentials_required",
           "administration_unavailable",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 8192,
@@ -587178,7 +588061,8 @@
           "administration_unavailable",
           "request_in_progress",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -587327,7 +588211,8 @@
           "storage_operation_expired",
           "storage_command_capacity",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -587487,7 +588372,8 @@
           "storage_command_capacity",
           "request_in_progress",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -588443,7 +589329,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -588576,7 +589463,8 @@
           "source_credentials_required",
           "administration_unavailable",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -589542,7 +590430,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -590506,7 +591395,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -591374,7 +592264,8 @@
           "storage_executable_invalid",
           "storage_executable_too_old",
           "timeout",
-          "revision_required"
+          "revision_required",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 8192,
@@ -591531,7 +592422,8 @@
           "storage_executable_too_old",
           "internal",
           "timeout",
-          "revision_required"
+          "revision_required",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 8192,
@@ -593411,7 +594303,8 @@
           "administration_unavailable",
           "internal",
           "timeout",
-          "revision_required"
+          "revision_required",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -593879,7 +594772,8 @@
           "source_credentials_required",
           "administration_unavailable",
           "internal",
-          "timeout"
+          "timeout",
+          "writer_capacity"
         ],
         "x-lane": "default",
         "x-scope": "admin"
@@ -596495,7 +597389,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
-          "internal"
+          "internal",
+          "writer_capacity"
         ],
         "x-lane": "browsing",
         "x-max-body-bytes": 65536,

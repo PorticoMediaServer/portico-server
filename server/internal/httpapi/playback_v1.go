@@ -11,6 +11,7 @@ import (
 	"portico.local/apikit/apierror"
 	"portico.local/server/internal/access"
 	"portico.local/server/internal/catalog"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/hosted"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/playback"
@@ -38,6 +39,9 @@ func callerFrom(ctx context.Context) v1Caller {
 func v1ErrorDefinitions() []apierror.Definition {
 	return []apierror.Definition{
 		{Code: "timeout", Status: 503, Message: "The operation timed out. Retry shortly.", Retry: apierror.SameRequest},
+		// The writer refused the change before it began: nothing was saved, and
+		// sending the same request again after Retry-After is safe.
+		{Code: "writer_capacity", Status: 503, Message: "The server is busy saving other changes. Try again shortly.", Retry: apierror.SameRequest},
 		{Code: "access_refused", Status: 403, Message: identity.ErrAccessRefused.Error(), Retry: apierror.Never},
 		{Code: "move_collision", Status: 409, Message: identity.ErrMoveCollision.Error(), Retry: apierror.Never},
 		{Code: "move_confirmation", Status: 409, Message: identity.ErrMoveConfirmation.Error(), Retry: apierror.Never},
@@ -101,7 +105,18 @@ func v1Catalogue() *apierror.Registry {
 	if err != nil {
 		panic(err)
 	}
+	catalogue.Translate(writerCapacity)
 	return catalogue
+}
+
+// writerCapacity names the typed answer for a write the database writer
+// refused before it began (a full queue) or that met a lock after admission.
+// Retry-After is the writer's own estimate of when its queue drains, 1-30 s.
+func writerCapacity(err error) *apierror.Error {
+	if !dbwork.Overloaded(err) {
+		return nil
+	}
+	return &apierror.Error{Code: "writer_capacity", RetryAfterSeconds: dbwork.WriteGate().RetryAfterSeconds(), Cause: err}
 }
 
 // v1Error maps a domain or service error to a registered API error. Restricted

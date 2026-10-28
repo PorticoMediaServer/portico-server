@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -43,6 +44,8 @@ type conn struct {
 	inMemory      bool
 	progress      *progressState
 	progressToken uintptr
+	// vmSteps is the VM steps of every finished statement (VMOperations).
+	vmSteps atomic.Int64
 
 	// errorRcMode is the opt-in error-string reporting mode toggled by
 	// the _error_rc DSN parameter. When true, error strings synthesised
@@ -676,6 +679,7 @@ func (c *conn) bindParameterCount(pstmt uintptr) (_ int, err error) {
 //
 //	int sqlite3_finalize(sqlite3_stmt *pStmt);
 func (c *conn) finalize(pstmt uintptr) error {
+	c.harvestVMSteps(pstmt)
 	if rc := sqlite3.Xsqlite3_finalize(c.tls, pstmt); rc != sqlite3.SQLITE_OK {
 		return c.errstr(rc)
 	}

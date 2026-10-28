@@ -680,8 +680,19 @@ func (s *Service) CleanupArtwork(ctx context.Context) error {
 	if s.cacheRoot == "" {
 		return nil
 	}
-	if _, err := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `DELETE FROM artwork_previews WHERE created_at<?`, s.publicationTime().Add(-7*24*time.Hour).Format(time.RFC3339Nano)); err != nil {
-		return err
+	// Expired previews go in bounded batches, each its own transaction.
+	cutoff := s.publicationTime().Add(-7 * 24 * time.Hour).Format(time.RFC3339Nano)
+	for {
+		result, err := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `DELETE FROM artwork_previews WHERE rowid IN(SELECT rowid FROM artwork_previews WHERE created_at<? LIMIT 128)`, cutoff)
+		if err != nil {
+			return err
+		}
+		if n, _ := result.RowsAffected(); n < 128 {
+			break
+		}
+		if !dbwork.Yield(ctx) {
+			return ctx.Err()
+		}
 	}
 	var running bool
 	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM artwork_jobs WHERE status='running')`).Scan(&running); err != nil || running {

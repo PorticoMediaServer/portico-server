@@ -14,8 +14,11 @@ import (
 const (
 	pruneListingAge    = 24 * time.Hour
 	pruneListingWindow = 32
-	pruneEntryBatch    = 1024
-	pruneOrphanWindow  = 64
+	// pruneEntryBatch is how many entries one transaction deletes across
+	// all the listings of its window, so a window of 32 small listings stays
+	// inside a background write plan as well as one large listing does.
+	pruneEntryBatch   = 96
+	pruneOrphanWindow = 64
 )
 
 // listingPruneCursor is the last (created_at,rowid) the window reached; a
@@ -90,6 +93,7 @@ func (s *Service) pruneExpiredListings(ctx context.Context) bool {
 	if readErr != nil {
 		return false
 	}
+	entryBudget := int64(pruneEntryBatch)
 	for _, l := range page {
 		// Same activity predicate as the unbounded sweep: a pending session's
 		// snapshots are kept regardless of wall-clock age.
@@ -101,12 +105,12 @@ func (s *Service) pruneExpiredListings(ctx context.Context) bool {
 			s.pruneListings = listingPruneCursor{started: true, createdAt: l.createdAt, rowid: l.rowid}
 			continue
 		}
-		result, execErr := gated.Tx().ExecContext(ctx, `DELETE FROM remote_listing_entries WHERE rowid IN(SELECT rowid FROM remote_listing_entries WHERE listing_id=? LIMIT 1024)`, l.id)
+		result, execErr := gated.Tx().ExecContext(ctx, `DELETE FROM remote_listing_entries WHERE rowid IN(SELECT rowid FROM remote_listing_entries WHERE listing_id=? LIMIT ?)`, l.id, entryBudget)
 		if execErr != nil {
 			return false
 		}
 		deleted, _ := result.RowsAffected()
-		if deleted == pruneEntryBatch {
+		if entryBudget -= deleted; entryBudget == 0 {
 			// Entries remain: resume just before this listing next wake.
 			s.pruneListings = listingPruneCursor{started: true, createdAt: l.createdAt, rowid: l.rowid - 1}
 			return gated.Commit() == nil

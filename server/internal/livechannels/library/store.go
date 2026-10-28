@@ -38,16 +38,11 @@ func auth(ctx context.Context, tx *sql.Tx, a Authority, owner bool) (Scope, erro
 
 // transaction runs builder work as foreground (interactive) writes: the write
 // gate orders them ahead of background scans and every transaction takes its
-// lock at BEGIN, so a snapshot conflict can't happen. SQLITE_BUSY can still
-// reach here when a writer outside the gate holds the lock past the busy
-// timeout; the work is retried once then (it is rolled back, so a retry is
-// safe) rather than answering 503.
+// lock at BEGIN, so a snapshot conflict can't happen. One admission is one
+// attempt: a lock met after admission is a defect or an outside opener, and
+// answers as the retryable writer_capacity for the client to send again.
 func (s *Store) transaction(ctx context.Context, a Authority, owner bool, work func(*sql.Tx, Scope) error) error {
-	err := s.transactionOnce(ctx, a, owner, work)
-	if kind := dbwork.Classify(err); err != nil && (kind == dbwork.KindBusy || kind == dbwork.KindLocked) && ctx.Err() == nil {
-		err = s.transactionOnce(ctx, a, owner, work)
-	}
-	return err
+	return s.transactionOnce(ctx, a, owner, work)
 }
 
 func (s *Store) transactionOnce(ctx context.Context, a Authority, owner bool, work func(*sql.Tx, Scope) error) error {

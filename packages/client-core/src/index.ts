@@ -1,5 +1,7 @@
 import {linkAbortSignals, throwIfAborted} from './abort-lifetime.ts';
+import {WRITER_CAPACITY, retryWriterCapacity} from './writer-capacity.ts';
 export {linkAbortSignals, throwIfAborted} from './abort-lifetime.ts';
+export {WRITER_CAPACITY, WRITER_RETRY_BUDGET_MS, retryWriterCapacity, writerRetryDelayMs} from './writer-capacity.ts';
 export * from './reading-mark-all.ts';
 export {contentEntrySubject} from './presentation/content-entry-subject.ts';
 export * from './reading-reread.ts';
@@ -175,6 +177,12 @@ export function retryAfterSecondsFrom(value: string | null, now = Date.now()): n
   if (!Number.isFinite(at)) return undefined;
   const seconds = Math.ceil((at - now) / 1000);
   return seconds > 0 ? seconds : undefined;
+}
+
+/** A writer refusal to wait out and resend: the server said nothing was saved. */
+function writerRefusal(error: unknown): {retryAfterMs?: number} | undefined {
+  if (!(error instanceof ApiError) || error.code !== WRITER_CAPACITY || !error.retryable) return undefined;
+  return {retryAfterMs: error.retryAfterSeconds === undefined ? undefined : error.retryAfterSeconds * 1000};
 }
 
 /** The HTTP status an API failure carries, whichever API raised it (the v1 playback client has its own error class). */
@@ -568,7 +576,12 @@ export class HttpLocalApi {
     signal?: AbortSignal
   ): Promise<T> {
     // No request waits for ever: one the server never answers fails as timed out (see `requestDeadlineMs`).
-    return withinDeadline(requestDeadlineMs(path, method), signal, bounded => this.answered<T>(path, method, body, bounded));
+    // A change the writer refused before it began is sent again, not dropped (`writer-capacity.ts`).
+    return retryWriterCapacity(
+      () => withinDeadline(requestDeadlineMs(path, method), signal, bounded => this.answered<T>(path, method, body, bounded)),
+      writerRefusal,
+      signal,
+    );
   }
   private async answered<T>(path: string, method: string, body: unknown, signal: AbortSignal): Promise<T> {
     // A 401 means the server did not act on the request, so one retry with a renewed token is safe for any method.

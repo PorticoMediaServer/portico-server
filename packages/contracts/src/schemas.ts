@@ -27473,6 +27473,11 @@ export const schemas = {
             },
             "type": "array"
           },
+          "heavyReads": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "slowReads": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -27525,6 +27530,7 @@ export const schemas = {
           "transactions",
           "acquisitions",
           "slowReads",
+          "heavyReads",
           "byClass",
           "statementCache"
         ],
@@ -27703,6 +27709,25 @@ export const schemas = {
           "queued",
           "refused",
           "queueWaitMillis"
+        ],
+        "type": "object"
+      },
+      "ungatedWrites": {
+        "properties": {
+          "reader": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "writer": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "writer",
+          "reader"
         ],
         "type": "object"
       },
@@ -28140,12 +28165,227 @@ export const schemas = {
           "queueAgeMillis"
         ],
         "type": "object"
+      },
+      "writePlans": {
+        "properties": {
+          "largest": {
+            "properties": {
+              "pages": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "rows": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "vmOps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "rows",
+              "pages",
+              "vmOps"
+            ],
+            "type": "object"
+          },
+          "measured": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "overruns": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "overrunsByClass": {
+            "additionalProperties": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "overrunsByDimension": {
+            "additionalProperties": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "recent": {
+            "items": {
+              "properties": {
+                "atMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "budget": {
+                  "properties": {
+                    "pages": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "rows": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "vmOps": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "rows",
+                    "pages",
+                    "vmOps"
+                  ],
+                  "type": "object"
+                },
+                "class": {
+                  "type": "string"
+                },
+                "cost": {
+                  "properties": {
+                    "pages": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "rows": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "vmOps": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "rows",
+                    "pages",
+                    "vmOps"
+                  ],
+                  "type": "object"
+                },
+                "over": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "plan": {
+                  "type": "string"
+                },
+                "site": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "site",
+                "class",
+                "plan",
+                "over",
+                "cost",
+                "budget",
+                "atMs"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "measured",
+          "overruns",
+          "overrunsByClass",
+          "overrunsByDimension",
+          "largest",
+          "recent"
+        ],
+        "type": "object"
+      },
+      "writerAdmission": {
+        "properties": {
+          "backgroundQueued": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "busyAfterAdmission": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "busyAfterAdmissionByClass": {
+            "additionalProperties": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "capacity": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "deferred": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "refused": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "refusedByClass": {
+            "additionalProperties": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "userQueued": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "capacity",
+          "userQueued",
+          "backgroundQueued",
+          "deferred",
+          "refused",
+          "refusedByClass",
+          "busyAfterAdmission",
+          "busyAfterAdmissionByClass"
+        ],
+        "type": "object"
       }
     },
     "required": [
       "pool",
       "readSnapshots",
       "writeGate",
+      "writerAdmission",
+      "writePlans",
+      "ungatedWrites",
       "pressure",
       "health",
       "httpLanes",

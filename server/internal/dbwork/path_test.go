@@ -39,6 +39,12 @@ func TestPolicyDSNKeepsLiteralPathSeparateFromQuery(t *testing.T) {
 				t.Fatalf("writer=%v path=%q decoded=%q err=%v", writer, path, literal, err)
 			}
 			params, err := url.ParseQuery(query)
+			// The writer DSN also names its pool for the observed driver, which
+			// strips the marker before SQLite sees it.
+			if writer && (params.Get(roleParameter) != "writer" || len(params) != 3) {
+				t.Fatalf("writer DSN does not name its pool: %q", query)
+			}
+			params.Del(roleParameter)
 			if err != nil || len(params) != 2 || params.Get("_txlock") != "immediate" || len(params["_pragma"]) != 8 {
 				t.Fatalf("filename changed policy parameters: %q: %v", query, err)
 			}

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/notify"
 	"portico.local/server/internal/persistence"
@@ -555,5 +556,42 @@ func TestNoticeBroadcastPagesAndResumesBeyondFiveHundredProfiles(t *testing.T) {
 	var count int
 	if err := s.DB.QueryRow(`SELECT count(*) FROM notification_records WHERE source='broadcast'`).Scan(&count); err != nil || count != 522 {
 		t.Fatalf("duplicate/missing notices: %d %v", count, err)
+	}
+}
+
+// Retention removes a backlog larger than one batch in bounded transactions,
+// keeps what has not expired, and still clears every expired notification.
+func TestRetentionClearsABacklogInBoundedBatches(t *testing.T) {
+	s, _, member, _ := noticeFixture(t)
+	ctx := context.Background()
+	now := s.now()
+	backlog := retentionBatch*3 + 5
+	for i := 0; i < backlog; i++ {
+		if _, e := s.DB.Exec(`INSERT INTO console_receipts(scope,key,digest,result,expires_ms) VALUES('test',?,'d','{}',?)`, fmt.Sprintf("expired-%d", i), now-1); e != nil {
+			t.Fatal(e)
+		}
+	}
+	if _, e := s.DB.Exec(`INSERT INTO console_receipts(scope,key,digest,result,expires_ms) VALUES('test','live','d','{}',?)`, now+60_000); e != nil {
+		t.Fatal(e)
+	}
+	for i := 0; i < retentionBatch+3; i++ {
+		draft := memberDraft(member)
+		draft.DedupeKey, draft.ExpiresAt = fmt.Sprintf("download:expiring-%d", i), now+1000
+		s.raiseForTest(t, draft)
+	}
+	s.Now = func() time.Time { return time.UnixMilli(now + 5000).UTC() }
+	dbwork.ResetPlans()
+	if e := s.Prune(ctx); e != nil {
+		t.Fatal(e)
+	}
+	var receipts, notices int
+	if e := s.DB.QueryRow(`SELECT count(*) FROM console_receipts WHERE scope='test'`).Scan(&receipts); e != nil || receipts != 1 {
+		t.Fatalf("receipts left %d: %v", receipts, e)
+	}
+	if e := s.DB.QueryRow(`SELECT count(*) FROM notification_records WHERE expires_ms<=?`, now+5000).Scan(&notices); e != nil || notices != 0 {
+		t.Fatalf("expired notices left %d: %v", notices, e)
+	}
+	if plans := dbwork.Plans(); plans.Overruns != 0 || plans.Largest.Rows > retentionBatch*10 {
+		t.Fatalf("a retention batch was not bounded: %+v", plans)
 	}
 }

@@ -38,10 +38,11 @@ import (
 // flip without waiting for the next scan) and republishes when the policy
 // returns to prefer.
 
-// audioGenreBatch is how many items one catch-up transaction covers. The
-// projection is a small read-compare-write per item, so the batch stays small
-// enough that foreground writes never queue long behind it.
-const audioGenreBatch = 500
+// audioGenreBatch is how many items one catch-up transaction covers. Each item
+// is a read-compare-write that changes about seventeen rows and runs about
+// fifteen thousand VM steps, so eight keep a batch inside a background write
+// plan and foreground writes never queue long behind it.
+const audioGenreBatch = 8
 
 // AudioLocalGenreProjectionDue lists the audio libraries whose effective local
 // genre projection was last completed under a different policy revision, or

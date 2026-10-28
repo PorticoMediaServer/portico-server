@@ -10,38 +10,56 @@ import (
 )
 
 // A paced Worker sizes each domain's batch from its recent cost per unit:
-// cheap units fill a batch up to BatchMax, expensive ones shrink it towards
-// the floor, and an unpaced Worker keeps the caller's fixed limit.
+// an unknown domain starts with one unit, cheap units double a batch up to
+// BatchMax, expensive ones shrink it towards the floor, units that change many
+// rows are held to the write plan, and an unpaced Worker keeps the caller's
+// fixed limit.
 func TestBatchesAreSizedToTheHoldTarget(t *testing.T) {
 	w := NewWorker(nil)
 	if got := w.batchFor(DomainSearch, 500); got != 500 {
 		t.Fatalf("unpaced batch %d, want the caller's limit", got)
 	}
 	w.PaceToHold(20 * time.Millisecond)
-	if got := w.batchFor(DomainSearch, BatchMax); got != BatchLimit {
-		t.Fatalf("first paced batch %d, want %d", got, BatchLimit)
+	if got := w.batchFor(DomainSearch, BatchMax); got != 1 {
+		t.Fatalf("first paced batch %d, want one unit", got)
 	}
-	w.observeBatch(DomainSearch, 8, 8*100*time.Microsecond) // 0.1 ms a unit
-	if got := w.batchFor(DomainSearch, BatchMax); got != BatchMax {
-		t.Fatalf("cheap units: batch %d, want %d", got, BatchMax)
+	// Cheap units (0.1 ms a unit) grow the batch by doubling up to BatchMax.
+	for _, want := range []int{16, 32, 64} {
+		w.observeBatch(DomainSearch, want/2, time.Duration(want/2)*100*time.Microsecond, int64(want/2))
+		if got := w.batchFor(DomainSearch, BatchMax); got != want {
+			t.Fatalf("cheap units: batch %d, want %d", got, want)
+		}
 	}
 	if got := w.batchFor(DomainSearch, 16); got != 16 {
 		t.Fatalf("batch %d exceeds the caller's limit", got)
 	}
 	for i := 0; i < 8; i++ {
-		w.observeBatch(DomainBrowseRows, 2, 2*50*time.Millisecond) // 50 ms a unit
+		w.observeBatch(DomainBrowseRows, 2, 2*50*time.Millisecond, 2) // 50 ms a unit
 	}
 	if got := w.batchFor(DomainBrowseRows, BatchMax); got != batchFloor {
 		t.Fatalf("expensive units: batch %d, want the floor %d", got, batchFloor)
 	}
 	for i := 0; i < 8; i++ {
-		w.observeBatch(DomainBrowseRows, 10, 10*time.Millisecond) // 1 ms a unit
+		w.observeBatch(DomainBrowseRows, 10, 10*time.Millisecond, 10) // 1 ms a unit
 	}
 	if got := w.batchFor(DomainBrowseRows, BatchMax); got < 16 || got > 24 {
 		t.Fatalf("1 ms units: batch %d, want about 20", got)
 	}
 	if got := w.batchFor(DomainSearch, BatchMax); got != BatchMax {
 		t.Fatal("one domain's cost changed another's batch")
+	}
+	// Cheap units that each change many rows are bounded by the write plan's
+	// 160 rows instead: 40 rows a unit fits four, 400 fits one.
+	for i := 0; i < 8; i++ {
+		w.observeBatch(DomainSearch, 8, 8*100*time.Microsecond, 8*40)
+	}
+	if got := w.batchFor(DomainSearch, BatchMax); got != 4 {
+		t.Fatalf("40-row units: batch %d, want 4", got)
+	}
+	// One spike shrinks the next batch at once.
+	w.observeBatch(DomainSearch, 1, 100*time.Microsecond, 400)
+	if got := w.batchFor(DomainSearch, BatchMax); got != 1 {
+		t.Fatalf("400-row units: batch %d, want 1", got)
 	}
 }
 
