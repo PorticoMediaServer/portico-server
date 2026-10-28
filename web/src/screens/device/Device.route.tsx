@@ -57,7 +57,7 @@ function LocalDevicePage({captured, location}: {captured: Captured; location: Lo
     held.live = false;original.current = undefined;held.proof.dispose();display(undefined);
     void router.navigate({to: '/'}).catch(error => {if (context.isCurrent()) binding.home.effects.reportError(error);});
   };
-  if (!held) return failed ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
+  if (!held) return failed ? <StateView variant="page" title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
     primary={{id: 'home', label: t('next.states.goHome'), onPress: () => {
       if (context.isCurrent() && router.state.location === location) void router.navigate({to: '/'}).catch(binding.home.effects.reportError);
     }}}/> : null;

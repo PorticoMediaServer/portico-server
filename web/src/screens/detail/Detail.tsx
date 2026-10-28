@@ -445,4 +445,4 @@ export function TitleRow({heading, subtitle, entries, binding, guard, pagination
   const square = entries.every(entry => ['album', 'book'].includes(entry.kind));
   return pagination ? <PagedShelf {...props} hasMore={!!pagination.cursor} continuation={pagination.cursor} loading={pagination.loading} onMore={pagination.onMore} cardWidth={width < 600 ? square ? 132 : 118 : 190} artworkRatio={square ? 1 : 2 / 3} /> : <Shelf {...props} />;
 }
-export function ScreenFailure({retry}: {retry: () => void}) { return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: retry}} />; }
+export function ScreenFailure({retry}: {retry: () => void}) { return <StateView variant="page" title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: retry}} />; }

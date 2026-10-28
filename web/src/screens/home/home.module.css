@@ -1,7 +1,7 @@
 .home { min-height: 100dvh; }
 /* The frame's hero wash is the full-height blurred backdrop; the shared treatment fades it
    below 30%, which darkens the drawn lower hero. Desktop Home restores the drawn wash. */
-.heroAmbient [class*='washLayer'] { -webkit-mask-image: none; mask-image: none; }
+.heroAmbient [class*='washLayer'] { -webkit-mask-image: none; mask-image: none; overflow-x: clip; overflow-y: visible; }
 /* mock.html#extras: a poster-only hero uses its poster for the wash and a sharp side poster. */
 .heroPoster { position: absolute; inset: 0; overflow: hidden; background: var(--color-ink); }
 .heroPosterWash { position: absolute; inset: -20%; width: 140%; height: 140%; opacity: .55; }
@@ -13,8 +13,10 @@
 .heroPanelBackdrop img { object-position: center 30%; }
 .rows { position: relative; z-index: var(--layer-content); padding-bottom: 72px; }
 .rows[data-with-hero='true'] { margin-top: -40px; }
-.rowSlot + .rowSlot { margin-top: 44px; }
-.rows > [data-music-mixes]:not(:first-child), .rows > [data-music-mixes] + .rowSlot { margin-top:44px; }
+/* Rows space only from the row drawn above them. An empty slot (a row with nothing yet) adds
+   nothing, so the first drawn row always rises 40px into the hero as the frame does. */
+.rowSlot:not(:empty) ~ .rowSlot:not(:empty) { margin-top: 44px; }
+.rows > [data-music-mixes]:not(:first-child), .rows > [data-music-mixes] ~ .rowSlot:not(:empty) { margin-top:44px; }
 /* Listen next's shorter square cards centre in the line set by its drawn continuation card. */
 .rowSlot[data-home-row='listen_next'] [class*='track'] { align-items: center; }
 .collection { margin: 0 var(--shell-gutter, var(--gutter-desktop)) 0; }
@@ -33,14 +35,14 @@
   .scaledRanked [data-card-kind='poster'] { width: calc(116px * var(--home-card-scale)); }
   .rows { padding-bottom: 32px; }
   .rows[data-with-hero='true'] { margin-top: 0; }
-  .rowSlot + .rowSlot { margin-top: 28px; }
-  .rows > [data-music-mixes]:not(:first-child), .rows > [data-music-mixes] + .rowSlot { margin-top:28px; }
+  .rowSlot:not(:empty) ~ .rowSlot:not(:empty) { margin-top: 28px; }
+  .rows > [data-music-mixes]:not(:first-child), .rows > [data-music-mixes] ~ .rowSlot:not(:empty) { margin-top:28px; }
   .collection { margin: 0 20px 0; }
   .slowNotice { top: 104px; max-width: calc(100% - 16px); height: auto; min-height: 36px; padding: 8px 12px; white-space: normal; font-size: calc(var(--type-body-size) - 1.5px); }
 }
 
 @media (min-width: 600px) and (max-width: 1023px) {
   .home[data-size-class='medium'] .rows[data-with-hero='true'] { margin-top: -6px; }
-  .home[data-size-class='medium'] .rowSlot + .rowSlot { margin-top: 30px; }
-  .home[data-size-class='medium'] .rows > [data-music-mixes]:not(:first-child), .home[data-size-class='medium'] .rows > [data-music-mixes] + .rowSlot { margin-top: 30px; }
+  .home[data-size-class='medium'] .rowSlot:not(:empty) ~ .rowSlot:not(:empty) { margin-top: 30px; }
+  .home[data-size-class='medium'] .rows > [data-music-mixes]:not(:first-child), .home[data-size-class='medium'] .rows > [data-music-mixes] ~ .rowSlot:not(:empty) { margin-top: 30px; }
 }

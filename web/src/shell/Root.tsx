@@ -25,6 +25,8 @@ function RouteContent() {
     return typeof entry === 'string' && entry.length ? JSON.stringify([state.location.href, entry]) : undefined;
   }});
   const commits = useMemo<RouteFadeCommits>(() => { /* Preserve the original ownership/invalidation keys. */ void owner; return ({subscribe: listener => router.subscribe('onRendered', event => {
+    // Same-page (query-only) changes keep the page still, as with View Transitions.
+    if (!event.pathChanged) return;
     const entry = event.toLocation.state.__TSR_key;
     if (typeof entry === 'string' && entry.length) listener(JSON.stringify([event.toLocation.href, entry]));
   })}); }, [router, owner]);

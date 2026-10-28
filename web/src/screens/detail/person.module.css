@@ -17,6 +17,9 @@
 .hero { position: relative; height: 600px; overflow: hidden; }
 
 .wash { position: absolute; inset: 0; pointer-events: none; }
+/* desktop-detail#person: the 600px hero fades to ink at its own foot. The shared artist wash is
+   640px tall, so without this its fade stopped short and the hero ended on a line (H04). */
+.hero .wash { inset: 0; height: auto; }
 
 .copy { position: absolute; z-index: var(--layer-art-label); left: 64px; bottom: 44px; width: 720px; }
 
@@ -61,6 +64,8 @@
 .chips > button[data-variant='quick'] { height: 38px; }
 
 .groups { display: flex; flex-wrap: wrap; gap: 72px; padding: 26px 64px 0; }
+/* H05: credits that are not grouped by role sit in the same page gutter as the groups and the toolbar. */
+.credits { padding: 26px 64px 0; }
 
 .group { min-width: 0; }
 

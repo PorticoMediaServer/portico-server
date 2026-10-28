@@ -11,7 +11,7 @@ import styles from './layout.module.css';
 export type RowProps = Omit<HTMLAttributes<HTMLElement>, 'title'> & {heading: ReactNode; subtitle?: ReactNode; actions?: ReactNode; actionsPlacement?: 'trailing' | 'inline'; onSeeAll?: () => void; seeAllHref?: string; seeAllLabel?: string; platform?: LayoutPlatform; sizeClass?: 'medium'};
 export function Row({heading, subtitle, actions, actionsPlacement = 'trailing', onSeeAll, seeAllHref, seeAllLabel = defaultI18n.t('next.layout.seeAll'), platform = 'desktop', sizeClass, children, className, ...props}: RowProps) {
   const id = useId(), type = platformType(platform);
-  return <section {...props} className={[styles.row, className].filter(Boolean).join(' ')} data-platform={platform} data-size-class={sizeClass} aria-labelledby={id}>
+  return <section {...props} className={[styles.row, className].filter(Boolean).join(' ')} data-layout-row data-platform={platform} data-size-class={sizeClass} aria-labelledby={id}>
     <header className={styles.rowHead}><h2 id={id} style={{...layoutType(type.rowHeading), ...(sizeClass === 'medium' ? {fontSize: 21} : {})}}>{heading}</h2>
       {subtitle && <span className={styles.rowSubtitle} style={layoutType(type.rowSubtitle)}>{subtitle}</span>}
       {actions && <div className={styles.rowActions} data-placement={actionsPlacement}>{actions}</div>}

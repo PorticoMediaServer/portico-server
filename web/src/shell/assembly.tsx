@@ -124,7 +124,7 @@ export const assembleShellBindings: ShellAssembler = async context => {
           const item = document && homePlaybackItem(document, entry, target);
           if (!item) throw new Error('stale-home-playback-target');
           await player().playback.play({context: currentHomeContext(), items: [item], signal: life.signal});
-        }, openEntry: entry => {const destination = entryDestination(entry);void navigateArtworkEntry(entry, destination, artworkScope, current, current, manual => router.navigate({...destination, ...(manual ? {viewTransition: false} : {})})).catch(feedback.reportError);}, openSeeAll: target => { void router.navigate(seeAllDestination(target)).catch(feedback.reportError); },
+        }, openEntry: entry => {const destination = entryDestination(entry);void navigateArtworkEntry(entry, destination, artworkScope, current, current, manual => router.navigate({...destination, ...(manual ? {viewTransition: false} : {})})).catch(feedback.reportError);}, entryHref: entry => { try { return router.buildLocation(entryDestination(entry)).href; } catch { return undefined; } }, openSeeAll: target => { void router.navigate(seeAllDestination(target)).catch(feedback.reportError); },
           openMore: (row, entry, element) => player().selection.openMore(row, entry, element), reportError: feedback.reportError,
           openHome: () => {void router.navigate({to: '/'}).catch(feedback.reportError);},
           playChannel: async channel => {

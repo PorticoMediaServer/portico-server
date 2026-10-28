@@ -72,7 +72,7 @@ export function LibraryDiscoveryScreen({service, route, header, empty, artwork, 
   const {wrap: wrapCard, menu: cardMenu} = useLibraryCardMenu({admission, queryRevision: snapshot.generation});
   // The library frame is already known while its sections fail to load; keep it and put the
   // failure and its retry in place of the sections.
-  if (!snapshot.projection && snapshot.phase === 'error') return <>{header}<StateView title={defaultI18n.t('next.states.pageFailed')} body={defaultI18n.t('next.states.pageFailedBody')}
+  if (!snapshot.projection && snapshot.phase === 'error') return <>{header}<StateView variant="page" title={defaultI18n.t('next.states.pageFailed')} body={defaultI18n.t('next.states.pageFailedBody')}
     primary={{id: 'retry', label: defaultI18n.t('next.states.tryAgain'), onPress: () => {void service.retry();}}}/></>;
   // The real render order over the merged shelves: the music continuation first,
   // then the rest. A card's registration position is its offset in that order, so

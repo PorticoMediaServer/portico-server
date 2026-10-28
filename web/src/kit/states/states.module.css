@@ -87,6 +87,10 @@
 .landscapeDetails .details { width: auto; margin: 8px 0 0; background: rgba(7,16,24,.5); }
 .landscapeDetails [data-owner-diagnostics] > div:first-child { padding: 12px 8px 4px 18px; }
 .inline { position: relative; font-family: var(--font); color: var(--color-text); line-height: normal; }
+/* states.html#5: a page whose body failed keeps the frame and puts the state at the page gutter.
+   As the route's first content it also clears the top bar. */
+.page { max-width: calc(620px + 2 * var(--shell-gutter, 64px)); padding: 40px var(--shell-gutter, 64px) 72px; }
+:global([data-route-content]) > .page:first-child { padding-top: calc(var(--shell-top, 0px) + 72px); }
 .inline h1 { font-size: 30px; line-height: 1.08; letter-spacing: -.035em; margin-bottom: 10px; text-shadow: none; }
 .inline .body { font-size: 15px; line-height: 1.5; margin-bottom: 16px; }
 .inline .stateIcon { width: 54px; height: 54px; margin-bottom: 18px; }

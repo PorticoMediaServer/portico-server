@@ -9,7 +9,7 @@ function clock() {
   let now = 0, next = 1;
   const timers = new Map<number, {at: number; fn: () => void}>();
   return {
-    env: {setTimer: (fn: () => void, ms: number) => { const id = next++; timers.set(id, {at: now + Math.max(0, ms), fn}); return id; }, clearTimer: (id: unknown) => { timers.delete(id as number); }, now: () => now, random: () => 0},
+    env: {setTimer: (fn: () => void, ms: number) => { const id = next++; timers.set(id, {at: now + Math.max(0, ms), fn}); return id; }, clearTimer: (id: unknown) => { timers.delete(id as number); }, now: () => now, random: () => 0, contentEveryMs: 0},
     pending: () => timers.size,
     async advance(ms: number) {
       const end = now + ms;
@@ -50,6 +50,24 @@ test('a document is read again only when something it depends on moved', async (
   hub.accept(library('films', '2', '9'));
   await c.advance(1000);
   assert.equal(films, 1);
+});
+
+test('a library being scanned is read again at a steady pace, not on every hint', async () => {
+  const c = clock(), hub = new FreshnessHub({...c.env, contentEveryMs: 5000});
+  let reads = 0;
+  const home = hub.document({dependencies: [dependsOn.content()], revalidate: async () => { reads++; }});
+  home.setOpen(true);
+  // A lone change after a quiet spell is read as soon as the hints are gathered.
+  hub.accept(library('films', '1'));
+  await c.advance(1000);
+  assert.equal(reads, 1);
+  // A scan moves the library twice a second for ten seconds: one read per five seconds, not twenty.
+  for (let i = 2; i <= 21; i++) { hub.accept(library('films', String(i))); await c.advance(500); }
+  assert.equal(reads, 3, 'the hints inside one spacing are answered together');
+  await c.advance(5000);
+  assert.equal(reads, 4, 'what moved during the last spacing is still read once it ends');
+  await c.advance(60_000);
+  assert.equal(reads, 4, 'nothing moved after that');
 });
 
 test('hints that arrive together are answered by one read, and every library moves the any-library dependency', async () => {

@@ -95,6 +95,11 @@
 .expandedName > span { font-size: 14px; font-weight: 700; color: var(--color-accent-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .expandedName svg { flex: none; color: var(--browse-muted); }
 .fieldContent { display: flex; flex-direction: column; gap: 12px; }
+/* H10: a desktop field opens as a menu-like surface under its tile (the menu recipe: raised glass,
+   14px radius, grows from what was clicked); the tile stays in the grid and shows it is open. */
+.fieldPopover.fieldPopover { padding: 14px 16px 16px; }
+.fieldPopover .expandedHeading { margin-bottom: 12px; }
+.collapsedField[data-open] .fieldTile { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent-strong) 45%, transparent); }
 .facetChips { display: flex; flex-wrap: wrap; gap: 8px; }
 .facetChips > button { height: 34px; padding: 0 12px; border-radius: 17px; font-size: 14px; font-weight: 600; gap: 7px; }
 .facetChips .excludedFacet { color: var(--color-record); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-record) 45%, transparent); text-decoration: line-through; text-decoration-thickness: 1.5px; }

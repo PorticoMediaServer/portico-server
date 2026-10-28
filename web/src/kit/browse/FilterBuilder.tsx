@@ -1,9 +1,10 @@
-import {useId, useState, type ReactNode} from 'react';
+import {useId, useRef, useState, type ReactNode, type Ref} from 'react';
 import {defaultI18n} from '@i18n';
 import type {BrowseFieldCapability} from '@core/browse';
 import type {BrowseToolbarModel} from '@core/presentation/kit-model';
 import {Button, Segmented, TextField} from '../controls';
 import {Icon} from '../Icon';
+import {Popover} from '../overlays';
 import type {BrowseLabels, BrowsePlatform, FacetSelection, FacetValue, FilterFieldChange, FilterFieldState, FilterMatch} from './types';
 import styles from './browse.module.css';
 import {nextFacetSelection} from './model';
@@ -11,8 +12,8 @@ import {nextFacetSelection} from './model';
 const t = defaultI18n.t;
 type ToolbarGroupId = BrowseToolbarModel['groups'][number]['id'];
 export type FieldTileProps = Readonly<{label: string; summary?: ReactNode; active?: boolean; expanded?: boolean; forward?: boolean; controls?: string; onClick: () => void; className?: string}>;
-export function FieldTile({label, summary, active = false, expanded = false, forward = false, controls, onClick, className}: FieldTileProps) {
-  return <button type="button" className={[styles.fieldTile, className].filter(Boolean).join(' ')} data-active={active || undefined} aria-expanded={expanded} aria-controls={controls} onClick={onClick}>
+export function FieldTile({label, summary, active = false, expanded = false, forward = false, controls, onClick, className, tileRef}: FieldTileProps & {tileRef?: Ref<HTMLButtonElement>}) {
+  return <button type="button" ref={tileRef} className={[styles.fieldTile, className].filter(Boolean).join(' ')} data-active={active || undefined} aria-expanded={expanded} aria-controls={controls} onClick={onClick}>
     <span className={styles.fieldLabel}>{label}</span><span className={styles.fieldSummary}>{summary ?? t('next.browse.any')}</span><Icon name={forward ? 'i-right' : expanded ? 'i-up' : 'i-down'} size={18}/>
   </button>;
 }
@@ -62,12 +63,10 @@ export function FilterBuilder({model, labels, platform = 'desktop', fields, open
       <Segmented variant="phone" aria-label={label} value={state.value === undefined ? 'any' : state.value ? 'yes' : 'no'}
         items={[{value: 'any', label: t('next.browse.any')}, {value: 'yes', label: t('next.browse.yes')}, {value: 'no', label: t('next.browse.no')}]}
         onValueChange={value => change({kind: 'toggle', value: value === 'any' ? undefined : value === 'yes'})}/></div>;
-    return <div className={open ? styles.expandedField : styles.collapsedField} key={field.id} data-active={active(state) || undefined}>
-      {open ? <div className={styles.expandedHeading}><button type="button" className={styles.expandedName} aria-expanded aria-controls={contentId} onClick={() => onFieldOpenChange(field.id, false)}>
+    const heading = <div className={styles.expandedHeading}><button type="button" className={styles.expandedName} aria-expanded aria-controls={contentId} onClick={() => onFieldOpenChange(field.id, false)}>
         {label}{state.summary && <span>{state.summary}</span>}<Icon name={platform === 'tv' ? 'i-down' : 'i-up'} size={16}/></button>
-        {platform === 'desktop' && active(state) && <Button variant="text" size="xs" onClick={() => change({kind: 'clear'})}>{t('next.browse.clear')}</Button>}</div> :
-        <FieldTile label={label} summary={state.summary} active={active(state)} expanded={false} controls={contentId} onClick={() => onFieldOpenChange(field.id, true)}/>}
-      {open && <div className={styles.fieldContent} id={contentId}>
+        {platform === 'desktop' && active(state) && <Button variant="text" size="xs" onClick={() => change({kind: 'clear'})}>{t('next.browse.clear')}</Button>}</div>;
+    const content = <div className={styles.fieldContent} id={contentId}>
         {state.kind === 'values' && <>
           {platform === 'desktop' && <MatchMode value={state.match} allowAll={field.operators.includes('contains-all')} allowNone={canExclude} onValueChange={value => change({kind: 'match', value})}/>}
           {(state.total === undefined || state.total > 10 || state.query) && platform !== 'tv' && <TextField variant="search" containerClassName={styles.facetFind} leadingIcon="i-search" value={state.query}
@@ -93,7 +92,13 @@ export function FilterBuilder({model, labels, platform = 'desktop', fields, open
             onClick={() => change({kind: 'choice', value: option.value === state.value ? undefined : option.value})}>{option.label}</button>)}
         </div>}
         {state.kind === 'text' && <TextField variant="field" value={state.value} label={label} placeholder={state.placeholder} onChange={event => change({kind: 'text', value: event.target.value})}/>}
-      </div>}
+      </div>;
+    // H10: on desktop a field opens as a menu-like popover anchored to its tile, so the grid never moves.
+    if (platform === 'desktop') return <DesktopField key={field.id} label={label} summary={state.summary} active={active(state)} open={open} contentId={contentId}
+      onOpenChange={value => onFieldOpenChange(field.id, value)}>{heading}{content}</DesktopField>;
+    return <div className={open ? styles.expandedField : styles.collapsedField} key={field.id} data-active={active(state) || undefined}>
+      {open ? heading : <FieldTile label={label} summary={state.summary} active={active(state)} expanded={false} controls={contentId} onClick={() => onFieldOpenChange(field.id, true)}/>}
+      {open && content}
     </div>;
   };
   return <div className={[styles.filterBuilder, className].filter(Boolean).join(' ')} data-platform={platform}>
@@ -110,5 +115,16 @@ export function FilterBuilder({model, labels, platform = 'desktop', fields, open
         </div>
       </section>;
     })}{note && <div className={styles.filterNote}>{note}</div>}
+  </div>;
+}
+
+function DesktopField({label, summary, active, open, contentId, onOpenChange, children}: {label: string; summary?: ReactNode; active: boolean; open: boolean; contentId: string; onOpenChange: (open: boolean) => void; children: ReactNode}) {
+  const tile = useRef<HTMLButtonElement>(null), [width, setWidth] = useState(360);
+  return <div className={styles.collapsedField} data-active={active || undefined} data-open={open || undefined}>
+    <FieldTile tileRef={tile} label={label} summary={summary} active={active} expanded={open} controls={open ? contentId : undefined}
+      onClick={() => { setWidth(Math.max(360, Math.round(tile.current?.getBoundingClientRect().width ?? 0))); onOpenChange(!open); }}/>
+    <Popover open={open} onOpenChange={value => onOpenChange(value)} anchorRef={tile} title={label} placement="bottom-start" sideOffset={6} width={width} className={styles.fieldPopover}>
+      {children}
+    </Popover>
   </div>;
 }

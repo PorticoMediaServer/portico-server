@@ -82,7 +82,7 @@ function NativeReading({guest}: {guest: ReadingGuest}) {
       void (async () => {try {await progress?.stop(); await reader?.dispose();} finally {publication?.dispose(); fonts?.dispose(); guest.dispose();}})();
     };
   }, [guest]);
-  if (failed) return <StateView title={defaultI18n.t('next.states.pageFailed')} body={defaultI18n.t('next.states.pageFailedBody')}/>;
+  if (failed) return <StateView variant="page" title={defaultI18n.t('next.states.pageFailed')} body={defaultI18n.t('next.states.pageFailedBody')}/>;
   return <div className={styles.host} hidden={!active} aria-hidden={!active} inert={!active}>{book
     ? <ReaderBook environment="native" onSearchAll={onSearchAll} saveHighlights={guest.saveHighlights} book={book} active={active} crease={crease} reportError={reportError} onBack={() => {void (async () => {await progressRef.current?.stop(); await guest.back();})().catch(reportError);}} onOpenSettings={() => {void guest.openSettings();}}/>
     : <Skeleton height="100dvh"/>}</div>;
@@ -90,7 +90,7 @@ function NativeReading({guest}: {guest: ReadingGuest}) {
 function NativeReaderEntry() {
   const [guest, setGuest] = useState<ReadingGuest>(), [failed, setFailed] = useState(false);
   useEffect(() => {let active = true; void connection.ready.then(value => {if (active) setGuest(value);}, () => {if (active) setFailed(true);}); return () => {active = false; connection.dispose();};}, []);
-  if (failed) return <StateView title={defaultI18n.t('next.states.pageFailed')} body={defaultI18n.t('next.states.pageFailedBody')}/>;
+  if (failed) return <StateView variant="page" title={defaultI18n.t('next.states.pageFailed')} body={defaultI18n.t('next.states.pageFailedBody')}/>;
   return guest ? <NativeReading guest={guest}/> : <Skeleton height="100dvh"/>;
 }
 root = createRoot(document.getElementById('root')!);

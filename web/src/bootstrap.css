@@ -5,7 +5,7 @@ button, input, select, textarea { font: inherit; }
 :focus-visible { outline: var(--spec-focus-ring-width-web) solid var(--color-focus); outline-offset: 3px; }
 ::view-transition-old(root) { animation: route-out var(--motion-quick) var(--ease-in) both; }
 ::view-transition-new(root) { animation: route-in var(--motion-standard) var(--ease-out) 60ms both; }
-::view-transition-group(nav) { animation: none; }
+::view-transition-group(nav), ::view-transition-group(nav-tabs) { animation: none; }
 @keyframes route-out { to { opacity: 0; } }
 @keyframes route-in { from { opacity: 0; transform: translateY(8px); } }
 @keyframes route-fade { from { opacity: 0; } }

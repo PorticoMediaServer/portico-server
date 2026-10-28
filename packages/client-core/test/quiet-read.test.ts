@@ -49,8 +49,9 @@ test('a panel that is open is read again when what it was built from moves, with
   await advance(1000);
   assert.equal(reads, before);
   // The feed could not say everything that happened: the panel catches up.
+  // It read a moment ago, so the catch-up waits out the hub's content spacing.
   hub.resync();
-  await advance(1000);
+  await advance(5000);
   assert.equal(reads, before + 1);
   read.dispose();
   // A read that named nothing to follow (a document opened to be edited) is left as it was read.

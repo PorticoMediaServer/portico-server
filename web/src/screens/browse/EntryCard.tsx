@@ -55,5 +55,5 @@ export function BrowseEntryCard({entry, actions, artwork, env, width, family, mi
   if (entry.kind === 'ebook' || entry.kind === 'comic') return <CoverCard {...props} onPlay={undefined} watched={entry.readingMark?.read === true}
     watchedLabel={entry.readingMark?.read === true ? defaultI18n.t('next.cards.finished') : undefined} kind={entry.kind === 'comic' ? 'comic' : 'book'} artwork={source}
     generated={{title, glyph: Array.from(title.trim())[0] ?? '', tint: generatedCoverTint(title)}}/>;
-  return shape === 'square' ? <SquareCard {...props} artwork={source} ambient={backdrops ? artwork.ambient(entry.posterUrl, {group, order}) : undefined} variant={entry.kind === 'book' || entry.kind === 'audiobook_file' ? 'audiobook' : 'music'}/> : <PosterCard {...props} artwork={source}/>;
+  return shape === 'square' ? <SquareCard {...props} artwork={source} variant={entry.kind === 'book' || entry.kind === 'audiobook_file' ? 'audiobook' : 'music'}/> : <PosterCard {...props} artwork={source}/>;
 }

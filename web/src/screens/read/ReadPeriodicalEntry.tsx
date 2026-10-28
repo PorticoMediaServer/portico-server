@@ -68,7 +68,7 @@ function BoundPeriodicals({captured, libraryId, kind, seriesId}: {captured: Capt
   </div>}{kind === 'newspaper' && seriesId && days && !retired && <NewspaperCalendar month={month} days={days} selected={issueDate} onSelect={date => {if (captured.context.isCurrent() && days.some(day => day.value === date)) setIssueDate(date);}}/>}{content}</>;
 }
 function Failure({retry}: {retry: () => void}) {
-  return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: retry}}/>;
+  return <StateView variant="page" title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: retry}}/>;
 }
 function GridFrame({children}: {children: (height: number, width: number) => ReactNode}) {
   const width = useShellWidth(), grid = useRef<HTMLDivElement>(null), [height, setHeight] = useState(600);

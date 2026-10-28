@@ -1,5 +1,8 @@
 .shell { min-height: 100dvh; --shell-gutter: var(--gutter-phone); --shell-tab-height: calc(56px + env(safe-area-inset-bottom, 0px)); padding-bottom: var(--shell-tab-height); }
 .shell[data-desktop='true'] { --shell-gutter: clamp(32px, calc(32px + (100vw - 1024px) / 13), 64px); padding-bottom: 0; }
+/* The fixed top bar's height. A flat page clears it with this; a page under a hero or wash does not. Rail, sidebar and phone have no top bar. */
+.shell { --shell-top: 0px; }
+.shell[data-navigation='topbar'] { --shell-top: 76px; }
 .shell[data-has-dock='true'] { padding-bottom: calc(var(--shell-tab-height) + 78px); }
 .shell[data-desktop='true'][data-has-dock='true'] { padding-bottom: 92px; }
 .shell[data-navigation='rail'], .shell[data-navigation='sidebar'] { --shell-tab-height: 0px; --shell-gutter: 24px; --shell-nav-width: 84px; padding-left: var(--shell-nav-width); padding-bottom: 0; }
@@ -57,7 +60,11 @@
 .shell[data-navigation='rail'] .away, .shell[data-navigation='sidebar'] .away { top: 16px; }
 .awayDot { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--color-amber); box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-amber) 16%, transparent); }
 .awayLink { margin-left: 6px; font-weight: var(--type-button-weight); color: var(--color-accent-strong); text-decoration: none; }
-.navigation { position: relative; z-index: var(--layer-navigation); view-transition-name: nav; }
+/* motion.html 3.1: the bars themselves are named so a page change holds them still. The
+   wrapper has no box of its own (its bars are fixed), so naming it captured nothing. */
+.navigation { position: relative; z-index: var(--layer-navigation); }
+.topnav, .rail { view-transition-name: nav; }
+.tabbar { view-transition-name: nav-tabs; }
 .topnav { position: fixed; z-index: var(--layer-navigation); inset: 0 0 auto; height: 76px; display: flex; align-items: center; gap: 40px; padding: 0 var(--shell-gutter); background: linear-gradient(180deg, color-mix(in srgb, var(--color-ink) 78%, transparent), transparent); }
 .topnav[data-solid='true'] { background: color-mix(in srgb, var(--color-ink) 88%, transparent); -webkit-backdrop-filter: blur(22px) saturate(1.2); backdrop-filter: blur(22px) saturate(1.2); box-shadow: 0 1px 0 color-mix(in srgb, var(--color-text) 8%, transparent); }
 .topnav .avatar[data-current] { box-shadow: 0 0 0 2px var(--color-ink), 0 0 0 4px var(--color-accent); }

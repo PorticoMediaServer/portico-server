@@ -18,6 +18,8 @@ export type HeroProps<T extends HeroCandidate> = Omit<HTMLAttributes<HTMLElement
   renderMetadata?: (candidate: T, context: HeroRenderContext) => ReactNode;
   renderReason?: (candidate: T, context: HeroRenderContext) => ReactNode;
   renderSupplement?: (candidate: T, context: HeroRenderContext) => ReactNode;
+  /** The title opens the candidate's page: a real link (new tab, copy link) that the screen opens in place. */
+  titleLink?: (candidate: T) => {href: string; open: () => void} | undefined;
   activeIndex?: number; defaultIndex?: number; onIndexChange?: (index: number) => void;
   active?: boolean; visible?: boolean; heroFocused?: boolean; reducedMotion?: boolean; platform?: LayoutPlatform;
   /** tablet.html's centred medium-width Home composition. */
@@ -39,7 +41,7 @@ export function HeroProgress({progress, remaining, label = defaultI18n.t('next.l
   return <span className={styles.heroProgress}><span className={styles.progressTrack} role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={1} aria-valuenow={value}><i style={{transform: `scaleX(${value})`}} /></span>{remaining}</span>;
 }
 
-export function Hero<T extends HeroCandidate>({candidates, renderArtwork, renderThumbnail, renderActions, renderMetadata, renderReason, renderSupplement, activeIndex, defaultIndex = 0, onIndexChange,
+export function Hero<T extends HeroCandidate>({candidates, renderArtwork, renderThumbnail, renderActions, renderMetadata, renderReason, renderSupplement, titleLink, activeIndex, defaultIndex = 0, onIndexChange,
   active = true, visible = true, heroFocused = false, reducedMotion = false, showNavigation = true, contentVisible = true, onArtworkReady, onArtworkError, platform = 'desktop', sizeClass, className, onMouseEnter, onMouseLeave, onFocusCapture, onBlurCapture, ...props}: HeroProps<T>) {
   const [ownIndex, setOwnIndex] = useState(defaultIndex), [hovered, setHovered] = useState(false), [focused, setFocused] = useState(false);
   const motion = useLayoutMotion(reducedMotion), index = boundedIndex(activeIndex ?? ownIndex, candidates.length), id = useId();
@@ -79,6 +81,11 @@ export function Hero<T extends HeroCandidate>({candidates, renderArtwork, render
     onReady: onArtworkReady ? () => onArtworkReady(candidate) : undefined, onError: onArtworkError ? () => onArtworkError(candidate) : undefined});
   const entry = candidates[index], context = entry ? contextFor(entry, index) : undefined;
   const reason = entry && context ? renderReason ? renderReason(entry, context) : entry.reason : undefined;
+  const link = entry ? titleLink?.(entry) : undefined;
+  const title = entry && link ? <a className={styles.titleLink} href={link.href} onClick={event => {
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault(); link.open();
+  }}>{entry.title}</a> : entry?.title;
   return <section {...props} className={[styles.hero, className].filter(Boolean).join(' ')} data-platform={platform} data-size-class={sizeClass} data-paused={paused} data-reduced-motion={motion.reduced} data-navigation={showNavigation && candidates.length > 1}
     aria-label={props['aria-label'] ?? defaultI18n.t('next.layout.featured')} aria-roledescription={defaultI18n.t('next.layout.carousel')}
     onMouseEnter={event => { setHovered(true); onMouseEnter?.(event); }} onMouseLeave={event => { setHovered(false); onMouseLeave?.(event); }}
@@ -92,7 +99,7 @@ export function Hero<T extends HeroCandidate>({candidates, renderArtwork, render
     {entry && context && <div id={`${id}-panel`} className={styles.copy} data-active={contentVisible && copyId === currentId} inert={!contentVisible} aria-hidden={!contentVisible || undefined}
       role={platform !== 'tv' && showNavigation && candidates.length > 1 ? 'tabpanel' : undefined} aria-labelledby={platform !== 'tv' && showNavigation && candidates.length > 1 ? `${id}-tab-${index}` : undefined}>
       {reason && <p className={styles.reason} style={{...layoutType(type.eyebrow), ...(sizeClass === 'medium' ? {fontSize: 15} : {})}}>{reason}</p>}
-      <Lockup title={entry.title} long={entry.long} platform={platform} style={sizeClass === 'medium' ? {fontSize: 62, lineHeight: .94} : undefined} />
+      <Lockup title={title} long={entry.long} platform={platform} style={sizeClass === 'medium' ? {fontSize: 62, lineHeight: .94} : undefined} />
       {renderMetadata ? renderMetadata(entry, context) : entry.facts?.length ? <HeroFacts parts={entry.facts} platform={platform} /> : null}
       {entry.overview && <p className={styles.overview} style={layoutType(type.synopsis)}>{entry.overview}</p>}
       {renderActions && <div className={styles.actions}>{renderActions(entry, context)}</div>}

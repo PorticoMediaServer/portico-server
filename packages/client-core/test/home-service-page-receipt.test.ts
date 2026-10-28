@@ -100,6 +100,28 @@ for (const refreshFails of [false, true]) {
   });
 }
 
+test('while a library is scanned, stale pages refresh Home at most once per spacing and the row stops asking', async t => {
+  let reads = 0, now = 0;
+  const service = new HomeService(api(path => {
+    if (path !== '/v1/home') throw {code: 'stale_continuation', status: 409};
+    reads++;
+    return home([row('recent', ['old'], {nextCursor: 'cursor:recent'}), row('other', ['other'], {nextCursor: 'cursor:other'})]);
+  }), {now: () => now, staleRefreshEveryMs: 5000});
+  t.after(() => service.dispose());
+  await service.load();
+  assert.equal((await service.more('recent')).status, 'revalidated');
+  assert.equal(reads, 2, 'the first stale page brings Home up to date');
+  now = 400;
+  assert.deepEqual(await service.more('other'), {rowId: 'other', requestedCursor: 'cursor:other', status: 'stale', applied: false});
+  assert.equal(reads, 2, 'a second stale page inside the spacing does not reload Home');
+  assert.equal(shown(service, 'other').nextCursor, '', 'that row keeps its cards and stops asking until a later read');
+  assert.deepEqual(shown(service, 'other').entries.map(value => value.id), ['other']);
+  now = 5400;
+  assert.equal((await service.more('recent')).status, 'revalidated');
+  assert.equal(reads, 3, 'after the spacing a stale page refreshes again');
+  assert.equal(shown(service, 'other').nextCursor, 'cursor:other', 'the refresh gave the quiet row its cursor back');
+});
+
 test('request failure retains the exact cursor for a later successful retry', async t => {
   let fail = true;
   const service = new HomeService(api(path => {

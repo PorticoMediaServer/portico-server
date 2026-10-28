@@ -240,6 +240,8 @@ export const webMessages = {
   'web.hostedSecurity.othersSignedOut': 'Other devices signed in to this account are signed out.',
   'web.hostedSecurity.newEmail': 'New email address',
   'web.live.today': 'Today',
+  'web.live.noSourcesOwner': 'Add a TV source or create Library Channels in Settings, and they appear here.',
+  'web.live.setUpChannels': 'Set up channels',
   'web.live.previous': 'Previous',
   'web.live.reason.sourceOff': 'This channel’s source is turned off.',
   'web.live.reason.sourceDown': 'This channel’s source isn’t responding. Try again in a minute.',

@@ -70,12 +70,12 @@ export function PersonScreen({binding, personId}: PersonScreenProps) {
     {phone
       ? <div><div className={styles.phoneCreditsHeader} data-person-credits-header><h2>{t('web.person.credits')}</h2><span>{t('web.person.titlesOnServer', {count: titles})}</span></div>{roleChips}</div>
       : <div className={styles.toolbar} data-person-toolbar><h2 className={styles.toolbarHeading} data-person-toolbar-heading>{t('web.person.onServer')}</h2><span className={styles.count} data-person-count>{t('web.person.titles', {count: titles})}</span>{roleChips}</div>}
-    {titles === 0 && <StateView title={t('web.person.noCredits')} body={t('web.person.noCreditsBody')} />}
+    {titles === 0 && <div className={phone ? undefined : styles.credits}><StateView title={t('web.person.noCredits')} body={t('web.person.noCreditsBody')} /></div>}
     {phone
       ? titles > 0 && <PersonCredits binding={binding} page={page} total={titles} heading={t('web.person.credits')} phone showHeading={false} />
       : page.groups.some(group => group.kind && group.total > 0) && snapshot.role === 'all'
         ? <div className={styles.groups} data-person-groups>{page.groups.filter(group => group.kind && group.total > 0).map(group => <PersonCredits key={group.id} binding={binding} page={page} kind={group.kind} total={group.total} heading={groupHeading(group.kind)} phone={false} />)}</div>
-        : titles > 0 && <PersonCredits binding={binding} page={page} total={titles} heading={t('web.person.credits')} phone={false} />}
+        : titles > 0 && <div className={styles.credits} data-person-credits><PersonCredits binding={binding} page={page} total={titles} heading={t('web.person.credits')} phone={false} /></div>}
     {!phone && titles > 0 && <p className={styles.note} data-person-note><Icon name="i-info" size={18} />{t('web.person.serverNote')}</p>}
   </article>;
 }
