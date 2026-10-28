@@ -1,6 +1,9 @@
 package dbwork
 
 import (
+	"database/sql"
+	"encoding/json"
+	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -10,7 +13,55 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	sqlite3 "modernc.org/sqlite/lib"
+	"portico.local/server/internal/thirdparty/sqlite"
 )
+
+// Runtime complement to the source census: the newly audited callback runs on
+// a query-only connection, preserves exact TEXT bytes, and writes nothing.
+func TestSearchMatchPureSQLCallback(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	if _, err := db.Exec("PRAGMA query_only=ON"); err != nil {
+		t.Fatal(err)
+	}
+	var before, after int64
+	if err := db.QueryRow("SELECT total_changes()").Scan(&before); err != nil {
+		t.Fatal(err)
+	}
+	var encoded string
+	if err := db.QueryRow("SELECT portico_search_match(?1,?2,?3)", "foo\x00bar", "k2 l1", `["bar","k2"]`).Scan(&encoded); err != nil {
+		t.Fatal(err)
+	}
+	if len(encoded) > 512 {
+		t.Fatalf("unbounded scalar delivery: %d", len(encoded))
+	}
+	var result sqlite.SearchMatchResult
+	if err := json.Unmarshal([]byte(encoded), &result); err != nil {
+		t.Fatal(err)
+	}
+	if !result.Match || result.SourceBytes != 12 || result.DocumentTokens != 4 || result.QueryBytes != 5 || result.QueryTokens != 2 || result.TokenBytes != 15 {
+		t.Fatalf("unexpected scalar work receipt: %+v", result)
+	}
+	if err := db.QueryRow("SELECT total_changes()").Scan(&after); err != nil || after != before {
+		t.Fatalf("pure callback changed database: before=%d after=%d err=%v", before, after, err)
+	}
+	for _, query := range []string{`null`, `{}`, `[1]`, `"a"`, `[`, strings.Repeat(" ", 500000)} {
+		if err := db.QueryRow("SELECT portico_search_match('alpha','k2',?)", query).Scan(&encoded); err == nil {
+			t.Fatalf("accepted invalid phrase array: %.32s", query)
+		}
+	}
+	var capacity *sqlite.Error
+	err = db.QueryRow("SELECT portico_search_match('alpha','k2',?)", strings.Repeat(" ", 500000)).Scan(&encoded)
+	if !errors.As(err, &capacity) || capacity.Code() != sqlite3.SQLITE_TOOBIG {
+		t.Fatalf("SQL lost typed capacity: %v", err)
+	}
+}
 
 // A plain SELECT is exempted from the exact wake (statementHead.plainSelect)
 // because nothing this server can run from SQL writes. That is a census, not a
@@ -39,6 +90,7 @@ var sqlFunctionCensus = []string{
 	"function:portico_metadata_files_revision",
 	"function:portico_reading_revision",
 	"function:portico_search_fold",
+	"function:portico_search_match",
 	"function:portico_search_prefixes",
 	"function:portico_search_text",
 	"function:portico_sort_title",
