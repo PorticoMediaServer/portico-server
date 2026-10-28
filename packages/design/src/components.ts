@@ -356,6 +356,8 @@ export const generatedArt = {
 export const tag = {radius: same(6, 8), paddingX: same(9, 12), paddingY: 3, borderColor: 'text' as ColorToken, borderAlpha: 0.28, borderWidth: same(1, 1.5), role: 'tag' as TypeRole} as const;
 export const tabs = {gap: all(34, 24, 24, 44), paddingTop: all(16, 12, 12, 0), paddingBottom: all(14, 11, 11, 16), underline: same(3, 4), role: 'tab' as TypeRole} as const;
 export const navigation = {
+  // Justin's web logo override, 28 Oct: shared by auth, Services and the player shell.
+  webWordmarkScale: 1.25,
   top: {height: 76, gap: 40, linkGap: 26, linkPaddingY: 6, underlineHeight: 2, markHeight: 20, toolsGap: 6, iconSize: 40, iconDrawing: 22, iconHoverAlpha: 0.1, iconRadius: 999, avatarSize: 34, avatarMarginLeft: 8, overArtAlpha: 0.78, solidAlpha: 0.88, solidBlur: 22, solidSaturation: 1.2},
   phone: {height: 100, paddingTop: 50, solidHeight: 96, solidPaddingTop: 46, markHeight: 16, avatarSize: 30, solidAlpha: 0.82, blur: 24, saturation: 1.3,
     tabBar: {height: 84, paddingTop: 9, paddingX: 14, gap: 3, alpha: 0.82, blur: 24, borderAlpha: 0.08, label: 'tabBar' as TypeRole}},

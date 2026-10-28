@@ -17,6 +17,10 @@
   radial-gradient(84% 44% at -8% 30%, rgba(30,91,82,.5) 0%, rgba(30,91,82,.13) 52%, transparent 78%),
   radial-gradient(70% 40% at 30% 0%, rgba(21,55,73,.8) 0%, transparent 72%); }
 .fill { inset: 0; height: 100%; }
+.workspace { background-image: radial-gradient(48% 90% at 18% 0%, rgba(21,55,73,.95) 0%, transparent 70%), radial-gradient(40% 70% at 70% 0%, rgba(64,159,212,.1) 0%, transparent 70%); }
+/* Page washes stay behind the complete viewport, including while a tall page scrolls. */
+.viewport { position: fixed; inset: 0; height: 100dvh; }
+.viewport.top { bottom: auto; height: 560px; }
 
 .ambient { --art-first: #2f86bb; --art-second: #1e5b52; position: absolute; inset: 0; pointer-events: none; }
 .washLayer { position: absolute; inset: 0; overflow: hidden; -webkit-mask-image: linear-gradient(180deg, #000 30%, transparent 100%); mask-image: linear-gradient(180deg, #000 30%, transparent 100%); }
