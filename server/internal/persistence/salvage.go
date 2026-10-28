@@ -519,7 +519,7 @@ func (c *tableCopy) run(ctx context.Context, upper, lower []any, descending bool
 	}
 }
 
-// withEmptyBlobs is the insert with X'' in place of each empty BLOB in args,
+// withEmptyBlobs is the insert with X” in place of each empty BLOB in args,
 // and the remaining arguments, or false when there is none.
 func (c *tableCopy) withEmptyBlobs(args []any) (string, []any, bool) {
 	found := false
