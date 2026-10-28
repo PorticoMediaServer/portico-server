@@ -78,22 +78,9 @@ func MarkInventoryMissingTx(ctx context.Context, tx *sql.Tx, source, job, object
 	if state == "missing" {
 		return nil
 	}
-	assetID, err := compactcatalog.AssetByTokenTx(ctx, tx, asset)
-	if err != nil {
-		return err
-	}
-	if assetID != 0 {
-		var available bool
-		if err = tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT available FROM inventory_asset_availability WHERE asset_id=?),0)`, asset).Scan(&available); err != nil {
-			return err
-		}
-		if err = compactcatalog.SetAssetAvailableTx(ctx, tx, assetID, available); err != nil {
-			return err
-		}
-		if err = compactcatalog.SettleAssetMissingTx(ctx, tx, assetID); err != nil {
-			return err
-		}
-	}
+	// The inventory UPDATE's point trigger already queues source41 availability
+	// and missing work. Its bounded reducer publishes asset evidence before the
+	// owner fanout; acceptance never aggregates all other objects of this asset.
 	_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO inventory_changes(source_id,job_id,object_id,asset_id,revision,kind,created_at) VALUES(?,?,?,?,?,'missing',?)`, source, job, object, asset, revision, now.UTC().Format(time.RFC3339Nano))
 	return err
 }

@@ -507,7 +507,7 @@ func registerPlaybackV1Sessions(r *apikit.Registry, d Dependencies) {
 
 	v1Route(r, apikit.Metadata{Audience: apikit.Clients, Admission: lanePlayback, ID: "start_playback_session", Method: "POST", Path: "/v1/playback/sessions", Summary: "Start playback (201), or report that it is being prepared (202)",
 		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 8 << 10, Status: 201, SuccessStatuses: []int{202},
-		Errors: []string{"invalid_request", "unauthorized", "not_found", "idempotency_key_required", "idempotency_key_reused", "stream_limit_reached", "conversion_capacity", "transcode_not_allowed", "source_unavailable", "unsupported_media", "connection_too_slow", "feature_restricted", "no_tuner_available", "queue_building"}},
+		Errors: []string{"invalid_request", "unauthorized", "not_found", "idempotency_key_required", "idempotency_key_reused", "stream_limit_reached", "conversion_capacity", "transcode_not_allowed", "source_unavailable", "storage_offline", "unsupported_media", "connection_too_slow", "feature_restricted", "no_tuner_available", "queue_building"}},
 		func(ctx context.Context, q *http.Request, in playbackv1.StartRequest) (playbackStartResponse, error) {
 			c := d.v1ServiceCaller(q, callerFrom(ctx))
 			started, err := d.playbackV1().StartPrepared(ctx, c, q.Header.Get("Idempotency-Key"), in)
@@ -739,7 +739,7 @@ func registerPlaybackV1Queues(r *apikit.Registry, d Dependencies) {
 	}
 	v1Route(r, apikit.Metadata{Audience: apikit.Clients, Admission: lanePlayback, ID: "create_queue", Method: "POST", Path: "/v1/queues", Summary: "Play: replace this device's queue from selectors, optionally starting the first session",
 		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.SelectionAsync, BodyLimit: 64 << 10, Status: 201,
-		Errors: append(command, "idempotency_key_required", "idempotency_key_reused", "stream_limit_reached", "conversion_capacity", "transcode_not_allowed", "unsupported_media", "source_unavailable")},
+		Errors: append(command, "idempotency_key_required", "idempotency_key_reused", "stream_limit_reached", "conversion_capacity", "transcode_not_allowed", "unsupported_media", "source_unavailable", "storage_offline")},
 		func(ctx context.Context, q *http.Request, in playbackv1.CreateQueueRequest) (playbackv1.QueueReply, error) {
 			sources := []*playbackv1.Selector{in.Selector}
 			for i := range in.Segments {

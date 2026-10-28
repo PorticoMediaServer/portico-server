@@ -20,7 +20,7 @@ func init() { persistence.UseSchemaTemplate() }
 
 const testNow int64 = 1793196000000
 
-var testBinding = Binding{"local", "account", "profile", "family"}
+var testBinding = Binding{Authority: "local", AccountID: "account", ProfileID: "profile", FamilyID: "family"}
 
 func key(now int64, n int) string { return fmt.Sprintf("p251_%013d_%032x", now, n) }
 func envelope(n int) Envelope {
@@ -285,6 +285,7 @@ func TestOwnerRecoveryBoundedAndNoUnknownAccountRegistration(t *testing.T) {
 	}
 	fresh := testBinding
 	fresh.AccountID = "fresh"
+	fresh.ProfileID = "p"
 	if err := apply(t, db, fresh, envelope(90), Result{Status: "applied"}, testNow); !errors.Is(err, ErrExpired) {
 		t.Fatal(err)
 	}
@@ -413,6 +414,9 @@ func TestLinkedPorticoAccountSharesLocalQuota(t *testing.T) {
 	b := testBinding
 	b.FamilyID = "portico-family"
 	b.ProfileID = "portico-profile"
+	if _, err := db.Exec(`INSERT INTO direct_profiles(id,account_id,name) VALUES(?,'account','Portico profile')`, b.ProfileID); err != nil {
+		t.Fatal(err)
+	}
 	if err := apply(t, db, b, envelope(2), Result{Status: "applied"}, testNow); err != nil {
 		t.Fatal(err)
 	}
@@ -432,6 +436,9 @@ func TestReceiptPhysicalBytesAndMaxRecord(t *testing.T) {
 			if worst {
 				b.ProfileID = strings.Repeat("p", 128)
 				b.FamilyID = strings.Repeat("f", 128)
+				if _, err := db.Exec(`INSERT INTO direct_profiles(id,account_id,name) VALUES(?,'account','Max profile')`, b.ProfileID); err != nil {
+					t.Fatal(err)
+				}
 			}
 			err := write(t, db, func(ctx context.Context, tx *sql.Tx) error {
 				for i := 1; i <= n; i++ {
@@ -579,7 +586,7 @@ func TestSparseMaxAccountPhysicalAccounting(t *testing.T) {
 			if _, err := tx.ExecContext(ctx, `INSERT INTO accounts(id,username,password_hash,profile_id) VALUES(?,?,X'00',?)`, account, account, account); err != nil {
 				return err
 			}
-			b := Binding{"local", account, strings.Repeat("p", 128), strings.Repeat("f", 128)}
+			b := Binding{Authority: "local", AccountID: account, ProfileID: account, FamilyID: strings.Repeat("f", 128)}
 			e := envelope(i)
 			e.Operation = strings.Repeat("o", 96)
 			if _, err := Check(ctx, tx, b, e, testNow); err != nil {

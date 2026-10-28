@@ -20266,25 +20266,57 @@ export const schemas = {
     "type": "object"
   },
   "DeleteDirectProfilesIdRequest": {
+    "additionalProperties": false,
     "properties": {
       "deleteSavedResources": {
+        "enum": [
+          true
+        ],
         "type": "boolean"
       },
       "expectedRevision": {
         "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
+        "minimum": 1,
         "type": "integer"
+      },
+      "lifetime": {
+        "pattern": "^[0-9a-f]{32}$",
+        "type": "string"
       }
     },
     "required": [
       "expectedRevision",
+      "lifetime",
       "deleteSavedResources"
     ],
     "type": "object"
   },
   "DeleteDirectProfilesIdResponse": {
-    "properties": {},
-    "required": [],
+    "additionalProperties": false,
+    "properties": {
+      "lifetime": {
+        "pattern": "^[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "profileId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "state": {
+        "enum": [
+          "removing",
+          "removed",
+          "blocked"
+        ],
+        "type": "string"
+      }
+    },
+    "required": [
+      "profileId",
+      "lifetime",
+      "state"
+    ],
     "type": "object"
   },
   "DeleteDirectRememberedAccountRequest": {
@@ -44698,6 +44730,9 @@ export const schemas = {
   },
   "GetDirectProfilesIdDeletionPreviewResponse": {
     "properties": {
+      "lifetime": {
+        "type": "string"
+      },
       "name": {
         "type": "string"
       },
@@ -44724,12 +44759,46 @@ export const schemas = {
       }
     },
     "required": [
+      "lifetime",
       "profileId",
       "revision",
       "name",
       "playlists",
       "savedResources",
       "primary"
+    ],
+    "type": "object"
+  },
+  "GetDirectProfilesIdRetirementRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetDirectProfilesIdRetirementResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "lifetime": {
+        "pattern": "^[0-9a-f]{32}$",
+        "type": "string"
+      },
+      "profileId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "state": {
+        "enum": [
+          "removing",
+          "removed",
+          "blocked"
+        ],
+        "type": "string"
+      }
+    },
+    "required": [
+      "profileId",
+      "lifetime",
+      "state"
     ],
     "type": "object"
   },

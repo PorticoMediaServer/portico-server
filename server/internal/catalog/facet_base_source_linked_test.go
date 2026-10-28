@@ -3,8 +3,10 @@ package catalog
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/identity"
 )
 
@@ -64,7 +66,7 @@ func TestFacetBaseSourceLinkedDecadeMatchesVisibilityClassPredicate(t *testing.T
 	r := identity.ContentRestrictions{MaximumAge: &eight}
 	scope.Policy = FacetBasePolicy(r)
 	key, _ := visibilityClassKey(scope.Library, r)
-	if _, err = db.Exec(`INSERT INTO compact_visibility_classes VALUES(1,?,1,0,1)`, key); err != nil {
+	if _, err = db.Exec(`INSERT INTO compact_visibility_classes(id,class_key,library_id,retired,active_generation) VALUES(1,?,1,0,1)`, key); err != nil {
 		t.Fatal(err)
 	}
 	facetLinkedBuild(t, db, scope)
@@ -92,11 +94,43 @@ func TestFacetBaseSourceLinkedNonshowUsesExactClassKindSet(t *testing.T) {
 	r := identity.ContentRestrictions{MaximumAge: &eight}
 	scope.Policy = FacetBasePolicy(r)
 	key, _ := visibilityClassKey(scope.Library, r)
-	db.Exec(`INSERT INTO compact_visibility_classes VALUES(1,?,1,0,1)`, key)
+	db.Exec(`INSERT INTO compact_visibility_classes(id,class_key,library_id,retired,active_generation) VALUES(1,?,1,0,1)`, key)
 	facetLinkedBuild(t, db, scope)
 	w, _ := facetWindowFixture(t, db, nil)
 	p := facetWindowInitial(t, w, scope, "", 10)
 	if p.Total != 1 || p.Values[0].Count != 5 {
 		t.Fatal("unified nonshow decade with ordinary facet holders", p)
 	}
+}
+
+func TestFacetBaseSourceLinkedDecadeRequiresCapturedSourceFrontier(t *testing.T) {
+	db, scope := facetLinkedFixture(t, false)
+	age := 13
+	restrictions := identity.ContentRestrictions{MaximumAge: &age}
+	scope.Policy = FacetBasePolicy(restrictions)
+	key, _ := visibilityClassKey(scope.Library, restrictions)
+	if _, err := db.Exec(`UPDATE compact_visibility_source_state SET sequence=5; INSERT INTO compact_visibility_classes VALUES(1,?,1,0,1,4)`, key); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if _, err := CaptureLinkedDecadeFacetBaseWitness(ctx, db, scope); !errors.Is(err, compactcatalog.ErrBuilding) {
+		t.Fatal("stale published class admitted", err)
+	}
+	if _, err := db.Exec(`UPDATE compact_visibility_classes SET captured_sequence=5`); err != nil {
+		t.Fatal(err)
+	}
+	witness, err := CaptureLinkedDecadeFacetBaseWitness(ctx, db, scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`UPDATE compact_visibility_classes SET captured_sequence=4`); err != nil {
+		t.Fatal(err)
+	}
+	facetBaseTx(t, db, func(tx *sql.Tx) error {
+		err := (LinkedDecadeFacetBaseProducer{}).ValidatePublication(ctx, tx, FacetBaseSnapshot{Scope: scope, Witness: witness})
+		if !errors.Is(err, compactcatalog.ErrBuilding) {
+			t.Fatal("source witness not rechecked at publication", err)
+		}
+		return nil
+	})
 }

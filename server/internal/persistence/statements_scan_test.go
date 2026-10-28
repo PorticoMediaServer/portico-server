@@ -4,9 +4,14 @@ import (
 	"context"
 	"database/sql/driver"
 	"errors"
+	"go/parser"
+	"go/token"
 	"io"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -146,6 +151,20 @@ var catalogueScanAllowed = map[string]string{
 // plans every production SQL literal as if the catalogue held millions of rows
 // and fails on any such scan not listed above.
 func TestProductionStatementsDoNotScanTheCatalogue(t *testing.T) {
+	// A fixture's convergence census is intentionally proportional to its tiny
+	// seeded database. Keep that SQL out of the production cost model only
+	// while no non-test Go source imports the fixture package.
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	importers, err := catalogFixtureRuntimeImports(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(importers) != 0 {
+		t.Fatalf("catalogue fixture entered production: %v", importers)
+	}
 	// Two statistics models: table sizes alone, and every index selective. A
 	// plan can hide a scan under one and show it under the other (the artwork
 	// resolver's did), so a scan under either fails.
@@ -156,7 +175,7 @@ func TestProductionStatementsDoNotScanTheCatalogue(t *testing.T) {
 	for where, finding := range findings {
 		text := finding[strings.Index(finding, "\n\t")+2:]
 		// The scale benchmark measures the catalogue; it is not a server path.
-		allowed := strings.Contains(where, "/scalebench/")
+		allowed := strings.Contains(where, "/scalebench/") || strings.HasPrefix(filepath.ToSlash(where), "internal/catalogtest/")
 		for prefix := range catalogueScanAllowed {
 			if strings.HasPrefix(text, prefix) {
 				allowed = true
@@ -165,5 +184,59 @@ func TestProductionStatementsDoNotScanTheCatalogue(t *testing.T) {
 		if !allowed {
 			t.Errorf("%s scans a catalogue-sized table: %.400s", where, finding)
 		}
+	}
+}
+
+// Go imports are static. Check every non-test file, including all build tags,
+// before excluding this one known test-support package's SQL from the model.
+func catalogFixtureRuntimeImports(root string) (found []string, err error) {
+	err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			if entry.Name() == "vendor" || entry.Name() == "testdata" || strings.HasPrefix(entry.Name(), ".") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		file, e := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
+		if e != nil {
+			return e
+		}
+		for _, spec := range file.Imports {
+			name, e := strconv.Unquote(spec.Path.Value)
+			if e != nil {
+				return e
+			}
+			if name == "portico.local/server/internal/catalogtest" {
+				rel, e := filepath.Rel(root, path)
+				if e != nil {
+					return e
+				}
+				found = append(found, rel)
+			}
+		}
+		return nil
+	})
+	return found, err
+}
+
+func TestCatalogFixtureImportGuardIncludesRuntimeAndBuildTags(t *testing.T) {
+	root := t.TempDir()
+	for name, source := range map[string]string{
+		"consumer_test.go": "package consumer; import _ \"portico.local/server/internal/catalogtest\"",
+		"runtime.go":       "//go:build future_platform\n\npackage consumer; import _ \"portico.local/server/internal/catalogtest\"",
+	} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(source), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	found, err := catalogFixtureRuntimeImports(root)
+	if err != nil || len(found) != 1 || found[0] != "runtime.go" {
+		t.Fatalf("fixture import boundary: %v %v", found, err)
 	}
 }

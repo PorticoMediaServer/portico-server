@@ -2,7 +2,9 @@ package identity
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"testing"
 )
 
@@ -26,7 +28,7 @@ func TestDirectProfileErasureStopsOnlyItsContainerDownloads(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
-	if e = s.DeleteDirectProfile(ctx, login.AccountToken, child.ID, child.Revision, true); e != nil {
+	if e = retireProfileAndDrainForTest(t, s, ctx, login.AccountToken, child.ID, child.Revision, true); e != nil {
 		t.Fatal(e)
 	}
 	for _, table := range []string{"download_requests", "download_preparation_authority"} {
@@ -35,17 +37,11 @@ func TestDirectProfileErasureStopsOnlyItsContainerDownloads(t *testing.T) {
 			t.Fatal(table, n, e)
 		}
 	}
-	for _, authority := range []string{"local", "hosted"} {
-		var state string
-		if e = db.QueryRow(`SELECT state FROM download_preparations WHERE id=?`, authority).Scan(&state); e != nil {
-			t.Fatal(e)
-		}
-		want := "queued"
-		if authority == "local" {
-			want = "cancelled"
-		}
-		if state != want {
-			t.Fatal(authority, state)
-		}
+	if err := db.QueryRow(`SELECT state FROM download_preparations WHERE id='local'`).Scan(new(string)); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("erased download metadata retained: %v", err)
+	}
+	var state string
+	if err := db.QueryRow(`SELECT state FROM download_preparations WHERE id='hosted'`).Scan(&state); err != nil || state != "queued" {
+		t.Fatalf("other authority changed: %s %v", state, err)
 	}
 }

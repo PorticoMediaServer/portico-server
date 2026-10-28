@@ -3,6 +3,7 @@ package remotesources
 import (
 	"context"
 	"math"
+	"strings"
 	"time"
 
 	"portico.local/server/internal/dbwork"
@@ -101,6 +102,14 @@ func (s *Service) pruneExpiredListings(ctx context.Context) bool {
 		if err = gated.Tx().QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM jobs j WHERE (j.id=?1 OR EXISTS(SELECT 1 FROM remote_inventory_checks c WHERE c.check_job=?1 AND c.job_id=j.id)) AND j.status IN ('queued','running','paused'))`, l.job).Scan(&active); err != nil {
 			return false
 		}
+		if !active && strings.HasPrefix(l.job, verificationKeyPrefix) {
+			source, epoch, ok := parseVerificationKey(l.job)
+			if ok {
+				if err = gated.Tx().QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_source_verification WHERE source_id=? AND health_epoch=? AND pending=1)`, source, epoch).Scan(&active); err != nil {
+					return false
+				}
+			}
+		}
 		if active {
 			s.pruneListings = listingPruneCursor{started: true, createdAt: l.createdAt, rowid: l.rowid}
 			continue
@@ -123,6 +132,11 @@ func (s *Service) pruneExpiredListings(ctx context.Context) bool {
 		}
 		if _, err = gated.Tx().ExecContext(ctx, `DELETE FROM remote_listing_sessions WHERE id=?`, l.id); err != nil {
 			return false
+		}
+		if strings.HasPrefix(l.job, verificationKeyPrefix) {
+			if _, err = gated.Tx().ExecContext(ctx, `DELETE FROM remote_scan_generations WHERE job_id=? AND NOT EXISTS(SELECT 1 FROM remote_listing_sessions WHERE job_id=?)`, l.job, l.job); err != nil {
+				return false
+			}
 		}
 		s.pruneListings = listingPruneCursor{started: true, createdAt: l.createdAt, rowid: l.rowid}
 		return gated.Commit() == nil

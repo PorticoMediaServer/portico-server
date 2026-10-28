@@ -19,7 +19,7 @@ var remoteSourceWakeTables = []string{
 	"configuration", "server_settings",
 	"accounts", "profile_restrictions", "viewer_revisions",
 	"authorization_session_families", "authorization_family_tokens", "authorization_family_grants", "authorization_family_renewals",
-	"playback_sessions", "playback_source_pins", "playback_source_versions", "playback_source_observations",
+	"playback_sessions", "playback_source_pins",
 }
 
 func registerRemoteSourceWake(signal *worker.Signal) func() {

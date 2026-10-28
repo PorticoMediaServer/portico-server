@@ -395,6 +395,10 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 		h.failed(ctx, id)
 		return
 	}
+	if e = h.refreshLegacyConversionProbe(ctx, id, generation, delivery); e != nil {
+		h.failed(ctx, id)
+		return
+	}
 	h.mu.Lock()
 	if w := h.windows[id]; w == owned && delivery != nil {
 		w.audioConversion = delivery.AudioAction == "convert"

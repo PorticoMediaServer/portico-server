@@ -269,6 +269,9 @@ func TestCustodyAndMeterErrorsNeverReturnCompletion(t *testing.T) {
 
 func TestCursorRejectsUnprovedCompletionAndInvalidText(t *testing.T) {
 	plan := []Unit{unit(1)}
+	if _, err := DecodeCursor(string([]byte{0xff}), plan); !errors.Is(err, ErrCursor) {
+		t.Fatalf("invalid UTF8 cursor accepted: %v", err)
+	}
 	if _, err := DecodeCursor(`{"u":1,"v":1}`, plan); !errors.Is(err, ErrCursor) {
 		t.Fatalf("completion cursor accepted: %v", err)
 	}

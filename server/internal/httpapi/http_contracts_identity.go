@@ -59,11 +59,10 @@ func registerIdentityHTTPContracts(registry *apikit.Registry) error {
 	if err := apikit.RegisterHTTP[struct{}, identity.ProfileDeletionPreview](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_direct_profiles_id_deletion_preview", Method: "GET", Path: "/v1/direct/profiles/{id}/deletion-preview", Summary: "Read account profile deletion preview", Access: apikit.Device, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
-	// internal/httpapi/direct_identity.go:171
-	if err := apikit.RegisterHTTP[struct {
-		ExpectedRevision     int64 "json:\"expectedRevision\""
-		DeleteSavedResources bool  "json:\"deleteSavedResources\""
-	}, struct{}](registry, apikit.Metadata{Audience: apikit.Clients, ID: "delete_direct_profiles_id", Method: "DELETE", Path: "/v1/direct/profiles/{id}", Summary: "Remove account profile", Access: apikit.Device, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 65536, Status: 204, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[identity.ProfileRetirementRequest, identity.ProfileRetirement](registry, apikit.Metadata{Audience: apikit.Clients, ID: "delete_direct_profiles_id", Method: "DELETE", Path: "/v1/direct/profiles/{id}", Summary: "Retire an account profile and begin private cleanup", Access: apikit.Device, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 1024, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+		return err
+	}
+	if err := apikit.RegisterHTTP[struct{}, identity.ProfileRetirement](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_direct_profiles_id_retirement", Query: []string{"lifetime"}, Method: "GET", Path: "/v1/direct/profiles/{id}/retirement", Summary: "Read account profile cleanup state", Access: apikit.Device, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/direct_identity.go:186

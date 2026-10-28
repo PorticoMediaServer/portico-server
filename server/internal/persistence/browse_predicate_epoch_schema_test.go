@@ -84,10 +84,20 @@ func TestBrowsePredicateEpochProducerCensus(t *testing.T) {
 		"catalog_generations": {"generation", "retaining"}, "catalog_derivations": {"domain", "version", "rebuilding", "active_slot", "cleaning", "first_build"},
 		"reading_attribution_state": {"namespace", "library_id", "input_generation", "ready_generation", "publication_rule_version"}, "reading_attribution_members": {"library_id", "generation", "item_id", "author_key", "series_key"},
 		"reading_publications": {"item_id", "asset_id", "format"}, "catalog_asset_links": {"entity_id", "asset_id"}, "catalog_assets": {"id", "token", "path", "available", "size", "modified_ns"},
-		"inventory_objects": {"id", "asset_id", "source_id", "retired", "state", "unsupported_reason", "root_incarnation", "size", "modified_ns"}, "library_sources": {"id", "library_id", "kind", "incarnation", "root", "configured_root", "enabled", "health"},
+		"inventory_objects": {"id", "asset_id", "source_id", "retired", "state", "unsupported_reason", "root_incarnation", "size", "modified_ns"}, "library_sources": {"id", "library_id", "kind", "incarnation", "root", "configured_root", "enabled"},
 		"compact_visibility_classes": {"id", "class_key", "active_generation", "retired"}, "compact_visibility_rows": {"class_id", "generation", "entity_id"},
 		"profile_restrictions": {"profile_id", "revision", "maximum_age", "allow_unrated", "blocked_labels", "allow_dvr"}, "direct_profiles": {"id", "account_id", "deleted", "revision"},
 		"direct_memberships": {"account_id", "incarnation", "revision", "disabled", "allowed_libraries"}, "access_limits": {"account_id", "revision", "body"}, "policy": {"server_id", "revision", "payload", "expires_at"},
+	}
+	var sourceDDL string
+	if err := db.QueryRow(`SELECT sql FROM sqlite_schema WHERE name='browse_predicate_library_sources_update'`).Scan(&sourceDDL); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(sourceDDL, "(OLD.health IN('root_changed','removing')) IS NOT (NEW.health IN('root_changed','removing'))") {
+		t.Fatal("missing structural health refusal guard", sourceDDL)
+	}
+	if strings.Contains(sourceDDL, "OLD.health IS NOT NEW.health") {
+		t.Fatal("transient health flaps must not invalidate catalogue predicates", sourceDDL)
 	}
 	for table, cols := range census {
 		for _, op := range []string{"insert", "update", "delete"} {

@@ -22181,24 +22181,57 @@
         "type": "object"
       },
       "DeleteDirectProfilesIdRequest": {
+        "additionalProperties": false,
         "properties": {
           "deleteSavedResources": {
+            "enum": [
+              true
+            ],
             "type": "boolean"
           },
           "expectedRevision": {
             "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
+            "minimum": 1,
             "type": "integer"
+          },
+          "lifetime": {
+            "pattern": "^[0-9a-f]{32}$",
+            "type": "string"
           }
         },
         "required": [
           "expectedRevision",
+          "lifetime",
           "deleteSavedResources"
         ],
         "type": "object"
       },
       "DeleteDirectProfilesIdResponse": {
-        "properties": {},
+        "additionalProperties": false,
+        "properties": {
+          "lifetime": {
+            "pattern": "^[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "profileId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "removing",
+              "removed",
+              "blocked"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "profileId",
+          "lifetime",
+          "state"
+        ],
         "type": "object"
       },
       "DeleteDirectRememberedAccountRequest": {
@@ -47197,6 +47230,9 @@
       },
       "GetDirectProfilesIdDeletionPreviewResponse": {
         "properties": {
+          "lifetime": {
+            "type": "string"
+          },
           "name": {
             "type": "string"
           },
@@ -47223,12 +47259,45 @@
           }
         },
         "required": [
+          "lifetime",
           "profileId",
           "revision",
           "name",
           "playlists",
           "savedResources",
           "primary"
+        ],
+        "type": "object"
+      },
+      "GetDirectProfilesIdRetirementRequest": {
+        "properties": {},
+        "type": "object"
+      },
+      "GetDirectProfilesIdRetirementResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "lifetime": {
+            "pattern": "^[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "profileId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "removing",
+              "removed",
+              "blocked"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "profileId",
+          "lifetime",
+          "state"
         ],
         "type": "object"
       },
@@ -397512,6 +397581,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -403106,6 +403183,14 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
             "required": false,
             "schema": {
               "type": "string"
@@ -411060,6 +411145,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -414316,6 +414409,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -414928,6 +415029,14 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
             "required": false,
             "schema": {
               "type": "string"
@@ -415947,6 +416056,14 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
             "required": false,
             "schema": {
               "type": "string"
@@ -417107,6 +417224,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -418193,6 +418318,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -418520,6 +418653,14 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
             "required": false,
             "schema": {
               "type": "string"
@@ -427917,6 +428058,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -429348,6 +429497,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -430499,6 +430656,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -431249,6 +431414,14 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
             "required": false,
             "schema": {
               "type": "string"
@@ -432860,6 +433033,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -434322,6 +434503,14 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
             "required": false,
             "schema": {
               "type": "string"
@@ -459692,6 +459881,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -461527,6 +461724,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -461684,6 +461889,14 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
             "required": false,
             "schema": {
               "type": "string"
@@ -469598,18 +469811,27 @@
           "content": {
             "application/json": {
               "schema": {
+                "additionalProperties": false,
                 "properties": {
                   "deleteSavedResources": {
+                    "enum": [
+                      true
+                    ],
                     "type": "boolean"
                   },
                   "expectedRevision": {
                     "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
+                    "minimum": 1,
                     "type": "integer"
+                  },
+                  "lifetime": {
+                    "pattern": "^[0-9a-f]{32}$",
+                    "type": "string"
                   }
                 },
                 "required": [
                   "expectedRevision",
+                  "lifetime",
                   "deleteSavedResources"
                 ],
                 "type": "object"
@@ -469619,7 +469841,39 @@
           "required": true
         },
         "responses": {
-          "204": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "lifetime": {
+                      "pattern": "^[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "profileId": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "state": {
+                      "enum": [
+                        "removing",
+                        "removed",
+                        "blocked"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "profileId",
+                    "lifetime",
+                    "state"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
             "description": "Success"
           },
           "default": {
@@ -469653,7 +469907,7 @@
             "description": "Request refused or unavailable"
           }
         },
-        "summary": "Remove account profile",
+        "summary": "Retire an account profile and begin private cleanup",
         "tags": [
           "Clients"
         ],
@@ -469671,7 +469925,7 @@
           "writer_capacity"
         ],
         "x-lane": "security",
-        "x-max-body-bytes": 65536,
+        "x-max-body-bytes": 1024,
         "x-scope": "admin"
       },
       "patch": {
@@ -470171,6 +470425,9 @@
               "application/json": {
                 "schema": {
                   "properties": {
+                    "lifetime": {
+                      "type": "string"
+                    },
                     "name": {
                       "type": "string"
                     },
@@ -470197,6 +470454,7 @@
                     }
                   },
                   "required": [
+                    "lifetime",
                     "profileId",
                     "revision",
                     "name",
@@ -470823,6 +471081,114 @@
         ],
         "x-lane": "security",
         "x-max-body-bytes": 32768,
+        "x-scope": "admin"
+      }
+    },
+    "/v1/direct/profiles/{id}/retirement": {
+      "get": {
+        "operationId": "get_direct_profiles_id_retirement",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lifetime",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "lifetime": {
+                      "pattern": "^[0-9a-f]{32}$",
+                      "type": "string"
+                    },
+                    "profileId": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "state": {
+                      "enum": [
+                        "removing",
+                        "removed",
+                        "blocked"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "profileId",
+                    "lifetime",
+                    "state"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read account profile cleanup state",
+        "tags": [
+          "Clients"
+        ],
+        "x-access": "device",
+        "x-admission": "auth",
+        "x-audience": "Clients",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "internal",
+          "database_busy"
+        ],
+        "x-lane": "security",
         "x-scope": "admin"
       }
     },
@@ -478551,6 +478917,14 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
             "required": false,
             "schema": {
               "type": "string"
@@ -538086,6 +538460,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -551907,6 +552289,14 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
             "required": false,
             "schema": {
               "type": "string"
@@ -584469,6 +584859,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -584747,6 +585145,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -585021,6 +585427,14 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
             "required": false,
             "schema": {
               "type": "string"
@@ -601887,6 +602301,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -602615,6 +603037,14 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
             "required": false,
             "schema": {
               "type": "string"
@@ -613203,6 +613633,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -613533,6 +613971,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -613841,6 +614287,14 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
             "required": false,
             "schema": {
               "type": "string"
@@ -615142,6 +615596,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -615590,6 +616052,14 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
             "required": false,
             "schema": {
               "type": "string"
@@ -621531,6 +622001,7 @@
           "unauthorized",
           "not_permitted",
           "not_found",
+          "storage_offline",
           "internal",
           "database_busy"
         ],
@@ -621951,6 +622422,7 @@
           "unauthorized",
           "not_permitted",
           "not_found",
+          "storage_offline",
           "internal",
           "database_busy"
         ],
@@ -631285,6 +631757,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -639423,6 +639903,14 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
             "required": false,
             "schema": {
               "type": "string"
@@ -648355,6 +648843,7 @@
           "conversion_capacity",
           "transcode_not_allowed",
           "source_unavailable",
+          "storage_offline",
           "unsupported_media",
           "connection_too_slow",
           "feature_restricted",
@@ -648384,6 +648873,14 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
             "required": false,
             "schema": {
               "type": "string"
@@ -653941,6 +654438,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -654129,6 +654634,14 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
             "required": false,
             "schema": {
               "type": "string"
@@ -654506,6 +655019,14 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
             "required": false,
             "schema": {
               "type": "string"
@@ -658686,6 +659207,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -658884,6 +659413,14 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
             "required": false,
             "schema": {
               "type": "string"
@@ -659218,6 +659755,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -659543,6 +660088,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -659730,6 +660283,14 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
             "required": false,
             "schema": {
               "type": "string"
@@ -660200,6 +660761,14 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
             "required": false,
             "schema": {
               "type": "string"
@@ -663052,6 +663621,7 @@
           "transcode_not_allowed",
           "unsupported_media",
           "source_unavailable",
+          "storage_offline",
           "timeout",
           "database_busy",
           "writer_capacity"
@@ -680643,6 +681213,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -685329,6 +685907,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -685497,6 +686083,14 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
             "required": false,
             "schema": {
               "type": "string"
@@ -687799,6 +688393,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -688215,6 +688817,14 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
             "required": false,
             "schema": {
               "type": "string"
@@ -688955,6 +689565,14 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
             "required": false,
             "schema": {
               "type": "string"
@@ -693850,6 +694468,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -694267,6 +694893,14 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
             "required": false,
             "schema": {
               "type": "string"
@@ -694843,6 +695477,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -695258,6 +695900,14 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
             "required": false,
             "schema": {
               "type": "string"
@@ -736102,6 +736752,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -736529,6 +737187,14 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
             "required": false,
             "schema": {
               "type": "string"
@@ -737547,6 +738213,14 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
             "required": false,
             "schema": {
               "type": "string"
@@ -741835,6 +742509,14 @@
             "in": "path",
             "name": "key",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Portico-Mutation-Root",
+            "required": false,
             "schema": {
               "type": "string"
             }

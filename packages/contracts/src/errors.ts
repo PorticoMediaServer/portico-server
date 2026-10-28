@@ -925,6 +925,12 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "storage_offline",
+    "status": 503,
+    "message": "This title’s storage is offline right now.",
+    "retry": "same_request"
+  },
+  {
     "code": "storage_operation_expired",
     "status": 410,
     "message": "This request expired. Start again.",

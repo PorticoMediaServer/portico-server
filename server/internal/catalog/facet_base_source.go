@@ -66,6 +66,9 @@ func StepFacetBaseItemPolicy(ctx context.Context, tx *sql.Tx, r identity.Content
 		if err = rows.Scan(&term, &field, &key, &source, &age); err != nil {
 			return false, false, err
 		}
+		if !chargeFacetColdSource(ctx, len(key)+len(source)) {
+			return false, false, nil
+		}
 		if n > 0 && bytes+len(key)+len(source) > 256<<10 {
 			return false, false, nil
 		}

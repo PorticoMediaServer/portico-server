@@ -354,7 +354,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 65536,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "unauthorized",
@@ -16493,6 +16494,7 @@ export const routes = [
       "transcode_not_allowed",
       "unsupported_media",
       "source_unavailable",
+      "storage_offline",
       "timeout",
       "database_busy",
       "writer_capacity"
@@ -16953,12 +16955,12 @@ export const routes = [
     "id": "delete_direct_profiles_id",
     "method": "DELETE",
     "path": "/v1/direct/profiles/{id}",
-    "summary": "Remove account profile",
+    "summary": "Retire an account profile and begin private cleanup",
     "access": "device",
     "requires": "admin",
     "lane": "security",
     "cost": "constant",
-    "bodyLimit": 65536,
+    "bodyLimit": 1024,
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -16968,7 +16970,7 @@ export const routes = [
       "database_busy",
       "writer_capacity"
     ],
-    "status": 204,
+    "status": 200,
     "http": true,
     "admission": "auth"
   },
@@ -17359,7 +17361,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 65536,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -17393,7 +17396,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 65536,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -17427,7 +17431,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 65536,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -17482,7 +17487,8 @@ export const routes = [
     "cost": "page_sized",
     "bodyLimit": 4096,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -17547,7 +17553,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 65536,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -17578,7 +17585,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 65536,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -21005,6 +21013,32 @@ export const routes = [
   },
   {
     "audience": "Clients",
+    "id": "get_direct_profiles_id_retirement",
+    "method": "GET",
+    "path": "/v1/direct/profiles/{id}/retirement",
+    "summary": "Read account profile cleanup state",
+    "access": "device",
+    "requires": "admin",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "lifetime"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal",
+      "database_busy"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "audience": "Clients",
     "id": "get_direct_registration_policy",
     "method": "GET",
     "path": "/v1/direct/registration-policy",
@@ -24388,6 +24422,7 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
+      "storage_offline",
       "internal",
       "database_busy"
     ],
@@ -24485,6 +24520,7 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
+      "storage_offline",
       "internal",
       "database_busy"
     ],
@@ -27419,6 +27455,9 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 0,
+    "headers": [
+      "Portico-Mutation-Root"
+    ],
     "errors": [
       "unauthorized",
       "not_permitted",
@@ -29576,7 +29615,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 65536,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -29632,7 +29672,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 65536,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -29662,7 +29703,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 65536,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -29859,7 +29901,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 65536,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -29893,7 +29936,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 65536,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -29923,7 +29967,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 65536,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -31692,7 +31737,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 65536,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -33173,7 +33219,8 @@ export const routes = [
     "cost": "page_sized",
     "bodyLimit": 4096,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -33209,7 +33256,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 4096,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -33721,7 +33769,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 65536,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -33871,7 +33920,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 65536,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -33904,7 +33954,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 65536,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -34199,7 +34250,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 65536,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -35343,7 +35395,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 8192,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "unauthorized",
@@ -35442,7 +35495,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 65536,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -35473,7 +35527,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 65536,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -35504,7 +35559,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 65536,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -35534,7 +35590,8 @@ export const routes = [
     "cost": "page_sized",
     "bodyLimit": 4096,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -35570,7 +35627,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 65536,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -35648,7 +35706,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 65536,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "unauthorized",
@@ -35848,7 +35907,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 4096,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "download_conflict",
@@ -36104,7 +36164,8 @@ export const routes = [
     "cost": "page_sized",
     "bodyLimit": 1048576,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -36133,7 +36194,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 4096,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -36170,7 +36232,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 4096,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -36207,7 +36270,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 4096,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -36244,7 +36308,8 @@ export const routes = [
     "cost": "page_sized",
     "bodyLimit": 1048576,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -36273,7 +36338,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 65536,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -36304,7 +36370,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 65536,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -36335,7 +36402,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 65536,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -36366,7 +36434,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 65536,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "unauthorized",
@@ -36399,7 +36468,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 65536,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -36477,7 +36547,8 @@ export const routes = [
     "cost": "page_sized",
     "bodyLimit": 262144,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "unauthorized",
@@ -36535,7 +36606,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 65536,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -36569,7 +36641,8 @@ export const routes = [
     "cost": "page_sized",
     "bodyLimit": 4096,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -36667,7 +36740,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 65536,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -36698,7 +36772,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 65536,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -36728,7 +36803,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 65536,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -36759,7 +36835,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 65536,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -36864,7 +36941,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 8192,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "unauthorized",
@@ -36900,7 +36978,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 8192,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "unauthorized",
@@ -36937,7 +37016,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 4096,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "unauthorized",
@@ -37326,7 +37406,8 @@ export const routes = [
     "cost": "page_sized",
     "bodyLimit": 65536,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -37360,7 +37441,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 65536,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -37778,7 +37860,8 @@ export const routes = [
     "cost": "page_sized",
     "bodyLimit": 2048,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -37812,7 +37895,8 @@ export const routes = [
     "cost": "page_sized",
     "bodyLimit": 65536,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "unauthorized",
@@ -37850,7 +37934,8 @@ export const routes = [
     "cost": "page_sized",
     "bodyLimit": 8388608,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "unauthorized",
@@ -40604,6 +40689,7 @@ export const routes = [
       "conversion_capacity",
       "transcode_not_allowed",
       "source_unavailable",
+      "storage_offline",
       "unsupported_media",
       "connection_too_slow",
       "feature_restricted",
@@ -40631,7 +40717,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 4096,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "unauthorized",
@@ -40665,7 +40752,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 1024,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",
@@ -40880,7 +40968,8 @@ export const routes = [
     "cost": "page_sized",
     "bodyLimit": 2048,
     "headers": [
-      "Idempotency-Key"
+      "Idempotency-Key",
+      "Portico-Mutation-Root"
     ],
     "errors": [
       "invalid_request",

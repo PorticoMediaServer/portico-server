@@ -16,7 +16,8 @@ import {AuthCodeBoxes} from '../../../kit/accounts';
 import {HostedError, ServicesQuiet} from '../../../kit/accounts/ServicesAuth';
 import {ServicesAuthenticator, ServicesRecoveryCodes} from '../../../kit/accounts/ServicesWorkspace';
 import {servicesAccount, accountIdentity, currentAccountWork, sameAccount, type AccountIdentity, type ServicesAccount} from '../../../services/session';
-import {accountSecurityBrowserAvailable} from '../../../platform/account-security-policy';
+import {accountSecurityBrowserAvailable, accountSecurityUIURL} from '../../../platform/account-security-policy';
+import {browserAccountOrigin} from '../../../platform/account-origin';
 import {useOriginalAccountSecurity} from '../../../platform/account-security-context';
 import {ProviderSecurityStartDialog} from '../../../services/ProviderSecurityStartDialog';
 import {HostedSecurityTask, type HostedSecurityTaskKind} from '../../../services/SecurityPanel';
@@ -38,11 +39,37 @@ type LocalIntent={readonly owner:Opening;readonly task:Task;live:boolean;enrolPa
 type HostedIntent={readonly owner:Opening;readonly kind:HostedSecurityTaskKind;readonly id:number;readonly current:()=>boolean};
 const ended=()=>new DOMException('The original account security opening ended.','AbortError');
 
-/** Sign-in belongs to the account, not the selected editable profile. The actual
- * main-profile document and original Settings lifetime gate every read and action. */
-export function ProfileSignIn({profiles,api,commandApi,signIn,isCurrent,onEnded,onFacts,session}:{
+type ProfileSignInProps={
   profiles:ProfileSettingsSource;api:ProfileAPI;commandApi:ProfileAPI;signIn:'local'|'portico';isCurrent:()=>boolean;onEnded:()=>void;onFacts?:(facts:ProfileSecurityFacts)=>void;session:()=>LocalSession;
-}){
+};
+
+/** Sign-in belongs to the account, not the selected editable profile.
+ * A Portico Account server's Sign-in is managed at the Portico Account itself (H09, Claude's product
+ * call, 28 Oct): the server's own session never holds a Hosted session on this origin, so the section
+ * shows what the server knows and opens the Portico Account's own Security page. A provider return
+ * already in flight still finishes in the original security owner below. Local servers are unchanged. */
+export function ProfileSignIn(props:ProfileSignInProps){
+ const providerReturn=useOriginalAccountSecurity();
+ return props.signIn==='portico'&&!providerReturn?<PorticoAccountSignIn {...props}/>:<AccountSecurity {...props}/>;
+}
+
+function PorticoAccountSignIn({profiles,isCurrent,session}:ProfileSignInProps){
+ const document=useSyncExternalStore(profiles.subscribe,profiles.getSnapshot).document;
+ const account=document?.account,viewer=session().viewer;
+ // The same bindings as the security owner: the actual main-profile document, this server, this
+ // account and profile in use, a manageable Portico Account member, and the original Settings lifetime.
+ if(!document?.canManage||!document.capabilities.manageAccount||!account||account.disabled||!account.hostedAccountId||!isCurrent()
+  ||viewer.serverId!==document.serverId||viewer.accountId!==account.id||viewer.authority!=='local'||viewer.profileId!==profiles.getSnapshot().inUseId)return null;
+ const origin=browserAccountOrigin(import.meta.env,globalThis.location),page=`${origin}/account?tab=security`;
+ const href=accountSecurityUIURL('hosted-account',origin,page)?page:undefined;
+ return <SettingsGroup title={t('next.settingsSpec.account.profile.groups.5.title')}>
+  <SettingsRow id="profile.porticoAccount" label={t('settings.row.porticoAccount')} help={<>{account.username}<br/>{t('web.signIn.managedThere')}</>}>
+   <Button size="small" variant="glass" disabled={!href} onClick={()=>{if(href&&isCurrent())globalThis.open(href,'_blank','noopener,noreferrer');}}>{t('web.signIn.manage')}</Button>
+  </SettingsRow>
+ </SettingsGroup>;
+}
+
+function AccountSecurity({profiles,api,commandApi,signIn,isCurrent,onEnded,onFacts,session}:ProfileSignInProps){
  const providerReturn=useOriginalAccountSecurity();
  const document=useSyncExternalStore(profiles.subscribe,profiles.getSnapshot).document;
  const account=document?.account;

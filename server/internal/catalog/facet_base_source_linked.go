@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/identity"
 )
 
 // LinkedDecadeFacetBaseSource preserves the published-class predicate separately
@@ -57,6 +58,9 @@ func CaptureLinkedDecadeFacetBaseWitness(ctx context.Context, q compactcatalog.R
 	if err != nil {
 		return "", err
 	}
+	if err = linkedFacetClassSourceReady(ctx, q, scope, r, fence.VisibilitySequence); err != nil {
+		return "", err
+	}
 	raw, err := json.Marshal(restrictedFacetWitness{Version: 1, Kind: kind, Fence: fence})
 	return string(raw), err
 }
@@ -79,7 +83,7 @@ func (p LinkedDecadeFacetBaseProducer) validate(ctx context.Context, tx *sql.Tx,
 		return witness, err
 	}
 	if err = rejectPublishedFacetDecade(ctx, tx, s.Scope, r); errors.Is(err, ErrFacetBaseUnavailable) {
-		return witness, nil
+		return witness, linkedFacetClassSourceReady(ctx, tx, s.Scope, r, witness.Fence.VisibilitySequence)
 	}
 	if err == nil {
 		err = ErrFacetBaseUnavailable
@@ -114,10 +118,10 @@ func (p LinkedDecadeFacetBaseProducer) Next(ctx context.Context, tx *sql.Tx, s F
 			c.Visible = c.Visible || visible
 		}
 	} else {
-		q := `SELECT entity_id,item_id,source FROM catalog_browse_memberships`
+		q := `SELECT entity_id,item_id,source FROM catalog_browse_memberships WHERE entity_id>=-9223372036854775808`
 		args := []any{}
 		if c.HasAfter {
-			q += ` WHERE (entity_id,item_id,source)>(?,?,?)`
+			q += ` AND (entity_id,item_id,source)>(?,?,?)`
 			args = append(args, c.Entity, c.Item, c.Source)
 		}
 		q += ` ORDER BY entity_id,item_id,source LIMIT 1`
@@ -191,4 +195,19 @@ func (p LinkedDecadeFacetBaseProducer) Next(ctx context.Context, tx *sql.Tx, s F
 	}
 	out.Cursor = string(encoded)
 	return out, nil
+}
+
+// The published class selects this branch. Its captured source watermark must
+// cover the producer's accepted frontier, even though membership is reduced
+// directly from raw facts rather than read from legacy class rows.
+func linkedFacetClassSourceReady(ctx context.Context, q compactcatalog.ReadQuery, scope FacetBaseScope, r identity.ContentRestrictions, target int64) error {
+	key, _ := visibilityClassKey(scope.Library, r)
+	var ready bool
+	if err := q.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM compact_visibility_classes c WHERE c.class_key=? AND c.library_id=? AND c.retired=0 AND c.active_generation>0 AND c.captured_sequence>=?)`, key, scope.LibraryID, target).Scan(&ready); err != nil {
+		return err
+	}
+	if !ready {
+		return compactcatalog.ErrBuilding
+	}
+	return nil
 }

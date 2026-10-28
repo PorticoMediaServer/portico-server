@@ -200,11 +200,11 @@ func registerPlaybackHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/router.go:1053
-	if err := apikit.RegisterHTTP[struct{}, SubtitleBytesContract](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_media_grant_file", Method: "GET", Path: "/v1/media/{grant}/{file}", Summary: "Read media", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Admission: laneMediaBody, Cost: apikit.Constant, BodyLimit: 0, Status: 200, ResponseContentType: "application/octet-stream", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, SubtitleBytesContract](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_media_grant_file", Method: "GET", Path: "/v1/media/{grant}/{file}", Summary: "Read media", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Admission: laneMediaBody, Cost: apikit.Constant, BodyLimit: 0, Status: 200, ResponseContentType: "application/octet-stream", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "storage_offline", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/router.go:1113
-	if err := apikit.RegisterHTTP[struct{}, SubtitleBytesContract](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_media_grant", Method: "GET", Path: "/v1/media/{grant}", Summary: "Read media", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Admission: laneMediaBody, Cost: apikit.Constant, BodyLimit: 0, Status: 200, ResponseContentType: "application/octet-stream", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, SubtitleBytesContract](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_media_grant", Method: "GET", Path: "/v1/media/{grant}", Summary: "Read media", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Admission: laneMediaBody, Cost: apikit.Constant, BodyLimit: 0, Status: 200, ResponseContentType: "application/octet-stream", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "storage_offline", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/trickplay.go:24

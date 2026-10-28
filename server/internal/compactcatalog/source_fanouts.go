@@ -21,13 +21,20 @@ const (
 	upstreamQuantum      = 8
 )
 
-// queueSource is an accepting source marker, never a query job. Re-touch resets
-// the raw cursor immediately and combines required consumer actions. A captured
+// queueSource is an accepting source marker, never a query job. Source41
+// combines actions while preserving its finite same-token pass; other domains
+// reset their cursor immediately. A captured
 // source lifetime prevents a later reused integer ID from continuing old work.
 func queueSource(ctx context.Context, tx *sql.Tx, domain int, id int64, token string, flags int64) error {
-	if _, err := tx.ExecContext(ctx, `INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) VALUES(?,?,?,?)
+	query := `INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) VALUES(?,?,?,?)
  ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,source_epoch=0,
- phase=0,has_after=0,after_id=0,after_aux=0,after_key='',active_id=NULL,active_key='',active_available=0,seen_inventory=0,inner_has=0,inner_id=0,inner_aux=0,inner_key=''`, domain, id, token, flags); err != nil {
+ phase=0,has_after=0,after_id=0,after_aux=0,after_key='',active_id=NULL,active_key='',active_available=0,seen_inventory=0,inner_has=0,inner_id=0,inner_aux=0,inner_key=''`
+	if domain == DomainAssetSources {
+		query = `INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) VALUES(?,?,?,?)
+ ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,source_epoch=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN source_epoch ELSE 0 END,
+ phase=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN phase ELSE 0 END,has_after=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN has_after ELSE 0 END,after_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_id ELSE 0 END,after_aux=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_aux ELSE 0 END,after_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_key ELSE '' END,active_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_id ELSE NULL END,active_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_key ELSE '' END,active_available=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_available ELSE 0 END,seen_inventory=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN seen_inventory ELSE 0 END,inner_has=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_has ELSE 0 END,inner_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_id ELSE 0 END,inner_aux=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_aux ELSE 0 END,inner_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_key ELSE '' END,pass_revision=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN pass_revision ELSE 0 END,fence_entity=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN fence_entity ELSE NULL END`
+	}
+	if _, err := tx.ExecContext(ctx, query, domain, id, token, flags); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1`); err != nil {
@@ -56,6 +63,8 @@ type upstreamSource struct {
 	id, revision, flags       int64
 	token                     string
 	epoch                     int64
+	passRevision              int64
+	fenceEntity               sql.NullInt64
 	phase                     int
 	has                       bool
 	after, aux                int64
@@ -69,9 +78,9 @@ type upstreamSource struct {
 
 func readUpstreamSource(ctx context.Context, tx *sql.Tx, domain int, id int64) (upstreamSource, error) {
 	w := upstreamSource{domain: domain, id: id}
-	err := tx.QueryRowContext(ctx, `SELECT token,flags,revision,source_epoch,phase,has_after,after_id,after_aux,after_key,active_id,active_key,active_available,seen_inventory,inner_has,inner_id,inner_aux,inner_key
+	err := tx.QueryRowContext(ctx, `SELECT token,flags,revision,source_epoch,phase,has_after,after_id,after_aux,after_key,active_id,active_key,active_available,seen_inventory,inner_has,inner_id,inner_aux,inner_key,pass_revision,fence_entity
  FROM catalog_upstream_sources WHERE domain=? AND source_id=?`, domain, id).
-		Scan(&w.token, &w.flags, &w.revision, &w.epoch, &w.phase, &w.has, &w.after, &w.aux, &w.key, &w.active, &w.activeKey, &w.available, &w.seen, &w.innerHas, &w.inner, &w.innerAux, &w.innerKey)
+		Scan(&w.token, &w.flags, &w.revision, &w.epoch, &w.phase, &w.has, &w.after, &w.aux, &w.key, &w.active, &w.activeKey, &w.available, &w.seen, &w.innerHas, &w.inner, &w.innerAux, &w.innerKey, &w.passRevision, &w.fenceEntity)
 	return w, err
 }
 func (w *upstreamSource) advance() {
@@ -93,8 +102,8 @@ func (w *upstreamSource) clearInner() {
 	w.seen = false
 }
 func (w *upstreamSource) checkpoint(ctx context.Context, tx *sql.Tx) error {
-	_, err := tx.ExecContext(ctx, `UPDATE catalog_upstream_sources SET source_epoch=?,phase=?,has_after=?,after_id=?,after_aux=?,after_key=?,active_id=?,active_key=?,active_available=?,seen_inventory=?,inner_has=?,inner_id=?,inner_aux=?,inner_key=?
- WHERE domain=? AND source_id=? AND revision=?`, w.epoch, w.phase, w.has, w.after, w.aux, w.key, w.active, w.activeKey, w.available, w.seen, w.innerHas, w.inner, w.innerAux, w.innerKey, w.domain, w.id, w.revision)
+	_, err := tx.ExecContext(ctx, `UPDATE catalog_upstream_sources SET source_epoch=?,phase=?,has_after=?,after_id=?,after_aux=?,after_key=?,active_id=?,active_key=?,active_available=?,seen_inventory=?,inner_has=?,inner_id=?,inner_aux=?,inner_key=?,pass_revision=?,fence_entity=?
+ WHERE domain=? AND source_id=? AND revision=?`, w.epoch, w.phase, w.has, w.after, w.aux, w.key, w.active, w.activeKey, w.available, w.seen, w.innerHas, w.inner, w.innerAux, w.innerKey, w.passRevision, w.fenceEntity, w.domain, w.id, w.revision)
 	return err
 }
 func (w *upstreamSource) finish(ctx context.Context, tx *sql.Tx) error {
@@ -199,50 +208,158 @@ func (w *upstreamSource) asset(ctx context.Context, tx *sql.Tx, limit int) (int,
 	if err != nil {
 		return 0, false, err
 	}
-	q := `SELECT entity_id FROM catalog_asset_links INDEXED BY catalog_asset_links_asset WHERE asset_id=?`
-	args := []any{w.id}
-	if w.has {
-		q += ` AND entity_id>?`
-		args = append(args, w.after)
+	switch w.phase {
+	case 0:
+		if err = tx.QueryRowContext(ctx, `SELECT availability_epoch FROM catalog_facet_source_state WHERE singleton=1`).Scan(&w.epoch); err != nil {
+			return 0, false, err
+		}
+		// Both frontiers are captured once. NULL means no row; empty and negative
+		// raw keys remain legal. Same-token accepts preserve this entire pass.
+		var fence sql.NullString
+		if err = tx.QueryRowContext(ctx, `SELECT max(id) FROM inventory_objects INDEXED BY inventory_objects_reading_asset_object WHERE asset_id=?`, w.token).Scan(&fence); err != nil {
+			return 0, false, err
+		}
+		if err = tx.QueryRowContext(ctx, `SELECT max(entity_id) FROM catalog_asset_links INDEXED BY catalog_asset_links_asset WHERE asset_id=?`, w.id).Scan(&w.fenceEntity); err != nil {
+			return 0, false, err
+		}
+		w.clearInner()
+		if fence.Valid {
+			w.active = sql.NullInt64{Int64: 1, Valid: true}
+			w.activeKey = fence.String
+		}
+		w.has, w.after, w.key = false, 0, ""
+		w.passRevision, w.phase = w.revision, 1
+		return 0, false, nil
+	case 1:
+		if !w.active.Valid {
+			w.phase = 2
+			return 0, false, nil
+		}
+		q := `SELECT o.id,o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND s.enabled=1 AND s.health NOT IN('root_changed','removing') AND o.root_incarnation=s.incarnation
+ FROM inventory_objects o INDEXED BY inventory_objects_reading_asset_object CROSS JOIN library_sources s ON s.id=o.source_id
+ WHERE o.asset_id=? AND o.id<=?`
+		args := []any{w.token, w.activeKey}
+		if w.innerHas {
+			q += ` AND o.id>?`
+			args = append(args, w.innerKey)
+		}
+		q += ` ORDER BY o.id LIMIT ?`
+		args = append(args, limit)
+		rows, err := tx.QueryContext(ctx, q, args...)
+		if err != nil {
+			return 0, false, err
+		}
+		count, bytes := 0, 0
+		for rows.Next() {
+			var id string
+			var available bool
+			if err = rows.Scan(&id, &available); err != nil {
+				rows.Close()
+				return 0, false, err
+			}
+			if count > 0 && bytes+len(id) > facetScalarBudget {
+				break
+			}
+			count++
+			bytes += len(id)
+			w.innerHas, w.innerKey, w.seen = true, id, true
+			w.available = w.available || available
+			if bytes >= facetScalarBudget {
+				break
+			}
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return count, false, err
+		}
+		if count == 0 || w.available {
+			w.phase = 2
+		}
+		return count, false, nil
+	case 2:
+		var epoch int64
+		if err = tx.QueryRowContext(ctx, `SELECT availability_epoch FROM catalog_facet_source_state WHERE singleton=1`).Scan(&epoch); err != nil {
+			return 0, false, err
+		}
+		// This source-config stamp includes enabled/incarnation/root refusal
+		// changes, while unrelated imports and transient health leave it alone.
+		if epoch != w.epoch {
+			w.key = "rerun"
+		}
+		if w.passRevision == w.revision && w.key != "rerun" {
+			// Only a complete revision-consistent reduction publishes. The changed
+			// asset's existing point hooks run atomically and may retouch this source.
+			if w.seen {
+				if err = SetAssetAvailableTx(ctx, tx, w.id, w.available); err != nil {
+					return 0, false, err
+				}
+				if err = tx.QueryRowContext(ctx, `SELECT revision,flags FROM catalog_upstream_sources WHERE domain=41 AND source_id=?`, w.id).Scan(&w.revision, &w.flags); err != nil {
+					return 0, false, err
+				}
+				w.passRevision = w.revision // adopt only our same-writer point hooks
+			}
+		}
+		w.phase = 3
+		return 0, false, nil
+	case 3:
+		q := `SELECT entity_id FROM catalog_asset_links INDEXED BY catalog_asset_links_asset WHERE asset_id=? AND entity_id<=?`
+		args := []any{w.id, w.fenceEntity}
+		if w.has {
+			q += ` AND entity_id>?`
+			args = append(args, w.after)
+		}
+		q += ` ORDER BY entity_id LIMIT ?`
+		args = append(args, limit)
+		edges, err := querySourceEdges(ctx, tx, 0, q, args...)
+		if err != nil {
+			return 0, false, err
+		}
+		for _, r := range edges {
+			if w.flags&sourceAvailability != 0 {
+				if err = TouchTx(ctx, tx, DomainAvailability, r.id); err != nil {
+					return 0, false, err
+				}
+			}
+			if w.flags&sourceMissing != 0 {
+				if err = queueMissingSource(ctx, tx, r.id); err != nil {
+					return 0, false, err
+				}
+			}
+			if w.flags&sourceMetadata != 0 {
+				if _, err = tx.ExecContext(ctx, `UPDATE metadata_publication_heads SET source_revision=source_revision+1 WHERE item_id=?`, r.id); err != nil {
+					return 0, false, err
+				}
+			}
+			if w.flags&sourceRevision != 0 {
+				if _, err = tx.ExecContext(ctx, `UPDATE library_revisions SET revision=revision+1 WHERE library_id=(SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.id=?)`, r.id); err != nil {
+					return 0, false, err
+				}
+			}
+			if w.flags&sourceScreen != 0 {
+				if err = wakeScreenSource(ctx, tx, "item", r.id); err != nil {
+					return 0, false, err
+				}
+				if _, err = tx.ExecContext(ctx, `UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error='' WHERE target_kind='show' AND target_id=(SELECT show_id FROM catalog_episodes WHERE entity_id=?)`, r.id); err != nil {
+					return 0, false, err
+				}
+			}
+			w.after, w.has = r.id, true
+		}
+
+		if len(edges) == 0 {
+			if w.passRevision != w.revision || w.key == "rerun" {
+				// A finite pass finished. One dirty row owes the whole newer interval;
+				// no reset loop can prevent this pass from reaching its captured end.
+				w.phase, w.passRevision = 0, 0
+				return 0, false, nil
+			}
+			return 0, true, nil
+		}
+		return len(edges), false, nil
+	default:
+		return 0, false, errors.New("unknown asset source phase")
 	}
-	q += ` ORDER BY entity_id LIMIT ?`
-	args = append(args, limit)
-	edges, err := querySourceEdges(ctx, tx, 0, q, args...)
-	if err != nil {
-		return 0, false, err
-	}
-	for _, r := range edges {
-		if w.flags&sourceAvailability != 0 {
-			if err = TouchTx(ctx, tx, DomainAvailability, r.id); err != nil {
-				return 0, false, err
-			}
-		}
-		if w.flags&sourceMissing != 0 {
-			if err = queueMissingSource(ctx, tx, r.id); err != nil {
-				return 0, false, err
-			}
-		}
-		if w.flags&sourceMetadata != 0 {
-			if _, err = tx.ExecContext(ctx, `UPDATE metadata_publication_heads SET source_revision=source_revision+1 WHERE item_id=?`, r.id); err != nil {
-				return 0, false, err
-			}
-		}
-		if w.flags&sourceRevision != 0 {
-			if _, err = tx.ExecContext(ctx, `UPDATE library_revisions SET revision=revision+1 WHERE library_id=(SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.id=?)`, r.id); err != nil {
-				return 0, false, err
-			}
-		}
-		if w.flags&sourceScreen != 0 {
-			if err = wakeScreenSource(ctx, tx, "item", r.id); err != nil {
-				return 0, false, err
-			}
-			if _, err = tx.ExecContext(ctx, `UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error='' WHERE target_kind='show' AND target_id=(SELECT show_id FROM catalog_episodes WHERE entity_id=?)`, r.id); err != nil {
-				return 0, false, err
-			}
-		}
-		w.after, w.has = r.id, true
-	}
-	return len(edges), len(edges) == 0, nil
 }
 
 // Every parent stream uses its full raw key. The Book stream walks each file's
@@ -467,7 +584,11 @@ func PublicationSourcesReady(ctx context.Context, q ReadQuery) (bool, error) {
 
 func init() {
 	for _, domain := range []int{DomainAssetSources, DomainEntitySources, DomainLibrarySources, DomainMissingSources} {
-		Register(domain, Derivation{Version: 1,
+		version := 1
+		if domain == DomainAssetSources {
+			version = 2
+		}
+		Register(domain, Derivation{Version: version,
 			Drain: func(ctx context.Context, tx *sql.Tx, keys []Key, limit int) ([]int64, error) {
 				return drainUpstreamSources(ctx, tx, domain, keys, limit)
 			},

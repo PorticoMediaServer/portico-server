@@ -44,11 +44,18 @@ func TestSourceAssetAcceptanceCost(t *testing.T) {
 		t.Run(fmt.Sprintf("owners-%d", owners), func(t *testing.T) {
 			db := cc1OpenDB(t, "asset-cost.sqlite")
 			lib := cc1Library(t, db, "asset-cost", "Asset cost", "movie", "/asset-cost")
-			items := make([]int64, owners)
-			for i := range items {
-				items[i] = facetTestEntity(t, db, lib, fmt.Sprintf("cost:%d", i))
+			// Prepare the same final ownership graph incrementally. Bounded row/
+			// metric producers now owe multiple turns per owner; fixture setup must
+			// settle its small source batches before measuring the accepting write.
+			asset := sourceTestAsset(t, db, nil, "/asset-cost/shared.mkv")
+			cc1Drain(t, db)
+			for i := 0; i < owners; i++ {
+				item := facetTestEntity(t, db, lib, fmt.Sprintf("cost:%d", i))
+				cc1Write(t, db, func(ctx context.Context, tx *sql.Tx) error { return LinkAssetTx(ctx, tx, item, asset, Link{}) })
+				if (i+1)%8 == 0 {
+					cc1Drain(t, db)
+				}
 			}
-			asset := sourceTestAsset(t, db, items, "/asset-cost/shared.mkv")
 			cc1Drain(t, db)
 			sourceAssetCost(t, db, "availability", func(ctx context.Context, tx *sql.Tx) error { return SetAssetAvailableTx(ctx, tx, asset, false) })
 			sourceAssetCost(t, db, "availability-noop", func(ctx context.Context, tx *sql.Tx) error { return SetAssetAvailableTx(ctx, tx, asset, false) })
@@ -132,7 +139,7 @@ func TestSourceAssetUnlinkedChangesThenLinkConsumers(t *testing.T) {
 	}
 }
 
-func TestSourceAssetRetouchResetsSameFlagsAndRollsBackAtomically(t *testing.T) {
+func TestSourceAssetRetouchPreservesSameTokenAndRollsBackAtomically(t *testing.T) {
 	db := cc1OpenDB(t, "asset-retouch-cost.sqlite")
 	lib := cc1Library(t, db, "asset-retouch", "Retouch", "movie", "/retouch")
 	items := []int64{facetTestEntity(t, db, lib, "retouch:a"), facetTestEntity(t, db, lib, "retouch:b")}
@@ -154,6 +161,9 @@ func TestSourceAssetRetouchResetsSameFlagsAndRollsBackAtomically(t *testing.T) {
 	if cc1Scalar(t, db, `SELECT flags FROM catalog_upstream_sources WHERE domain=41 AND source_id=?`, asset) != 31 {
 		t.Fatal("combined update lost required consumers")
 	}
+	for cc1Scalar(t, db, `SELECT phase FROM catalog_upstream_sources WHERE domain=41 AND source_id=?`, asset) != 3 {
+		facetTestTurn(t, db, 41, 1)
+	}
 	facetTestTurn(t, db, 41, 1)
 	if cc1Scalar(t, db, `SELECT has_after FROM catalog_upstream_sources WHERE domain=41 AND source_id=?`, asset) != 1 {
 		t.Fatal("fixture did not partially progress")
@@ -164,13 +174,13 @@ func TestSourceAssetRetouchResetsSameFlagsAndRollsBackAtomically(t *testing.T) {
 	cc1Write(t, db, func(ctx context.Context, tx *sql.Tx) error {
 		return SetAssetTx(ctx, tx, asset, map[string]any{"size": int64(300)})
 	})
-	// One source marker reset plus one independent asset-metrics dirty wake
+	// One source marker retouch plus one independent asset-metrics dirty wake
 	// each stamp the existing source fence; both source revisions advance once.
 	if cc1Scalar(t, db, `SELECT revision FROM catalog_upstream_sources WHERE domain=41 AND source_id=?`, asset) != before+1 || cc1Scalar(t, db, `SELECT revision FROM catalog_dirty WHERE domain=41 AND entity_id=?`, asset) != dirty+1 || cc1Scalar(t, db, `SELECT source_epoch FROM catalog_facet_source_state`) != epoch+2 {
 		t.Fatalf("real same-flags change: source revision %d -> %d, dirty %d -> %d, epoch %d -> %d", before, cc1Scalar(t, db, `SELECT revision FROM catalog_upstream_sources WHERE domain=41 AND source_id=?`, asset), dirty, cc1Scalar(t, db, `SELECT revision FROM catalog_dirty WHERE domain=41 AND entity_id=?`, asset), epoch, cc1Scalar(t, db, `SELECT source_epoch FROM catalog_facet_source_state`))
 	}
-	if cc1Scalar(t, db, `SELECT count(*) FROM catalog_upstream_sources WHERE domain=41 AND source_id=? AND flags=31 AND source_epoch=0 AND phase=0 AND has_after=0 AND after_id=0 AND active_id IS NULL AND inner_has=0`, asset) != 1 {
-		t.Fatal("same-flags change retained stale progress")
+	if cc1Scalar(t, db, `SELECT count(*) FROM catalog_upstream_sources WHERE domain=41 AND source_id=? AND flags=31 AND phase=3 AND has_after=1 AND pass_revision<revision`, asset) != 1 {
+		t.Fatal("same-token change reset progress or lost its rerun")
 	}
 	source := groupRows(t, db, `SELECT * FROM catalog_upstream_sources WHERE domain=41`)
 	dirt := groupRows(t, db, `SELECT * FROM catalog_dirty WHERE domain IN(26,41)`)

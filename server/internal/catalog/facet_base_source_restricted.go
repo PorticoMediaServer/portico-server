@@ -116,7 +116,7 @@ func (p RestrictedFacetBaseProducer) validate(ctx context.Context, tx *sql.Tx, s
 	if (shows && s.Scope.Source != RestrictedShowFacetBaseSource) || (!shows && s.Scope.Source != RestrictedMemberFacetBaseSource) {
 		return r, ErrFacetBaseUnavailable
 	}
-	if err = compactcatalog.ValidateFacetProducerFence(ctx, tx, w.Fence); err != nil {
+	if err = validateMemberFacetFence(ctx, tx, w.Fence); err != nil {
 		return r, err
 	}
 	return r, rejectPublishedFacetDecade(ctx, tx, s.Scope, r)
@@ -132,7 +132,7 @@ func (p RestrictedFacetBaseProducer) ValidatePublication(ctx context.Context, tx
 	}
 	return err
 }
-func (p RestrictedFacetBaseProducer) Next(ctx context.Context, tx *sql.Tx, s FacetBaseSnapshot, cursor string) (FacetBaseBatch, error) {
+func (p RestrictedFacetBaseProducer) nextMember(ctx context.Context, tx *sql.Tx, s FacetBaseSnapshot, cursor string) (FacetBaseBatch, error) {
 	r, err := p.validate(ctx, tx, s)
 	if err != nil {
 		return FacetBaseBatch{}, err
@@ -176,6 +176,9 @@ func (p RestrictedFacetBaseProducer) Next(ctx context.Context, tx *sql.Tx, s Fac
 		} else if err != nil {
 			return out, err
 		} else {
+			if !chargeFacetColdSource(ctx, len(field)+len(value)) {
+				return FacetBaseBatch{Cursor: cursor}, nil
+			}
 			c.HasAfter = true
 			c.Entity, c.Field, c.Value = entity, field, value
 			if library == s.Scope.LibraryID && field == s.Scope.Field && value != "" {
@@ -196,6 +199,52 @@ func (p RestrictedFacetBaseProducer) Next(ctx context.Context, tx *sql.Tx, s Fac
 		return out, err
 	}
 	out.Cursor = string(encoded)
+	return out, nil
+}
+
+// Next keeps quiet-time pacing, but reduces a larger raw member/policy prefix
+// during a cold hold. Equal values coalesce in at most eight in-memory facts;
+// no per-member count write or new persistent contribution graph is needed.
+func (p RestrictedFacetBaseProducer) Next(ctx context.Context, tx *sql.Tx, s FacetBaseSnapshot, cursor string) (FacetBaseBatch, error) {
+	budget := facetColdSource(ctx)
+	if budget == nil || s.Scope.Source != RestrictedMemberFacetBaseSource {
+		return p.nextMember(ctx, tx, s, cursor)
+	}
+	out := FacetBaseBatch{Cursor: cursor}
+	positions := make(map[string]int, 8)
+	bytes := 0
+	for step := 0; step < 1024 && budget.room(); step++ {
+		batch, err := p.nextMember(ctx, tx, s, out.Cursor)
+		if err != nil {
+			return out, err
+		}
+		if batch.Cursor == out.Cursor && !batch.Done {
+			break
+		}
+		if len(batch.Facts) > 0 {
+			fact := batch.Facts[0]
+			at, found := positions[fact.Value]
+			width := len(fact.Value) + len(fact.Label)
+			if !found && (len(out.Facts) >= 8 || len(out.Facts) > 0 && bytes+width > 256<<10) {
+				break
+			}
+			if found {
+				if out.Facts[at].Count == math.MaxInt64 {
+					return out, ErrFacetBaseInput
+				}
+				out.Facts[at].Count++
+			} else {
+				positions[fact.Value] = len(out.Facts)
+				out.Facts = append(out.Facts, fact)
+				bytes += width
+			}
+		}
+		out.Cursor = batch.Cursor
+		out.Done = batch.Done
+		if out.Done {
+			break
+		}
+	}
 	return out, nil
 }
 

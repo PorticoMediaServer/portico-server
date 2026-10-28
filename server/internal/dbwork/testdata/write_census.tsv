@@ -116,13 +116,15 @@ internal/catalog/title_merge.go	(*Service).MergeTitles	WithWriteTx	ClassFrom(ctx
 internal/catalog/title_merge.go	(*Service).SeparateFolder	WithWriteTx	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/catalog/title_tombstones.go	(*Service).DismissRemovedTitle	WithWriteTx	ClassInteractive	-
 internal/catalog/title_tombstones.go	(*Service).PruneRemovedTitles	WithWriteTx	ClassMaintenance	-
-internal/catalog/visibility_classes.go	(*Service).RebuildVisibilityClass	WithWriteTx	ClassBackgroundMedia	-	×3
+internal/catalog/visibility_classes.go	(*Service).RebuildVisibilityClass	WithWriteTx	ClassBackgroundMedia	-	×4
 internal/catalog/visibility_classes.go	(*Service).clearVisibilityGeneration	ExecWrite	ClassBackgroundMedia	-	×3
-internal/catalog/visibility_incremental.go	(*Service).refreshVisibilityClass	WithWriteTx	ClassBackgroundMedia	-
+internal/catalog/visibility_frontier.go	(*Service).clearVisibilityDirtyThrough	WithWriteTx	ClassBackgroundMedia	-
+internal/catalog/visibility_frontier.go	(*Service).settleVisibilitySourceTarget	WithWriteTx	ClassBackgroundMedia	-
+internal/catalog/visibility_incremental.go	(*Service).refreshVisibilityClass	WithWriteTx	ClassBackgroundMedia	-	×2
 internal/catalogtest/catalogtest.go	(*Catalog).Write	WithWriteTx	ClassMaintenance	-
 internal/compactcatalog/derive.go	(*Worker).Rebuild	WithWriteTx	ClassMaintenance	-
 internal/compactcatalog/derive.go	(*Worker).Step	WithWriteTx	ClassMaintenance	DrainPlan|derivationUnitPlan
-internal/compactcatalog/derive.go	(*Worker).prepare	WithWriteTx	ClassMaintenance	-
+internal/compactcatalog/derive.go	(*Worker).prepare	WithWriteTx	ClassMaintenance	-	×2
 internal/compactcatalog/derive.go	(*Worker).setAside	WithWriteTx	ClassMaintenance	-
 internal/compactcatalog/local_genres.go	ProjectAudioLocalGenresBatch	Begin	ClassFrom(ctx, dbwork.ClassBackgroundMedia)	-
 internal/compactcatalog/ratings.go	ClassifyPendingRatings	WithWriteTx	ClassBackgroundMedia	-
@@ -207,7 +209,6 @@ internal/identity/direct_accounts.go	(*Service).UpdateDirectMember	Begin	ClassSe
 internal/identity/direct_accounts.go	(*Service).directLoginOnce	Begin	ClassSecurityFence	-
 internal/identity/direct_accounts.go	(*Service).rehashOldPassword	ExecWrite	ClassSecurityFence	-
 internal/identity/direct_profiles.go	(*Service).CreateDirectProfile	Begin	ClassSecurityFence	-
-internal/identity/direct_profiles.go	(*Service).DeleteDirectProfile	Begin	ClassSecurityFence	-
 internal/identity/direct_profiles.go	(*Service).EditDirectProfile	Begin	ClassSecurityFence	-
 internal/identity/direct_profiles.go	(*Service).OrderDirectProfiles	Begin	ClassSecurityFence	-
 internal/identity/direct_profiles.go	(*Service).RevokeDirectTrust	Begin	ClassSecurityFence	-
@@ -230,6 +231,9 @@ internal/identity/pin_recovery.go	(*Service).PINReset	Begin	ClassSecurityFence	-
 internal/identity/portico_accounts.go	(*Service).AcceptPorticoCustody	Begin	ClassSecurityFence	-
 internal/identity/portico_accounts.go	(*Service).CompletePorticoOwnerClaim	WithWriteTx	ClassSecurityFence	-
 internal/identity/portico_accounts.go	(*Service).PorticoSignIn	Begin	ClassSecurityFence	-
+internal/identity/profile_purge.go	(*Service).PurgeProfileStep	Begin	ClassMaintenance	-
+internal/identity/profile_purge.go	(*Service).markProfilePurgeBlocked	Begin	ClassMaintenance	-
+internal/identity/profile_retirement.go	(*Service).RetireDirectProfile	Begin	ClassSecurityFence	-
 internal/identity/prune_sessions.go	(*Service).PruneEndedSessions	WithWriteTx	ClassMaintenance	-
 internal/identity/prune_sessions.go	(*Service).PruneSessionHistory	ExecWrite	ClassMaintenance	-
 internal/identity/quick_connect.go	(*Service).CancelQuick	Begin	ClassSecurityFence	-
@@ -284,6 +288,9 @@ internal/ingestion/service.go	(*Service).QueueContext	Begin	ClassBackgroundMedia
 internal/ingestion/service.go	(*Service).processQuantum	WithWriteTx	ClassBackgroundMedia	-
 internal/ingestion/sidecar_changes.go	(*Service).enqueueSidecarChanges	Begin	ClassBackgroundMedia	-
 internal/ingestion/sidecar_changes.go	(*Service).reconcileSidecars	Begin	ClassBackgroundMedia	-
+internal/ingestion/source_verification.go	verificationWrite	WithWriteTx	ClassMaintenance	-
+internal/ingestion/strict_intents.go	(*Service).RefreshLibraries	Begin	ClassBackgroundMedia	-
+internal/ingestion/strict_intents.go	(*Service).startStrictIntent	Begin	ClassBackgroundMedia	-	×2
 internal/ingestion/targeted.go	(*Service).ReportPaths	Begin	ClassBackgroundMedia	-
 internal/ingestion/targeted.go	(*Service).handOverToReports	Begin	ClassBackgroundMedia	-
 internal/ingestion/targeted.go	(*Service).startWaitingReports	Begin	ClassBackgroundMedia	-
@@ -611,9 +618,8 @@ internal/remotesources/configuration.go	(*Service).ConfigureDAV	Begin	ClassBackg
 internal/remotesources/configuration.go	(*Service).RemoveDAV	Begin	ClassBackgroundMedia	-
 internal/remotesources/contact_history.go	(*Service).flushContactBatch	Begin	ClassBackgroundMedia	-
 internal/remotesources/fences.go	(*Service).CheckScan	ExecWrite	ClassBackgroundMedia	-
-internal/remotesources/inventory.go	(*Service).ListInventoryPage	ExecWrite	ClassBackgroundMedia	-
-internal/remotesources/inventory_native.go	(*Service).startNativeListing	Begin	ClassBackgroundMedia	-
-internal/remotesources/inventory_native.go	(*Service).startNativeListing	ExecWrite	ClassBackgroundMedia	-	×2
+internal/remotesources/inventory_native.go	(*Service).startNativeListing	Begin	class	-
+internal/remotesources/inventory_native.go	(*Service).startNativeListing	ExecWrite	class	-	×2
 internal/remotesources/inventory_proof.go	(*Service).VerifyInventoryDirectory	ExecWrite	ClassBackgroundMedia	-	×2
 internal/remotesources/listing_cache_prune.go	(*Service).pruneExpiredListings	Begin	ClassBackgroundMedia	-
 internal/remotesources/listing_cache_prune.go	(*Service).pruneOrphanChecks	Begin	ClassBackgroundMedia	-
@@ -621,7 +627,7 @@ internal/remotesources/listing_cache_prune.go	(*Service).pruneOrphanScanCursors	
 internal/remotesources/policy.go	(*Service).SetAnalysisPolicy	Begin	ClassBackgroundMedia	-
 internal/remotesources/read_settings.go	(*Service).SaveSourceReadSettings	Begin	ClassInteractive	-
 internal/remotesources/removed_source_assets.go	(*Service).markRemovedSourceAssets	Begin	ClassBackgroundMedia	-
-internal/remotesources/serve_listing.go	(*Service).buildServeSnapshot	Begin	ClassBackgroundMedia	-	×3
+internal/remotesources/serve_listing.go	(*Service).buildServeSnapshot	Begin	ClassFrom(ctx, dbwork.ClassBackgroundMedia)	-	×3
 internal/remotesources/serve_runtime.go	(*Service).ensureSourceServe	ExecWrite	ClassBackgroundMedia	-
 internal/remotesources/service.go	(*Service).RefreshMounts	Begin	ClassBackgroundMedia	-
 internal/remotesources/service.go	(*Service).health	ExecWrite	ClassBackgroundMedia	-
@@ -629,6 +635,8 @@ internal/remotesources/source_cache.go	(*Service).clearSourceCache	ExecWrite	Cla
 internal/remotesources/source_cache.go	(*Service).evictSourceCache	ExecWrite	ClassBackgroundMedia	-
 internal/remotesources/source_cache.go	(*Service).reconcileSourceCachePage	ExecWrite	ClassBackgroundMedia	-
 internal/remotesources/source_cache.go	(*rangeCache).commit	ExecWrite	ClassBackgroundMedia	-
+internal/remotesources/verification_listing.go	(*Service).verificationRetire	Begin	ClassFrom(ctx, dbwork.ClassMaintenance)	-
+internal/remotesources/verification_pacing.go	listingExec	ExecWrite	ClassFrom(ctx, dbwork.ClassBackgroundMedia)	-
 internal/scanevents/activity_progress.go	(*Publisher).tickTaskProgress	WithWriteTx	ClassBackgroundMedia	-
 internal/scanevents/scanevents.go	(*Publisher).writeEvents	WithWriteTx	ClassBackgroundMedia	-
 internal/selectionactions/journal.go	(*Service).write	WithWriteTx	ClassBackgroundMedia	-

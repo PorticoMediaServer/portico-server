@@ -18,11 +18,14 @@ func playbackBindingDatabase(t *testing.T) (*sql.DB, string) {
 	}
 	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { db.Close() })
-	_, err = db.Exec(`CREATE TABLE catalog_assets(token TEXT,path TEXT,size INTEGER,modified_ns INTEGER,available INTEGER);
-CREATE TABLE playback_sessions(id TEXT,asset_id TEXT,grant_hash TEXT);
+	_, err = db.Exec(`CREATE TABLE catalog_assets(id INTEGER PRIMARY KEY,token TEXT,path TEXT,size INTEGER,modified_ns INTEGER,available INTEGER,container TEXT NOT NULL DEFAULT '');
+CREATE TABLE catalog_asset_links(entity_id INTEGER,asset_id INTEGER,available INTEGER);
+CREATE TABLE catalog_entities(id INTEGER PRIMARY KEY,library_id INTEGER,retired INTEGER);
+CREATE TABLE catalog_libraries(id INTEGER PRIMARY KEY,library_id TEXT,retired INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE playback_sessions(id TEXT,asset_id TEXT,grant_hash TEXT,item_id INTEGER);
 CREATE TABLE playback_source_pins(session_id TEXT,asset_id TEXT,size INTEGER,modified_ns INTEGER,binding TEXT NOT NULL DEFAULT 'none',source_id TEXT NOT NULL DEFAULT '',inventory_object_id TEXT NOT NULL DEFAULT '',root TEXT NOT NULL DEFAULT '',root_identity TEXT NOT NULL DEFAULT '',relative_path TEXT NOT NULL DEFAULT '',object_identity TEXT NOT NULL DEFAULT '',follow_symlinks INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE playback_physical_source_pins(session_id TEXT,source_id TEXT,incarnation TEXT,configuration_generation INTEGER);
-CREATE TABLE library_sources(id TEXT,root TEXT,root_identity TEXT,follow_symlinks INTEGER,kind TEXT,enabled INTEGER,identity_confirmed INTEGER,health TEXT,incarnation TEXT,generation INTEGER);
+CREATE TABLE library_sources(id TEXT,library_id TEXT,root TEXT,configured_root TEXT,root_identity TEXT,follow_symlinks INTEGER,kind TEXT,enabled INTEGER,identity_confirmed INTEGER,health TEXT,incarnation TEXT,generation INTEGER);
 CREATE TABLE inventory_objects(id TEXT,source_id TEXT,asset_id TEXT,relative_path TEXT,object_identity TEXT,size INTEGER,modified_ns INTEGER,retired INTEGER,state TEXT,root_incarnation TEXT);`)
 	if err != nil {
 		t.Fatal(err)
@@ -34,9 +37,10 @@ CREATE TABLE inventory_objects(id TEXT,source_id TEXT,asset_id TEXT,relative_pat
 		query string
 		args  []any
 	}{
-		{`INSERT INTO catalog_assets VALUES('asset',?,12,34,1)`, []any{filepath.Join(root, "source.mp4")}},
-		{`INSERT INTO library_sources VALUES('source',?,'root-object',1,'local',1,1,'ready','incarnation',3)`, []any{root}},
-		{`INSERT INTO playback_sessions VALUES('session','asset','grant');
+		{`INSERT INTO catalog_assets(id,token,path,size,modified_ns,available) VALUES(1,'asset',?,12,34,1)`, []any{filepath.Join(root, "source.mp4")}},
+		{`INSERT INTO catalog_libraries VALUES(1,'library',0);INSERT INTO catalog_entities VALUES(1,1,0);INSERT INTO catalog_asset_links VALUES(1,1,1);`, nil},
+		{`INSERT INTO library_sources(id,library_id,root,configured_root,root_identity,follow_symlinks,kind,enabled,identity_confirmed,health,incarnation,generation) VALUES('source','library',?,?,'root-object',1,'local',1,1,'ready','incarnation',3)`, []any{root, root}},
+		{`INSERT INTO playback_sessions VALUES('session','asset','grant',1);
 INSERT INTO playback_source_pins(session_id,asset_id,size,modified_ns) VALUES('session','asset',12,34);
 INSERT INTO playback_physical_source_pins VALUES('session','source','incarnation',3);
 INSERT INTO inventory_objects VALUES('object','source','asset','source.mp4','ino:42',12,34,0,'available','incarnation');`, nil},

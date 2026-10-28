@@ -45,7 +45,7 @@ func (s *Service) RecordSearch(v identity.Viewer, query string) error {
 	}
 	profile := identity.PersonalKey(v)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	if _, e = dbwork.ExecWrite(s.Context(), s.db, dbwork.ClassFrom(s.Context(), dbwork.ClassInteractive), `INSERT INTO search_history VALUES(?,?,?,?) ON CONFLICT(profile_key,normalized) DO UPDATE SET query=excluded.query,updated_at=excluded.updated_at`, profile, strings.ToLower(query), query, now); e != nil {
+	if _, e = dbwork.ExecWrite(s.Context(), s.db, dbwork.ClassFrom(s.Context(), dbwork.ClassInteractive), `INSERT INTO search_history SELECT ?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM direct_profiles WHERE account_id=? AND id=? AND deleted=1 AND ?='local') ON CONFLICT(profile_key,normalized) DO UPDATE SET query=excluded.query,updated_at=excluded.updated_at`, profile, strings.ToLower(query), query, now, v.AccountID, v.ProfileID, v.Authority); e != nil {
 		return e
 	}
 	_, e = dbwork.ExecWrite(s.Context(), s.db, dbwork.ClassFrom(s.Context(), dbwork.ClassInteractive), `DELETE FROM search_history WHERE profile_key=? AND normalized NOT IN(SELECT normalized FROM search_history WHERE profile_key=? ORDER BY updated_at DESC,normalized LIMIT ?)`, profile, profile, SearchHistoryLimit)

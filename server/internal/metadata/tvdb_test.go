@@ -306,6 +306,9 @@ func TestTVDBExplicitAbsolutePreservesUnassignedHierarchy(t *testing.T) {
 	}
 	names["absolute"] = c.Episode(show, names["season"], 8, "/media/absolute.mkv")
 	tvdbUpdateEpisodeFacts(t, db, names["absolute"], map[string]any{"season_id": nil, "numbering": "absolute", "local_identity_status": "parsed"})
+	// Match the supervised projector before asking the provider to acquire a
+	// candidate for these changed source facts; keep its readiness fence intact.
+	settleMetadataCatalogue(t, db)
 	s := New(db, "")
 	number := 8
 	episode := ep(108, 8)
