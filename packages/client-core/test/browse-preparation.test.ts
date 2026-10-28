@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {routePaths} from '../../contracts/src/route-paths.ts';
-import {parseBrowsePreparing, readBrowsePage, readReadingFacet} from '../src/browse-preparation.ts';
+import {parseBrowsePreparing, readBrowsePage, readBrowseSelection, readReadingFacet} from '../src/browse-preparation.ts';
 import {BrowseSession, type BrowseSessionOptions} from '../src/browse-session.ts';
 import {parseBrowseCapabilities} from '../src/browse.ts';
 import type {LibraryContentApi, ContentEntry} from '../src/library-content.ts';
@@ -46,6 +46,7 @@ test('strict domain pending validation refuses cross-domain, malformed and unsaf
 });
 test('legacy successful ports remain usable and a body-only pending envelope fails closed', async () => {
   assert.equal((await readReadingFacet({request: async <T>() => facet as T}, 'lib', path, 'author', {signal: signal(), isCurrent: () => true})).total, 1);
+  await assert.rejects(readReadingFacet({request: async <T>() => ({...facet, state: 'preparing'}) as T}, 'lib', path, 'author', {signal: signal(), isCurrent: () => true}));
   await assert.rejects(readReadingFacet({request: async <T>() => pending('reading-facet').body as T}, 'lib', path, 'author', {signal: signal(), isCurrent: () => true}));
   await assert.rejects(readBrowsePage({request: async <T>() => pending('reading-browse').body as T}, 'lib', {}, {signal: signal(), isCurrent: () => true}));
 });
@@ -95,7 +96,7 @@ domainTest('retiring/query switching cancels pending selection and rejects a lat
 domainTest('later pages never install a whole descriptor while the original aggregate is preparing', async () => {
   const time = clock(); let post = 0;
   const s = session(async (_target, method) => method === 'POST' ? ready(post++ ? page(1, {wholeSelection: whole({total: 0, types: []})}) : page(0, {wholeSelectionPreparing: pending('browse-selection').body})) : ready(whole()), {preparationRuntime: time.runtime});
-  await s.fetchPage(0, 1, signal()); await s.fetchPage(1, 1, signal()); assert.equal(s.wholeSelection(), undefined);
+  await s.fetchPage(0, 1, signal()); await s.fetchPage(1, 1, signal()); assert.equal(s.wholeSelection(), undefined); await tick();
   await time.advance(251); assert.equal(s.wholeSelection()?.total, 4); s.retire();
 });
 for (const changed of [{catalogRevision: 'other'}, {selector: {query: {libraryId: 'other', pivot: 'books', sort: query.sorts}}},
@@ -104,7 +105,7 @@ for (const changed of [{catalogRevision: 'other'}, {selector: {query: {libraryId
   domainTest(`prepared selection refuses changed original page basis: ${JSON.stringify(changed)}`, async () => {
     const time = clock(); let stale = false;
     const s = session(async (_target, method) => method === 'POST' ? ready(page(0, {wholeSelectionPreparing: pending('browse-selection').body})) : ready(whole(changed)), {preparationRuntime: time.runtime, onStale: () => {stale = true;}});
-    await s.fetchPage(0, 1, signal()); await time.advance(251); assert.equal(s.wholeSelection(), undefined); assert.equal(stale, true); s.retire();
+    await s.fetchPage(0, 1, signal()); await tick(); await time.advance(251); assert.equal(s.wholeSelection(), undefined); assert.equal(stale, true); s.retire();
   });
 }
 domainTest('revocation during preparation remains an error and cancels known caller demand', async () => {
@@ -145,9 +146,9 @@ test('BrowseSession works without AbortSignal.any and releases composed listener
     return remove.call(this, type, listener, options);
   };
   try {
-    for (const fail of [false, true]) {
+    for (const fail of [false, true]) for (const raw of [false, true]) {
       const input = new AbortController();
-      const s = session(undefined, {request: async () => {if (fail) throw new Error('offline'); return page();}});
+      const s = session(raw ? async () => {if (fail) throw new Error('offline'); return ready(page());} : undefined, {request: async () => {if (fail) throw new Error('offline'); return page();}});
       if (fail) await assert.rejects(s.fetchPage(0, 1, input.signal), /offline/);
       else assert.equal((await s.fetchPage(0, 1, input.signal)).items.length, 1);
       assert.equal(listeners.get(input.signal)?.size, 0, 'the completed page detaches its caller listener');
@@ -158,4 +159,13 @@ test('BrowseSession works without AbortSignal.any and releases composed listener
     AbortSignal.prototype.addEventListener = add; AbortSignal.prototype.removeEventListener = remove;
     Object.defineProperty(AbortSignal, 'any', originalAny);
   }
+});
+
+domainTest('a known optional selection is canceled even when retirement precedes its first shared-reader seam', async () => {
+  const controller = new AbortController(); controller.abort(); const calls: string[] = [];
+  const response = ready(page(0, {wholeSelectionPreparing: pending('browse-selection').body}));
+  const api: LibraryContentApi = {request: async () => {throw 0;}, requestRaw: async (path, method) => {calls.push(`${method} ${path}`); return ready(undefined);}};
+  await assert.rejects(readBrowseSelection(api, 'lib', {revision: 'r1', pivot: 'books', query: null, sort: query.sorts}, response,
+    {signal: controller.signal, isCurrent: () => false}, {pivot: 'books', sort: query.sorts}), {name: 'AbortError'});
+  assert.deepEqual(calls, ['DELETE /v1/libraries/lib/browse-selection-queries/query-1']);
 });
