@@ -10,14 +10,16 @@ const lifetimes: Record<ServicesLinkKind, number> = {device: 600_000, reset: 900
 /** This runs synchronously in the entry, before a store read, render or network request. */
 export function captureServicesLink(page: Pick<Location, 'pathname' | 'search' | 'hash'>,
   history: Pick<History, 'state' | 'replaceState'>, now = Date.now()): LinkCapture | undefined {
-  const kind = page.pathname.slice(1);
+  const kind = page.pathname === '/reset-password' ? 'reset' : page.pathname.slice(1);
   if (kind !== 'device' && kind !== 'reset' && kind !== 'verify-email') return;
-  if (!page.hash) return;
-  const fragment = page.hash;
-  history.replaceState(history.state, '', page.pathname + page.search);
+  const fragment = page.hash, query = page.search;
+  if (!fragment && (kind === 'device' || !query)) return;
+  // Both mail URL forms are in circulation. Capture once and remove the secret
+  // before React, storage or a request; ambiguous forms never choose a token.
+  history.replaceState(history.state, '', page.pathname + (kind === 'device' ? query : ''));
   const invalid = {kind} as const;
-  if (page.search || fragment.length > 4200) return invalid;
-  const params = new URLSearchParams(fragment.slice(1)), key = kind === 'device' ? 'code' : 'token';
+  if (fragment && query || kind === 'device' && query || fragment.length + query.length > 4200) return invalid;
+  const params = new URLSearchParams((fragment || query).slice(1)), key = kind === 'device' ? 'code' : 'token';
   if (params.size !== 1 || params.getAll(key).length !== 1) return invalid;
   let value = params.get(key) ?? '';
   if (kind === 'device') {

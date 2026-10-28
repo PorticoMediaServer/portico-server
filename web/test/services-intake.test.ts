@@ -16,6 +16,32 @@ test('device and mail fragments are removed before any asynchronous continuation
   }
 });
 
+test('mailed query tokens and the reset-password alias are captured and scrubbed synchronously', () => {
+  for (const pathname of ['/verify-email', '/reset', '/reset-password']) {
+    const calls: unknown[][] = [];
+    const capture = captureServicesLink({pathname, search: '?token=secret_123', hash: ''},
+      {state: {entry: 1}, replaceState: (...args) => {calls.push(args);}}, 1000);
+    assert.deepEqual(calls, [[{entry: 1}, '', pathname]]);
+    assert.deepEqual(capture, {kind: pathname === '/verify-email' ? 'verify-email' : 'reset',
+      link: {version: 1, kind: pathname === '/verify-email' ? 'verify-email' : 'reset', value: 'secret_123', createdAt: 1000}});
+  }
+});
+
+test('ambiguous or malformed mailed query links are scrubbed and cannot revive a saved link', async () => {
+  for (const [search, hash] of [
+    ['?token=one&token=two', ''], ['?token=one&return=elsewhere', ''], ['?token=%00', ''],
+    ['?token=', ''], ['?token=' + 'a'.repeat(4201), ''], ['?token=one', '#token=two'],
+  ]) {
+    const saved: ServicesLink = {version: 1, kind: 'verify-email', value: 'older', createdAt: 1000}, v = vault(saved);
+    let scrubbed = false;
+    const capture = captureServicesLink({pathname: '/verify-email', search, hash},
+      {state: null, replaceState: (_state, _title, path) => {scrubbed = true; assert.equal(path, '/verify-email');}}, 1001);
+    assert.equal(scrubbed, true);
+    assert.equal(await restoreServicesLink(v.store, capture, 1001), undefined);
+    assert.equal(v.value(), undefined);
+  }
+});
+
 test('unknown continuation fragments are scrubbed and refused, while drawn Start anchors remain navigation', () => {
   for (const pathname of ['/', '/claim', '/account']) {
     let next: unknown;

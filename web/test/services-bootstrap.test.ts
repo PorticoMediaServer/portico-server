@@ -8,7 +8,7 @@ import type {ServicesLinkStore} from '../src/services/intake.ts';
 test('only both explicit Hosted switches select the Services entry', () => {
   for (const env of [{}, {VITE_HOSTED_WEB: 'true'}, {VITE_ACCOUNT_WORKSPACE: 'true'}, {VITE_HOSTED_WEB: '1', VITE_ACCOUNT_WORKSPACE: 'true'}]) assert.equal(servicesBuildMode(env), false);
   assert.equal(servicesBuildMode({VITE_HOSTED_WEB: 'true', VITE_ACCOUNT_WORKSPACE: 'true'}), true);
-  assert.deepEqual(servicesPaths, ['/', '/account', '/device', '/reset', '/verify-email', '/claim', '/join']);
+  assert.deepEqual(servicesPaths, ['/', '/account', '/device', '/reset', '/reset-password', '/verify-email', '/claim', '/join']);
 });
 
 function ports(signedIn = false) {
