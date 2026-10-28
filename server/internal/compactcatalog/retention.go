@@ -3,34 +3,54 @@ package compactcatalog
 import (
 	"context"
 	"database/sql"
+	"log"
 	"portico.local/server/internal/apievents"
 	"portico.local/server/internal/dbwork"
 	"time"
 )
 
-// RunRetention walks bounded candidate windows daily.
+// RunRetention owns both the daily relational walk and periodic native-FTS
+// upkeep. It uses the existing goroutine and one timer; each writer is released
+// before the next unit and retains the maintenance class below scan/user work.
 func RunRetention(ctx context.Context, db *sql.DB) {
+	nextPrune := time.Now()
+	nextMerge := nextPrune.Add(titleGramsMergeInterval)
 	for ctx.Err() == nil {
-		more := true
-		for more && ctx.Err() == nil {
+		now := time.Now()
+		if !now.Before(nextMerge) {
+			if e := maintainTitleGrams(ctx, db); e != nil && ctx.Err() == nil {
+				log.Printf("Catalogue title index maintenance will retry: %v", e)
+			}
+			nextMerge = time.Now().Add(titleGramsMergeInterval)
+		}
+		if ctx.Err() != nil {
+			return
+		}
+		if !time.Now().Before(nextPrune) {
 			if !dbwork.WaitBackground(ctx) {
 				return
 			}
-			ctx = dbwork.WithBackgroundSpeed(ctx, dbwork.ReadBackgroundSpeed(ctx, db))
+			workCtx := dbwork.WithBackgroundSpeed(ctx, dbwork.ReadBackgroundSpeed(ctx, db))
 			started := time.Now()
-			err := dbwork.WithWriteTx(ctx, db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
-				var err error
-				more, err = PruneTx(ctx, tx, 32*dbwork.BackgroundConcurrency(ctx))
-				return err
+			more := false
+			e := dbwork.WithWriteTx(workCtx, db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
+				var e error
+				more, e = PruneTx(workCtx, tx, 32*dbwork.BackgroundConcurrency(workCtx))
+				return e
 			})
-			if err != nil {
-				break
+			if e == nil && more {
+				if !dbwork.PaceBackground(workCtx, started) {
+					return
+				}
+				continue
 			}
-			if more && !dbwork.PaceBackground(ctx, started) {
-				return
-			}
+			nextPrune = time.Now().Add(24 * time.Hour)
 		}
-		timer := time.NewTimer(24 * time.Hour)
+		next := nextPrune
+		if nextMerge.Before(next) {
+			next = nextMerge
+		}
+		timer := time.NewTimer(max(time.Until(next), 0))
 		select {
 		case <-ctx.Done():
 			timer.Stop()
@@ -39,6 +59,7 @@ func RunRetention(ctx context.Context, db *sql.DB) {
 		}
 	}
 }
+
 func PruneTx(ctx context.Context, tx *sql.Tx, limit int) (bool, error) {
 	dictionaries := []struct{ table, predicate string }{
 		{"catalog_search_prefix_terms", `NOT EXISTS(SELECT 1 FROM catalog_search_prefix_rows r WHERE r.term_id=d.id) AND NOT EXISTS(SELECT 1 FROM catalog_search_prefix_rows_next r WHERE r.term_id=d.id)`},
