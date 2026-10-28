@@ -57,6 +57,7 @@ import (
 	"portico.local/server/internal/playbackruntime"
 	"portico.local/server/internal/preparedmedia"
 	"portico.local/server/internal/reading"
+	"portico.local/server/internal/readprep"
 	"portico.local/server/internal/recordingaccess"
 	"portico.local/server/internal/recordingmedia"
 	"portico.local/server/internal/recordingroot"
@@ -568,7 +569,13 @@ func run() (runErr error) {
 	storeIO.Remote = sources
 	storeIO.Guard = managed.Guard
 	storeIO.MountedRoot = managed.RootFor
+	readPreparations, e := readprep.New(readprep.DefaultConfig())
+	if e != nil {
+		return e
+	}
+	defer readPreparations.Close()
 	cat := catalog.New(db)
+	cat.UseReadPreparations(readPreparations)
 	cat.SetStorage(storeIO)
 	// This is a barrier, not a background best-effort capability update. No
 	// playback service is constructed until qualification completes or times out.
