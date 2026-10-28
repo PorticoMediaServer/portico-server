@@ -1,4 +1,4 @@
-import {encodedRoutePath} from "../../../contracts/src/routes.ts";
+import {encodedRoutePath} from "../../../contracts/src/route-paths.ts";
 /**
  * Live TV and Library Channels on a Playback v1 session (spec §11, §18.6; Plan — Client Playback
  * Migration §10, B6). The same surface as the /v2 `ChannelControl` (open, pause, resume, seek, go

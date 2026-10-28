@@ -1,5 +1,6 @@
 import {unreadableServerResponse} from './server-messages.ts';
-import {routePath,routePattern} from '../../contracts/src/routes.ts';
+import {routePattern} from '../../contracts/src/routes.ts';
+import {routePath} from '../../contracts/src/route-paths.ts';
 const readingFacetRoute=routePattern('get_library_facets');
 const readingPeriodicalRoute=routePattern('get_reading_periodical_groups');
 /** Browse engine contract. The server owns the vocabulary, the query grammar and

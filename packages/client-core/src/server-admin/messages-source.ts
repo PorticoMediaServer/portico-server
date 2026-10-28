@@ -3,7 +3,7 @@ import {LOG_DETAIL_MINUTES, type LogDetailMinutes} from '../server-administratio
 import {parseLogPage, parseLogEvent, parseLogSettings, logLevels, type LogRecord, type LogLevel, type LogCategory, type LogSettings} from '../server-administration.ts';
 import {readEventStream} from '../sse.ts';
 import {randomId} from '../random-id.ts';
-import {routePath} from '../../../contracts/src/routes.ts';
+import {routePath} from '../../../contracts/src/route-paths.ts';
 
 export type MessageConnection = Readonly<{open: (headers: Record<string, string>, signal: AbortSignal) => Promise<Response>}>;
 export type MessagesSnapshot = Readonly<{phase: 'idle'|'loading'|'ready'|'error'; lines: readonly LogRecord[]; level: LogLevel|''; category: LogCategory|''; live: boolean; reconnecting: boolean; readAt?: number; settings?: LogSettings; changing: boolean}>;

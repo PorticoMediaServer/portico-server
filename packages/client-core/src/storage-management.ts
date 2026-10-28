@@ -1,4 +1,4 @@
-import {routePath, encodedRoutePath} from "../../contracts/src/routes.ts";
+import {routePath, encodedRoutePath} from "../../contracts/src/route-paths.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import {firstOfEach,keepReadable,noteSkipped,oneOfOr} from './tolerant.ts';
 /** Managed-storage command receipts; no credential drafts, local execution or automatic intent replay. */

@@ -1,6 +1,6 @@
 import type {ExpectedRemoteSource} from './remote-source-selection.ts';
-import type {RouteResponse} from "../../contracts/src/routes.ts";
-import {encodedRoutePath} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/route-paths.ts";
+import {encodedRoutePath} from "../../contracts/src/route-paths.ts";
 /** Local/mounted inventory administration. No provider credentials, persistent
  * path cache, automatic command replay, or client-side identity heuristics. */
 import type {ContentScope, LibraryContentApi} from './library-content.ts';

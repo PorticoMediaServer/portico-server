@@ -1,4 +1,5 @@
-import {routePath, routePrefix} from "../../contracts/src/routes.ts";
+import {routePrefix} from "../../contracts/src/routes.ts";
+import {routePath} from "../../contracts/src/route-paths.ts";
 import {ApiError,HttpLocalApi,transportJSON} from './index.ts';
 import type {ServerPin} from './route-identity.ts';
 export type ClaimExpected={operationId:string;localGeneration:string;revision:string};

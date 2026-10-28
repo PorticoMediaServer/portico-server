@@ -1,5 +1,5 @@
-import type {RouteResponse} from "../../contracts/src/routes.ts";
-import {encodedRoutePath} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/route-paths.ts";
+import {encodedRoutePath} from "../../contracts/src/route-paths.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import {wireDurations} from './wire-units.ts';
 /** Source-pinned chapter reads. Seeking remains the playback adapter's responsibility. */

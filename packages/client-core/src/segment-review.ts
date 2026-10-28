@@ -4,7 +4,7 @@
  * marker edits through the title analysis marker route with the targets the review carries.
  * Parsers keep what they can read: a row in an unknown state or of an unknown kind is left out.
  */
-import {routePath} from '../../contracts/src/routes.ts';
+import {routePath} from '../../contracts/src/route-paths.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import {keepReadable} from './tolerant.ts';
 

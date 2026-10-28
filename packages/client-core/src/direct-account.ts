@@ -3,7 +3,8 @@ export function validDirectPassword(value:string):boolean {
  return Array.from(value).length>=8&&new TextEncoder().encode(value).length<=72&&/\p{Lu}/u.test(value)&&/\p{Ll}/u.test(value)&&/[^\p{L}]/u.test(value);
 }
 
-import {routePath,routeBody,type RouteRequest,type RouteResponse} from '../../contracts/src/routes.ts';
+import {routeBody} from '../../contracts/src/routes.ts';
+import {routePath, type RouteRequest, type RouteResponse} from '../../contracts/src/route-paths.ts';
 import type {ProfileAPI} from './profile-management.ts';
 import {CodedError} from './server-messages.ts';
 import {identityCode} from './route-identity.ts';

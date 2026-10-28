@@ -1,5 +1,5 @@
-import {routePath} from "../../contracts/src/routes.ts";
-import type {RouteResponse} from "../../contracts/src/routes.ts";
+import {routePath} from "../../contracts/src/route-paths.ts";
+import type {RouteResponse} from "../../contracts/src/route-paths.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import {keepReadable} from './tolerant.ts';
 /** `item`: the title the file belongs to (its id, title and kind), absent once the file has left the catalogue. */

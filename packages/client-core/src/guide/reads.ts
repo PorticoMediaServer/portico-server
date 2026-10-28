@@ -1,4 +1,4 @@
-import {routePath} from "../../../contracts/src/routes.ts";
+import {routePath} from "../../../contracts/src/route-paths.ts";
 import type {ChannelApi} from '../channel-guide.ts';
 import {ApiError} from '../index.ts';
 import {guideReadCapacityExceeded} from '../server-messages.ts';

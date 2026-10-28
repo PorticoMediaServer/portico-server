@@ -1,4 +1,5 @@
-import {encodedRoutePath, routePrefix} from "../../contracts/src/routes.ts";
+import {routePrefix} from "../../contracts/src/routes.ts";
+import {encodedRoutePath} from "../../contracts/src/route-paths.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import type {ContentScope, LibraryContentApi} from './library-content.ts';
 import {firstOfEach, keepReadable} from './tolerant.ts';

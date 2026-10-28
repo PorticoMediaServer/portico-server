@@ -1,5 +1,5 @@
 import {throwIfAborted} from './abort-lifetime.ts';
-import {routePath} from '../../contracts/src/routes.ts';
+import {routePath} from '../../contracts/src/route-paths.ts';
 import type {InboxApi} from './inbox.ts';
 import {parseNotificationBatchResult, parseNotificationInbox, parseNotificationSummary, parseNotificationVocabulary, type NotificationVocabulary} from './notifications.ts';
 import {consoleUTF8Size} from './console-transport.ts';

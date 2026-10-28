@@ -1,4 +1,5 @@
-import {encodedRoutePath, routePattern} from "../../contracts/src/routes.ts";
+import {routePattern} from "../../contracts/src/routes.ts";
+import {encodedRoutePath} from "../../contracts/src/route-paths.ts";
 import {enUS,type MessageId} from '../../i18n/src/index.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import {keepReadable} from './tolerant.ts';

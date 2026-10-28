@@ -1,4 +1,4 @@
-import {routePath} from "../../contracts/src/routes.ts";
+import {routePath} from "../../contracts/src/route-paths.ts";
 import type {ContentScope} from './library-content.ts';
 import type {OperationsApi} from './server-operations.ts';
 export type PlaybackDiagnostics={directConfigured:boolean;hlsConfigured:boolean;finiteHlsConfigured:boolean;lifecycle:'unavailable'|'running'|'stopping';activeConversionSessions:number|null;conversionSessionLimit:number|null;conversionLimitSource:'fixed_runtime'|'owner_policy'|'unavailable';outputPolicy:'per_session_plan'|'unavailable'};

@@ -1,5 +1,6 @@
 import {throwIfAborted} from './abort-lifetime.ts';
-import {routePath, routePattern} from "../../contracts/src/routes.ts";
+import {routePattern} from "../../contracts/src/routes.ts";
+import {routePath} from "../../contracts/src/route-paths.ts";
 
 /** The server's Chinese, Japanese and Korean font for a subtitle drawn on the device (the one burned-in subtitles use). Public; cached by its ETag. */
 export const SUBTITLE_CJK_FONT_PATH = routePath("get_subtitle_fonts_cjk");

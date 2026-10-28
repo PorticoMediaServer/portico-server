@@ -68,7 +68,7 @@ func main() {
 		}
 	}
 	if *development {
-		for name, raw := range map[string][]byte{"runtime.ts": artifacts.Runtime, "index.ts": artifacts.Index, "errors.ts": artifacts.Errors, "limits.ts": artifacts.Limits, "decoders.ts": artifacts.Decoders, "types.ts": artifacts.Typescript, "routes.ts": artifacts.Routes, "schemas.ts": artifacts.Schemas} {
+		for name, raw := range map[string][]byte{"runtime.ts": artifacts.Runtime, "index.ts": artifacts.Index, "errors.ts": artifacts.Errors, "limits.ts": artifacts.Limits, "decoders.ts": artifacts.Decoders, "types.ts": artifacts.Typescript, "routes.ts": artifacts.Routes, "route-paths.ts": artifacts.RoutePaths, "schemas.ts": artifacts.Schemas} {
 			target := filepath.Join(*root, "packages/contracts/src/development", name)
 			if err = os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 				fail(err)
@@ -111,6 +111,7 @@ func main() {
 		"packages/contracts/src/decoders.ts":     artifacts.Decoders,
 		"packages/contracts/src/types.ts":        artifacts.Typescript,
 		"packages/contracts/src/routes.ts":       artifacts.Routes,
+		"packages/contracts/src/route-paths.ts":  artifacts.RoutePaths,
 		"packages/contracts/src/schemas.ts":      artifacts.Schemas,
 	} {
 		target := filepath.Join(*root, name)

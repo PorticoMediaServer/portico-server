@@ -1,4 +1,4 @@
-import {routePath} from "../../contracts/src/routes.ts";
+import {routePath} from "../../contracts/src/route-paths.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import type {ContentScope} from './library-content.ts';
 import {keepReadable,noteSkipped,oneOfOr} from './tolerant.ts';

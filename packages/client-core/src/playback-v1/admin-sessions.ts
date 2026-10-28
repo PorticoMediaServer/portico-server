@@ -1,4 +1,4 @@
-import {routePath, encodedRoutePath} from "../../../contracts/src/routes.ts";
+import {routePath, encodedRoutePath} from "../../../contracts/src/route-paths.ts";
 /**
  * Now Playing administration (spec §14): the active sessions with their delivery decisions, a
  * terminate command that shows the viewer a message. Playback history is the console's

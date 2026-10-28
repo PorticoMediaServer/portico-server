@@ -1,7 +1,7 @@
 import type {MessageId, MessageValues} from '../../i18n/src/index.ts';
 import {serviceText} from './presentation/service-text.ts';
 import {routeBody} from "../../contracts/src/routes.ts";
-import {routePath} from "../../contracts/src/routes.ts";
+import {routePath} from "../../contracts/src/route-paths.ts";
 import type {HttpLocalApi} from './index.ts';
 import {routeOrigin} from './route-identity.ts';
 import {keepReadable} from './tolerant.ts';

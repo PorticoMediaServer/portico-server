@@ -1,4 +1,4 @@
-import {routePath, encodedRoutePath} from "../../contracts/src/routes.ts";
+import {routePath, encodedRoutePath} from "../../contracts/src/route-paths.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import {serviceProblem, serviceText} from './presentation/service-text.ts';
 import type {MessageId} from '../../i18n/src/index.ts';

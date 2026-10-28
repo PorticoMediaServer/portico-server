@@ -1,4 +1,4 @@
-import {routePath} from "../../contracts/src/routes.ts";
+import {routePath} from "../../contracts/src/route-paths.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 export type StorageStatus=Readonly<{databasePath:string;cacheDirectory:string;backupDirectory:string;reclaimableBytes:number;lastReclaimedAt?:string;lastReclaimedBytes:number}>;
 const obj=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);

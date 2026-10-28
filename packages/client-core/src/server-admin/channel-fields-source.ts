@@ -4,7 +4,7 @@ import type {ChannelApi} from '../channel-guide.ts';
 import {browseCapabilitiesPath, browseContextFacetsPath, browsePath, parseBrowseCapabilities, parseBrowseFacets, parseBrowseResult, type BrowseFieldCapability, type BrowseFacetValue} from '../browse.ts';
 import {parseMediaItem} from '../media-item.ts';
 import {channelConditionFields} from '../server-admin/channel-conditions.ts';
-import {encodedRoutePath} from '../../../contracts/src/routes.ts';
+import {encodedRoutePath} from '../../../contracts/src/route-paths.ts';
 
 export type ChannelField = Readonly<{libraryId: string; pivot: 'movies' | 'shows'; field: BrowseFieldCapability}>;
 export type PinTitle = Readonly<{id: string; title: string; kind: string; libraryId: string}>;

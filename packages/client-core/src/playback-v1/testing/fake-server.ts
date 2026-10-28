@@ -1,5 +1,5 @@
 import {canonicalQualityLadder} from '../../../../contracts/src/types.ts';
-import {routePath, encodedRoutePath} from "../../../../contracts/src/routes.ts";
+import {routePath, encodedRoutePath} from "../../../../contracts/src/route-paths.ts";
 /**
  * A fake Portico playback server built from `Spec — Playback Protocol v1.md` (§3–§9, §14, §15, §16)
  * and the API style guide, for client tests before lane C's server exists. In memory; enforces

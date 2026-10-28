@@ -1,4 +1,5 @@
-import {routePath, routeBody} from '../../contracts/src/routes.ts';
+import {routeBody} from '../../contracts/src/routes.ts';
+import {routePath} from '../../contracts/src/route-paths.ts';
 import {routePath as hostedPath, routeBody as hostedBody} from '../../contracts/src/hosted/routes.ts';
 import {currentUTCTimestamp} from './local-session.ts';
 import type {ProfileAPI} from './profile-management.ts';

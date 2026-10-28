@@ -1,5 +1,5 @@
-import type {RouteResponse} from "../../contracts/src/routes.ts";
-import {routePath} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/route-paths.ts";
+import {routePath} from "../../contracts/src/route-paths.ts";
 /**
  * Titles a catalogue rebuild set aside so that everything else could finish (owner only): what
  * each is, why, how often it has been tried and when it last failed. The server tries them again

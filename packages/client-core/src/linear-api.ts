@@ -1,4 +1,4 @@
-import {routePath} from "../../contracts/src/routes.ts";
+import {routePath} from "../../contracts/src/route-paths.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import {oneOfOr} from './tolerant.ts';
 /** Versioned, renderer-independent linear feature DTOs. Credentials are write-only. */

@@ -1,9 +1,9 @@
 import {routeBody as hostedRouteBody} from "../../contracts/src/hosted/routes.ts";
 import type {RouteResponse as HostedRouteResponse} from "../../contracts/src/hosted/routes.ts";
 import {routeBody} from "../../contracts/src/routes.ts";
-import type {RouteResponse} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/route-paths.ts";
 import {encodedRoutePath as hostedEncodedRoutePath} from "../../contracts/src/hosted/routes.ts";
-import {routePath} from "../../contracts/src/routes.ts";
+import {routePath} from "../../contracts/src/route-paths.ts";
 /** Portico Account members of user servers (Spec — Hosted at Scale).
  *
  * Hosted proves who a person is and keeps an index of their servers; each user server decides who

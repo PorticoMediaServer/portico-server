@@ -1,4 +1,4 @@
-import {encodedRoutePath, routePath} from "../../contracts/src/routes.ts";
+import {encodedRoutePath, routePath} from "../../contracts/src/route-paths.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import {firstOfEach,keepReadable,noteSkipped} from './tolerant.ts';
 export type AttentionIdentity=Readonly<{provider:'tmdb'|'tvdb'|'anilist';type:'movie'|'show'|'anime'|'episode';id:string}>;

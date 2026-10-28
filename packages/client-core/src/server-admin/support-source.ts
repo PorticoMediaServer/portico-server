@@ -5,7 +5,7 @@ import {fixStatePermissions} from '../backups.ts';
 import {parseCapabilities, type ServerCapability} from './capabilities.ts';
 import {skippedParts, type SkippedPart} from '../tolerant.ts';
 import {randomId} from '../random-id.ts';
-import {routePath} from '../../../contracts/src/routes.ts';
+import {routePath} from '../../../contracts/src/route-paths.ts';
 
 export type SupportSnapshot = Readonly<{
   phase: 'idle' | 'loading' | 'ready' | 'error';

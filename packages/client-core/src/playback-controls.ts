@@ -1,4 +1,4 @@
-import {encodedRoutePath, routePath} from "../../contracts/src/routes.ts";
+import {encodedRoutePath, routePath} from "../../contracts/src/route-paths.ts";
 import {parseEntry, type QueueEntry} from './playback-v1/types.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 /** `durationMs`: the length of what is playing, when the server knows it (never for a channel). */

@@ -1,5 +1,6 @@
 import {canonicalQualityLadder} from '../../contracts/src/types.ts';
-import {routePrefix, encodedRoutePath} from "../../contracts/src/routes.ts";
+import {routePrefix} from "../../contracts/src/routes.ts";
+import {encodedRoutePath} from "../../contracts/src/route-paths.ts";
 import {wireDurations} from './wire-units.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import {serviceText} from './presentation/service-text.ts';

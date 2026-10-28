@@ -1,4 +1,4 @@
-import {routePath,encodedRoutePath} from "../../../contracts/src/routes.ts";
+import {routePath,encodedRoutePath} from "../../../contracts/src/route-paths.ts";
 import {GUIDE_PROTOCOL, parseGuideProgramme, parseGuideChannels, parseGuideSources, type ChannelApi, type GuideChannel, type GuideSource,type GuideProgramme} from '../channel-guide.ts';
 import {unreadableServerResponse} from '../server-messages.ts';
 import {keepReadable} from '../tolerant.ts';

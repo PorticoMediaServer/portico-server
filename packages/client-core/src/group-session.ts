@@ -1,6 +1,6 @@
 import {routeBody} from "../../contracts/src/routes.ts";
-import type {RouteResponse} from "../../contracts/src/routes.ts";
-import {encodedRoutePath, routePath} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/route-paths.ts";
+import {encodedRoutePath, routePath} from "../../contracts/src/route-paths.ts";
 import {randomId} from './random-id.ts';
 import {readEventStream} from './sse.ts';
 import {presentError} from './presentation/errors.ts';

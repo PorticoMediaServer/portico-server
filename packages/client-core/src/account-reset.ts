@@ -1,4 +1,5 @@
-import {routePath,routeBody} from '../../contracts/src/routes.ts';
+import {routeBody} from '../../contracts/src/routes.ts';
+import {routePath} from '../../contracts/src/route-paths.ts';
 import {parseDirectSignIn,type DirectSignIn,type ProfileAPI} from './profile-management.ts';
 import {identityCode} from './route-identity.ts';
 import {parseTwoFactorState} from './identity-restrictions.ts';

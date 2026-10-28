@@ -1,5 +1,5 @@
-import type {RouteResponse} from "../../contracts/src/routes.ts";
-import {encodedRoutePath} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/route-paths.ts";
+import {encodedRoutePath} from "../../contracts/src/route-paths.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 /** One server-owned show workspace; episode details and playback have separate scoped owners. */
 import {validateContentEntry,validateContentProjection,type ContentEntry,type ContentProjection,type ContentScope,type LibraryContentApi} from './library-content.ts';

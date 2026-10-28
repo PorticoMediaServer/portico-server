@@ -1,5 +1,5 @@
 import {parseUpdateReport, type UpdateReport} from '../administration.ts';
-import {routePath} from '../../../contracts/src/routes.ts';
+import {routePath} from '../../../contracts/src/route-paths.ts';
 
 /** The read and the pressed check answer with the same report shape. */
 export type UpdatesApi = Readonly<{request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T>}>;

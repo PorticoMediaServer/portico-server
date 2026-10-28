@@ -1,4 +1,4 @@
-import {encodedRoutePath} from "../../../contracts/src/routes.ts";
+import {encodedRoutePath} from "../../../contracts/src/route-paths.ts";
 /**
  * Film and TV metadata lookups per library (`GET`/`PUT /v1/libraries/{id}/metadata/screen`).
  * Remote lookups are on by default with a per-library opt-out; the console

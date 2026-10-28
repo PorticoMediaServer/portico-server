@@ -1,4 +1,4 @@
-import {routePath} from '../../../contracts/src/routes.ts';
+import {routePath} from '../../../contracts/src/route-paths.ts';
 import type {HomeApi} from '../home.ts';
 import type {JobSelector} from '../bulk-jobs.ts';
 import type {RepairFieldSpec} from '../metadata-repair.ts';

@@ -1,4 +1,4 @@
-import {encodedRoutePath} from '../../contracts/src/routes.ts';
+import {encodedRoutePath} from '../../contracts/src/route-paths.ts';
 
 /** A request as the clients make it: the route's path, a method and a JSON body; it rejects with the
  * server's error (its `code`). */

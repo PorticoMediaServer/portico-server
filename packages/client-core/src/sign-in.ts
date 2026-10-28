@@ -1,4 +1,4 @@
-import {routePath} from '../../contracts/src/routes.ts';
+import {routePath} from '../../contracts/src/route-paths.ts';
 import {ApiError, type SystemInfo} from './index.ts';
 import {RouteError, routeOrigin, routeJSON} from './route-identity.ts';
 import type {SignInKind} from './app-sessions.ts';

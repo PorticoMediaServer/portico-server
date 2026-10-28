@@ -1,4 +1,4 @@
-import {encodedRoutePath} from "../../contracts/src/routes.ts";
+import {encodedRoutePath} from "../../contracts/src/route-paths.ts";
 import type {ContentScope} from './library-content.ts';
 import {noteSkipped} from './tolerant.ts';
 export const operationPanels=['memory','database','build'] as const;

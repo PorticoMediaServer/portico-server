@@ -1,4 +1,4 @@
-import {encodedRoutePath} from "../../contracts/src/routes.ts";
+import {encodedRoutePath} from "../../contracts/src/route-paths.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import {oneOf} from './tolerant.ts';
 /** Owner text edits are explicit CAS commands; interrupted saves are never replayed. */

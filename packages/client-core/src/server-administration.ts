@@ -1,4 +1,4 @@
-import {encodedRoutePath} from "../../contracts/src/routes.ts";
+import {encodedRoutePath} from "../../contracts/src/route-paths.ts";
 import {parseServerInvitation,parsePeopleInvitationPage} from './direct-account.ts';
 /**
  * Wire shapes for server administration: access tiers, invitations, per-member

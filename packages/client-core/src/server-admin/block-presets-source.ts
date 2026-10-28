@@ -6,7 +6,7 @@ import {channelConditionFields} from '../server-admin/channel-conditions.ts';
 import {parseLibraryChannelConfig, type LibraryChannelBlock, type LibraryChannelConfig} from '../library-channels.ts';
 import {channelRequestID} from '../live-source-draft.ts';
 import {decodeGetAdminLibraryChannelsBlockPresetsResponse, decodePostAdminLibraryChannelsBlockPresetsResponse, decodePutAdminLibraryChannelsBlockPresetsIdResponse, decodeDeleteAdminLibraryChannelsBlockPresetsIdResponse} from '../../../contracts/src/decoders.ts';
-import {encodedRoutePath, routePath} from '../../../contracts/src/routes.ts';
+import {encodedRoutePath, routePath} from '../../../contracts/src/route-paths.ts';
 import type {GetAdminLibraryChannelsBlockPresetsResponse} from '../../../contracts/src/types.ts';
 export type BlockPreset = GetAdminLibraryChannelsBlockPresetsResponse['result']['items'][number];
 export type BlockPresetBody = BlockPreset['body'];

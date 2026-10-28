@@ -1,6 +1,6 @@
 import {routeBody as hostedRouteBody} from "../../contracts/src/hosted/routes.ts";
 import {routePath as hostedRoutePath} from "../../contracts/src/hosted/routes.ts";
-import {routePath} from "../../contracts/src/routes.ts";
+import {routePath} from "../../contracts/src/route-paths.ts";
 import {randomId} from './random-id.ts';
 import { ApiError, HttpLocalApi, type HostedSession } from "./index.ts";
 import {hostedGate, type HostedGate, type HostedRequestKind} from './hosted-gate.ts';

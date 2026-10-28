@@ -1,4 +1,4 @@
-import {routePath} from '../../contracts/src/routes.ts';
+import {routePath} from '../../contracts/src/route-paths.ts';
 import {decodeGetHardwareFactsResponse, decodeTestAdminTranscodeHardwareResponse} from '../../contracts/src/decoders.ts';
 import {parseTranscodeCapacity, type TranscodeCapacity} from './telemetry.ts';
 

@@ -1,5 +1,5 @@
 import {routePath as hostedRoutePath} from "../../contracts/src/hosted/routes.ts";
-import {routePath} from "../../contracts/src/routes.ts";
+import {routePath} from "../../contracts/src/route-paths.ts";
 import {randomId} from './random-id.ts';
 import {ApiError, HttpLocalApi} from './index.ts';
 import type {DeviceAuthorization} from './device-authorization.ts';

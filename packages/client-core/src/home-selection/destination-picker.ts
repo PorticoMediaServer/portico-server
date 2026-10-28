@@ -1,4 +1,4 @@
-import {routePath} from '../../../contracts/src/routes.ts';
+import {routePath} from '../../../contracts/src/route-paths.ts';
 import type {HomeApi} from '../home.ts';
 import {validateContentEntry} from '../library-content.ts';
 import type {HomeSelectionPickerRow} from './types.ts';

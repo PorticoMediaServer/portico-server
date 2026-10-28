@@ -1,4 +1,5 @@
-import {apiRoot, encodedRoutePath} from "../../contracts/src/routes.ts";
+import {apiRoot} from "../../contracts/src/routes.ts";
+import {encodedRoutePath} from "../../contracts/src/route-paths.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import {firstOfEach,keepReadable,noteSkipped,oneOf,oneOfOr} from './tolerant.ts';
 import {parseScreenMetadata,screenTarget,type ScreenMetadataContext,type ScreenPolicyInput,type ScreenIdentity,type ScreenOrder,type ScreenProvider} from './screen-metadata.ts';

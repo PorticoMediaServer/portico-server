@@ -1,4 +1,4 @@
-import {encodedRoutePath} from "../../../contracts/src/routes.ts";
+import {encodedRoutePath} from "../../../contracts/src/route-paths.ts";
 /**
  * A library's metadata source (`GET`/`PUT /v1/libraries/{id}/metadata/agent`),
  * Plex-agent style: `online` (Portico's online providers after the library's own files, the

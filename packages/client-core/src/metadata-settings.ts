@@ -1,4 +1,4 @@
-import {routePath} from "../../contracts/src/routes.ts";
+import {routePath} from "../../contracts/src/route-paths.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import type {I18n, MessageId} from '../../i18n/src/index.ts';
 /** Where the OpenSubtitles key and account in force come from and how OpenSubtitles last answered. Never a secret. */

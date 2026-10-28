@@ -5,7 +5,7 @@ import {decodeGetAdminDashboardReportResponse} from '../../../contracts/src/deco
 import type {GetAdminDashboardReportResponse} from '../../../contracts/src/types.ts';
 import {decodeGetAdminDashboardStatusResponse,decodeGetAdminPlayHistoryDashboardResponse,decodeGetAdminPlayHistoryPeopleResponse} from '../../../contracts/src/decoders.ts';
 import type {GetAdminDashboardStatusResponse,GetAdminPlayHistoryDashboardResponse,GetAdminPlayHistoryPeopleResponse} from '../../../contracts/src/types.ts';
-import {routePath} from '../../../contracts/src/routes.ts';
+import {routePath} from '../../../contracts/src/route-paths.ts';
 import type {PlayHistoryApi,PlayHistoryFilters} from '../play-history.ts';
 
 /** Owner analytics are separate from administrator People management. */

@@ -1,5 +1,6 @@
-import {routePath, routeBody} from "../../contracts/src/routes.ts";
-import type {RouteResponse} from "../../contracts/src/routes.ts";
+import {routeBody} from "../../contracts/src/routes.ts";
+import {routePath} from "../../contracts/src/route-paths.ts";
+import type {RouteResponse} from "../../contracts/src/route-paths.ts";
 import type {LibraryContentApi, ContentScope} from './library-content.ts';
 import type {PlaybackSnapshot} from './index.ts';
 import {firstOfEach,keepReadable,oneOfOr} from './tolerant.ts';

@@ -1,5 +1,5 @@
 import {canonicalQualityLadder} from '../../contracts/src/types.ts';
-import {routePath} from "../../contracts/src/routes.ts";
+import {routePath} from "../../contracts/src/route-paths.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import {parseDownloadPreparation,type DownloadPreparation} from './downloads.ts';
 import {firstOfEach,keepReadable,noteSkipped,oneOf} from './tolerant.ts';

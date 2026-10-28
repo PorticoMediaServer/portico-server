@@ -4,7 +4,7 @@ import {channelRequestID} from '../live-source-draft.ts';
 import {regenerationBody} from '../server-admin/panel-logic.ts';
 import type {ChannelApi} from '../channel-guide.ts';
 import {decodePostAdminLibraryChannelsIdDeleteResponse,decodePostAdminLibraryChannelsIdRegenerateResponse,decodePostAdminLibraryChannelsReorderResponse} from '../../../contracts/src/decoders.ts';
-import {encodedRoutePath,routePath} from '../../../contracts/src/routes.ts';
+import {encodedRoutePath,routePath} from '../../../contracts/src/route-paths.ts';
 import type {SettingsLibraryChannelsSource} from './channels-source.ts';
 type Kind='toggle'|'regenerate'|'move'|'delete';
 type Pending=Readonly<{kind:Kind;channelId:string;name:string}>;

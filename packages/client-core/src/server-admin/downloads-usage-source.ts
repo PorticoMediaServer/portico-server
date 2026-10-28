@@ -1,5 +1,5 @@
 import {decodeGetDownloadUsageResponse} from '../../../contracts/src/decoders.ts';
-import {routePath} from '../../../contracts/src/routes.ts';
+import {routePath} from '../../../contracts/src/route-paths.ts';
 import type {GetDownloadUsageResponse} from '../../../contracts/src/types.ts';
 import type {CacheTransport as StorageTransport} from './cache-source.ts';
 

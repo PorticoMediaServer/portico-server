@@ -1,6 +1,6 @@
 import {throwIfAborted} from './abort-lifetime.ts';
 import {routePath as hostedRoutePath,encodedRoutePath as hostedEncodedRoutePath} from '../../contracts/src/hosted/routes.ts';
-import {routePath} from '../../contracts/src/routes.ts';
+import {routePath} from '../../contracts/src/route-paths.ts';
 import {requestPorticoChallenge,type HostedRequestApi} from './portico-servers.ts';
 import {parseDirectSignIn} from './profile-management.ts';
 import type {HttpLocalApi,LocalSession} from './index.ts';

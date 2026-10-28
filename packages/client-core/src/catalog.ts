@@ -1,4 +1,4 @@
-import {routePath} from "../../contracts/src/routes.ts";
+import {routePath} from "../../contracts/src/route-paths.ts";
 import {parseMediaItem} from './media-item.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import type {Library,MediaItem} from './index.ts';

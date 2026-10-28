@@ -1,6 +1,7 @@
 import {randomId} from '../random-id.ts';
 import {decodeReleaseProfileDownloadsCacheResponse} from '../../../contracts/src/decoders.ts';
-import {routePath, routeBody} from '../../../contracts/src/routes.ts';
+import {routeBody} from '../../../contracts/src/routes.ts';
+import {routePath} from '../../../contracts/src/route-paths.ts';
 import type {CacheTransport as StorageTransport} from './cache-source.ts';
 import type {DownloadsUsageRow, DownloadsUsageSource, UsagePage} from './downloads-usage-source.ts';
 
