@@ -87,6 +87,9 @@ export class DraftForm<T extends object, S = undefined> {
     this.refreshRead = undefined;
   }
 
+  /** A mounted buffered input cancels adoption before its local edit reaches set(). */
+  invalidateQuiet = (): void => {this.invalidateRefresh();};
+
   /** Reads without replacing the edit's base on conflict or acknowledging a write. */
   async refresh(): Promise<QuietRefreshOutcome> {
     if (this.disposed || this.state.saving || this.controller !== undefined) return {kind: 'deferred'};

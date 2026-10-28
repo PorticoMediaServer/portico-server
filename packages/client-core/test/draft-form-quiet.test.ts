@@ -98,3 +98,30 @@ test('a field first edited during the quiet read is checked for conflict against
  await form.load();quiet=true;const pending=form.refresh();form.set({name:'B'});const before=form.getSnapshot();
  read.resolve(loaded('C',1,2));assert.deepEqual(await pending,{kind:'conflict'});assert.equal(form.getSnapshot(),before);form.dispose();
 });
+
+
+test('buffered widget edit admission cancels quiet adoption without publication or command reset', async () => {
+  let reads = 0, finish!: (value: {value: {name: string}; status: {revision: number}}) => void;
+  let signal: AbortSignal | undefined;
+  const form = new DraftForm<{name: string}, {revision: number}>({
+    load: async active => {
+      signal = active;
+      if (++reads === 2) return new Promise(resolve => {finish = resolve;});
+      return {value: {name: reads === 1 ? 'A' : 'C'}, status: {revision: reads === 1 ? 1 : 2}};
+    }, save: async draft => ({value: draft, status: {revision: 3}}),
+  });
+  await form.load();const original = form.getSnapshot();let publications = 0;
+  form.subscribe(() => {publications++;});
+  const pending = form.refresh();
+  // SettingText keeps B private until blur. Focus/input admission must fence
+  // the read before that unfinished edit has reached the canonical form.
+  const widgetDraft = 'B';
+  const invalidate = form.invalidateQuiet;invalidate();
+  assert.equal(signal?.aborted, true);assert.equal(form.getSnapshot(), original);assert.equal(publications, 0);
+  finish({value: {name: 'C'}, status: {revision: 2}});
+  assert.deepEqual(await pending, {kind: 'deferred'});assert.equal(form.getSnapshot(), original);assert.equal(publications, 0);assert.equal(widgetDraft, 'B');
+  form.set({name: widgetDraft});
+  assert.deepEqual(await form.refresh(), {kind: 'conflict'});assert.equal(form.getSnapshot().draft?.name, 'B');assert.equal(form.getSnapshot().status?.revision, 1);
+  form.discard();assert.deepEqual(await form.refresh(), {kind: 'adopted'});assert.equal(form.getSnapshot().saved?.name, 'C');assert.equal(form.getSnapshot().status?.revision, 2);
+  form.dispose();
+});
