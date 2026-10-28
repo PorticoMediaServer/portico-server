@@ -30,9 +30,9 @@ export function FacetPage({libraryId, field, pivot, request, onSelect}: {
     if (basis.current !== scope) {basis.current = scope; setPage(undefined); setValues([]);}
     setFailed(false); setMore(true);
     void loadFacetPage(request, {libraryId, field, pivot}, operation.signal)
-      .then(first => {if (!operation.signal.aborted) {offset.current = first.values.length; setPage(first); setValues(first.values);}})
-      .catch(() => {if (!operation.signal.aborted) setFailed(true);})
-      .finally(() => {if (!operation.signal.aborted) {pending.current = false; setMore(false);}});
+      .then(first => {if (!operation.signal.aborted && (request.isCurrent?.() ?? true)) {offset.current = first.values.length; setPage(first); setValues(first.values);}})
+      .catch(() => {if (!operation.signal.aborted && (request.isCurrent?.() ?? true)) setFailed(true);})
+      .finally(() => {if (!operation.signal.aborted && (request.isCurrent?.() ?? true)) {pending.current = false; setMore(false);}});
     return () => operation.abort();
   }, [libraryId, field, pivot, request, retry, scope]);
   const loadMore = () => {
@@ -41,13 +41,13 @@ export function FacetPage({libraryId, field, pivot, request, onSelect}: {
     pending.current = true;
     setMore(true);
     void loadFacetPage(request, {libraryId, field, pivot, offset: offset.current}, operation.signal)
-      .then(next => {if (!operation.signal.aborted) {
+      .then(next => {if (!operation.signal.aborted && (request.isCurrent?.() ?? true)) {
         if (!next.values.length && offset.current < next.total) throw new Error('invalid_document');
         offset.current += next.values.length; setPage(next);
         setValues(current => [...current, ...next.values.filter(entry => !current.some(seen => seen.value === entry.value))]);
       }})
-      .catch(() => {if (!operation.signal.aborted) setFailed(true);})
-      .finally(() => {if (!operation.signal.aborted) {pending.current = false; setMore(false);}});
+      .catch(() => {if (!operation.signal.aborted && (request.isCurrent?.() ?? true)) setFailed(true);})
+      .finally(() => {if (!operation.signal.aborted && (request.isCurrent?.() ?? true)) {pending.current = false; setMore(false);}});
   };
   if (failed || page && values.length === 0) return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
     primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => setRetry(value => value + 1)}}/>;
