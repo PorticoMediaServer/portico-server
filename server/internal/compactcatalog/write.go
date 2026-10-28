@@ -667,23 +667,12 @@ func UpsertAssetTx(ctx context.Context, tx *sql.Tx, a Asset) (int64, string, err
 		id, err = CreateAssetTx(ctx, tx, token, a, true)
 		return id, token, err
 	}
-	var wasUnavailable bool
-	if err = tx.QueryRowContext(ctx, `SELECT available=0 FROM catalog_assets WHERE id=?`, id).Scan(&wasUnavailable); err != nil {
-		return 0, "", err
-	}
-	// Compare before UPDATE so identical evidence never names the watched
-	// availability column. Preserve the original reappearance settlement path.
+	// The guarded asset trigger accepts all required consumers once.
 	if _, err = tx.ExecContext(ctx, `UPDATE catalog_assets SET size=?2,modified_ns=?3,container=?4,video_codec=?5,audio_codec=?6,width=?7,height=?8,duration=?9,available=1
  WHERE id=?1 AND (size IS NOT ?2 OR modified_ns IS NOT ?3 OR container IS NOT ?4 OR video_codec IS NOT ?5 OR audio_codec IS NOT ?6 OR width IS NOT ?7 OR height IS NOT ?8 OR duration IS NOT ?9 OR available<>1)`, id, a.Size, a.ModifiedNS, a.Container, a.VideoCodec, a.AudioCodec, a.Width, a.Height, a.Duration); err != nil {
 		return 0, "", err
 	}
-	if wasUnavailable {
-		if err = touchAssetItems(ctx, tx, id); err != nil {
-			return 0, "", err
-		}
-		return id, token, SettleAssetMissingTx(ctx, tx, id)
-	}
-	return id, token, TouchTx(ctx, tx, DomainAssetMetrics, id)
+	return id, token, nil
 }
 
 // CreateAssetTx records a new file under a public token the caller chose
@@ -726,20 +715,8 @@ func SetAssetTx(ctx context.Context, tx *sql.Tx, asset int64, values map[string]
 		args = append(args, values[n])
 	}
 	args = append(args, asset)
-	res, err := tx.ExecContext(ctx, `UPDATE catalog_assets SET `+strings.Join(set, ",")+` WHERE (`+strings.Join(differ, " OR ")+`) AND id=?`, args...)
-	if err != nil {
-		return err
-	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return nil
-	}
-	if err = touchAssetItems(ctx, tx, asset); err != nil {
-		return err
-	}
-	if _, ok := values["available"]; ok {
-		return SettleAssetMissingTx(ctx, tx, asset)
-	}
-	return nil
+	_, err := tx.ExecContext(ctx, `UPDATE catalog_assets SET `+strings.Join(set, ",")+` WHERE (`+strings.Join(differ, " OR ")+`) AND id=?`, args...)
+	return err
 }
 
 // AssetByPathTx returns the asset recorded at path (0 when none).
@@ -766,24 +743,8 @@ func AssetByTokenTx(ctx context.Context, q ReadQuery, token string) (int64, erro
 // SetAssetAvailableTx records whether a file is present (inventory, trash,
 // remote sources) and queues the availability of the items it backs.
 func SetAssetAvailableTx(ctx context.Context, tx *sql.Tx, asset int64, available bool) error {
-	res, err := tx.ExecContext(ctx, `UPDATE catalog_assets SET available=? WHERE id=? AND available<>?`, available, asset, available)
-	if err != nil {
-		return err
-	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return nil
-	}
-	if err = touchAssetItems(ctx, tx, asset); err != nil {
-		return err
-	}
-	return SettleAssetMissingTx(ctx, tx, asset)
-}
-
-func touchAssetItems(ctx context.Context, tx *sql.Tx, asset int64) error {
-	if err := queueAssetSource(ctx, tx, asset, sourceAvailability); err != nil {
-		return err
-	}
-	return TouchTx(ctx, tx, DomainAssetMetrics, asset)
+	_, err := tx.ExecContext(ctx, `UPDATE catalog_assets SET available=? WHERE id=? AND available<>?`, available, asset, available)
+	return err
 }
 
 // A file is present while some place it was last seen still holds it: an

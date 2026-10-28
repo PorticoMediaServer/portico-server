@@ -39,7 +39,23 @@ type genreSourceCursor struct {
 type searchGenreProducer struct{}
 
 func (searchGenreProducer) ValidatePublication(ctx context.Context, tx *sql.Tx, s FacetBaseSnapshot) error {
-	return validateGenreWitness(ctx, tx, s)
+	if !s.Scope.valid() || s.Scope.Field != "genre" {
+		return ErrFacetBaseInput
+	}
+	if _, err := genreGrants(s.Scope.Source); err != nil {
+		return err
+	}
+	if err := validateGenreWitness(ctx, tx, s); err != nil {
+		return err
+	}
+	// This is shared library metadata, accepted only with a coherent genre BASE.
+	// The enclosing Step checks the global ledger AFTER this first-row charge
+	// and BEFORE COMPLETE/activation; capacity failure rolls back all of them.
+	_, err := tx.ExecContext(ctx, `INSERT INTO catalog_search_genre_accepted_targets(library_id,max_entity_id)
+ VALUES(?,max(0,COALESCE((SELECT id FROM catalog_entities INDEXED BY catalog_entities_library_id WHERE library_id=? ORDER BY id DESC LIMIT 1),0)))
+ ON CONFLICT(library_id) DO UPDATE SET max_entity_id=excluded.max_entity_id
+ WHERE excluded.max_entity_id>catalog_search_genre_accepted_targets.max_entity_id`, s.Scope.LibraryID, s.Scope.LibraryID)
+	return err
 }
 func (p searchGenreProducer) Next(ctx context.Context, tx *sql.Tx, s FacetBaseSnapshot, cursor string) (FacetBaseBatch, error) {
 	if err := validateGenreWitness(ctx, tx, s); err != nil {
