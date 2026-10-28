@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"net/netip"
 	"net/url"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/usermutation"
@@ -63,6 +64,7 @@ type remoteState struct {
 	NextAttempt                 time.Time
 	NotBefore                   time.Time
 	Attempts                    int
+	PublicationFailed           bool
 }
 
 // seedRemoteSettings creates the settings singleton with its signing key. The
@@ -130,9 +132,22 @@ func (m *RemoteManager) snapshot(ctx context.Context) (RemoteConfig, certificate
 		}
 	}
 	var next, notBefore int64
-	e = tx.QueryRowContext(ctx, `SELECT generation,topology_digest,route_digest,next_attempt,attempts,retry_after FROM networking_remote_state WHERE singleton=1`).Scan(&state.Generation, &state.TopologyDigest, &state.RouteDigest, &next, &state.Attempts, &notBefore)
+	var rawStatus string
+	e = tx.QueryRowContext(ctx, `SELECT generation,topology_digest,route_digest,next_attempt,attempts,retry_after,status FROM networking_remote_state WHERE singleton=1`).Scan(&state.Generation, &state.TopologyDigest, &state.RouteDigest, &next, &state.Attempts, &notBefore, &rawStatus)
 	if e != nil {
 		return c, cert, authority, state, key, e
+	}
+	// The shared attempt counter also counts withdrawal failures. Persist the
+	// publication marker in the existing private status snapshot, without adding
+	// it to the public RemoteStatus wire shape. Legacy snapshots keep their
+	// conservative retry behavior until the next actual publication.
+	var savedPublication struct {
+		PublicationFailed *bool `json:"publicationFailed"`
+	}
+	if err := json.Unmarshal([]byte(rawStatus), &savedPublication); err == nil && savedPublication.PublicationFailed != nil {
+		state.PublicationFailed = *savedPublication.PublicationFailed
+	} else {
+		state.PublicationFailed = state.Attempts > 0
 	}
 	if next > 0 {
 		state.NextAttempt = time.UnixMilli(next)
@@ -253,16 +268,25 @@ func (m *RemoteManager) removeMapping(ctx context.Context, id string) error {
 	}
 	return commitClaimDatabaseTx(ctx, gated4)
 }
-func (m *RemoteManager) routeName(ctx context.Context, q certificateState, address string, port int, allowRequest bool) (string, error) {
+func (m *RemoteManager) routeName(ctx context.Context, q certificateState, address string, port int, allowRequest, observed bool) (string, error) {
 	var origin string
 	e := m.h.store.db.QueryRowContext(ctx, `SELECT url FROM networking_route_names WHERE authority=? AND address=? AND port=?`, q.Scope.ID, address, port).Scan(&origin)
-	if e == nil {
-		if port == 443 {
-			origin = strings.TrimSuffix(origin, ":443")
-		}
+	if port == 443 {
+		origin = strings.TrimSuffix(origin, ":443")
+	}
+	ip, parseErr := netip.ParseAddr(address)
+	if parseErr != nil {
+		return "", ErrInvalid
+	}
+	family := addressFamily(ip)
+	tuple := q.Scope.ID + ":" + address + ":" + strconv.Itoa(port)
+	// A durable cache hit says what a previous process told Hosted. Shutdown
+	// withdraws that record, so refresh each present family once in this process.
+	// Keep the cached candidate while a retry deadline prevents the refresh.
+	if e == nil && (m.namedFamilies[family] == tuple || !allowRequest || !observed) {
 		return origin, nil
 	}
-	if !errors.Is(e, sql.ErrNoRows) {
+	if e != nil && !errors.Is(e, sql.ErrNoRows) {
 		return "", e
 	}
 	if !allowRequest {
@@ -274,11 +298,14 @@ func (m *RemoteManager) routeName(ctx context.Context, q certificateState, addre
 		Port    int    `json:"port"`
 	}{address, port}, &route)
 	if e != nil {
-		return "", e
+		return origin, e
 	}
 	u, e := url.Parse(route.BaseURL)
 	if e != nil || !endpointOrigin(route.BaseURL) || u.Hostname() != route.Hostname || route.Namespace != q.Namespace || route.CertificateDNSName != "*."+q.Namespace+".direct.getportico.tv" || !validHostedRouteName(route.Hostname, q.Namespace) || ((u.Port() == "" && port != 443) || (u.Port() != "" && u.Port() != strconv.Itoa(port))) {
-		return "", ErrInvalid
+		return origin, ErrInvalid
+	}
+	if port == 443 {
+		route.BaseURL = strings.TrimSuffix(route.BaseURL, ":443")
 	}
 	e = m.h.store.WithInstalledTransaction(ctx, q.Scope.Intent, func(ctx context.Context, tx *sql.Tx) error {
 		if _, e := tx.ExecContext(ctx, `DELETE FROM networking_route_names WHERE authority<>?`, q.Scope.ID); e != nil {
@@ -293,7 +320,16 @@ func (m *RemoteManager) routeName(ctx context.Context, q certificateState, addre
 		_, e := tx.ExecContext(ctx, `INSERT OR REPLACE INTO networking_route_names(authority,address,port,url) VALUES(?,?,?,?)`, q.Scope.ID, address, port, route.BaseURL)
 		return e
 	})
-	return route.BaseURL, e
+	if e == nil {
+		if m.namedFamilies == nil {
+			m.namedFamilies = map[string]string{}
+		}
+		m.namedFamilies[family] = tuple
+	}
+	if e != nil {
+		return origin, e
+	}
+	return route.BaseURL, nil
 }
 
 // Settings alone are not installed-claim authority. They may still contain the

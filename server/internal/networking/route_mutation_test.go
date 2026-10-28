@@ -82,6 +82,19 @@ func TestRouteMutationSerializesCertificateNamingAndFamilyWithdrawal(t *testing.
 					raw, _ := json.Marshal(map[string]any{"namespace": q.Namespace, "family": "ipv4", "withdrawn": true})
 					return reply(200, string(raw)), nil
 				case strings.HasSuffix(r.URL.Path, "/direct-route"):
+					var in struct {
+						Address string `json:"address"`
+					}
+					if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+						t.Fatal(err)
+					}
+					// Restart refreshes the healthy IPv6 family too. This barrier
+					// and its exact counts concern the competing IPv4 mutation.
+					if in.Address == "2a03:4000:6:8::1" {
+						host := "current." + q.Namespace + ".direct.getportico.tv"
+						raw, _ := json.Marshal(certificateRoute{Namespace: q.Namespace, Hostname: host, BaseURL: "https://" + host + ":32500", CertificateDNSName: "*." + q.Namespace + ".direct.getportico.tv"})
+						return reply(200, string(raw)), nil
+					}
 					if first == "naming" {
 						close(entered)
 						select {

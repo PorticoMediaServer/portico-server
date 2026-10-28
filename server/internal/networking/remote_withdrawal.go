@@ -248,8 +248,9 @@ func (m *RemoteManager) withdrawLostFamilies(ctx context.Context, q certificateS
 }
 
 // unnamedAddress reports whether any address in the candidate set has no route name cached.
-// That is the exact test of "this differs from what Hosted was last told", and it is what
-// lets a genuinely new address be named between two weekly attempts. The topology digest used
+// Within a process this detects a change from what Hosted was last told; a new
+// process also refreshes each observed family because shutdown withdrew DNS.
+// This lets a genuinely new address be named between two weekly attempts. The topology digest used
 // to stand in for it, which meant an unrelated interface change bought a Hosted request.
 func (m *RemoteManager) unnamedAddress(ctx context.Context, authority string, addresses map[string]int) (bool, error) {
 	for address, port := range addresses {

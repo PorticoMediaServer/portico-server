@@ -46,6 +46,12 @@ type RemoteManager struct {
 	// seconds, forever, on every server that does not use remote access — which
 	// is most of them.
 	quiescent atomic.Bool
+	// Hosted withdraws DNS and endpoint proofs on graceful shutdown. Durable
+	// names and the healthy weekly deadline therefore cannot prove publication
+	// in this process. These fields are used only inside the route-mutation lane.
+	startupAuthority string
+	startupPublished bool
+	namedFamilies    map[string]string
 	// public is this server's own public addresses as the last route step saw
 	// them, for request locality (a LAN device that reaches the server through
 	// the router's public address). Read without the step's lock.
@@ -286,7 +292,10 @@ func topologyDigest(key []byte, v any) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 func (m *RemoteManager) saveState(ctx context.Context, authority string, c RemoteConfig, state remoteState, status RemoteStatus) error {
-	raw, e := json.Marshal(status)
+	raw, e := json.Marshal(struct {
+		RemoteStatus
+		PublicationFailed bool `json:"publicationFailed"`
+	}{status, state.PublicationFailed})
 	if e != nil {
 		return e
 	}
@@ -429,6 +438,18 @@ func (m *RemoteManager) stepRouteLocked(ctx context.Context) error {
 		}
 	}
 	ready := lanTLSReady && q.Scope.ID != ""
+	if authority != m.startupAuthority {
+		m.startupAuthority = authority
+		m.startupPublished = false
+		m.namedFamilies = nil
+	}
+	readyToPublish := ready && (c.Enabled || c.LANSharing)
+	if readyToPublish && !m.startupPublished && !state.PublicationFailed {
+		// Keep trying until the startup decision is durably saved. An early
+		// local error must not consume the renewal and retain a weekly delay.
+		// The separate NotBefore fence remains authoritative for all calls.
+		state.NextAttempt = time.Time{}
+	}
 	mappings, mapError, e := m.reconcileMappings(ctx, c, authority, digest, topo, port, c.Enabled && c.Mapping && ready)
 	if e != nil {
 		return e
@@ -545,7 +566,7 @@ func (m *RemoteManager) stepRouteLocked(ctx context.Context) error {
 		}
 	}
 
-	// Naming is fetched only on a changed address/port/namespace. A WAN transition
+	// Naming is refreshed once per process and on a changed address/port/namespace. A WAN transition
 	// reuses the existing wildcard and never initiates another certificate order.
 	addressKeys := make([]string, 0, len(addresses))
 	for raw := range addresses {
@@ -562,14 +583,19 @@ func (m *RemoteManager) stepRouteLocked(ctx context.Context) error {
 		if len(status.Candidates) >= maxPublishedCandidates {
 			break
 		}
-		origin, err := m.routeName(ctx, q, raw, addresses[raw], allowNaming)
+		origin, err := m.routeName(ctx, q, raw, addresses[raw], allowNaming, observed[raw] != 0)
 		if err != nil {
 			status.ErrorCode = "route_name_retry"
 			if allowNaming {
 				nameErr = err
 				allowNaming = false
 			}
-			continue
+			// A failed refresh does not invalidate the retained candidate. Keep
+			// the route digest stable so failure backoff cannot be bypassed by
+			// alternately dropping and restoring that cached candidate.
+			if origin == "" {
+				continue
+			}
 		}
 		duplicate := false
 		for _, candidate := range status.Candidates {
@@ -599,7 +625,13 @@ func (m *RemoteManager) stepRouteLocked(ctx context.Context) error {
 		Epochs      map[string]uint64
 	}{observation, epochs})
 	changed := state.RouteDigest != routeDigest
-	if changed {
+	// Hosted treats a repeated generation as an acknowledgement-only replay.
+	// A new generation is needed to restore LAN DNS after shutdown, even when
+	// the observed addresses are unchanged. Reserve it only when retry permits
+	// the real publication; lost responses retry this same durable generation.
+	caller, canPublish := m.h.transport.(endpointCaller)
+	republish := canPublish && readyToPublish && !m.startupPublished && !now.Before(state.NotBefore) && !now.Before(state.NextAttempt)
+	if changed || republish {
 		state.Generation++
 		state.RouteDigest = routeDigest
 		state.NextAttempt = time.Time{}
@@ -639,9 +671,11 @@ func (m *RemoteManager) stepRouteLocked(ctx context.Context) error {
 	var receipt struct {
 		Generation int64 `json:"generation,string"`
 	}
-	caller, ok := m.h.transport.(endpointCaller)
-	if !ok {
+	if !canPublish {
 		return ErrUnavailable
+	}
+	if readyToPublish {
+		m.startupPublished = true
 	}
 	e = caller.CallServer(ctx, q.Scope.Intent, PublishRoutes, observation, &receipt)
 	if e == nil && receipt.Generation != state.Generation {
@@ -694,6 +728,7 @@ func (m *RemoteManager) stepRouteLocked(ctx context.Context) error {
 		status.ErrorCode = "no_public_route"
 	}
 	if e != nil {
+		state.PublicationFailed = true
 		state.Attempts++
 		if state.Attempts > 6 {
 			state.Attempts = 6
@@ -704,6 +739,7 @@ func (m *RemoteManager) stepRouteLocked(ctx context.Context) error {
 			state.NotBefore = state.NextAttempt
 		}
 	} else {
+		state.PublicationFailed = false
 		state.Attempts = 0
 		// Unchanged routes are re-proved weekly: enough to keep the owner's reachability status
 		// honest without Hosted dialling every server every half hour. Any change publishes at once.

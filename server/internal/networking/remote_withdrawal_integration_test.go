@@ -64,8 +64,22 @@ func TestManagerIPv4LossDoesNotResurrectRetainedObservation(t *testing.T) {
 			raw, _ := json.Marshal(map[string]any{"namespace": q.Namespace, "family": "ipv4", "withdrawn": true})
 			return reply(200, string(raw)), nil
 		case strings.HasSuffix(r.URL.Path, "/direct-route"):
-			names++
-			return reply(500, `{}`), nil
+			var in struct {
+				Address string `json:"address"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+				t.Fatal(err)
+			}
+			// The healthy IPv6 family is legitimately refreshed once after
+			// restart. Keep the original zero-resurrection assertion specific
+			// to the lost IPv4 address, rather than forbidding that recovery.
+			if in.Address == "188.68.34.120" {
+				names++
+				return reply(500, `{}`), nil
+			}
+			host := "c-0123456789abcdef0123456789abcdef." + q.Namespace + ".direct.getportico.tv"
+			raw, _ := json.Marshal(certificateRoute{Namespace: q.Namespace, Hostname: host, BaseURL: "https://" + host + ":32500", CertificateDNSName: "*." + q.Namespace + ".direct.getportico.tv"})
+			return reply(200, string(raw)), nil
 		case strings.HasSuffix(r.URL.Path, "/routes"):
 			raw, _ := io.ReadAll(r.Body)
 			var in RouteObservation
