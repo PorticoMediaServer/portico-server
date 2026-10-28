@@ -3,7 +3,6 @@ package catalog
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"reflect"
 	"strings"
