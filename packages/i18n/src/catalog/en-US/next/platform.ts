@@ -2,6 +2,7 @@ export const platformMessages = {
   'next.boot.connecting': 'Connecting',
   'next.boot.stillConnecting': 'Still connecting',
   'next.boot.offline': 'You’re offline',
+  'next.boot.tvOffline': 'This TV is offline',
   'next.platform.appName': 'Portico',
   'next.platform.galleryTitle': 'Kit',
   'next.platform.kitTitle': 'Component kit',
