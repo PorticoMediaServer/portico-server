@@ -46,7 +46,8 @@ func musicLibrary(tx *sql.Tx, kind, id string) (string, error) {
 	return library, e
 }
 func (s *Service) musicPolicy(tx *sql.Tx, library string) (MusicPolicy, error) {
-	p := MusicPolicy{AcoustIDConfigured: s.acoustid != nil}
+	acoustid, _ := s.acoustidState()
+	p := MusicPolicy{AcoustIDConfigured: acoustid != nil}
 	e := tx.QueryRow(`SELECT a.revision,a.local_mode,a.acoustid_enabled,m.enabled FROM audio_metadata_policies a JOIN mb_provider_policies m ON m.library_id=a.library_id WHERE a.library_id=?`, library).Scan(&p.Revision, &p.LocalMode, &p.AcoustIDEnabled, &p.MusicBrainzEnabled)
 	if e != nil {
 		return p, e

@@ -19,6 +19,13 @@ type DeliveryConfiguration struct {
 	// backend that fails its probe falls back to software; it never fails a session.
 	HardwareBackend string `json:"hardwareBackend"`
 	HardwareDevice  string `json:"hardwareDevice"`
+	// HardwareSelection narrows conversion to one adapter by its opaque id, or
+	// to the processor ("software"); "auto" or empty keeps HardwareBackend and
+	// HardwareDevice as they are. SoftwareDecode (the owner's Hardware decoding
+	// off) keeps decoding on the processor even where the adapter's decode has
+	// been proven.
+	HardwareSelection string `json:"hardwareSelection"`
+	SoftwareDecode    bool   `json:"softwareDecode"`
 
 	ToneMapping      bool   `json:"toneMapping"`
 	ToneMapAlgorithm string `json:"toneMapAlgorithm"`
@@ -74,8 +81,8 @@ func validPlanningPolicy(p string) bool {
 // does. It is deliberately the same shape the registry will fill in.
 func DefaultDeliveryConfiguration() DeliveryConfiguration {
 	return DeliveryConfiguration{
-		HardwareBackend: "auto",
-		OutputFormat:    "auto", DownloadMaxQuality: "original",
+		HardwareBackend: "auto", HardwareSelection: "auto",
+		OutputFormat: "auto", DownloadMaxQuality: "original",
 		MaxMusicQuality:        "original",
 		SessionStorageMiB:      4096,
 		ToneMapping:            true,

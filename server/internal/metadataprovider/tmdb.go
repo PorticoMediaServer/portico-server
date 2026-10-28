@@ -17,6 +17,9 @@ import (
 type TMDB struct {
 	credentialMu sync.RWMutex
 	includeAdult atomic.Bool
+	// fallback is Server › Metadata › Fallback language: "en", "original" or
+	// "blank" (the zero value reads as "en").
+	fallback atomic.Value
 	http         *transport
 	token        string
 	cache        screenCache
@@ -124,6 +127,9 @@ type tmdbScreen struct {
 		Cast []tmdbCredit `json:"cast"`
 		Crew []tmdbCredit `json:"crew"`
 	} `json:"credits"`
+	Translations struct {
+		Translations []tmdbTranslation `json:"translations"`
+	} `json:"translations"`
 	Aggregate struct {
 		Cast []struct {
 			ID    int64  `json:"id"`
@@ -238,6 +244,87 @@ func tmdbDetailParts(kind string) string {
 	}
 	return "external_ids,alternative_titles,credits,release_dates,keywords,recommendations"
 }
+type tmdbTranslation struct {
+	Language string `json:"iso_639_1"`
+	Data     struct {
+		Title    string `json:"title"`
+		Name     string `json:"name"`
+		Overview string `json:"overview"`
+		Tagline  string `json:"tagline"`
+	} `json:"data"`
+}
+
+// SetFallbackLanguage chooses what fills a title, overview or tagline the
+// metadata language has no translation for: "en", "original" or "blank".
+func (s *TMDB) SetFallbackLanguage(choice string) { s.fallback.Store(choice) }
+
+func (s *TMDB) fallbackLanguage() string {
+	if v, _ := s.fallback.Load().(string); v != "" {
+		return v
+	}
+	return "en"
+}
+
+// detailParts adds the translations to a details request whenever a fallback
+// may need them, so filling a gap costs no second request.
+func (s *TMDB) detailParts(parts string) string {
+	if s.fallbackLanguage() == "blank" {
+		return parts
+	}
+	return parts + ",translations"
+}
+
+// fillFallback fills what TMDB left untranslated in the requested language
+// from the owner's fallback: English, or the title's original language. An
+// untranslated title is TMDB's own default (often not the requested language),
+// so it is replaced only when the requested language has no title of its own.
+// "blank" leaves every gap as TMDB returned it.
+func fillFallback(r *ScreenRecord, v tmdbScreen, language, choice string) {
+	want := strings.ToLower(strings.SplitN(language, "-", 2)[0])
+	target := "en"
+	if choice == "original" {
+		target = strings.ToLower(v.Language)
+	}
+	if choice == "blank" || want == "" || target == "" || want == target {
+		return
+	}
+	var own, fallback *tmdbTranslation
+	for i := range v.Translations.Translations {
+		t := &v.Translations.Translations[i]
+		switch strings.ToLower(t.Language) {
+		case want:
+			own = t
+		case target:
+			fallback = t
+		}
+	}
+	title := func(t *tmdbTranslation) string {
+		if t == nil {
+			return ""
+		}
+		if t.Data.Title != "" {
+			return t.Data.Title
+		}
+		return t.Data.Name
+	}
+	if title(own) == "" {
+		if choice == "original" && r.OriginalTitle != "" {
+			r.Title = r.OriginalTitle
+		} else if t := title(fallback); t != "" {
+			r.Title = t
+		}
+	}
+	if fallback == nil {
+		return
+	}
+	if r.Overview == "" {
+		r.Overview = fallback.Data.Overview
+	}
+	if r.Tagline == "" {
+		r.Tagline = fallback.Data.Tagline
+	}
+}
+
 func (s *TMDB) ScreenDetails(ctx context.Context, kind, id, language, region string) (ScreenRecord, error) {
 	route, e := tmdbKind(kind)
 	if e != nil {
@@ -246,7 +333,7 @@ func (s *TMDB) ScreenDetails(ctx context.Context, kind, id, language, region str
 	if !ValidScreenID(ScreenID{"tmdb", kind, id}) {
 		return ScreenRecord{}, errors.New("invalid TMDB identity")
 	}
-	q := url.Values{"append_to_response": {tmdbDetailParts(kind)}}
+	q := url.Values{"append_to_response": {s.detailParts(tmdbDetailParts(kind))}}
 	if language != "" {
 		q.Set("language", language)
 	}
@@ -255,6 +342,7 @@ func (s *TMDB) ScreenDetails(ctx context.Context, kind, id, language, region str
 		return ScreenRecord{}, e
 	}
 	r := v.record(kind)
+	fillFallback(&r, v, language, s.fallbackLanguage())
 	if r.Identity.ID != id {
 		return r, &Error{Provider: "tmdb", Code: "identity_mismatch"}
 	}
@@ -473,7 +561,14 @@ func (s *TMDB) ScreenEpisode(ctx context.Context, show string, season, episode i
 	} else if order != "official" {
 		return ScreenRecord{}, &Error{Provider: "tmdb", Code: "order_unsupported"}
 	}
-	q := url.Values{"append_to_response": {"external_ids,credits"}}
+	// An episode does not carry its series' original language, so only the
+	// English fallback can fill an episode's gaps.
+	fallback := s.fallbackLanguage()
+	parts := "external_ids,credits"
+	if fallback == "en" {
+		parts += ",translations"
+	}
+	q := url.Values{"append_to_response": {parts}}
 	if language != "" {
 		q.Set("language", language)
 	}
@@ -482,6 +577,9 @@ func (s *TMDB) ScreenEpisode(ctx context.Context, show string, season, episode i
 		return ScreenRecord{}, err
 	}
 	r := v.record("episode")
+	if fallback == "en" {
+		fillFallback(&r, v, language, fallback)
+	}
 	if v.Season != originalSeason || v.Episode != originalEpisode {
 		return r, &Error{Provider: "tmdb", Code: "episode_identity_mismatch"}
 	}
@@ -638,7 +736,7 @@ func (s *TMDB) ScreenDetailsConditional(ctx context.Context, kind, id, language,
 	if !ValidScreenID(ScreenID{"tmdb", kind, id}) {
 		return ScreenRecord{}, in, errors.New("invalid TMDB identity")
 	}
-	q := url.Values{"append_to_response": {tmdbDetailParts(kind)}}
+	q := url.Values{"append_to_response": {s.detailParts(tmdbDetailParts(kind))}}
 	if language != "" {
 		q.Set("language", language)
 	}
@@ -651,6 +749,7 @@ func (s *TMDB) ScreenDetailsConditional(ctx context.Context, kind, id, language,
 		return ScreenRecord{}, out, &Error{Provider: "tmdb", Code: "invalid_response"}
 	}
 	r := v.record(kind)
+	fillFallback(&r, v, language, s.fallbackLanguage())
 	if r.Identity.ID != id {
 		return r, out, &Error{Provider: "tmdb", Code: "identity_mismatch"}
 	}

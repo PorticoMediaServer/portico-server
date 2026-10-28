@@ -10334,7 +10334,13 @@ export const schemas = {
           "hardwareBackend": {
             "type": "string"
           },
+          "hardwareDecode": {
+            "type": "boolean"
+          },
           "hardwareDevice": {
+            "type": "string"
+          },
+          "hardwareSelection": {
             "type": "string"
           },
           "hdrToneMapping": {
@@ -10682,6 +10688,8 @@ export const schemas = {
           "serverCap",
           "hardwareBackend",
           "hardwareDevice",
+          "hardwareSelection",
+          "hardwareDecode",
           "hdrToneMapping",
           "hdrToneMappingAlgorithm",
           "x264Preset",
@@ -10814,7 +10822,13 @@ export const schemas = {
               "hardwareBackend": {
                 "type": "string"
               },
+              "hardwareDecode": {
+                "type": "boolean"
+              },
               "hardwareDevice": {
+                "type": "string"
+              },
+              "hardwareSelection": {
                 "type": "string"
               },
               "hdrToneMapping": {
@@ -11162,6 +11176,8 @@ export const schemas = {
               "serverCap",
               "hardwareBackend",
               "hardwareDevice",
+              "hardwareSelection",
+              "hardwareDecode",
               "hdrToneMapping",
               "hdrToneMappingAlgorithm",
               "x264Preset",
@@ -11310,7 +11326,13 @@ export const schemas = {
               "hardwareBackend": {
                 "type": "string"
               },
+              "hardwareDecode": {
+                "type": "boolean"
+              },
               "hardwareDevice": {
+                "type": "string"
+              },
+              "hardwareSelection": {
                 "type": "string"
               },
               "hdrToneMapping": {
@@ -11658,6 +11680,8 @@ export const schemas = {
               "serverCap",
               "hardwareBackend",
               "hardwareDevice",
+              "hardwareSelection",
+              "hardwareDecode",
               "hdrToneMapping",
               "hdrToneMappingAlgorithm",
               "x264Preset",
@@ -32695,6 +32719,12 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "noticeAudience": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
           "retentionDays": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -32726,7 +32756,8 @@ export const schemas = {
           "storageWarningPercent",
           "storageCriticalPercent",
           "certificateWarningDays",
-          "maintenanceIntervalMinutes"
+          "maintenanceIntervalMinutes",
+          "noticeAudience"
         ],
         "type": "object"
       },
@@ -40322,7 +40353,13 @@ export const schemas = {
               "hardwareBackend": {
                 "type": "string"
               },
+              "hardwareDecode": {
+                "type": "boolean"
+              },
               "hardwareDevice": {
+                "type": "string"
+              },
+              "hardwareSelection": {
                 "type": "string"
               },
               "hdrToneMapping": {
@@ -40670,6 +40707,8 @@ export const schemas = {
               "serverCap",
               "hardwareBackend",
               "hardwareDevice",
+              "hardwareSelection",
+              "hardwareDecode",
               "hdrToneMapping",
               "hdrToneMappingAlgorithm",
               "x264Preset",
@@ -40818,7 +40857,13 @@ export const schemas = {
               "hardwareBackend": {
                 "type": "string"
               },
+              "hardwareDecode": {
+                "type": "boolean"
+              },
               "hardwareDevice": {
+                "type": "string"
+              },
+              "hardwareSelection": {
                 "type": "string"
               },
               "hdrToneMapping": {
@@ -41166,6 +41211,8 @@ export const schemas = {
               "serverCap",
               "hardwareBackend",
               "hardwareDevice",
+              "hardwareSelection",
+              "hardwareDecode",
               "hdrToneMapping",
               "hdrToneMappingAlgorithm",
               "x264Preset",
@@ -132010,6 +132057,15 @@ export const schemas = {
   },
   "GetMetadataSettingsResponse": {
     "properties": {
+      "acoustidKeyConfigured": {
+        "type": "boolean"
+      },
+      "acoustidKeySource": {
+        "type": "string"
+      },
+      "animeTitles": {
+        "type": "string"
+      },
       "artworkLanguage": {
         "type": "string"
       },
@@ -132026,10 +132082,16 @@ export const schemas = {
       "artworkPreference": {
         "type": "string"
       },
+      "castPhotos": {
+        "type": "boolean"
+      },
       "defaultLanguage": {
         "type": "string"
       },
       "defaultRegion": {
+        "type": "string"
+      },
+      "fallbackLanguage": {
         "type": "string"
       },
       "includeAdult": {
@@ -132160,6 +132222,23 @@ export const schemas = {
       "openSubtitlesUsername": {
         "type": "string"
       },
+      "refreshAll": {
+        "properties": {
+          "requestedAt": {
+            "type": "string"
+          },
+          "running": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "running"
+        ],
+        "type": "object"
+      },
+      "refreshPolicy": {
+        "type": "string"
+      },
       "revision": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -132183,7 +132262,14 @@ export const schemas = {
       "openSubtitlesKeyConfigured",
       "openSubtitlesUsername",
       "openSubtitlesPasswordConfigured",
-      "openSubtitles"
+      "openSubtitles",
+      "refreshPolicy",
+      "fallbackLanguage",
+      "animeTitles",
+      "castPhotos",
+      "acoustidKeyConfigured",
+      "acoustidKeySource",
+      "refreshAll"
     ],
     "type": "object"
   },
@@ -197488,6 +197574,12 @@ export const schemas = {
         "minimum": -9007199254740991,
         "type": "integer"
       },
+      "noticeAudience": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "type": "object"
+      },
       "storageCriticalPercent": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -197521,6 +197613,12 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "noticeAudience": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
           "retentionDays": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -197552,7 +197650,8 @@ export const schemas = {
           "storageWarningPercent",
           "storageCriticalPercent",
           "certificateWarningDays",
-          "maintenanceIntervalMinutes"
+          "maintenanceIntervalMinutes",
+          "noticeAudience"
         ],
         "type": "object"
       },
@@ -240262,6 +240361,12 @@ export const schemas = {
   },
   "PutMetadataSettingsRequest": {
     "properties": {
+      "acoustidKey": {
+        "type": "string"
+      },
+      "animeTitles": {
+        "type": "string"
+      },
       "artworkLanguage": {
         "type": "string"
       },
@@ -240278,6 +240383,9 @@ export const schemas = {
       "artworkPreference": {
         "type": "string"
       },
+      "castPhotos": {
+        "type": "boolean"
+      },
       "defaultLanguage": {
         "type": "string"
       },
@@ -240288,6 +240396,9 @@ export const schemas = {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
+      },
+      "fallbackLanguage": {
+        "type": "string"
       },
       "includeAdult": {
         "type": "boolean"
@@ -240339,6 +240450,9 @@ export const schemas = {
       "openSubtitlesUsername": {
         "type": "string"
       },
+      "refreshPolicy": {
+        "type": "string"
+      },
       "tmdbReadToken": {
         "type": "string"
       },
@@ -240355,6 +240469,15 @@ export const schemas = {
   },
   "PutMetadataSettingsResponse": {
     "properties": {
+      "acoustidKeyConfigured": {
+        "type": "boolean"
+      },
+      "acoustidKeySource": {
+        "type": "string"
+      },
+      "animeTitles": {
+        "type": "string"
+      },
       "artworkLanguage": {
         "type": "string"
       },
@@ -240371,10 +240494,16 @@ export const schemas = {
       "artworkPreference": {
         "type": "string"
       },
+      "castPhotos": {
+        "type": "boolean"
+      },
       "defaultLanguage": {
         "type": "string"
       },
       "defaultRegion": {
+        "type": "string"
+      },
+      "fallbackLanguage": {
         "type": "string"
       },
       "includeAdult": {
@@ -240505,6 +240634,23 @@ export const schemas = {
       "openSubtitlesUsername": {
         "type": "string"
       },
+      "refreshAll": {
+        "properties": {
+          "requestedAt": {
+            "type": "string"
+          },
+          "running": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "running"
+        ],
+        "type": "object"
+      },
+      "refreshPolicy": {
+        "type": "string"
+      },
       "revision": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -240528,7 +240674,14 @@ export const schemas = {
       "openSubtitlesKeyConfigured",
       "openSubtitlesUsername",
       "openSubtitlesPasswordConfigured",
-      "openSubtitles"
+      "openSubtitles",
+      "refreshPolicy",
+      "fallbackLanguage",
+      "animeTitles",
+      "castPhotos",
+      "acoustidKeyConfigured",
+      "acoustidKeySource",
+      "refreshAll"
     ],
     "type": "object"
   },
@@ -245881,6 +246034,229 @@ export const schemas = {
     "required": [
       "items",
       "limit"
+    ],
+    "type": "object"
+  },
+  "RefreshAllMetadataRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "RefreshAllMetadataResponse": {
+    "properties": {
+      "acoustidKeyConfigured": {
+        "type": "boolean"
+      },
+      "acoustidKeySource": {
+        "type": "string"
+      },
+      "animeTitles": {
+        "type": "string"
+      },
+      "artworkLanguage": {
+        "type": "string"
+      },
+      "artworkMaxEdge": {
+        "enum": [
+          1280,
+          1920,
+          2560
+        ],
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "artworkPreference": {
+        "type": "string"
+      },
+      "castPhotos": {
+        "type": "boolean"
+      },
+      "defaultLanguage": {
+        "type": "string"
+      },
+      "defaultRegion": {
+        "type": "string"
+      },
+      "fallbackLanguage": {
+        "type": "string"
+      },
+      "includeAdult": {
+        "type": "boolean"
+      },
+      "libraries": {
+        "items": {
+          "properties": {
+            "agent": {
+              "type": "string"
+            },
+            "agentOptions": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "canScrub": {
+              "type": "boolean"
+            },
+            "episodeThumbnailMode": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "lyricsSource": {
+              "type": "string"
+            },
+            "managed": {
+              "type": "boolean"
+            },
+            "name": {
+              "type": "string"
+            },
+            "revision": {
+              "type": "string"
+            },
+            "scrubPreviews": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "kind",
+            "revision",
+            "agent",
+            "agentOptions",
+            "lyricsSource",
+            "episodeThumbnailMode",
+            "scrubPreviews",
+            "canScrub",
+            "managed"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "librariesComplete": {
+        "type": "boolean"
+      },
+      "localArtworkLimitBytes": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "localArtworkUsedBytes": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "onlineLookups": {
+        "type": "boolean"
+      },
+      "openSubtitles": {
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "accountSource": {
+            "type": "string"
+          },
+          "checkedAt": {
+            "type": "string"
+          },
+          "downloadsAllowed": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "downloadsRemaining": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "downloadsResetAt": {
+            "type": "string"
+          },
+          "keySource": {
+            "type": "string"
+          },
+          "problem": {
+            "type": "string"
+          },
+          "retryAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "keySource",
+          "accountSource",
+          "account",
+          "downloadsRemaining",
+          "downloadsAllowed"
+        ],
+        "type": "object"
+      },
+      "openSubtitlesKeyConfigured": {
+        "type": "boolean"
+      },
+      "openSubtitlesPasswordConfigured": {
+        "type": "boolean"
+      },
+      "openSubtitlesUsername": {
+        "type": "string"
+      },
+      "refreshAll": {
+        "properties": {
+          "requestedAt": {
+            "type": "string"
+          },
+          "running": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "running"
+        ],
+        "type": "object"
+      },
+      "refreshPolicy": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "tmdbCredentialConfigured": {
+        "type": "boolean"
+      },
+      "tvdbCredentialConfigured": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "localArtworkUsedBytes",
+      "revision",
+      "localArtworkLimitBytes",
+      "includeAdult",
+      "artworkMaxEdge",
+      "tmdbCredentialConfigured",
+      "tvdbCredentialConfigured",
+      "openSubtitlesKeyConfigured",
+      "openSubtitlesUsername",
+      "openSubtitlesPasswordConfigured",
+      "openSubtitles",
+      "refreshPolicy",
+      "fallbackLanguage",
+      "animeTitles",
+      "castPhotos",
+      "acoustidKeyConfigured",
+      "acoustidKeySource",
+      "refreshAll"
     ],
     "type": "object"
   },

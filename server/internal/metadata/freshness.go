@@ -132,10 +132,34 @@ func (s *Service) documentState(ctx context.Context, provider, kind, resource st
 }
 
 // documentFresh answers the only question the worker needs: may this document be left alone?
+//
+// The owner's Check for new details narrows which held documents may be asked
+// for again: "regular" uses the windows above, "recent" only recently added and
+// airing titles, "never" none. Refresh all overrides it for every document
+// checked before it was asked for, and still spends the refresh allowance. A
+// document never fetched is never fresh, and an owner's refresh of one title
+// never reaches here.
 func (s *Service) documentFresh(ctx context.Context, provider, kind, resource string, priority RefreshPriority, now time.Time) (bool, documentValidators, error) {
 	state, e := s.documentState(ctx, provider, kind, resource)
 	if e != nil || !state.Found {
 		return false, state, e
+	}
+	var epoch int64
+	if e = dbwork.QueryRow(ctx, s.db, `SELECT refresh_all_epoch FROM metadata_runtime_settings WHERE singleton=1`).Scan(&epoch); e != nil {
+		return false, state, e
+	}
+	// The epoch is whole seconds, so a document checked in the second Refresh all
+	// was asked for counts as checked before it.
+	if epoch > 0 && state.CheckedAt.Unix() <= epoch {
+		return false, state, nil
+	}
+	switch policy, _ := s.refreshPolicy.Load().(string); policy {
+	case "never":
+		return true, state, nil
+	case "recent":
+		if priority == RefreshOrdinary {
+			return true, state, nil
+		}
 	}
 	return now.Sub(state.CheckedAt) < documentFreshness(provider, kind, priority), state, nil
 }

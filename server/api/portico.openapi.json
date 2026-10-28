@@ -10544,7 +10544,13 @@
               "hardwareBackend": {
                 "type": "string"
               },
+              "hardwareDecode": {
+                "type": "boolean"
+              },
               "hardwareDevice": {
+                "type": "string"
+              },
+              "hardwareSelection": {
                 "type": "string"
               },
               "hdrToneMapping": {
@@ -10904,6 +10910,8 @@
               "serverCap",
               "hardwareBackend",
               "hardwareDevice",
+              "hardwareSelection",
+              "hardwareDecode",
               "hdrToneMapping",
               "hdrToneMappingAlgorithm",
               "x264Preset",
@@ -11036,7 +11044,13 @@
                   "hardwareBackend": {
                     "type": "string"
                   },
+                  "hardwareDecode": {
+                    "type": "boolean"
+                  },
                   "hardwareDevice": {
+                    "type": "string"
+                  },
+                  "hardwareSelection": {
                     "type": "string"
                   },
                   "hdrToneMapping": {
@@ -11396,6 +11410,8 @@
                   "serverCap",
                   "hardwareBackend",
                   "hardwareDevice",
+                  "hardwareSelection",
+                  "hardwareDecode",
                   "hdrToneMapping",
                   "hdrToneMappingAlgorithm",
                   "x264Preset",
@@ -11544,7 +11560,13 @@
                   "hardwareBackend": {
                     "type": "string"
                   },
+                  "hardwareDecode": {
+                    "type": "boolean"
+                  },
                   "hardwareDevice": {
+                    "type": "string"
+                  },
+                  "hardwareSelection": {
                     "type": "string"
                   },
                   "hdrToneMapping": {
@@ -11904,6 +11926,8 @@
                   "serverCap",
                   "hardwareBackend",
                   "hardwareDevice",
+                  "hardwareSelection",
+                  "hardwareDecode",
                   "hdrToneMapping",
                   "hdrToneMappingAlgorithm",
                   "x264Preset",
@@ -34977,6 +35001,12 @@
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "noticeAudience": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
               "retentionDays": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -35008,7 +35038,8 @@
               "storageWarningPercent",
               "storageCriticalPercent",
               "certificateWarningDays",
-              "maintenanceIntervalMinutes"
+              "maintenanceIntervalMinutes",
+              "noticeAudience"
             ],
             "type": "object"
           },
@@ -42814,7 +42845,13 @@
                   "hardwareBackend": {
                     "type": "string"
                   },
+                  "hardwareDecode": {
+                    "type": "boolean"
+                  },
                   "hardwareDevice": {
+                    "type": "string"
+                  },
+                  "hardwareSelection": {
                     "type": "string"
                   },
                   "hdrToneMapping": {
@@ -43174,6 +43211,8 @@
                   "serverCap",
                   "hardwareBackend",
                   "hardwareDevice",
+                  "hardwareSelection",
+                  "hardwareDecode",
                   "hdrToneMapping",
                   "hdrToneMappingAlgorithm",
                   "x264Preset",
@@ -43322,7 +43361,13 @@
                   "hardwareBackend": {
                     "type": "string"
                   },
+                  "hardwareDecode": {
+                    "type": "boolean"
+                  },
                   "hardwareDevice": {
+                    "type": "string"
+                  },
+                  "hardwareSelection": {
                     "type": "string"
                   },
                   "hdrToneMapping": {
@@ -43682,6 +43727,8 @@
                   "serverCap",
                   "hardwareBackend",
                   "hardwareDevice",
+                  "hardwareSelection",
+                  "hardwareDecode",
                   "hdrToneMapping",
                   "hdrToneMappingAlgorithm",
                   "x264Preset",
@@ -136135,6 +136182,15 @@
       },
       "GetMetadataSettingsResponse": {
         "properties": {
+          "acoustidKeyConfigured": {
+            "type": "boolean"
+          },
+          "acoustidKeySource": {
+            "type": "string"
+          },
+          "animeTitles": {
+            "type": "string"
+          },
           "artworkLanguage": {
             "type": "string"
           },
@@ -136151,10 +136207,16 @@
           "artworkPreference": {
             "type": "string"
           },
+          "castPhotos": {
+            "type": "boolean"
+          },
           "defaultLanguage": {
             "type": "string"
           },
           "defaultRegion": {
+            "type": "string"
+          },
+          "fallbackLanguage": {
             "type": "string"
           },
           "includeAdult": {
@@ -136285,6 +136347,23 @@
           "openSubtitlesUsername": {
             "type": "string"
           },
+          "refreshAll": {
+            "properties": {
+              "requestedAt": {
+                "type": "string"
+              },
+              "running": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "running"
+            ],
+            "type": "object"
+          },
+          "refreshPolicy": {
+            "type": "string"
+          },
           "revision": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -136308,7 +136387,14 @@
           "openSubtitlesKeyConfigured",
           "openSubtitlesUsername",
           "openSubtitlesPasswordConfigured",
-          "openSubtitles"
+          "openSubtitles",
+          "refreshPolicy",
+          "fallbackLanguage",
+          "animeTitles",
+          "castPhotos",
+          "acoustidKeyConfigured",
+          "acoustidKeySource",
+          "refreshAll"
         ],
         "type": "object"
       },
@@ -219163,6 +219249,12 @@
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "noticeAudience": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
           "storageCriticalPercent": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -219196,6 +219288,12 @@
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "noticeAudience": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
               "retentionDays": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -219227,7 +219325,8 @@
               "storageWarningPercent",
               "storageCriticalPercent",
               "certificateWarningDays",
-              "maintenanceIntervalMinutes"
+              "maintenanceIntervalMinutes",
+              "noticeAudience"
             ],
             "type": "object"
           },
@@ -262328,6 +262427,12 @@
       },
       "PutMetadataSettingsRequest": {
         "properties": {
+          "acoustidKey": {
+            "type": "string"
+          },
+          "animeTitles": {
+            "type": "string"
+          },
           "artworkLanguage": {
             "type": "string"
           },
@@ -262344,6 +262449,9 @@
           "artworkPreference": {
             "type": "string"
           },
+          "castPhotos": {
+            "type": "boolean"
+          },
           "defaultLanguage": {
             "type": "string"
           },
@@ -262354,6 +262462,9 @@
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "fallbackLanguage": {
+            "type": "string"
           },
           "includeAdult": {
             "type": "boolean"
@@ -262405,6 +262516,9 @@
           "openSubtitlesUsername": {
             "type": "string"
           },
+          "refreshPolicy": {
+            "type": "string"
+          },
           "tmdbReadToken": {
             "type": "string"
           },
@@ -262421,6 +262535,15 @@
       },
       "PutMetadataSettingsResponse": {
         "properties": {
+          "acoustidKeyConfigured": {
+            "type": "boolean"
+          },
+          "acoustidKeySource": {
+            "type": "string"
+          },
+          "animeTitles": {
+            "type": "string"
+          },
           "artworkLanguage": {
             "type": "string"
           },
@@ -262437,10 +262560,16 @@
           "artworkPreference": {
             "type": "string"
           },
+          "castPhotos": {
+            "type": "boolean"
+          },
           "defaultLanguage": {
             "type": "string"
           },
           "defaultRegion": {
+            "type": "string"
+          },
+          "fallbackLanguage": {
             "type": "string"
           },
           "includeAdult": {
@@ -262571,6 +262700,23 @@
           "openSubtitlesUsername": {
             "type": "string"
           },
+          "refreshAll": {
+            "properties": {
+              "requestedAt": {
+                "type": "string"
+              },
+              "running": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "running"
+            ],
+            "type": "object"
+          },
+          "refreshPolicy": {
+            "type": "string"
+          },
           "revision": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -262594,7 +262740,14 @@
           "openSubtitlesKeyConfigured",
           "openSubtitlesUsername",
           "openSubtitlesPasswordConfigured",
-          "openSubtitles"
+          "openSubtitles",
+          "refreshPolicy",
+          "fallbackLanguage",
+          "animeTitles",
+          "castPhotos",
+          "acoustidKeyConfigured",
+          "acoustidKeySource",
+          "refreshAll"
         ],
         "type": "object"
       },
@@ -267941,6 +268094,228 @@
         "required": [
           "items",
           "limit"
+        ],
+        "type": "object"
+      },
+      "RefreshAllMetadataRequest": {
+        "properties": {},
+        "type": "object"
+      },
+      "RefreshAllMetadataResponse": {
+        "properties": {
+          "acoustidKeyConfigured": {
+            "type": "boolean"
+          },
+          "acoustidKeySource": {
+            "type": "string"
+          },
+          "animeTitles": {
+            "type": "string"
+          },
+          "artworkLanguage": {
+            "type": "string"
+          },
+          "artworkMaxEdge": {
+            "enum": [
+              1280,
+              1920,
+              2560
+            ],
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "artworkPreference": {
+            "type": "string"
+          },
+          "castPhotos": {
+            "type": "boolean"
+          },
+          "defaultLanguage": {
+            "type": "string"
+          },
+          "defaultRegion": {
+            "type": "string"
+          },
+          "fallbackLanguage": {
+            "type": "string"
+          },
+          "includeAdult": {
+            "type": "boolean"
+          },
+          "libraries": {
+            "items": {
+              "properties": {
+                "agent": {
+                  "type": "string"
+                },
+                "agentOptions": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "canScrub": {
+                  "type": "boolean"
+                },
+                "episodeThumbnailMode": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "lyricsSource": {
+                  "type": "string"
+                },
+                "managed": {
+                  "type": "boolean"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "revision": {
+                  "type": "string"
+                },
+                "scrubPreviews": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "kind",
+                "revision",
+                "agent",
+                "agentOptions",
+                "lyricsSource",
+                "episodeThumbnailMode",
+                "scrubPreviews",
+                "canScrub",
+                "managed"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "librariesComplete": {
+            "type": "boolean"
+          },
+          "localArtworkLimitBytes": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "localArtworkUsedBytes": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "onlineLookups": {
+            "type": "boolean"
+          },
+          "openSubtitles": {
+            "properties": {
+              "account": {
+                "type": "string"
+              },
+              "accountSource": {
+                "type": "string"
+              },
+              "checkedAt": {
+                "type": "string"
+              },
+              "downloadsAllowed": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "downloadsRemaining": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "downloadsResetAt": {
+                "type": "string"
+              },
+              "keySource": {
+                "type": "string"
+              },
+              "problem": {
+                "type": "string"
+              },
+              "retryAt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "keySource",
+              "accountSource",
+              "account",
+              "downloadsRemaining",
+              "downloadsAllowed"
+            ],
+            "type": "object"
+          },
+          "openSubtitlesKeyConfigured": {
+            "type": "boolean"
+          },
+          "openSubtitlesPasswordConfigured": {
+            "type": "boolean"
+          },
+          "openSubtitlesUsername": {
+            "type": "string"
+          },
+          "refreshAll": {
+            "properties": {
+              "requestedAt": {
+                "type": "string"
+              },
+              "running": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "running"
+            ],
+            "type": "object"
+          },
+          "refreshPolicy": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "tmdbCredentialConfigured": {
+            "type": "boolean"
+          },
+          "tvdbCredentialConfigured": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "localArtworkUsedBytes",
+          "revision",
+          "localArtworkLimitBytes",
+          "includeAdult",
+          "artworkMaxEdge",
+          "tmdbCredentialConfigured",
+          "tvdbCredentialConfigured",
+          "openSubtitlesKeyConfigured",
+          "openSubtitlesUsername",
+          "openSubtitlesPasswordConfigured",
+          "openSubtitles",
+          "refreshPolicy",
+          "fallbackLanguage",
+          "animeTitles",
+          "castPhotos",
+          "acoustidKeyConfigured",
+          "acoustidKeySource",
+          "refreshAll"
         ],
         "type": "object"
       },
@@ -305892,7 +306267,13 @@
                             "hardwareBackend": {
                               "type": "string"
                             },
+                            "hardwareDecode": {
+                              "type": "boolean"
+                            },
                             "hardwareDevice": {
+                              "type": "string"
+                            },
+                            "hardwareSelection": {
                               "type": "string"
                             },
                             "hdrToneMapping": {
@@ -306252,6 +306633,8 @@
                             "serverCap",
                             "hardwareBackend",
                             "hardwareDevice",
+                            "hardwareSelection",
+                            "hardwareDecode",
                             "hdrToneMapping",
                             "hdrToneMappingAlgorithm",
                             "x264Preset",
@@ -306400,7 +306783,13 @@
                             "hardwareBackend": {
                               "type": "string"
                             },
+                            "hardwareDecode": {
+                              "type": "boolean"
+                            },
                             "hardwareDevice": {
+                              "type": "string"
+                            },
+                            "hardwareSelection": {
                               "type": "string"
                             },
                             "hdrToneMapping": {
@@ -306760,6 +307149,8 @@
                             "serverCap",
                             "hardwareBackend",
                             "hardwareDevice",
+                            "hardwareSelection",
+                            "hardwareDecode",
                             "hdrToneMapping",
                             "hdrToneMappingAlgorithm",
                             "x264Preset",
@@ -306984,7 +307375,13 @@
                       "hardwareBackend": {
                         "type": "string"
                       },
+                      "hardwareDecode": {
+                        "type": "boolean"
+                      },
                       "hardwareDevice": {
+                        "type": "string"
+                      },
+                      "hardwareSelection": {
                         "type": "string"
                       },
                       "hdrToneMapping": {
@@ -307344,6 +307741,8 @@
                       "serverCap",
                       "hardwareBackend",
                       "hardwareDevice",
+                      "hardwareSelection",
+                      "hardwareDecode",
                       "hdrToneMapping",
                       "hdrToneMappingAlgorithm",
                       "x264Preset",
@@ -307484,7 +307883,13 @@
                             "hardwareBackend": {
                               "type": "string"
                             },
+                            "hardwareDecode": {
+                              "type": "boolean"
+                            },
                             "hardwareDevice": {
+                              "type": "string"
+                            },
+                            "hardwareSelection": {
                               "type": "string"
                             },
                             "hdrToneMapping": {
@@ -307844,6 +308249,8 @@
                             "serverCap",
                             "hardwareBackend",
                             "hardwareDevice",
+                            "hardwareSelection",
+                            "hardwareDecode",
                             "hdrToneMapping",
                             "hdrToneMappingAlgorithm",
                             "x264Preset",
@@ -307992,7 +308399,13 @@
                             "hardwareBackend": {
                               "type": "string"
                             },
+                            "hardwareDecode": {
+                              "type": "boolean"
+                            },
                             "hardwareDevice": {
+                              "type": "string"
+                            },
+                            "hardwareSelection": {
                               "type": "string"
                             },
                             "hdrToneMapping": {
@@ -308352,6 +308765,8 @@
                             "serverCap",
                             "hardwareBackend",
                             "hardwareDevice",
+                            "hardwareSelection",
+                            "hardwareDecode",
                             "hdrToneMapping",
                             "hdrToneMappingAlgorithm",
                             "x264Preset",
@@ -335220,6 +335635,15 @@
               "application/json": {
                 "schema": {
                   "properties": {
+                    "acoustidKeyConfigured": {
+                      "type": "boolean"
+                    },
+                    "acoustidKeySource": {
+                      "type": "string"
+                    },
+                    "animeTitles": {
+                      "type": "string"
+                    },
                     "artworkLanguage": {
                       "type": "string"
                     },
@@ -335236,10 +335660,16 @@
                     "artworkPreference": {
                       "type": "string"
                     },
+                    "castPhotos": {
+                      "type": "boolean"
+                    },
                     "defaultLanguage": {
                       "type": "string"
                     },
                     "defaultRegion": {
+                      "type": "string"
+                    },
+                    "fallbackLanguage": {
                       "type": "string"
                     },
                     "includeAdult": {
@@ -335370,6 +335800,23 @@
                     "openSubtitlesUsername": {
                       "type": "string"
                     },
+                    "refreshAll": {
+                      "properties": {
+                        "requestedAt": {
+                          "type": "string"
+                        },
+                        "running": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "running"
+                      ],
+                      "type": "object"
+                    },
+                    "refreshPolicy": {
+                      "type": "string"
+                    },
                     "revision": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -335393,7 +335840,14 @@
                     "openSubtitlesKeyConfigured",
                     "openSubtitlesUsername",
                     "openSubtitlesPasswordConfigured",
-                    "openSubtitles"
+                    "openSubtitles",
+                    "refreshPolicy",
+                    "fallbackLanguage",
+                    "animeTitles",
+                    "castPhotos",
+                    "acoustidKeyConfigured",
+                    "acoustidKeySource",
+                    "refreshAll"
                   ],
                   "type": "object"
                 }
@@ -335455,6 +335909,12 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "acoustidKey": {
+                    "type": "string"
+                  },
+                  "animeTitles": {
+                    "type": "string"
+                  },
                   "artworkLanguage": {
                     "type": "string"
                   },
@@ -335471,6 +335931,9 @@
                   "artworkPreference": {
                     "type": "string"
                   },
+                  "castPhotos": {
+                    "type": "boolean"
+                  },
                   "defaultLanguage": {
                     "type": "string"
                   },
@@ -335481,6 +335944,9 @@
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "fallbackLanguage": {
+                    "type": "string"
                   },
                   "includeAdult": {
                     "type": "boolean"
@@ -335532,6 +335998,9 @@
                   "openSubtitlesUsername": {
                     "type": "string"
                   },
+                  "refreshPolicy": {
+                    "type": "string"
+                  },
                   "tmdbReadToken": {
                     "type": "string"
                   },
@@ -335556,6 +336025,15 @@
               "application/json": {
                 "schema": {
                   "properties": {
+                    "acoustidKeyConfigured": {
+                      "type": "boolean"
+                    },
+                    "acoustidKeySource": {
+                      "type": "string"
+                    },
+                    "animeTitles": {
+                      "type": "string"
+                    },
                     "artworkLanguage": {
                       "type": "string"
                     },
@@ -335572,10 +336050,16 @@
                     "artworkPreference": {
                       "type": "string"
                     },
+                    "castPhotos": {
+                      "type": "boolean"
+                    },
                     "defaultLanguage": {
                       "type": "string"
                     },
                     "defaultRegion": {
+                      "type": "string"
+                    },
+                    "fallbackLanguage": {
                       "type": "string"
                     },
                     "includeAdult": {
@@ -335706,6 +336190,23 @@
                     "openSubtitlesUsername": {
                       "type": "string"
                     },
+                    "refreshAll": {
+                      "properties": {
+                        "requestedAt": {
+                          "type": "string"
+                        },
+                        "running": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "running"
+                      ],
+                      "type": "object"
+                    },
+                    "refreshPolicy": {
+                      "type": "string"
+                    },
                     "revision": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -335729,7 +336230,14 @@
                     "openSubtitlesKeyConfigured",
                     "openSubtitlesUsername",
                     "openSubtitlesPasswordConfigured",
-                    "openSubtitles"
+                    "openSubtitles",
+                    "refreshPolicy",
+                    "fallbackLanguage",
+                    "animeTitles",
+                    "castPhotos",
+                    "acoustidKeyConfigured",
+                    "acoustidKeySource",
+                    "refreshAll"
                   ],
                   "type": "object"
                 }
@@ -335892,6 +336400,296 @@
           "unauthorized",
           "not_permitted",
           "rate_limited",
+          "internal",
+          "timeout",
+          "database_busy",
+          "writer_capacity"
+        ],
+        "x-lane": "default",
+        "x-max-body-bytes": 4096,
+        "x-scope": "admin"
+      }
+    },
+    "/v1/admin/metadata/settings/refresh-all": {
+      "post": {
+        "operationId": "refresh_all_metadata",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {},
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "acoustidKeyConfigured": {
+                      "type": "boolean"
+                    },
+                    "acoustidKeySource": {
+                      "type": "string"
+                    },
+                    "animeTitles": {
+                      "type": "string"
+                    },
+                    "artworkLanguage": {
+                      "type": "string"
+                    },
+                    "artworkMaxEdge": {
+                      "enum": [
+                        1280,
+                        1920,
+                        2560
+                      ],
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "artworkPreference": {
+                      "type": "string"
+                    },
+                    "castPhotos": {
+                      "type": "boolean"
+                    },
+                    "defaultLanguage": {
+                      "type": "string"
+                    },
+                    "defaultRegion": {
+                      "type": "string"
+                    },
+                    "fallbackLanguage": {
+                      "type": "string"
+                    },
+                    "includeAdult": {
+                      "type": "boolean"
+                    },
+                    "libraries": {
+                      "items": {
+                        "properties": {
+                          "agent": {
+                            "type": "string"
+                          },
+                          "agentOptions": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "canScrub": {
+                            "type": "boolean"
+                          },
+                          "episodeThumbnailMode": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "lyricsSource": {
+                            "type": "string"
+                          },
+                          "managed": {
+                            "type": "boolean"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "revision": {
+                            "type": "string"
+                          },
+                          "scrubPreviews": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "kind",
+                          "revision",
+                          "agent",
+                          "agentOptions",
+                          "lyricsSource",
+                          "episodeThumbnailMode",
+                          "scrubPreviews",
+                          "canScrub",
+                          "managed"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "librariesComplete": {
+                      "type": "boolean"
+                    },
+                    "localArtworkLimitBytes": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "localArtworkUsedBytes": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "onlineLookups": {
+                      "type": "boolean"
+                    },
+                    "openSubtitles": {
+                      "properties": {
+                        "account": {
+                          "type": "string"
+                        },
+                        "accountSource": {
+                          "type": "string"
+                        },
+                        "checkedAt": {
+                          "type": "string"
+                        },
+                        "downloadsAllowed": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "downloadsRemaining": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "downloadsResetAt": {
+                          "type": "string"
+                        },
+                        "keySource": {
+                          "type": "string"
+                        },
+                        "problem": {
+                          "type": "string"
+                        },
+                        "retryAt": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "keySource",
+                        "accountSource",
+                        "account",
+                        "downloadsRemaining",
+                        "downloadsAllowed"
+                      ],
+                      "type": "object"
+                    },
+                    "openSubtitlesKeyConfigured": {
+                      "type": "boolean"
+                    },
+                    "openSubtitlesPasswordConfigured": {
+                      "type": "boolean"
+                    },
+                    "openSubtitlesUsername": {
+                      "type": "string"
+                    },
+                    "refreshAll": {
+                      "properties": {
+                        "requestedAt": {
+                          "type": "string"
+                        },
+                        "running": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "running"
+                      ],
+                      "type": "object"
+                    },
+                    "refreshPolicy": {
+                      "type": "string"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "tmdbCredentialConfigured": {
+                      "type": "boolean"
+                    },
+                    "tvdbCredentialConfigured": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "localArtworkUsedBytes",
+                    "revision",
+                    "localArtworkLimitBytes",
+                    "includeAdult",
+                    "artworkMaxEdge",
+                    "tmdbCredentialConfigured",
+                    "tvdbCredentialConfigured",
+                    "openSubtitlesKeyConfigured",
+                    "openSubtitlesUsername",
+                    "openSubtitlesPasswordConfigured",
+                    "openSubtitles",
+                    "refreshPolicy",
+                    "fallbackLanguage",
+                    "animeTitles",
+                    "castPhotos",
+                    "acoustidKeyConfigured",
+                    "acoustidKeySource",
+                    "refreshAll"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Refresh every title's details from the providers within the refresh allowance",
+        "x-access": "owner",
+        "x-admission": "admin",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "invalid_request",
+          "revision_mismatch",
           "internal",
           "timeout",
           "database_busy",
@@ -336403,6 +337201,12 @@
                           "minimum": -9007199254740991,
                           "type": "integer"
                         },
+                        "noticeAudience": {
+                          "additionalProperties": {
+                            "type": "string"
+                          },
+                          "type": "object"
+                        },
                         "retentionDays": {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
@@ -336434,7 +337238,8 @@
                         "storageWarningPercent",
                         "storageCriticalPercent",
                         "certificateWarningDays",
-                        "maintenanceIntervalMinutes"
+                        "maintenanceIntervalMinutes",
+                        "noticeAudience"
                       ],
                       "type": "object"
                     },
@@ -336527,6 +337332,12 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "noticeAudience": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "type": "object"
+                  },
                   "storageCriticalPercent": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -336568,6 +337379,12 @@
                           "minimum": -9007199254740991,
                           "type": "integer"
                         },
+                        "noticeAudience": {
+                          "additionalProperties": {
+                            "type": "string"
+                          },
+                          "type": "object"
+                        },
                         "retentionDays": {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
@@ -336599,7 +337416,8 @@
                         "storageWarningPercent",
                         "storageCriticalPercent",
                         "certificateWarningDays",
-                        "maintenanceIntervalMinutes"
+                        "maintenanceIntervalMinutes",
+                        "noticeAudience"
                       ],
                       "type": "object"
                     },

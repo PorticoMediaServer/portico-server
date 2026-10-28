@@ -7,7 +7,8 @@ import {schemas} from '../../contracts/src/schemas.ts';
 const settings = {revision: 4, localArtworkLimitBytes: 2 ** 31, localArtworkUsedBytes: 17, includeAdult: true, artworkMaxEdge: 1280,
   tmdbCredentialConfigured: false, tvdbCredentialConfigured: false, openSubtitlesKeyConfigured: false,
   openSubtitlesUsername: '', openSubtitlesPasswordConfigured: false,
-  openSubtitles: {keySource: 'none', accountSource: 'none', account: 'none', downloadsRemaining: -1, downloadsAllowed: -1}};
+  openSubtitles: {keySource: 'none', accountSource: 'none', account: 'none', downloadsRemaining: -1, downloadsAllowed: -1},
+  refreshPolicy: 'regular', fallbackLanguage: 'en', animeTitles: 'language', castPhotos: true, acoustidKeyConfigured: false, acoustidKeySource: 'none', refreshAll: {running: false}};
 
 test('metadata reads require an actual supported edge without a factory fallback', () => {
   for (const artworkMaxEdge of [1280, 1920, 2560]) {

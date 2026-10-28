@@ -707,6 +707,7 @@ export const routePaths = {
   "put_storage_sources_webdav_id": "/v1/storage/sources/webdav/{id}",
   "put_v1_items_itemId_subtitles_resource": "/v1/items/{itemId}/subtitles/{resource}",
   "query_titles": "/v1/titles",
+  "refresh_all_metadata": "/v1/admin/metadata/settings/refresh-all",
   "refresh_items_metadata": "/v1/items/{id}/metadata/refresh",
   "refresh_shows_metadata": "/v1/shows/{id}/metadata/refresh",
   "release_profile_downloads_cache": "/v1/admin/downloads/cache/release",

@@ -2624,7 +2624,23 @@ CREATE TABLE metadata_runtime_settings(
  local_artwork_limit_bytes INTEGER NOT NULL DEFAULT 2147483648 CHECK(local_artwork_limit_bytes>0),
  include_adult INTEGER NOT NULL DEFAULT 0 CHECK(include_adult IN(0,1)),
  tmdb_read_token TEXT NOT NULL DEFAULT '',tvdb_project_key TEXT NOT NULL DEFAULT '',
- opensubtitles_api_key TEXT NOT NULL DEFAULT '',opensubtitles_username TEXT NOT NULL DEFAULT '',opensubtitles_password TEXT NOT NULL DEFAULT '') STRICT;
+ opensubtitles_api_key TEXT NOT NULL DEFAULT '',opensubtitles_username TEXT NOT NULL DEFAULT '',opensubtitles_password TEXT NOT NULL DEFAULT '',
+ -- Server › Metadata › Advanced. refresh_policy decides which held documents a
+ -- refresh may ask the provider for again; fallback_language fills what the
+ -- metadata language lacks; anime_titles picks AniList's title form;
+ -- cast_photos gates cast and crew portraits; acoustid_key is the owner's own
+ -- application key (empty: the server's).
+ refresh_policy TEXT NOT NULL DEFAULT 'regular' CHECK(refresh_policy IN('regular','recent','never')),
+ fallback_language TEXT NOT NULL DEFAULT 'en' CHECK(fallback_language IN('en','original','blank')),
+ anime_titles TEXT NOT NULL DEFAULT 'language' CHECK(anime_titles IN('language','english','romaji','native')),
+ cast_photos INTEGER NOT NULL DEFAULT 1 CHECK(cast_photos IN(0,1)),
+ acoustid_key TEXT NOT NULL DEFAULT '',
+ -- Refresh all: documents checked before refresh_all_epoch (Unix seconds) are
+ -- stale whatever the policy, and while refresh_all_running a paced sweep wakes
+ -- held titles in (target_kind,target_id) order as the refresh allowance allows.
+ refresh_all_epoch INTEGER NOT NULL DEFAULT 0 CHECK(refresh_all_epoch>=0),
+ refresh_all_running INTEGER NOT NULL DEFAULT 0 CHECK(refresh_all_running IN(0,1)),
+ refresh_all_cursor_kind TEXT NOT NULL DEFAULT '',refresh_all_cursor_id INTEGER NOT NULL DEFAULT 0) STRICT;
 INSERT INTO metadata_runtime_settings(singleton) VALUES(1);
 CREATE TABLE metadata_artwork_size_sweep(
  singleton INTEGER PRIMARY KEY CHECK(singleton=1),running INTEGER NOT NULL DEFAULT 0 CHECK(running IN(0,1)),
@@ -8983,6 +8999,8 @@ CREATE TABLE server_settings(singleton INTEGER PRIMARY KEY CHECK(singleton=1), u
  "subtitleFileLimitMiB" INTEGER,
  "hardwareBackend" TEXT,
  "hardwareDevice" TEXT,
+ "hardwareSelection" TEXT,
+ "hardwareDecode" INTEGER,
  "hdrToneMapping" INTEGER,
  "hdrToneMappingAlgorithm" TEXT,
  "x264Preset" TEXT,

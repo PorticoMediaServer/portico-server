@@ -497,6 +497,7 @@ var routeLanes = map[string]string{
 	"POST /v1/admin/media/delete":                                                 "admin-heavy",
 	"POST /v1/admin/media/delete/preview":                                         "admin-heavy",
 	"POST /v1/admin/metadata/settings/opensubtitles/check":                        "admin",
+	"POST /v1/admin/metadata/settings/refresh-all":                                "admin",
 	"POST /v1/admin/missing-titles/empty":                                         "admin-heavy",
 	"POST /v1/admin/notifications/broadcast":                                      "admin-heavy",
 	"POST /v1/admin/playback-sessions/{id}/stop":                                  "admin-heavy",

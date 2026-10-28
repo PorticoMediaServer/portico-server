@@ -7,11 +7,23 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync/atomic"
 )
 
 type AniList struct {
 	http  *transport
 	cache screenCache
+	// titles is Server › Metadata › Anime titles: "language" (follow the
+	// metadata language), "english", "romaji" or "native".
+	titles atomic.Value
+}
+
+// SetTitlePreference chooses which of AniList's titles a record is named by.
+func (s *AniList) SetTitlePreference(choice string) { s.titles.Store(choice) }
+
+func (s *AniList) titlePreference() string {
+	v, _ := s.titles.Load().(string)
+	return v
 }
 
 func NewAniList() *AniList {
@@ -42,7 +54,23 @@ type aniTitle struct {
 	Native  string `json:"native"`
 }
 
-func (t aniTitle) name(language string) string {
+func (t aniTitle) name(language, preference string) string {
+	first := func(v ...string) string {
+		for _, s := range v {
+			if s != "" {
+				return s
+			}
+		}
+		return ""
+	}
+	switch preference {
+	case "english":
+		return first(t.English, t.Romaji, t.Native)
+	case "romaji":
+		return first(t.Romaji, t.English, t.Native)
+	case "native":
+		return first(t.Native, t.Romaji, t.English)
+	}
 	if strings.HasPrefix(language, "ja") && t.Native != "" {
 		return t.Native
 	}
@@ -144,8 +172,8 @@ const aniMaxTags = 32
 
 var aniTags = regexp.MustCompile(`<[^>]*>`)
 
-func (v aniMedia) record(language string) (ScreenRecord, error) {
-	r := ScreenRecord{Identity: ScreenID{"anilist", "anime", numberID(v.ID)}, Title: v.Title.name(language), OriginalTitle: v.Title.Native, Aliases: append([]string{}, v.Synonyms...), Overview: html.UnescapeString(aniTags.ReplaceAllString(v.Description, "")), Status: v.Status, Format: v.Format, SourceMaterial: v.Source, Season: v.Season, Year: v.SeasonYear, EpisodeCount: v.Episodes, Adult: v.Adult}
+func (v aniMedia) record(language, preference string) (ScreenRecord, error) {
+	r := ScreenRecord{Identity: ScreenID{"anilist", "anime", numberID(v.ID)}, Title: v.Title.name(language, preference), OriginalTitle: v.Title.Native, Aliases: append([]string{}, v.Synonyms...), Overview: html.UnescapeString(aniTags.ReplaceAllString(v.Description, "")), Status: v.Status, Format: v.Format, SourceMaterial: v.Source, Season: v.Season, Year: v.SeasonYear, EpisodeCount: v.Episodes, Adult: v.Adult}
 	// Country is the provider's explicit production fact, never the selected title language.
 	switch v.CountryOfOrigin {
 	case "JP":
@@ -181,7 +209,7 @@ func (v aniMedia) record(language string) (ScreenRecord, error) {
 	}
 	for _, e := range v.Relations.Edges {
 		if e.Node.Type == "ANIME" {
-			r.Relations = append(r.Relations, ScreenRelation{strings.ToLower(e.Relation), ScreenID{"anilist", "anime", numberID(e.Node.ID)}, e.Node.Title.name(language)})
+			r.Relations = append(r.Relations, ScreenRelation{strings.ToLower(e.Relation), ScreenID{"anilist", "anime", numberID(e.Node.ID)}, e.Node.Title.name(language, preference)})
 		}
 	}
 	for _, e := range v.Staff.Edges {
@@ -277,7 +305,7 @@ func (s *AniList) SearchScreen(ctx context.Context, kind, title string, year int
 	}
 	out := []ScreenRecord{}
 	for _, v := range data.Page.Media {
-		r, e := v.record(language)
+		r, e := v.record(language, s.titlePreference())
 		if e != nil {
 			return nil, e
 		}
@@ -300,7 +328,7 @@ func (s *AniList) ScreenDetails(ctx context.Context, kind, id, language, region 
 	if data.Media.ID != n {
 		return ScreenRecord{}, &Error{Provider: "anilist", Code: "identity_mismatch"}
 	}
-	return data.Media.record(language)
+	return data.Media.record(language, s.titlePreference())
 }
 
 func (s *AniList) SetBackgroundSpeed(speed string) { s.http.setSpeed(speed) }

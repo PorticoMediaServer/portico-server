@@ -220,6 +220,8 @@ func transcodeSettings(v operations.Settings) telemetry.TranscodeSettings {
 		Enabled:                 v.TranscodingEnabled,
 		HardwareBackend:         v.HardwareBackend,
 		HardwareDevice:          v.HardwareDevice,
+		HardwareSelection:       v.HardwareSelection,
+		HardwareDecode:          v.HardwareDecode,
 		HDRToneMapping:          v.HDRToneMapping,
 		HDRToneMappingAlgorithm: v.HDRToneMappingAlgorithm,
 		X264Preset:              v.X264Preset,

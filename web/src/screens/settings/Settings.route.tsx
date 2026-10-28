@@ -48,6 +48,7 @@ import {GeneralMessage, GeneralRestart} from './server/GeneralTools';
 import {SettingsHardwareSource} from './hardware/hardware-source';
 import {HardwareDevices, TestHardware, TranscodeFolder} from './hardware/HardwareRows';
 import {hardwareEligible, hardwareRowIds, hardwareRowState} from './hardware/hardware-rows';
+import {hardwareSelectionChoices} from '@core/presentation/hardware-selection.ts';
 import {presetEnginesAvailable} from './server/engines';
 import {LibraryFolders} from './libraries/LibraryFolders';
 import {SkippedFiles} from './libraries/SkippedFiles';
@@ -626,6 +627,12 @@ export function SettingsEntry() {
         if (row.id === 'libraries.folders' || (row.id === 'libraries.skipped' || row.id === 'libraries.unmatched') && !!libraries || (row.id === 'libraries.fetchLyrics' || row.id === 'libraries.remove') && !!libraries && role === 'owner') return {present: current() && isLibraryPanelContext(selected) && controller.sectionVisible(selected.section)};
         if (libraryScanAction(row.id)) return {present: current() && !!libraries && selected.panelId === 'library' && !!selected.recordId && controller.sectionVisible(selected.section)};
         if (isSubtitlePreview(row.id)) return {present: current() && controller.sectionVisible(selected.section)};
+        if (row.id === 'streaming.hardware') {
+          // The adapters come from the hardware report; until it has answered,
+          // the row offers only the spec's own two choices.
+          const state = source.rowState(row, selected), devices = hardware?.getSnapshot().capacity?.hardware.devices ?? [];
+          return state.present ? {...state, choices: hardwareSelectionChoices(devices, state.value, defaultI18n.t)} : state;
+        }
         const hardwareState = hardware ? hardwareRowState(row.id, hardware.getSnapshot(), hardwareRowIds.includes(row.id) ? storedDirectory() : undefined) : undefined;
         if (hardwareState !== undefined) return hardwareState;
         const device = isDeviceSyntheticRow(row.id) ? deviceRowState(row, deviceFacts) : undefined;

@@ -364,16 +364,83 @@ func Raise(tx *sql.Tx, now int64, d Draft) (Result, error) {
 	return out, e
 }
 
+// The server notices an owner routes in Settings › General › Who sees each
+// notice. Each producer that raises for the admins names one of these, and the
+// owner's choice for it decides which admin inboxes receive it.
+const (
+	NoticeScan        = "scan"
+	NoticeStorage     = "storage"
+	NoticeCertificate = "certificate"
+	NoticeRecording   = "recording"
+	NoticeFeedback    = "feedback"
+)
+
+// Who receives a notice: the owner and the administrators, the owner alone, or no one.
+const (
+	NoticeOwnerAndAdmins = "both"
+	NoticeOwnerOnly      = "owner"
+	NoticeNoOne          = "off"
+)
+
+var (
+	NoticeKinds     = []string{NoticeScan, NoticeStorage, NoticeCertificate, NoticeRecording, NoticeFeedback}
+	NoticeAudiences = []string{NoticeOwnerAndAdmins, NoticeOwnerOnly, NoticeNoOne}
+)
+
+// NoticeRecords is the predicate that selects one notice kind's records, so a
+// narrowed audience can withdraw what it no longer allows.
+func NoticeRecords(kind string) (string, []any) {
+	switch kind {
+	case NoticeCertificate:
+		return `source=? AND category LIKE 'networking.certificate%'`, []any{SourceNetworking}
+	case NoticeRecording:
+		return `source=? AND category='dvr.conflict'`, []any{SourceDVR}
+	case NoticeFeedback:
+		return `source=? AND category='feedback.received'`, []any{SourceFeedback}
+	case NoticeScan:
+		return `source=?`, []any{SourceScan}
+	case NoticeStorage:
+		return `source=?`, []any{SourceStorage}
+	}
+	return `0`, nil
+}
+
+// NoticeAudience reads the owner's choice for one notice kind from the
+// notification settings document. It is read here, without importing the
+// settings package, the way RetentionDays is; anything unreadable is the
+// shipped default, the owner and the administrators.
+func NoticeAudience(tx *sql.Tx, kind string) string {
+	var value sql.NullString
+	if e := tx.QueryRow(`SELECT json_extract(body,'$.noticeAudience.'||?) FROM console_documents WHERE scope='notifications'`, kind).Scan(&value); e != nil || !value.Valid || !allowed(value.String, NoticeAudiences) {
+		return NoticeOwnerAndAdmins
+	}
+	return value.String
+}
+
 // AdminScopes resolves the account-admin inboxes: the accounts that hold an
 // enabled owner membership. Direct Sign-In allows exactly one, but the query
 // does not assume that.
-func AdminScopes(tx *sql.Tx) ([]string, error) {
-	rows, e := tx.Query(`SELECT a.id FROM accounts a JOIN direct_memberships m ON m.account_id=a.id WHERE m.role='owner' AND m.disabled=0 ORDER BY a.id`)
+func AdminScopes(tx *sql.Tx) ([]string, error) { return AudienceScopes(tx, NoticeOwnerOnly) }
+
+// AudienceScopes resolves the account-admin inboxes one audience reaches:
+// enabled owners, enabled owners and administrators, or none.
+func AudienceScopes(tx *sql.Tx, audience string) ([]string, error) {
+	out := []string{}
+	roles := `'owner'`
+	switch audience {
+	case NoticeNoOne:
+		return out, nil
+	case NoticeOwnerAndAdmins:
+		roles = `'owner','admin'`
+	case NoticeOwnerOnly:
+	default:
+		return nil, ErrInvalid
+	}
+	rows, e := tx.Query(`SELECT DISTINCT a.id FROM accounts a JOIN direct_memberships m ON m.account_id=a.id WHERE m.role IN(` + roles + `) AND m.disabled=0 ORDER BY a.id`)
 	if e != nil {
 		return nil, e
 	}
 	defer rows.Close()
-	out := []string{}
 	for rows.Next() {
 		var account string
 		if e = rows.Scan(&account); e != nil {
@@ -403,10 +470,14 @@ func ProfileScopes(tx *sql.Tx) ([]string, error) {
 	return out, rows.Err()
 }
 
-// RaiseForAdmins is the common producer shape: one condition, delivered to every
-// account-admin inbox under the same dedupe key.
-func RaiseForAdmins(tx *sql.Tx, now int64, d Draft) ([]Result, error) {
-	scopes, e := AdminScopes(tx)
+// RaiseForAdmins is the common producer shape: one condition, delivered under
+// the same dedupe key to every account-admin inbox the owner's choice for this
+// kind of notice reaches.
+func RaiseForAdmins(tx *sql.Tx, now int64, kind string, d Draft) ([]Result, error) {
+	if !allowed(kind, NoticeKinds) {
+		return nil, ErrInvalid
+	}
+	scopes, e := AudienceScopes(tx, NoticeAudience(tx, kind))
 	if e != nil {
 		return nil, e
 	}

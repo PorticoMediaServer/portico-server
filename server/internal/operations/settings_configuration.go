@@ -54,6 +54,8 @@ func ConfigurationBindings() []ConfigurationBinding {
 		{"streaming.encoderSpeed", "streaming.encoder_speed", "x264Preset", 1, false},
 		{"streaming.repackage", "streaming.direct_stream_remux", "directStreamRemux", 1, false},
 		{"streaming.ffmpegPath", "streaming.ffmpeg_path", "ffmpegPath", 1, false},
+		{"streaming.hardware", "streaming.hardware_device", "hardwareSelection", 1, false},
+		{"streaming.hardwareDecode", "streaming.hardware_decode", "hardwareDecode", 1, false},
 		{"streaming.convertAhead", "streaming.convert_ahead_seconds", "throttleBufferMs", 1000, false},
 		{"streaming.rewindKeep", "streaming.rewind_keep_seconds", "playedRetentionMs", 1000, false},
 		{"streaming.sessionSpace", "streaming.session_space_mb", "sessionStorageMiB", 1, false},

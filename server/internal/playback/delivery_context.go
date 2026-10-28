@@ -5,8 +5,9 @@ import (
 	"database/sql"
 	"fmt"
 	"portico.local/server/internal/capabilityreport"
-	"portico.local/server/internal/dbwork"
+	"slices"
 
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/metadatalanguage"
@@ -75,7 +76,7 @@ func (s *Service) DeliveryConfiguration() DeliveryConfiguration {
 // HardwareReport probes every backend for the owner capacity read. A server
 // without a detector reports software only, which is the truth for it.
 func (s *Service) HardwareReport(ctx context.Context) []decoder.HardwareProbe {
-	cfg := s.DeliveryConfiguration()
+	cfg := s.hardwareConfiguration(ctx, s.DeliveryConfiguration())
 	if s.hardware == nil || s.hardwareFFmpeg == "" {
 		return []decoder.HardwareProbe{{Backend: decoder.BackendSoftware, Available: true, Reason: decoder.ProbeAvailable, Encoder: "libx264"}}
 	}
@@ -88,13 +89,47 @@ func (s *Service) HardwareReport(ctx context.Context) []decoder.HardwareProbe {
 // probe: a cold cache answers software-and-warming now, exactly as a session
 // would, and the background warm-up fills the cache for the next read.
 func (s *Service) HardwareSelection(ctx context.Context) decoder.HardwareProbe {
-	cfg := s.DeliveryConfiguration()
+	cfg := s.hardwareConfiguration(ctx, s.DeliveryConfiguration())
 	if s.hardware == nil || s.hardwareFFmpeg == "" || cfg.HardwareBackend == string(decoder.BackendSoftware) {
 		return decoder.HardwareProbe{Backend: decoder.BackendSoftware, Available: true, Reason: decoder.ProbeDisabled}
 	}
 	probe, err := s.hardware.SelectCachedContext(ctx, s.hardwareFFmpeg, cfg.HardwareBackend, cfg.HardwareDevice)
 	if err != nil {
 		return decoder.HardwareProbe{Backend: decoder.BackendSoftware, Reason: decoder.ProbeTimedOut}
+	}
+	return withoutHardwareDecode(probe, cfg)
+}
+
+// hardwareConfiguration applies the owner's Device choice. "auto" leaves the
+// backend and device as configured; "software" converts on the processor; an
+// adapter id converts on that adapter alone, by whichever of its backends
+// probes. An id no adapter has any more is the processor, never another
+// adapter: the owner chose that one.
+func (s *Service) hardwareConfiguration(ctx context.Context, cfg DeliveryConfiguration) DeliveryConfiguration {
+	switch cfg.HardwareSelection {
+	case "", "auto":
+		return cfg
+	case string(decoder.BackendSoftware):
+		cfg.HardwareBackend, cfg.HardwareDevice = string(decoder.BackendSoftware), ""
+		return cfg
+	}
+	device, err := decoder.ResolveHardwareDeviceSelection(cfg.HardwareSelection, s.HardwareDevices(ctx))
+	if err != nil || device == nil {
+		cfg.HardwareBackend, cfg.HardwareDevice = string(decoder.BackendSoftware), ""
+		return cfg
+	}
+	cfg.HardwareDevice = device.Path
+	if cfg.HardwareBackend != "auto" && !slices.Contains(device.Backends, decoder.HardwareBackend(cfg.HardwareBackend)) {
+		cfg.HardwareBackend = "auto"
+	}
+	return cfg
+}
+
+// withoutHardwareDecode removes the proven decode formats when the owner turned
+// Hardware decoding off, so every conversion decodes on the processor.
+func withoutHardwareDecode(probe decoder.HardwareProbe, cfg DeliveryConfiguration) decoder.HardwareProbe {
+	if cfg.SoftwareDecode {
+		probe.DecodeCodecs = nil
 	}
 	return probe
 }
@@ -152,6 +187,7 @@ func (s *Service) selectHardware(ctx context.Context, cfg DeliveryConfiguration)
 	if err := ctx.Err(); err != nil {
 		return decoder.HardwareProbe{}, err
 	}
+	cfg = s.hardwareConfiguration(ctx, cfg)
 	if s.hardware == nil || s.hardwareFFmpeg == "" || cfg.HardwareBackend == string(decoder.BackendSoftware) {
 		s.noteHardware(cfg.HardwareBackend, true, "")
 		return decoder.HardwareProbe{Backend: decoder.BackendSoftware, Available: true, Reason: decoder.ProbeDisabled}, nil
@@ -172,7 +208,7 @@ func (s *Service) selectHardware(ctx context.Context, cfg DeliveryConfiguration)
 	default:
 		s.noteHardware(cfg.HardwareBackend, true, "")
 	}
-	return probe, nil
+	return withoutHardwareDecode(probe, cfg), nil
 }
 
 // hardwareState is what the hardware capability report last said.

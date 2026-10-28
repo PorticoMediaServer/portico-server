@@ -130,7 +130,7 @@ func NotifyRecordingConflict(tx *sql.Tx, now int64, recordingID, title, reason s
 	case "tuner-in-use-live":
 		body = "Portico could not record " + title + " because every tuner was being used to watch live TV."
 	}
-	return RaiseForAdmins(tx, now, Draft{
+	return RaiseForAdmins(tx, now, NoticeRecording, Draft{
 		Severity:  severity,
 		Source:    SourceDVR,
 		Category:  "dvr.conflict",
@@ -208,7 +208,7 @@ func NotifyScanFailure(tx *sql.Tx, now int64, libraryID, sourceID, code, where s
 		body += " It stopped at \"" + where + "\"."
 		arguments["path"] = where
 	}
-	return RaiseForAdmins(tx, now, Draft{
+	return RaiseForAdmins(tx, now, NoticeScan, Draft{
 		Severity:  SeverityWarning,
 		Source:    SourceScan,
 		Category:  "scan.failed",
@@ -247,7 +247,7 @@ func NotifyCertificateExpiry(tx *sql.Tx, now int64, scope string, daysRemaining 
 		d.Title = "Certificate expired"
 		d.Body = "The secure connection certificate for this server has expired. Clients cannot connect until it is renewed."
 	}
-	return RaiseForAdmins(tx, now, d)
+	return RaiseForAdmins(tx, now, NoticeCertificate, d)
 }
 
 // NotifyStorageWarning tells the account admins that the state volume is filling
@@ -261,7 +261,7 @@ func NotifyStorageWarning(tx *sql.Tx, now int64, severity string, freePercent in
 	if severity == SeverityCritical {
 		title, body = "Storage nearly full", "The Portico state volume has "+strconv.Itoa(freePercent)+"% free. Scans, metadata, recordings and conversions fail when it runs out."
 	}
-	return RaiseForAdmins(tx, now, Draft{
+	return RaiseForAdmins(tx, now, NoticeStorage, Draft{
 		Severity:  severity,
 		Source:    SourceStorage,
 		Category:  "storage.low",
@@ -279,7 +279,7 @@ func NotifyStorageWarning(tx *sql.Tx, now int64, severity string, freePercent in
 // The report text never enters the notice: an admin opens the report to read it,
 // which keeps the inbox out of the reporter's privacy surface.
 func NotifyFeedbackSubmitted(tx *sql.Tx, now int64, reportID, kind, category string) ([]Result, error) {
-	return RaiseForAdmins(tx, now, Draft{
+	return RaiseForAdmins(tx, now, NoticeFeedback, Draft{
 		Severity:  SeverityInfo,
 		Source:    SourceFeedback,
 		Category:  "feedback.received",

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"portico.local/server/internal/apiwire"
 	"portico.local/server/internal/dbwork"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -247,11 +248,13 @@ func SubscribeNotifications() (<-chan struct{}, func()) { return noticeWake.subs
 
 // noticeAudiences resolves which inboxes this principal may read, and rejects a
 // request for one it may not. The account-admin inbox is readable only by an
-// enabled owner of that same account: audience is enforced here, not by the
-// caller and not by the client.
+// owner or administrator of that same account, whose membership the caller's
+// authorization has already checked is enabled: audience is enforced here, not
+// by the caller and not by the client. An administrator's inbox only ever holds
+// the server notices the owner routed to administrators.
 func noticeAudiences(p identity.Principal, requested string) (string, []string, []string, error) {
 	profile, account := ViewerKey(p), AccountKey(p)
-	admin := p.Authority == "local" && p.Role == "owner"
+	admin := p.Authority == "local" && (p.Role == "owner" || p.Role == "admin")
 	switch requested {
 	case "", "all":
 		requested = "all"
@@ -917,6 +920,10 @@ type NotificationSettings struct {
 	StorageCriticalPercent  int    `json:"storageCriticalPercent"`
 	CertificateWarningDays  int    `json:"certificateWarningDays"`
 	MaintenanceIntervalMins int    `json:"maintenanceIntervalMinutes"`
+	// NoticeAudience is who receives each server notice (notify.NoticeKinds):
+	// "both" (the owner and the administrators), "owner" or "off". Every kind
+	// is always present in a read.
+	NoticeAudience map[string]string `json:"noticeAudience"`
 }
 
 // NotificationSettingsChange is fenced by the document revision rather than by
@@ -927,6 +934,9 @@ type NotificationSettingsChange struct {
 	StorageWarningPercent  int   `json:"storageWarningPercent"`
 	StorageCriticalPercent int   `json:"storageCriticalPercent"`
 	CertificateWarningDays int   `json:"certificateWarningDays"`
+	// NoticeAudience replaces the routing for the kinds it names; absent keeps
+	// what is saved.
+	NoticeAudience map[string]string `json:"noticeAudience,omitempty"`
 }
 
 func defaultNotificationSettings() NotificationSettings {
@@ -934,7 +944,28 @@ func defaultNotificationSettings() NotificationSettings {
 		Revision: 1, RetentionSettingsField: "notificationDays",
 		StorageWarningPercent: 10, StorageCriticalPercent: 5,
 		CertificateWarningDays: 14, MaintenanceIntervalMins: 15,
+		NoticeAudience: defaultNoticeAudience(),
 	}
+}
+
+func defaultNoticeAudience() map[string]string {
+	out := map[string]string{}
+	for _, kind := range notify.NoticeKinds {
+		out[kind] = notify.NoticeOwnerAndAdmins
+	}
+	return out
+}
+
+// normalizeNoticeAudience fills every kind a stored document lacks, or holds
+// an unknown value for, with the shipped default and drops anything else.
+func normalizeNoticeAudience(stored map[string]string) map[string]string {
+	out := defaultNoticeAudience()
+	for kind, value := range stored {
+		if _, known := out[kind]; known && slices.Contains(notify.NoticeAudiences, value) {
+			out[kind] = value
+		}
+	}
+	return out
 }
 
 func readNotificationSettings(tx *sql.Tx) (NotificationSettings, error) {
@@ -951,6 +982,7 @@ func readNotificationSettings(tx *sql.Tx) (NotificationSettings, error) {
 		return out, e
 	}
 	out.RetentionDays, out.RetentionSettingsField = notify.RetentionDays(tx), "notificationDays"
+	out.NoticeAudience = normalizeNoticeAudience(out.NoticeAudience)
 	return out, nil
 }
 
@@ -973,6 +1005,11 @@ func (s *Store) ApplyNotificationSettings(ctx context.Context, p identity.Princi
 	if c.CertificateWarningDays < 1 || c.CertificateWarningDays > 90 {
 		return out, invalidFields("certificateWarningDays")
 	}
+	for kind, value := range c.NoticeAudience {
+		if !slices.Contains(notify.NoticeKinds, kind) || !slices.Contains(notify.NoticeAudiences, value) {
+			return out, invalidFields("noticeAudience")
+		}
+	}
 	e = s.transaction(ctx, auth, "", func(tx *sql.Tx) error {
 		now := s.now()
 		current, err := readNotificationSettings(tx)
@@ -985,6 +1022,17 @@ func (s *Store) ApplyNotificationSettings(ctx context.Context, p identity.Princi
 		current.StorageWarningPercent = c.StorageWarningPercent
 		current.StorageCriticalPercent = c.StorageCriticalPercent
 		current.CertificateWarningDays = c.CertificateWarningDays
+		before := current.NoticeAudience
+		current.NoticeAudience = map[string]string{}
+		for kind, value := range before {
+			current.NoticeAudience[kind] = value
+			if next, ok := c.NoticeAudience[kind]; ok {
+				current.NoticeAudience[kind] = next
+			}
+		}
+		if err = withdrawNarrowedNotices(tx, now, before, current.NoticeAudience); err != nil {
+			return err
+		}
 		current.Revision++
 		body, err := json.Marshal(current)
 		if err != nil {
@@ -1002,6 +1050,54 @@ func (s *Store) ApplyNotificationSettings(ctx context.Context, p identity.Princi
 		return nil
 	})
 	return
+}
+
+// withdrawNarrowedNotices removes the notices an owner's new routing no longer
+// sends to an inbox, so an administrator taken off a kind of notice stops
+// seeing the copies already delivered rather than keeping them until expiry.
+func withdrawNarrowedNotices(tx *sql.Tx, now int64, before, after map[string]string) error {
+	for _, kind := range notify.NoticeKinds {
+		if before[kind] == after[kind] {
+			continue
+		}
+		allowed, e := notify.AudienceScopes(tx, after[kind])
+		if e != nil {
+			return e
+		}
+		predicate, args := notify.NoticeRecords(kind)
+		query := `DELETE FROM notification_records WHERE audience=? AND ` + predicate
+		args = append([]any{notify.AudienceAccountAdmin}, args...)
+		if len(allowed) > 0 {
+			query += ` AND scope NOT IN(` + strings.TrimSuffix(strings.Repeat("?,", len(allowed)), ",") + `)`
+			for _, scope := range allowed {
+				args = append(args, scope)
+			}
+		}
+		rows, e := tx.Query(query+` RETURNING scope`, args...)
+		if e != nil {
+			return e
+		}
+		touched := map[string]bool{}
+		for rows.Next() {
+			var scope string
+			if e = rows.Scan(&scope); e != nil {
+				rows.Close()
+				return e
+			}
+			touched[scope] = true
+		}
+		e = rows.Err()
+		rows.Close()
+		if e != nil {
+			return e
+		}
+		for scope := range touched {
+			if _, e = notify.Bump(tx, now, scope, notify.AudienceAccountAdmin); e != nil {
+				return e
+			}
+		}
+	}
+	return nil
 }
 
 // NotificationMaintenance is the periodic producer tick: the conditions that are
@@ -1045,7 +1141,7 @@ func (s *Store) NotificationMaintenance(ctx context.Context, freeBytes, totalByt
 				return e
 			}
 			if n, _ := result.RowsAffected(); n > 0 {
-				scopes, e := notify.AdminScopes(tx)
+				scopes, e := notify.AudienceScopes(tx, notify.NoticeOwnerAndAdmins)
 				if e != nil {
 					return e
 				}
