@@ -10,9 +10,11 @@ import (
 	"portico.local/server/internal/dbwork"
 )
 
-// removedSourceAssetBatch is how many of a removed source's files one writer
-// transaction marks unavailable.
-const removedSourceAssetBatch = 64
+// removedSourceAssetBatch bounds the path slice, not just the direct UPDATEs:
+// SetAssetAvailableTx also writes source fences, dirty work and missing-title
+// counters for linked titles. Leave room for that fanout and the walk cursor
+// in the ordinary background-media plan. The root counts toward the slice.
+const removedSourceAssetBatch = 4
 
 // markRemovedSourceAssets marks the next slice of one removed source's files
 // unavailable and reports whether more remain. RemoveDAV tombstoned the
@@ -67,7 +69,8 @@ func (s *Service) markRemovedSourceAssets(ctx context.Context) (bool, error) {
 	if after > low {
 		low = after
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT id,path FROM catalog_assets WHERE path>=? AND path<? AND path>? ORDER BY path LIMIT ?`, low, high, after, removedSourceAssetBatch)
+	limit := removedSourceAssetBatch - len(assets)
+	rows, err := tx.QueryContext(ctx, `SELECT id,path FROM catalog_assets WHERE path>=? AND path<? AND path>? ORDER BY path LIMIT ?`, low, high, after, limit)
 	if err != nil {
 		return false, err
 	}
@@ -94,7 +97,7 @@ func (s *Service) markRemovedSourceAssets(ctx context.Context) (bool, error) {
 			return false, err
 		}
 	}
-	more := ranged == removedSourceAssetBatch
+	more := ranged == limit
 	if more {
 		_, err = tx.ExecContext(ctx, `UPDATE remote_source_removals SET after_path=? WHERE source_id=?`, assets[len(assets)-1].path, source)
 	} else {
