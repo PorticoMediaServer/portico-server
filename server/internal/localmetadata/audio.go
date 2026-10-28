@@ -63,6 +63,41 @@ func (s *Service) Prepare(ctx context.Context, library, path string, f assets.Fa
 func (s *Service) PrepareKind(ctx context.Context, library, kind, root, path string, f assets.Facts) assets.Facts {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
+	// Prepare the file's fallback once; a refresh never has to reopen its media.
+	// Its extraction issue matters only when a sidecar does not supply the cover.
+	fileIssue := f.LocalMetadataIssue
+	f = s.prepareEmbeddedAudioArtwork(ctx, library, path, f)
+	artworkIssue := ""
+	if f.LocalMetadataIssue != fileIssue {
+		artworkIssue = f.LocalMetadataIssue
+	}
+	f.LocalMetadataIssue = fileIssue
+	var musicCueTracks []assets.Chapter
+	if kind == "music" && (strings.EqualFold(filepath.Ext(path), ".flac") || strings.EqualFold(filepath.Ext(path), ".wav")) {
+		// Retain the original cue observations. The overlay validates the chosen
+		// timeline after sidecar precedence, just as a full analysis does.
+		musicCueTracks = embeddedMusicCue(path, f)
+	}
+	tags := make(map[string]string, len(f.Tags))
+	for k, v := range f.Tags {
+		tags[k] = v
+	}
+	f.AudioFileMetadata = &assets.AudioFileMetadata{Tags: tags, MusicCueTracks: musicCueTracks, Chapters: append([]assets.Chapter(nil), f.Chapters...), ChapterStatus: f.ChapterStatus, ArtworkKey: f.ArtworkKey, Issue: fileIssue, ArtworkIssue: artworkIssue}
+	result := s.PrepareAudioSidecars(ctx, library, kind, root, path, f)
+	// An unavailable embedded cover is not a complete baseline. Preserve the
+	// ordinary full-probe retry path rather than promise a fallback we lack.
+	if f.ArtworkKey == "" && (f.AttachedPicture || f.EmbeddedAudio != nil && len(f.EmbeddedAudio.Pictures) > 0) {
+		result.AudioFileMetadata = nil
+	}
+	return result
+}
+
+// PrepareAudioSidecars overlays only local sidecars on the file-owned baseline.
+func (s *Service) PrepareAudioSidecars(ctx context.Context, library, kind, root, path string, f assets.Facts) assets.Facts {
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	fallback := f.ArtworkKey
+	f.ArtworkKey = ""
 	f = s.prepareAudioEvidence(ctx, library, kind, root, path, f)
 	if s.storage != nil {
 		if raw, e := s.storage.ReadAudioCover(ctx, library, path); e == nil {
@@ -92,6 +127,14 @@ func (s *Service) PrepareKind(ctx context.Context, library, kind, root, path str
 		}
 		f.LocalMetadataIssue = "invalid_local_cover"
 	}
+	f.ArtworkKey = fallback
+	if f.AudioFileMetadata != nil && f.AudioFileMetadata.ArtworkIssue != "" {
+		f.LocalMetadataIssue = f.AudioFileMetadata.ArtworkIssue
+	}
+	return f
+}
+
+func (s *Service) prepareEmbeddedAudioArtwork(ctx context.Context, library, path string, f assets.Facts) assets.Facts {
 	if f.EmbeddedAudio != nil {
 		pictures := f.EmbeddedAudio.Pictures
 		for _, kind := range []int{3, -1} {

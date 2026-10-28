@@ -1809,6 +1809,20 @@ CREATE TABLE audio_local_evidence(
   field TEXT NOT NULL,source TEXT NOT NULL,value TEXT NOT NULL,
   source_revision TEXT NOT NULL,size INTEGER NOT NULL,modified_ns INTEGER NOT NULL,observed_at TEXT NOT NULL,
   PRIMARY KEY(library_id,asset_id,ordinal)) STRICT;
+-- File-owned audio metadata is separate from sidecar-adjusted projections.
+CREATE TABLE audio_file_metadata(
+ asset_id TEXT PRIMARY KEY REFERENCES catalog_assets(token) ON DELETE CASCADE,
+ source_revision TEXT NOT NULL,size INTEGER NOT NULL,modified_ns INTEGER NOT NULL,
+ chapter_status TEXT NOT NULL,artwork_key TEXT NOT NULL,issue TEXT NOT NULL,artwork_issue TEXT NOT NULL) STRICT;
+CREATE INDEX audio_file_metadata_artwork_key ON audio_file_metadata(artwork_key,asset_id) WHERE artwork_key<>'';
+CREATE TABLE audio_file_tags(
+ asset_id TEXT NOT NULL REFERENCES audio_file_metadata(asset_id) ON DELETE CASCADE,
+ field TEXT NOT NULL,value TEXT NOT NULL,PRIMARY KEY(asset_id,field)) STRICT;
+CREATE TABLE audio_file_chapters(
+ asset_id TEXT NOT NULL REFERENCES audio_file_metadata(asset_id) ON DELETE CASCADE,
+ kind TEXT NOT NULL CHECK(kind IN('chapter','cue')),
+ ordinal INTEGER NOT NULL CHECK(ordinal>=0 AND ordinal<4096),title TEXT NOT NULL,
+ start_seconds REAL NOT NULL,end_seconds REAL NOT NULL,PRIMARY KEY(asset_id,kind,ordinal)) STRICT;
 CREATE TABLE music_acoustid_health(
   singleton INTEGER PRIMARY KEY CHECK(singleton=1),configuration_digest TEXT NOT NULL,reason TEXT NOT NULL,observed_at TEXT NOT NULL) STRICT;
 CREATE TABLE music_match_observations(

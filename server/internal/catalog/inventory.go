@@ -896,37 +896,20 @@ func (s *Service) CommitInventoryAnalysis(ctx context.Context, job, object, revi
 	}
 	// Bind local evidence to the same revision already authorized by this commit.
 	f.ObservedRevision = revision
-	var manuallyLinked int
-	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_version_links WHERE library_id=? AND asset_id=?)`, source.LibraryID, asset).Scan(&manuallyLinked); err != nil {
-		return err
-	}
 	if kind == "movie" || kind == "tv" || kind == "anime" {
+		var manuallyLinked int
+		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_version_links WHERE library_id=? AND asset_id=?)`, source.LibraryID, asset).Scan(&manuallyLinked); err != nil {
+			return err
+		}
 		if err = s.publishVideoNamingTx(ctx, tx, job, source, asset, relative, revision, kind, manuallyLinked, f); err != nil {
 			return err
 		}
 	}
-	if manuallyLinked != 0 && (kind == "music" || kind == "audiobook") {
-		if err = persistAudioEvidence(tx, source.LibraryID, asset, f); err != nil {
+	if kind == "music" || kind == "audiobook" {
+		if err = persistAudioFileMetadata(ctx, tx, asset, revision, size, modified, f); err != nil {
 			return err
 		}
-		// A manually linked asset's selected tags are effective facts too: the
-		// linked commit path skips commitAudio, so the genre projection runs
-		// here on the same shared implementation, keeping the item's facets in
-		// step with its selected evidence.
-		var linkedItem int64
-		if e := tx.QueryRowContext(ctx, `SELECT i.id FROM catalog_assets a JOIN catalog_asset_links l INDEXED BY catalog_asset_links_asset ON l.asset_id=a.id
- JOIN catalog_entities i ON i.id=l.entity_id JOIN catalog_kinds k ON k.id=i.kind AND k.playable=1 AND k.listening=1 JOIN catalog_libraries cl ON cl.id=i.library_id
- WHERE a.token=? AND cl.library_id=? LIMIT 1`, asset, source.LibraryID).Scan(&linkedItem); e != nil && !errors.Is(e, sql.ErrNoRows) {
-			return e
-		}
-		if linkedItem != 0 {
-			if err = compactcatalog.ProjectAudioLocalGenresItem(ctx, tx, source.LibraryID, linkedItem); err != nil {
-				return err
-			}
-		}
-	}
-	if manuallyLinked == 0 && (kind == "music" || kind == "audiobook") {
-		if err = s.commitAudio(ctx, tx, source.LibraryID, kind, source.ResolvedPath, asset, filepath.Join(source.ResolvedPath, relative), f); err != nil {
+		if err = s.commitInventoryAudioTx(ctx, tx, source, asset, kind, filepath.Join(source.ResolvedPath, relative), f); err != nil {
 			return err
 		}
 	}

@@ -72,7 +72,7 @@ func settleSidecarRead(ctx context.Context, tx *sql.Tx, library string, read *si
 		if err != nil {
 			return err
 		}
-		if n, _ := result.RowsAffected(); n > 0 && c.kind == "item" && (c.role == "poster" || c.role == "backdrop") {
+		if n, _ := result.RowsAffected(); n > 0 && (c.kind == "item" || c.kind == "album") && (c.role == "poster" || c.role == "backdrop") {
 			column := c.role + "_url"
 			var current string
 			if err = tx.QueryRowContext(ctx, `SELECT COALESCE(`+column+`,'') FROM catalog_item_details WHERE entity_id=?`, c.entity).Scan(&current); err != nil && err != sql.ErrNoRows {

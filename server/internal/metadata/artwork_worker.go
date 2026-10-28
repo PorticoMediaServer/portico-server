@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/artworkref"
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dirsync"
 	"portico.local/server/internal/entityid"
@@ -683,7 +684,7 @@ const ArtCleanupInterval = 10 * time.Minute
 // artSourceUnreferenced is the indexed "nothing names source o.digest"
 // predicate: one NOT EXISTS per referencing column, never an OR across two.
 // Owner-history pins are text, not keys, and are checked separately.
-const artSourceUnreferenced = `NOT EXISTS(SELECT 1 FROM artwork_selections a WHERE a.digest=o.digest) AND NOT EXISTS(SELECT 1 FROM artwork_uploads u WHERE u.digest=o.digest) AND NOT EXISTS(SELECT 1 FROM artwork_previews p WHERE p.digest=o.digest) AND NOT EXISTS(SELECT 1 FROM metadata_artwork_size_requests r WHERE r.digest=o.digest)`
+const artSourceUnreferenced = `NOT EXISTS(SELECT 1 FROM artwork_selections a WHERE a.digest=o.digest) AND NOT EXISTS(SELECT 1 FROM artwork_uploads u WHERE u.digest=o.digest) AND NOT EXISTS(SELECT 1 FROM artwork_previews p WHERE p.digest=o.digest) AND NOT EXISTS(SELECT 1 FROM metadata_artwork_size_requests r WHERE r.digest=o.digest) AND NOT EXISTS(SELECT 1 FROM (` + artworkref.AudioFallbackKeys + `) fallback WHERE fallback.artwork_key=o.digest)`
 
 // artBlobUnreferenced is the indexed "no source names blob o.digest" predicate.
 const artBlobUnreferenced = `NOT EXISTS(SELECT 1 FROM artwork_sources x WHERE x.small_blob=o.digest) AND NOT EXISTS(SELECT 1 FROM artwork_sources x WHERE x.large_blob=o.digest) AND NOT EXISTS(SELECT 1 FROM artwork_sources x WHERE x.ambient_blob=o.digest)`

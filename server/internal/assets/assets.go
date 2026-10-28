@@ -27,7 +27,18 @@ type Chapter struct {
 	Start float64 `json:"startSeconds"`
 	End   float64 `json:"endSeconds"`
 }
+
+// AudioFileMetadata is the file-owned baseline before local sidecars are applied.
+// It is retained separately so removing a sidecar restores embedded evidence.
+type AudioFileMetadata struct {
+	MusicCueTracks                                 []Chapter
+	Tags                                           map[string]string
+	Chapters                                       []Chapter
+	ChapterStatus, ArtworkKey, Issue, ArtworkIssue string
+}
+
 type Facts struct {
+	AudioFileMetadata   *AudioFileMetadata   `json:"-"`
 	DiscAlternate       bool                 `json:"-"`
 	DiscSelection       *DiscMediaSelection  `json:"-"`
 	MusicCueTracks      []Chapter            `json:"-"`

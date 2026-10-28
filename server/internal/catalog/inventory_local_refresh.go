@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"errors"
+	"path/filepath"
 
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/dbwork"
@@ -10,12 +11,12 @@ import (
 	"portico.local/server/internal/subtitles"
 )
 
-// CommitInventoryLocalRefresh publishes a video file's re-read local metadata
+// CommitInventoryLocalRefresh publishes a file's re-read local metadata
 // and subtitle inventory after only its sidecars changed (S6). The file's
-// technical facts, streams, chapters and naming are this revision's already
-// and are left exactly as they are; this writes what CommitInventoryAnalysis
-// writes from local metadata and subtitle discovery, under the same fences,
-// and settles the analysis queue row the same way. f.AnalysisOperations is the
+// technical facts and streams are this revision's already and remain untouched.
+// Audio chapters, tags and grouping are rebuilt from the file-owned baseline
+// and current sidecars; video naming is untouched. This publishes under the
+// same fences as CommitInventoryAnalysis and settles the analysis queue row the same way. f.AnalysisOperations is the
 // object's complete operation list after the refresh.
 func (s *Service) CommitInventoryLocalRefresh(ctx context.Context, job, object, revision string, policyRevision int64, f assets.Facts) error {
 	gated, err := dbwork.Begin(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive))
@@ -37,9 +38,9 @@ func (s *Service) CommitInventoryLocalRefresh(ctx context.Context, job, object, 
 	}
 	// The stored probe evidence is reused only for the revision it was taken
 	// from: the object must still be that revision and its analysis must be of it.
-	var asset string
+	var asset, relative string
 	var size, modified int64
-	err = tx.QueryRowContext(ctx, `SELECT asset_id,size,modified_ns FROM inventory_objects WHERE id=? AND source_id=? AND revision=? AND analysis_revision=? AND retired=0 AND state='available'`, object, source.ID, revision, revision).Scan(&asset, &size, &modified)
+	err = tx.QueryRowContext(ctx, `SELECT asset_id,relative_path,size,modified_ns FROM inventory_objects WHERE id=? AND source_id=? AND revision=? AND analysis_revision=? AND retired=0 AND state='available'`, object, source.ID, revision, revision).Scan(&asset, &relative, &size, &modified)
 	if err != nil {
 		return err
 	}
@@ -47,8 +48,20 @@ func (s *Service) CommitInventoryLocalRefresh(ctx context.Context, job, object, 
 	if err = tx.QueryRowContext(ctx, `SELECT kind FROM libraries WHERE id=?`, source.LibraryID).Scan(&kind); err != nil {
 		return err
 	}
-	if kind != "movie" && kind != "tv" && kind != "anime" {
-		return errors.New("local refresh is for video libraries")
+	audio := kind == "music" || kind == "audiobook"
+	if !audio && kind != "movie" && kind != "tv" && kind != "anime" {
+		return errors.New("unsupported local refresh library")
+	}
+	if audio {
+		// Baseline presence, asset stat and analysis revision are checked again in
+		// the writer; an earlier read never authorizes publication on its own.
+		var current bool
+		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM audio_file_metadata b JOIN catalog_assets a ON a.token=b.asset_id AND a.size=b.size AND a.modified_ns=b.modified_ns WHERE b.asset_id=? AND b.source_revision=? AND b.size=? AND b.modified_ns=?)`, asset, revision, size, modified).Scan(&current); err != nil {
+			return err
+		}
+		if !current {
+			return context.Canceled
+		}
 	}
 	if policy.Allows("subtitles") && f.SubtitleInventory != nil {
 		if err = subtitles.Persist(tx, asset, size, modified, f.SubtitleInventory); err != nil {
@@ -61,7 +74,14 @@ func (s *Service) CommitInventoryLocalRefresh(ctx context.Context, job, object, 
 	}
 	f.ObservedRevision = revision
 	if policy.Allows("local_metadata") {
-		if err = localmetadata.PersistVideo(ctx, tx, source.LibraryID, asset, f); err != nil {
+		if audio {
+			if err = assets.PersistChapters(tx, asset, size, modified, f); err != nil {
+				return err
+			}
+			if err = s.commitInventoryAudioTx(ctx, tx, source, asset, kind, filepath.Join(source.ResolvedPath, relative), f); err != nil {
+				return err
+			}
+		} else if err = localmetadata.PersistVideo(ctx, tx, source.LibraryID, asset, f); err != nil {
 			return err
 		}
 	}

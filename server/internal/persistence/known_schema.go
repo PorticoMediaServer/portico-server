@@ -58,6 +58,7 @@ index artwork_uploads_entity
 index asset_subtitles_asset
 index asset_subtitles_language
 index asset_subtitles_sidecar_id_fk
+index audio_file_metadata_artwork_key
 index audio_local_evidence_asset_id_fk
 index audio_local_field
 index audio_render_fact_requests_order
@@ -795,6 +796,9 @@ table asset_streams
 table asset_subtitle_facts
 table asset_subtitle_languages
 table asset_subtitles
+table audio_file_chapters
+table audio_file_metadata
+table audio_file_tags
 table audio_genre_projection
 table audio_local_evidence
 table audio_metadata_policies

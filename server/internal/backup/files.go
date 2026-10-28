@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/artworkref"
 	"portico.local/server/internal/storagepaths"
 	"sort"
 	"strings"
@@ -571,11 +572,13 @@ func excludedDownloadedMetadata(name string) bool {
 // ownerArtworkReferences is the backup's artwork closure: every blob of every
 // source an owner made irreplaceable (uploads, locked or owner-chosen
 // selections, and undo history pins). Each source carries both slots and its
-// ambient effect; a blob shared by several sources is listed once. Provider
+// ambient effect; current embedded-audio fallback roots are also retained,
+// even while a sidecar hides them. A shared blob is listed once. Provider
 // art is re-fetched after a restore and is not carried.
 const ownerArtworkReferences = `WITH roots(digest) AS (
  SELECT digest FROM artwork_uploads
  UNION SELECT digest FROM artwork_selections WHERE locked=1 OR actor<>''
+ UNION ` + artworkref.AudioFallbackKeys + `
  UNION SELECT j.value FROM metadata_owner_history h,json_tree(h.before_json) j WHERE j.type='text' AND length(j.value)=64
  UNION SELECT j.value FROM metadata_owner_history h,json_tree(h.after_json) j WHERE j.type='text' AND length(j.value)=64
  ), sources AS MATERIALIZED (SELECT s.small_blob,s.large_blob,s.ambient_blob FROM roots r JOIN artwork_sources s ON s.digest=r.digest)
