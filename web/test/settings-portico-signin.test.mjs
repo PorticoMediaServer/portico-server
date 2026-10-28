@@ -6,11 +6,11 @@ import {createRenderer, tree, textOf} from './helpers/interaction-harness.mjs';
 // H09: an owner who arrived through the normal Hosted return holds a server session, not a Hosted
 // session on this origin. A Portico Account server's Sign-in section must render from what the server
 // knows and open the Portico Account's own Security page, without any Hosted read on this origin.
-async function fixture({signIn = 'portico', providerReturn, hostedAccountId = 'portico-account-1', canManage = true} = {}) {
+async function fixture({signIn = 'portico', providerReturn, hostedAccountId = 'portico-account-1', canManage = true, origin = 'https://server.example:32500'} = {}) {
   const h = createRenderer(), hostedCalls = [], opened = [];
   const savedOpen = globalThis.open, savedLocation = globalThis.location;
   globalThis.open = (...args) => {opened.push(args);};
-  globalThis.location = {origin: 'https://server.example:32500', hostname: 'server.example'};
+  globalThis.location = {origin, hostname: new URL(origin).hostname};
   const account = {id: 'account-1', username: 'owner-name', primaryProfileId: 'profile-1', role: 'owner', revision: 3, disabled: false, allowedLibraries: [], hostedAccountId};
   const document = {serverId: 'srv_1', canManage, capabilities: {manageAccount: true}, account};
   const profiles = {subscribe: () => () => {}, getSnapshot: () => ({document, inUseId: 'profile-1'})};
@@ -55,4 +55,15 @@ test('an unlinked or unmanageable account shows no Portico Account section', asy
       assert.deepEqual(f.hostedCalls, []);
     } finally {f.close();}
   }
+});
+
+// P2-66: at web.getportico.tv the Portico Account session is the page's own, so Sign-in is managed
+// inline again (22 Oct rule); the security owner, not the link-out, renders.
+test('at the Portico Account address the account is managed inline, not linked out', async () => {
+  const f = await fixture({origin: 'https://web.getportico.tv'});
+  try {
+    assert.ok(!f.nodes.some(node => node.type === 'SettingsRow' && node.props.id === 'profile.porticoAccount'), 'no link-out row');
+    assert.ok(f.hostedCalls.includes('servicesAccount'), 'the inline owner reads this page\'s own Portico Account session');
+    assert.deepEqual(f.opened, []);
+  } finally {f.close();}
 });

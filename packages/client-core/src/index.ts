@@ -2700,7 +2700,7 @@ export {buildHostedSignInStartURL, parseHostedSignInStartURL} from './hosted-sig
 
 export * from './report-context.ts';
 export {AppSessionStore, parseAppSessionRecord, type AppSessionRecord, type AppSessionStorage, type AppServerSession, type NewServerConnection, type PorticoAccountScope, type SignInKind} from './app-sessions.ts';
-export {ServerSignInProbe, parseServerSignIn, signInLabelKey, serverSignInSettingsURL, accountSignInKeys, type ServerSignIn, type ServerSignInSnapshot} from './sign-in.ts';
+export {ServerSignInProbe, parseServerSignIn, assertSameApiLevel, API_LEVEL_MISMATCH, moveOfferDays, signInLabelKey, serverSignInSettingsURL, accountSignInKeys, type ServerSignIn, type ServerSignInSnapshot} from './sign-in.ts';
 export * from './account-move.ts';
 export {TVConsentApprover, type TVConsentAuthority, type TVConsentTransport} from './tv-consent.ts';
 

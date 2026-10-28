@@ -21,7 +21,7 @@ test('build pins the existing browser floor, eight-character hashes and same-ori
 });
 test('HTML guard precedes React and preserves the per-document nonce marker', () => {
   const html = read('../index.html'); assert.ok(html.indexOf('/browser-check.js') < html.indexOf('/src/main.tsx'));
-  assert.match(html, /content="__PORTICO_STYLE_NONCE__"/); assert.match(read('../src/main.tsx'), /__webpack_nonce__/);
+  assert.match(html, /content="__PORTICO_STYLE_NONCE__"/); assert.match(read('../src/app-main.tsx'), /__webpack_nonce__/); assert.match(read('../src/services/main.tsx'), /__webpack_nonce__/);
   // The approved first paint needs a stylesheet in the document. It uses the
   // same per-response CSP nonce; style attributes and inline scripts stay forbidden.
   assert.doesNotMatch(html, /\sstyle=|<script> /);

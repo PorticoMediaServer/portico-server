@@ -1,100 +1,89 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {ServicesDirectoryFlow, type DirectoryItem} from '../src/services/directory-flow.ts';
-import {DirectoryAccountUnavailable, accountDirectoryFailure, directoryFailurePhase} from '../src/services/directory-errors.ts';
+import {accountDirectoryFailure, directoryFailurePhase} from '../src/services/directory-errors.ts';
 import {RouteError} from '@core/route-identity.ts';
 import {ApiError} from '@core/index.ts';
-import type {contactKnownServerForOwnerRecovery} from '@core/owner-recovery-contact.ts';
 
 const server: DirectoryItem={id:'srv_'+'a'.repeat(43),name:'Original server',baseUrl:'https://server.example',publicKey:'p'.repeat(43),policyRevision:1,endpointVerified:true,lastSeenAt:'2026-10-25T12:00:00Z',presence:{lastSeenAt:'2026-10-25T12:00:00Z'},ownedByMe:false,role:'member',status:'active'};
+const other: DirectoryItem={...server,id:'srv_'+'b'.repeat(43),name:'Other server',baseUrl:'https://other.example',publicKey:'o'.repeat(43)};
 const directory=(items: DirectoryItem[])=>({items,version:'1',watch:'1',membershipEnding:undefined});
 const deferred=<T,>()=>{let resolve!:(value:T)=>void;const promise=new Promise<T>(done=>{resolve=done;});return{promise,resolve};};
-function fixture(){
- let current=true,reads=0,connections=0,disposed=0,now=1000;
- let read=async()=>directory([server]),connect=async()=>({origin:'https://server.example',dispose:()=>{disposed++;}});
- const destinations:string[]=[], contacts: Parameters<typeof contactKnownServerForOwnerRecovery>[0][]=[], purposes: (string|undefined)[]=[];
- let contact: typeof contactKnownServerForOwnerRecovery = async captured => {contacts.push({...captured});return {purpose:'owner-recovery',origin:captured.baseUrl,serverId:captured.serverId,signInURL:captured.baseUrl+'/sign-in'};};
- const flow=new ServicesDirectoryFlow(directory([server]),{current:()=>current,read:()=>{reads++;return read();},connect:()=>{connections++;return connect();},contact:(captured,options)=>contact(captured,options),navigate:(origin,purpose)=>{destinations.push(origin);purposes.push(purpose);},empty:()=>{},now:()=>now});
- return{flow,destinations,contacts,purposes,now:(value:number)=>{now=value;},contact:(value:typeof contact)=>{contact=value;},get reads(){return reads;},get connections(){return connections;},get disposed(){return disposed;},retire:()=>{current=false;},read:(value:typeof read)=>{read=value;},connect:(value:typeof connect)=>{connect=value;}};
+type Admission={id:string;dispose:()=>void};
+function fixture(items=[server],autoOpen=false){
+ let current=true,reads=0,now=1000,disposed=0;
+ const admissions:string[]=[];
+ let read=async()=>directory(items),admit=async(chosen:DirectoryItem):Promise<Admission>=>({id:chosen.id,dispose:()=>{disposed++;}});
+ const flow=new ServicesDirectoryFlow<Admission>(directory(items),{current:()=>current,read:()=>{reads++;return read();},admit:chosen=>{admissions.push(chosen.id);return admit(chosen);},empty:()=>{},now:()=>now},autoOpen);
+ return{flow,admissions,now:(value:number)=>{now=value;},get reads(){return reads;},get disposed(){return disposed;},retire:()=>{current=false;},read:(value:typeof read)=>{read=value;},admit:(value:typeof admit)=>{admit=value;}};
 }
-test('directory proves exact fresh server before origin-only handoff and closes owned routes',async()=>{
- const f=fixture();await f.flow.open(server,f.flow.getSnapshot());assert.deepEqual(f.destinations,['https://server.example']);assert.equal(f.connections,1);assert.equal(f.disposed,1);f.flow.dispose();
+test('opening proves the exact fresh server and admits it in place, never by navigation',async()=>{
+ const f=fixture();await f.flow.open(server,f.flow.getSnapshot());
+ const state=f.flow.getSnapshot();assert.equal(state.phase,'opened');assert.equal(state.admitted?.id,server.id);assert.deepEqual(f.admissions,[server.id]);f.flow.dispose();
 });
-test('retired original account during directory read cannot connect or navigate',async()=>{
+test('retired original account during directory read cannot admit',async()=>{
  const f=fixture(),gate=deferred<ReturnType<typeof directory>>();f.read(()=>gate.promise);
  const pending=f.flow.open(server,f.flow.getSnapshot());f.retire();gate.resolve(directory([server]));await pending;
- assert.equal(f.connections,0);assert.deepEqual(f.destinations,[]);f.flow.dispose();
+ assert.deepEqual(f.admissions,[]);f.flow.dispose();
 });
 test('changed pin or ambiguous identity refuses rather than adopting current directory successor',async()=>{
  for(const items of [[{...server,publicKey:'q'.repeat(43)}],[server,server]]){
-  const f=fixture();f.read(async()=>directory(items));await f.flow.open(server,f.flow.getSnapshot());assert.equal(f.connections,0);assert.deepEqual(f.destinations,[]);assert.equal((f.flow.getSnapshot().error as {code:string}).code,'identity_mismatch');f.flow.dispose();
+  const f=fixture();f.read(async()=>directory(items));await f.flow.open(server,f.flow.getSnapshot());assert.deepEqual(f.admissions,[]);assert.equal((f.flow.getSnapshot().error as {code:string}).code,'identity_mismatch');assert.equal(f.flow.getSnapshot().waitingId,undefined);f.flow.dispose();
  }
 });
-test('a late connection after disposal closes only its own route and cannot navigate',async()=>{
- const f=fixture(),gate=deferred<{origin:string;dispose:()=>void}>();f.connect(()=>gate.promise);
- const pending=f.flow.open(server,f.flow.getSnapshot());await new Promise(resolve=>setImmediate(resolve));f.flow.dispose();let closed=0;gate.resolve({origin:'https://server.example',dispose:()=>{closed++;}});await pending;
- assert.equal(closed,1);assert.deepEqual(f.destinations,[]);
+test('a late admission after disposal is released and never published',async()=>{
+ const f=fixture(),gate=deferred<Admission>();let released=0;f.admit(()=>gate.promise);
+ const pending=f.flow.open(server,f.flow.getSnapshot());await new Promise(resolve=>setImmediate(resolve));f.flow.dispose();
+ gate.resolve({id:server.id,dispose:()=>{released++;}});await pending;assert.equal(released,1);assert.notEqual(f.flow.getSnapshot().phase,'opened');
 });
 test('old rendered actions cannot start after a fresh directory publication',async()=>{
- const f=fixture(),rendered=f.flow.getSnapshot();await f.flow.refresh(rendered);const reads=f.reads;await f.flow.open(server,rendered);assert.equal(f.reads,reads);assert.equal(f.connections,0);f.flow.dispose();
+ const f=fixture(),old=f.flow.getSnapshot();await f.flow.refresh(old);await f.flow.open(server,old);assert.deepEqual(f.admissions,[]);f.flow.dispose();
 });
-test('background cancellation retires exact automatic flight before late proof publication',async()=>{
- const f=fixture(),gate=deferred<{origin:string;dispose:()=>void}>();f.connect(()=>gate.promise);
- const pending=f.flow.open(server,f.flow.getSnapshot(),true);await new Promise(resolve=>setImmediate(resolve));f.flow.cancelAutomatic();let closed=0;gate.resolve({origin:'https://server.example',dispose:()=>{closed++;}});await pending;
- assert.equal(closed,1);assert.deepEqual(f.destinations,[]);assert.equal(f.flow.getSnapshot().phase,'idle');f.flow.dispose();
+// H01/H11 (28 Oct): an idle tab must never wander to another server or to a server's sign-in page.
+test('H01/H11 idle tab: waiting retries only the chosen server and lands it in place',async()=>{
+ const f=fixture([server,other]);let down=true;
+ f.admit(async chosen=>{if(down)throw new RouteError('route_unavailable','The server did not answer.');return {id:chosen.id,dispose:()=>{}};});
+ await f.flow.open(server,f.flow.getSnapshot());
+ let state=f.flow.getSnapshot();assert.equal(state.waitingId,server.id);assert.equal(state.status,'unreachable');
+ for(let i=0;i<4;i++){f.flow.automatic();await new Promise(resolve=>setImmediate(resolve));await new Promise(resolve=>setImmediate(resolve));}
+ assert.ok(f.admissions.length>=2);assert.ok(f.admissions.every(id=>id===server.id),'only the chosen server is retried');
+ assert.equal(f.flow.getSnapshot().status,'waiting');
+ down=false;f.flow.automatic();await new Promise(resolve=>setImmediate(resolve));await new Promise(resolve=>setImmediate(resolve));
+ state=f.flow.getSnapshot();assert.equal(state.phase,'opened');assert.equal(state.admitted?.id,server.id);f.flow.dispose();
 });
-
-test('account outage recovery uses only the original directory address and pin without another Hosted read',async()=>{
- const f=fixture();f.read(async()=>directory([{...server,baseUrl:'https://new-directory.example'}]));
- f.connect(async()=>{throw new DirectoryAccountUnavailable(new TypeError('network'));});
- await f.flow.open(server,f.flow.getSnapshot());const reads=f.reads;
- assert.equal(f.flow.getSnapshot().status,'account-waiting');
- await f.flow.recoverOwner(f.flow.getSnapshot());
- assert.equal(f.reads,reads);assert.deepEqual(f.contacts,[{baseUrl:server.baseUrl,serverId:server.id,publicKey:server.publicKey}]);
- assert.deepEqual(f.destinations,[server.baseUrl]);assert.deepEqual(f.purposes,['owner-recovery']);f.flow.dispose();
+test('nothing waits without a chosen server, and a person choosing is never taken anywhere unasked',async()=>{
+ const f=fixture([server]);f.flow.automatic();f.flow.automaticInitial();await new Promise(resolve=>setImmediate(resolve));assert.deepEqual(f.admissions,[]);f.flow.dispose();
+ const first=fixture([server],true);first.flow.automaticInitial();await new Promise(resolve=>setImmediate(resolve));await new Promise(resolve=>setImmediate(resolve));
+ assert.deepEqual(first.admissions,[server.id]);first.flow.dispose();
+ const two=fixture([server,other],true);two.flow.automaticInitial();await new Promise(resolve=>setImmediate(resolve));assert.deepEqual(two.admissions,[]);two.flow.dispose();
 });
-test('server route failure does not masquerade as account outage or expose emergency contact',async()=>{
- const f=fixture();f.connect(async()=>{throw new RouteError('route_unavailable','unreachable');});
- await f.flow.open(server,f.flow.getSnapshot());assert.equal(f.flow.getSnapshot().status,'unreachable');
- await f.flow.recoverOwner(f.flow.getSnapshot());assert.equal(f.contacts.length,0);assert.deepEqual(f.destinations,[]);f.flow.dispose();
+test('a refusal, a changed identity or a server needing an update is not retried',async()=>{
+ for(const failure of [new ApiError(403,'access_refused','access_refused',false),new RouteError('api_level_mismatch','update'),new RouteError('clocks_disagree','clock')]){
+  const f=fixture();f.admit(async()=>{throw failure;});await f.flow.open(server,f.flow.getSnapshot());
+  assert.equal(f.flow.getSnapshot().waitingId,undefined);const count=f.admissions.length;f.flow.automatic();await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(f.admissions.length,count);f.flow.dispose();
+ }
+ assert.equal(directoryFailurePhase(new RouteError('api_level_mismatch','update'),false),'update');
 });
-test('a late emergency proof after choosing another server cannot navigate',async()=>{
- const f=fixture(),gate=deferred<Awaited<ReturnType<typeof contactKnownServerForOwnerRecovery>>>();
- f.read(async()=>{throw new ApiError(503,'unavailable','unavailable',true);});await f.flow.open(server,f.flow.getSnapshot());
- f.contact(()=>gate.promise);const work=f.flow.recoverOwner(f.flow.getSnapshot());
- f.flow.cancelOpening(f.flow.getSnapshot());gate.resolve({purpose:'owner-recovery',origin:server.baseUrl,serverId:server.id,signInURL:server.baseUrl+'/sign-in'});await work;
- assert.deepEqual(f.destinations,[]);assert.equal(f.flow.getSnapshot().target,undefined);f.flow.dispose();
+test('cancelling an admitted opening releases it and returns to the list',async()=>{
+ const f=fixture();await f.flow.open(server,f.flow.getSnapshot());f.flow.cancelOpening(f.flow.getSnapshot());
+ assert.equal(f.disposed,1);assert.equal(f.flow.getSnapshot().phase,'idle');assert.equal(f.flow.getSnapshot().admitted,undefined);f.flow.dispose();
 });
-test('emergency contact rejects changed destinations and preserves failed-pin refusal',async()=>{
- const f=fixture();f.read(async()=>{throw new ApiError(503,'unavailable','unavailable',true);});await f.flow.open(server,f.flow.getSnapshot());
- f.contact(async()=>({purpose:'owner-recovery',origin:'https://other.example',serverId:server.id,signInURL:'https://other.example/sign-in'}));
- await f.flow.recoverOwner(f.flow.getSnapshot());assert.equal(f.flow.getSnapshot().status,'identity');assert.deepEqual(f.destinations,[]);
- await f.flow.recoverOwner(f.flow.getSnapshot());assert.deepEqual(f.destinations,[]);f.flow.dispose();
-});
-test('old rendered emergency action cannot adopt a refreshed directory or account',async()=>{
- const f=fixture();f.read(async()=>{throw new ApiError(503,'unavailable','unavailable',true);});await f.flow.open(server,f.flow.getSnapshot());const rendered=f.flow.getSnapshot();
- f.read(async()=>directory([{...server,baseUrl:'https://successor.example'}]));await f.flow.refresh(rendered);
- await f.flow.recoverOwner(rendered);assert.equal(f.contacts.length,0);assert.deepEqual(f.destinations,[]);f.flow.dispose();
+test('a removed or left server disappears at once and the account is read again',async()=>{
+ const f=fixture([server,other]);f.read(async()=>directory([other]));f.flow.forget(server.id,f.flow.getSnapshot());
+ assert.deepEqual(f.flow.getSnapshot().items.map(item=>item.id),[other.id]);await new Promise(resolve=>setImmediate(resolve));assert.equal(f.reads,1);f.flow.dispose();
 });
 test('automatic account retry respects Retry-After floor and only source-known failures classify as account outage',async()=>{
  const f=fixture();f.read(async()=>{throw new ApiError(429,'rate_limited','rate_limited',true,700);});await f.flow.open(server,f.flow.getSnapshot(),true);
- assert.equal(f.flow.retryDelay(),700);assert.equal(f.flow.getSnapshot().seconds,700);
+ assert.equal(f.flow.retryDelay(),700);assert.equal(f.flow.getSnapshot().seconds,700);assert.equal(f.flow.getSnapshot().status,'account-waiting');
  assert.equal(directoryFailurePhase(new RouteError('route_unavailable','server'),false),'unreachable');
  assert.equal(directoryFailurePhase(accountDirectoryFailure(new TypeError('network')),false),'account-waiting');
  assert.equal(directoryFailurePhase(accountDirectoryFailure(new ApiError(403,'forbidden','forbidden',false)),false),undefined);f.flow.dispose();
 });
-
-
 test('the connecting grace lasts40 seconds from this opening and refresh never restarts it',async()=>{
  const f=fixture();assert.equal(f.flow.inConnectingGrace(),true);
  f.now(40999);assert.equal(f.flow.inConnectingGrace(),true);
  f.now(41000);assert.equal(f.flow.inConnectingGrace(),false);
  await f.flow.refresh(f.flow.getSnapshot());assert.equal(f.flow.inConnectingGrace(),false);
  f.now(90000);assert.equal(f.flow.inConnectingGrace(),false);f.flow.dispose();
-});
-test('a server that answers during the connecting grace opens immediately',async()=>{
- const f=fixture(),gate=deferred<{origin:string;dispose:()=>void}>();f.connect(()=>gate.promise);
- const pending=f.flow.open(server,f.flow.getSnapshot(),true);await new Promise(resolve=>setImmediate(resolve));
- f.now(2000);gate.resolve({origin:server.baseUrl,dispose:()=>{}});await pending;
- assert.equal(f.flow.inConnectingGrace(),true);assert.deepEqual(f.destinations,[server.baseUrl]);f.flow.dispose();
 });

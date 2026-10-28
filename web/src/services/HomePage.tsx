@@ -6,7 +6,7 @@ import {StateView} from '../kit/states';
 import {ServicesAuthStage, HostedError, ServicesNotice} from '../kit/accounts/ServicesAuth';
 import {ServicesHeader, ServicesStart} from '../kit/accounts/ServicesWorkspace';
 import {ServerlessAccountMenu} from '../screens/accounts/ServerlessAccountMenu';
-import {ServicesDirectoryPage, ServicesLocalServerPage} from './DirectoryPage';
+import {ServicesLocalServerPage} from './DirectoryPage';
 import {ServicesInvitationDialog, ShortJoinPage} from './JoinPage';
 import {parseShortInvitationCode} from '@core/short-invitation-code.ts';
 import {distributionPage} from './distribution';
@@ -16,14 +16,14 @@ import {accountIdentity, type ServicesAccount} from './session';
 import {workspaceApi, type WorkspaceServers} from './workspace-api';
 
 /** The only section anchors Home accepts as intent; every other fragment stays inert. */
-export function sectionIntent(hash: string): 'join' | 'setup' | undefined {
-  return hash === '#join' ? 'join' : hash === '#setup' ? 'setup' : undefined;
+export function sectionIntent(hash: string): 'join' | 'setup' | 'local' | undefined {
+  return hash === '#join' ? 'join' : hash === '#setup' ? 'setup' : hash === '#local' ? 'local' : undefined;
 }
 
 /** Consume a supported anchor once, preserving the query, history state and any
  * unrelated fragment handling. Refuses once the original Home path or account is
  * replaced, so a retired page can never consume or navigate. */
-function takeSectionIntent(original: Readonly<{pathname: string; current: () => boolean}>): 'join' | 'setup' | undefined {
+function takeSectionIntent(original: Readonly<{pathname: string; current: () => boolean}>): 'join' | 'setup' | 'local' | undefined {
   if (typeof location === 'undefined' || !original.current() || location.pathname !== original.pathname) return;
   const intent = sectionIntent(location.hash);
   if (intent) history.replaceState(history.state, '', location.pathname + location.search);
@@ -44,8 +44,6 @@ function BoundHome({account, session}: {account: ServicesAccount; session: Omit<
   const live = useRef<Read | null>(null);
   const [intent,setIntent]=useState<'join'|'setup'|'local'>();
   const [reveal,setReveal]=useState(0);
-  const reload=useCallback(()=>{setIntent(undefined);retry(value=>value+1);},[]);
-  const enterLocal=useCallback(()=>setIntent('local'),[]);
   // Same-document anchor navigation keeps working without remounting Home; only the
   // two supported sections become intent, and each is consumed once.
   useLayoutEffect(() => {
@@ -83,15 +81,15 @@ function BoundHome({account, session}: {account: ServicesAccount; session: Omit<
   if (error) return <DocumentBootReady><StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
     primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => retry(value => value + 1)}} /></DocumentBootReady>;
   if (!servers) return <ServicesAuthStage><></></ServicesAuthStage>;
-  if(intent==='local')return <ServicesLocalServerPage current={localCurrent} onBack={()=>setIntent(undefined)} />;
+  if(intent==='local')return <ServicesLocalServerPage current={localCurrent} onBack={()=>{if(servers.items.length)location.replace('/servers');else setIntent(undefined);}} />;
   if(!servers.items.length||intent==='join'||intent==='setup')return <DocumentBootReady><Start account={account} session={session} servers={servers} sourceCurrent={sourceCurrent} initialSection={intent} reveal={reveal} /></DocumentBootReady>;
-  const name=session.account.displayName||session.account.username;
-  const header=<ServicesHeader notifications={false} avatar={<ServerlessAccountMenu username={session.account.username} name={name} t={t}
-    onAccount={()=>location.assign('/account')} onJoin={()=>setIntent('join')} onSetup={()=>setIntent('setup')} onApps={()=>location.assign(distributionPage)}
-    onHelp={()=>window.open('https://getportico.tv/docs/','_blank','noopener,noreferrer')}
-    onSignOut={()=>{void account.service.logoutIfCurrent(accountIdentity(session)).catch(setError);}} />} />;
-  return <DocumentBootReady><ServicesDirectoryPage account={account} session={session} api={api} initial={servers} sourceCurrent={sourceCurrent} header={header}
-    onEmpty={reload} onJoin={()=>setIntent('join')} onSetup={()=>setIntent('setup')} onLocal={enterLocal} /></DocumentBootReady>;
+  return <OpenChooser />;
+}
+/** The account has servers: the chooser is the app's own (connect 1), on this same address,
+ * so opening a server lands on its Home here and never sends the browser to the server. */
+function OpenChooser() {
+  useLayoutEffect(() => {location.replace('/servers');}, []);
+  return <ServicesAuthStage><></></ServicesAuthStage>;
 }
 function Start({account, session, servers, sourceCurrent, initialSection, reveal = 0}: {account: ServicesAccount; session: Omit<HostedSession, 'refreshToken'>; servers: WorkspaceServers; sourceCurrent: () => boolean; initialSection?: 'join'|'setup'; reveal?: number}) {
   const {t} = useMemo(servicesI18n, []);

@@ -17,16 +17,32 @@ func (PublicMove) JSONSchema() map[string]any {
 	return map[string]any{"type": "string", "enum": []string{"to_portico", "to_local"}}
 }
 func (s *Service) PublicAccountMove(ctx context.Context) (*PublicMove, error) {
+	move, _, e := s.PublicAccountMoveWindow(ctx)
+	return move, e
+}
+
+// PublicAccountMoveWindow is the announced move and, for a move to Portico Accounts, when the
+// last waiting member's old sign-in stops working (zero when none has one). Apps word the
+// offer from it ("within the next 3 days"), never from a fixed 30.
+func (s *Service) PublicAccountMoveWindow(ctx context.Context) (*PublicMove, time.Time, error) {
 	var stage string
-	e := s.db.QueryRowContext(ctx, `SELECT stage FROM identity_moves WHERE stage IN('moving_to_portico','moving_to_local')`).Scan(&stage)
+	var until int64
+	// A move is announced only while someone is still waiting to reconnect: once the last member
+	// has (or none was ever waiting), no app offers the old sign-in again, and the old-password
+	// path already refuses an account that is not waiting.
+	e := s.db.QueryRowContext(ctx, `SELECT m.stage,COALESCE((SELECT max(w.old_password_until_ms) FROM identity_move_waiting w WHERE w.move_id=m.id AND w.state='waiting' AND w.old_password_hash IS NOT NULL),0) FROM identity_moves m WHERE m.stage IN('moving_to_portico','moving_to_local') AND EXISTS(SELECT 1 FROM identity_move_waiting w WHERE w.move_id=m.id AND w.state='waiting')`).Scan(&stage, &until)
 	if errors.Is(e, sql.ErrNoRows) {
-		return nil, nil
+		return nil, time.Time{}, nil
 	}
 	if e != nil {
-		return nil, e
+		return nil, time.Time{}, e
 	}
 	v := PublicMove(strings.TrimPrefix(stage, "moving_"))
-	return &v, nil
+	var ends time.Time
+	if v == "to_portico" && until > time.Now().UnixMilli() {
+		ends = time.UnixMilli(until).UTC()
+	}
+	return &v, ends, nil
 }
 
 // Owner changes are made on the server's web page. Other apps may read the state.

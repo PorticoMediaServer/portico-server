@@ -47,7 +47,7 @@ test('readonly admission does not restart a stopped mutating permission owner', 
 test('system name/version are display but actual scope/security changes replace authority', () => {
   const initial={system:system(),direct:parseDirectSnapshot(direct())};
   assert.equal(shellProofChanged(initial,{system:{...system(),name:'Den',version:'2'}},'profile'),false);
-  for(const next of [{...system(),id:'other'},{...system(),setupRequired:true},{...system(),hostedAttached:true}])assert.equal(shellProofChanged(initial,{system:next},'profile'),true);
+  for(const next of [{...system(),id:'other'},{...system(),setupRequired:true},{...system(),hostedAttached:true, apiLevel: 1}])assert.equal(shellProofChanged(initial,{system:next},'profile'),true);
 });
 test('first connected relay queues one catch-up without cursor, survives disconnect, and cancels on dispose', async () => {
   const time=clock(),hub=new FreshnessHub(time.env);let connected=false,catchups=0,current=true;const statuses=new Set<()=>void>(),resyncs=new Set<()=>void>();

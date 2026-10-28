@@ -10,6 +10,9 @@
 .list { display: flex; flex-direction: column; gap: 10px; max-width: 640px; }
 .sr { display: flex; align-items: center; gap: 16px; width: 100%; min-height: 76px; padding: 14px 20px 14px 16px; border: 0; border-radius: 16px; background: rgba(16,33,45,.78); color: inherit; font: inherit; text-align: left; cursor: pointer; backdrop-filter: blur(22px); box-shadow: inset 0 0 0 1px var(--color-line); }
 .sr:disabled { cursor: default; }
+.rowWithMenu { position: relative; display: flex; align-items: center; }
+.rowWithMenu > .sr, .rowWithMenu > .sl { padding-right: 56px; }
+.rowMore { position: absolute; right: 12px; }
 .sr[data-offline] { opacity: .62; }
 .sr > svg:last-child { color: var(--color-line-strong); flex: none; }
 .tile { flex: none; width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; background: linear-gradient(135deg, #2f86bb, #1e5b52); color: #fff; }

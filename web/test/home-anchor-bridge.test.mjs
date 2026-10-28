@@ -5,20 +5,21 @@ import {createRenderer, tree} from './helpers/interaction-harness.mjs';
 
 // FX177: the blocker's component/hook harness shape on this repo's own helpers.
 // Mounts the real HomePage, measures destination, card scroll and guarded anchor
-// consumption. UNRUN.
+// consumption. P2-66: with servers, Home hands over to the app's own chooser at
+// /servers on this same address ('Directory' below), never to a server.
 
 const server = id => ({id, status: 'quiet', ownedByMe: false, name: id, presence: {lastSeenAt: null}, role: 'member'});
 
 async function mount({hash = '', pathname = '/', search = '', servers = [server('one')], session = {account: {id: 'account', username: 'person'}, familyId: 'family'}} = {}) {
   const saved = {location: globalThis.location, history: globalThis.history, document: globalThis.document,
     addEventListener: globalThis.addEventListener, removeEventListener: globalThis.removeEventListener, matchMedia: globalThis.matchMedia};
-  const handlers = new Set(), replaces = [], scrolls = [], cleanups = new Set();
+  const handlers = new Set(), replaces = [], scrolls = [], cleanups = new Set(), opens = [];
   const targets = new Map();
   const target = id => {
     if (!targets.has(id)) targets.set(id, {id, getClientRects: () => [{}], scrollIntoView: options => scrolls.push({id, ...options})});
     return targets.get(id);
   };
-  let location = {hash, pathname, search, href: 'https://web.getportico.tv' + pathname + search + hash};
+  let location = {hash, pathname, search, href: 'https://web.getportico.tv' + pathname + search + hash, replace: url => opens.push(url)};
   globalThis.location = location;
   globalThis.history = {state: {kept: true, continuation: 'original'}, replaceState(state, _title, url) {
     replaces.push({state, url});
@@ -52,7 +53,7 @@ async function mount({hash = '', pathname = '/', search = '', servers = [server(
     },
     './workspace-api': {workspaceApi: () => api}, './i18n': {servicesI18n: () => ({t: x => x})},
     '../kit/accounts/ServicesAuth': {ServicesAuthStage: 'Stage'}, '../kit/accounts/ServicesWorkspace': {ServicesStart: 'Start', ServicesHeader: 'Header'},
-    './DirectoryPage': {ServicesDirectoryPage: 'Directory', ServicesLocalServerPage: 'Local'}, './use-membership-ending': {useMembershipEnding: () => ({visible: false})},
+    './DirectoryPage': {ServicesLocalServerPage: 'Local'}, './use-membership-ending': {useMembershipEnding: () => ({visible: false})},
   });
   // The original prop never changes: a successor session exists only in the service
   // snapshot, so a stale-callback vector cannot create a rightful successor Home.
@@ -61,9 +62,9 @@ async function mount({hash = '', pathname = '/', search = '', servers = [server(
   const dispatchHash = async () => {for (const fn of [...handlers]) fn(); return settle();};
   const replaceAccount = next => {currentSession = next;};
   return {
-    value: await settle(), settle, dispatchHash, handlers, replaces, scrolls, cleanups, replaceAccount, render,
+    value: await settle(), settle, dispatchHash, handlers, replaces, scrolls, cleanups, opens, replaceAccount, render,
     setHash: hash => {location = {...location, hash, href: location.pathname + location.search + hash}; globalThis.location = location;},
-    has: type => render().some(node => node.type === type),
+    has: type => type === 'Directory' ? opens.includes('/servers') : render().some(node => node.type === type),
     restore: () => Object.assign(globalThis, saved),
   };
 }

@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {ApiError,ServerListWatcher,SERVER_LIST_INTERVAL_MS,SERVER_LIST_SPREAD_MS,hostedGate,porticoSignIn,acceptPorticoInvitation,transferPorticoOwnership,acceptPorticoCustody,leavePorticoServer,isAccessRefused,isSessionMigrated,isClockSkew,routeBase64,type ServerListRecord} from '../src/index.ts';
+import {ApiError,ServerListWatcher,SERVER_LIST_INTERVAL_MS,SERVER_LIST_SPREAD_MS,hostedGate,porticoSignIn,acceptPorticoInvitation,transferPorticoOwnership,acceptPorticoCustody,leavePorticoServer,removePorticoServer,isAccessRefused,isSessionMigrated,isClockSkew,routeBase64,type ServerListRecord} from '../src/index.ts';
 import {parseDirectSnapshot} from '../src/profile-management.ts';
 import {webRouteCrypto,type RouteCrypto} from '../src/route-identity.ts';
 import {acceptShortPorticoInvitation} from '../src/portico-servers.ts';
@@ -149,6 +149,8 @@ test('Portico sign-in answers the server\'s challenge with an identity assertion
  assert.deepEqual(serverCalls.at(-1),['POST','/v1/direct/ownership/custody',{porticoIdentity:assertionBody}]);
  await leavePorticoServer(hosted,o,me.id);
  assert.deepEqual(hostedCalls.at(-1),['POST','/v1/servers/'+me.id+'/leave',{}]);
+ await removePorticoServer(hosted,o,me.id);
+ assert.deepEqual(hostedCalls.at(-1),['DELETE','/v1/servers/'+me.id,undefined]);
 });
 
 test('a platform without WebCrypto (Hermes on Apple) passes its own route crypto to every Portico call',async()=>{

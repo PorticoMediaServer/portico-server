@@ -21,7 +21,7 @@ function fixture(selectedStore?:AppSessionStore){
     account:{id:'server-member',username:'actual-member',hostedAccountId:foreign?'foreign-hosted':'actual-hosted',primaryProfileId:'main',role:'member',revision:1,disabled:false,allowedLibraries:[]},
     profiles:[{id:'main',name:'Actual main',primary:true,position:0,art:'mint',revision:1,pinRevision:1,pinRequired:false}]});
   const result=()=>parseDirectSignIn({...snapshot(),session:session()});
-  const system=()=>({id:serverId,name:'Verified Server name',version:'1',signIn:kind,move:null,setupRequired:false,hostedConfigured:true,hostedAttached:true});
+  const system=()=>({id:serverId,name:'Verified Server name',version:'1',signIn:kind,move:null,setupRequired:false,hostedConfigured:true,hostedAttached:true, apiLevel: 1});
   const connection={pin,logicalOrigin:origin,getSnapshot:()=>({phase:'ready'}),getMemory:()=>({paired:[origin]}),setPersistence:()=>{},dispose:()=>{disposed++;}};
   const hosted={origin:'https://accounts.test',accountId:'actual-hosted',key:{keyId:'actual-key',publicKey:'k'.repeat(43)}};
   const account:AccountServerAccess={origin:hosted.origin,accountId:hosted.accountId,isCurrent:()=>live,observe:listener=>{listeners.add(listener);return()=>{listeners.delete(listener);};},request:async()=>{throw new Error('Injected proof boundary must not issue another Hosted request.');}};

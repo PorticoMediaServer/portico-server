@@ -1,7 +1,8 @@
-import type {ReactNode} from 'react';
+import {useRef, useState, type ReactNode} from 'react';
 import {createI18n, deviceRegion, resolveRegion} from '@i18n';
 import {Icon, type IconName} from '../Icon';
 import {Button} from '../controls';
+import {Menu} from '../overlays/Popover';
 import {ColourBackdrop} from '../artwork';
 import {useSizeClass} from '../theme';
 import styles from './server-directory-page.module.css';
@@ -14,7 +15,7 @@ export type DirectoryServer = Readonly<{id: string; name: string; online: boolea
 
 /** connect 1 and 28/31c: the root server directory. Presentation only — the
  * caller owns ordering, opening, retrying, the countdown and every guard. */
-export function ServicesServerDirectory({header, servers, offline, connecting = false, seconds, pendingId, error, signedInAs, checked, busy = false, onOpen, onAccount, onJoin, onSetup, onRefresh, onDifferentAccount, onLocal}: {
+export function ServicesServerDirectory({header, servers, offline, connecting = false, seconds, pendingId, error, signedInAs, checked, busy = false, onOpen, onAccount, onJoin, onSetup, onRefresh, onDifferentAccount, onLocal, onRemove}: {
   header: ReactNode;
   servers: readonly DirectoryServer[];
   offline: boolean;
@@ -35,9 +36,11 @@ export function ServicesServerDirectory({header, servers, offline, connecting = 
   onRefresh: () => void;
   onDifferentAccount: () => void;
   onLocal: () => void;
+  /** The row's ⋯ menu (P2-66 D-3): Remove for its owner, Leave for anyone else. */
+  onRemove?: (id: string) => void;
 }) {
   const owned = servers.some(server => server.ownedByMe);
-  const row = (server: DirectoryServer) => <button key={server.id} type="button" className={offline ? styles.sl : styles.sr}
+  const open = (server: DirectoryServer) => <button key={server.id} type="button" className={offline ? styles.sl : styles.sr}
     data-offline={!server.online || undefined} disabled={busy || pendingId !== undefined} aria-busy={pendingId === server.id || undefined}
     onClick={() => onOpen(server.id)}>
     <span className={styles.tile}><Icon name="i-server" size={22} /></span>
@@ -46,6 +49,8 @@ export function ServicesServerDirectory({header, servers, offline, connecting = 
     {server.ownedByMe && <span className={styles.owner}>{t('web.hostedAccount.serverOwner')}</span>}
     {offline ? <span className={styles.tryAgain}>{t('web.chooser.tryAgain')}</span> : <Icon name="i-right" size={20} />}
   </button>;
+  const row = (server: DirectoryServer) => onRemove ? <div key={server.id} className={styles.rowWithMenu}>{open(server)}
+    <RowMenu server={server} disabled={busy || pendingId !== undefined} onRemove={() => onRemove(server.id)} /></div> : open(server);
   const work = (icon: IconName, title: string, body: ReactNode, onClick: () => void) => <button type="button" className={styles.work} onClick={onClick}>
     <span className={styles.workIcon}><Icon name={icon} size={20} /></span>
     <span className={styles.text}><b>{title}</b>{body && <small>{body}</small>}</span>
@@ -96,4 +101,14 @@ export function ServicesServerDirectory({header, servers, offline, connecting = 
     </main>
     <footer className={styles.legal}><a href="https://getportico.tv/terms/">{t('services.signup.terms')}</a><a href="https://getportico.tv/privacy/">{t('services.start.privacy')}</a></footer>
   </div>;
+}
+
+function RowMenu({server, disabled, onRemove}: {server: DirectoryServer; disabled: boolean; onRemove: () => void}) {
+  const [shown, setShown] = useState(false), anchor = useRef<HTMLButtonElement>(null);
+  return <>
+    <Button ref={anchor} className={styles.rowMore} size="xs" variant="icon" icon="i-more" iconOnly aria-label={t('next.home.moreFor', {title: server.name})} disabled={disabled} onClick={() => setShown(value => !value)} />
+    <Menu open={shown && !disabled} onOpenChange={setShown} anchorRef={anchor} title={server.name} returnFocusRef={anchor} items={[
+      {id: 'remove', icon: 'i-trash', destructive: true, label: t(server.ownedByMe ? 'web.chooser.removeServer' : 'web.chooser.leaveServer'), onSelect: () => {setShown(false); onRemove();}},
+    ]} />
+  </>;
 }

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {BrowserServerDisplay} from '../src/platform/server-display.ts';
 const pin={serverId:'server_a',publicKey:'key_a',fingerprint:'fingerprint_a'};
 const source={pin,origin:'https://address.example',signIn:'local' as const};
-const system={id:pin.serverId,name:'Portico demo',signIn:'local',move:null,version:'test',setupRequired:false,hostedConfigured:false,hostedAttached:false};
+const system={id:pin.serverId,name:'Portico demo',signIn:'local',move:null,version:'test',setupRequired:false,hostedConfigured:false,hostedAttached:false, apiLevel: 1};
 function fixture(raw:unknown=system){
  const memory=new Map<string,string>(),calls:{origin:string;pin:typeof pin}[]=[];let disposed=0;
  const route={pin,getSnapshot:()=>({phase:'ready'}),dispose:()=>{disposed++;}};

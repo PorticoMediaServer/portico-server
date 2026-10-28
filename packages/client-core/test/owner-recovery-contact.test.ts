@@ -7,7 +7,7 @@ import {routePath} from '../../contracts/src/routes.ts';
 const keys=generateKeyPairSync('ed25519');
 const rawKey=keys.publicKey.export({format:'der',type:'spki'}).subarray(-32);
 const captured={baseUrl:'https://server.example:32500',publicKey:rawKey.toString('base64url'),serverId:'srv_'+createHash('sha256').update('portico.server.identity.v1\0').update(rawKey).digest('base64url')};
-const system={id:captured.serverId,name:'Server',version:'1',signIn:'portico',move:null,setupRequired:false,hostedConfigured:true,hostedAttached:true};
+const system={id:captured.serverId,name:'Server',version:'1',signIn:'portico',move:null,setupRequired:false,hostedConfigured:true,hostedAttached:true, apiLevel: 1};
 const json=(value:unknown)=>new Response(JSON.stringify(value),{headers:{'Content-Type':'application/json'}});
 function transport(overrides:{proof?:Record<string,unknown>;system?:Record<string,unknown>;after?:(path:string)=>void;redirect?:boolean}={}) {
  const calls:string[]=[];

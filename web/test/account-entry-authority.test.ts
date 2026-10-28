@@ -21,7 +21,7 @@ async function fixture(required = true, recovery = false) {
   const hints = new Set<() => void>(), tokens: string[] = [], calls: string[] = [], selections: unknown[][] = [];
   const hint = () => {for (const changed of hints) changed();};
   const store = new AppSessionStore({read: async () => raw, change: async update => {raw = update(raw);hint();}});
-  const initial = session(), system = {id: serverId, name: 'Actual server', version: '1', signIn: 'local', move: null, setupRequired: false, hostedConfigured: false, hostedAttached: false};
+  const initial = session(), system = {id: serverId, name: 'Actual server', version: '1', signIn: 'local', move: null, setupRequired: false, hostedConfigured: false, hostedAttached: false, apiLevel: 1};
   const snapshot = () => ({authority: 'local', serverId, canManage: recovery, twoStepSetupRequired: required,
     capabilities: {manageAccount: recovery, managePeople: false, manageServer: false, manageSignIn: false},
     account: {id: 'account-a', username: 'actual-user', primaryProfileId: 'main', role: 'member', revision: 1, disabled: false, allowedLibraries: []},

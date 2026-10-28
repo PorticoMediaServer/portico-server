@@ -26,7 +26,7 @@ async function fixture() {
     account: {id: 'account-a', username: 'actual-user', hostedAccountId: 'hosted-account', primaryProfileId: 'main', role: 'member' as const, revision: 1, disabled: false, allowedLibraries: []},
     profiles: [{id: 'main', name: 'Actual profile', primary: true, position: 0, art: 'mint', revision: 1, pinRevision: 1, pinRequired: false}]};
   const result = (): DirectSignIn => ({kind: 'signed-in', session: session(), snapshot, accountScoped: true, passwordChangeRequired: false});
-  const system = {id: serverId, name: 'Actual server', version: '1', signIn: 'portico', move: null, setupRequired: false, hostedConfigured: true, hostedAttached: true};
+  const system = {id: serverId, name: 'Actual server', version: '1', signIn: 'portico', move: null, setupRequired: false, hostedConfigured: true, hostedAttached: true, apiLevel: 1};
   const api = new HttpLocalApi(origin, '');api.getRouteConnection = () => ({pin, getSnapshot: () => ({phase: 'ready'}), dispose: () => {disposed++;}}) as never;
   api.request = (async path => {if (path === '/v1/system') return system;if (path === '/v1/direct') return snapshot;throw new Error('Unexpected second protocol/admission: ' + path);}) as HttpLocalApi['request'];
   const complete = async () => {await save(session());if (supersede) await save(session('successor'));returnedRevision = (await store.read()).revision;returnedNotifications = notifications;return {api, result: result()};};

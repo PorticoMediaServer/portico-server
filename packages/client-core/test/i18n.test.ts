@@ -213,7 +213,7 @@ test('Hosted-backed surfaces name the Portico Account, never "your server"', () 
   assert.match(presentError(offline, 'link').body, /Portico Account/);
   assert.match(presentError(offline, 'sign-in', {service: 'portico-account'}).body, /Portico Account/);
   assert.match(presentError(offline, 'sign-in').body, /your server/, 'a direct sign-in still means the server');
-  assert.match(presentError(offline, 'portico-account', {retrying: true}).body, /Portico Account.*keep trying/);
+  assert.match(presentError(offline, 'portico-account', {retrying: true}).body, /Portico Accounts.*keeps trying/);
   assert.match(presentError(offline, 'portico-account', {deviceOnline: false}).body, /This device is offline/);
   assert.equal(presentError({status: 504, code: 'timeout'}, 'portico-account').messageId, 'error.account.timeout');
   assert.equal(presentError(offline, 'portico-account').title, 'Your Portico Account couldn’t load');

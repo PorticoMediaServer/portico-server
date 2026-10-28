@@ -11,9 +11,12 @@ const t = createI18n(resolveRegion(undefined, deviceRegion())).t;
 /** connect 2: the six connection states between the directory and Home, on the
  * same state layout. Presentation only — the caller owns the phase, the retry
  * clock and every code that decides it. */
-export type DirectoryStatusPhase = 'opening' | 'waiting' | 'unreachable' | 'account-waiting' | 'identity' | 'clock';
+export type DirectoryStatusPhase = 'opening' | 'waiting' | 'unreachable' | 'account-waiting' | 'identity' | 'clock' | 'update';
+/** The one way to reach the server's own page, worded for the case: a local address for a
+ * server only this network can reach, or its direct address when this app can't open it. */
+export type DirectoryFallback = Readonly<{kind: 'local' | 'direct'; onPress: () => void}>;
 
-export function ServicesDirectoryStatus({header, phase, server, lastSeen, seconds, owner = false, onCheck, onChoose, onAccountHelp, busy = false, error}: {
+export function ServicesDirectoryStatus({header, phase, server, lastSeen, seconds, owner = false, onCheck, onChoose, fallback, busy = false, error}: {
   header: ReactNode;
   busy?: boolean;
   error?: ReactNode;
@@ -27,25 +30,27 @@ export function ServicesDirectoryStatus({header, phase, server, lastSeen, second
   owner?: boolean;
   onCheck: () => void;
   onChoose: () => void;
-  /** The owner's way in while Portico Accounts are away (connect 2d). */
-  onAccountHelp: () => void;
+  /** Never followed by itself: the person presses it. */
+  fallback?: DirectoryFallback;
 }) {
   const opening = phase === 'opening';
   const spinning = opening;
   const icon: IconName | undefined = phase === 'waiting' || phase === 'unreachable' ? 'i-srvoff'
-    : phase === 'account-waiting' ? 'i-cloudoff' : phase === 'identity' ? 'i-shield' : phase === 'clock' ? 'i-clock' : undefined;
+    : phase === 'account-waiting' ? 'i-cloudoff' : phase === 'identity' ? 'i-shield' : phase === 'clock' ? 'i-clock' : phase === 'update' ? 'i-server' : undefined;
   const title = phase === 'opening' ? t('web.chooser.connecting', {server})
     : phase === 'waiting' ? t('web.chooser.waitingTitle', {server})
       : phase === 'unreachable' ? t('web.chooser.unreachableTitle', {server})
         : phase === 'account-waiting' ? t('web.chooser.accountWaitingTitle')
           : phase === 'identity' ? t('web.chooser.unconfirmedTitle', {server})
-            : t('web.chooser.clockTitle', {server});
+            : phase === 'update' ? t('web.chooser.updateTitle', {server})
+              : t('web.chooser.clockTitle', {server});
   const body = phase === 'opening' ? t('web.chooser.openingBody')
     : phase === 'waiting' ? t('web.chooser.waitingBody')
       : phase === 'unreachable' ? (lastSeen === undefined ? t('web.chooser.unreachableBodyNever') : t('web.chooser.unreachableBody', {date: lastSeen}))
         : phase === 'account-waiting' ? t('web.chooser.accountWaitingBody', {server})
           : phase === 'identity' ? t('web.chooser.unconfirmedBody')
-            : t('web.chooser.clockBody');
+            : phase === 'update' ? t(owner ? 'web.chooser.updateOwnerBody' : 'web.chooser.updateBody')
+              : t('web.chooser.clockBody');
   const counting = phase === 'waiting' || phase === 'account-waiting';
   // H11 / connect 2: the connection states sit on the round colour backdrop (top on phones), never a flat page.
   const compact = useSizeClass() === 'compact';
@@ -66,9 +71,10 @@ export function ServicesDirectoryStatus({header, phase, server, lastSeen, second
         <div className={styles.actions}>
           {!opening && <Button variant="primary" disabled={busy} onClick={onCheck}>{t(counting ? 'web.chooser.checkNow' : 'web.chooser.tryAgain')}</Button>}
           {opening ? <button type="button" className={styles.quiet} onClick={onChoose}>{t('web.chooser.otherServer')}</button>
-            : phase === 'account-waiting' ? <button type="button" className={styles.quiet} disabled={busy} onClick={onAccountHelp}>{t('accounts.signIn.cannotUsePortico')}</button>
-              : <Button onClick={onChoose}>{t('web.chooser.otherServer')}</Button>}
+            : <Button onClick={onChoose}>{t('web.chooser.otherServer')}</Button>}
+          {!opening && fallback && <button type="button" className={styles.quiet} disabled={busy} onClick={fallback.onPress}>{t(fallback.kind === 'local' ? 'web.chooser.openLocal' : 'web.chooser.openDirect')}</button>}
         </div>
+        {!opening && fallback?.kind === 'local' && <p className={styles.help}>{t('web.chooser.localAccess')}</p>}
         {phase === 'unreachable' && owner && <p className={styles.help}>{t('web.hostedAccount.offlineOwnerHint')}</p>}
       </section>
     </main>

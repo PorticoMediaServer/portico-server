@@ -39,7 +39,7 @@ func corsExposedNames(t *testing.T, h http.Handler, method, origin, target strin
 	r := httptest.NewRequest(method, "http://127.0.0.1:32500"+target, nil)
 	r.Header.Set("Origin", origin)
 	if authorize {
-		r.Header.Set("Authorization", "Bearer token")
+		r.Header.Set("Authorization", "Bearer pk_tool.secret")
 	}
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
@@ -93,7 +93,7 @@ func TestCrossOriginConvertedAudioTrimIsExposed(t *testing.T) {
 		authorize                    bool
 	}{
 		{"hosted web app", "GET", corsExposeTestOrigin, "/v1/items", false},
-		// The bearer below is deliberately invalid: this establishes that a
+		// The API key below is deliberately invalid: this establishes that a
 		// token-carrying tool origin sees the exposure list, not that the route
 		// authenticated a viewer.
 		{"token-carrying tool origin", "GET", "https://tool.example", "/v1/items", true},

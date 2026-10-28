@@ -26,7 +26,7 @@ function fixture(response:unknown=grant){
  return {api,options,calls,retired,set:(value:unknown)=>{reply=value;},end:()=>{current=false;}};
 }
 test('public move is explicit, committed and consistent with server kind; absent/unknown/contradictory facts refuse credentials',()=>{
- const system={id:'server',name:'Home',version:'1',signIn:'local',move:null,setupRequired:false,hostedConfigured:true,hostedAttached:false};
+ const system={id:'server',name:'Home',version:'1',signIn:'local',move:null,setupRequired:false,hostedConfigured:true,hostedAttached:false, apiLevel: 1};
  for(const move of [undefined,'preview','switch','to_portico'])assert.throws(()=>parseServerSignIn({...system,move}));
  assert.equal(parseServerSignIn({...system,move:'to_local'}).move,'to_local');
  assert.equal(parseServerSignIn({...system,signIn:'portico',move:'to_portico'}).move,'to_portico');

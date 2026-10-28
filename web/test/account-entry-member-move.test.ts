@@ -13,7 +13,7 @@ async function fixture(move:'to_portico'|null='to_portico'){
  let passwordStarted:()=>void=()=>{},prepareStarted:()=>void=()=>{},releasePassword:()=>void=()=>{},releasePrepare:()=>void=()=>{},cancels=0,remembers=0;
  const calls:{path:string;method?:string;body?:unknown}[]=[],prepares:unknown[][]=[];
  const store=new AppSessionStore({read:async()=>raw,change:async update=>{raw=update(raw);}});
- const system={id:serverId,name:'Actual server',version:'1',signIn:'portico',move,setupRequired:false,hostedConfigured:true,hostedAttached:true};
+ const system={id:serverId,name:'Actual server',version:'1',signIn:'portico',move,setupRequired:false,hostedConfigured:true,hostedAttached:true, apiLevel: 1};
  const connection={pin,getSnapshot:()=>({phase:'ready'}),dispose:()=>{}};
  const api=new HttpLocalApi(origin,'');api.getRouteConnection=()=>connection as never;
  api.request=(async(path,method,body)=>{

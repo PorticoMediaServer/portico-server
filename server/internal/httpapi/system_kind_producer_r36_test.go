@@ -38,7 +38,7 @@ func TestSystemKindProducerUsesCanonicalSetupAuthority(t *testing.T) {
 		if err := json.Unmarshal(out.Body.Bytes(), &fields); err != nil {
 			t.Fatal(err)
 		}
-		if len(fields) != 8 {
+		if len(fields) != 10 {
 			t.Fatalf("unexpected public fields: %v", fields)
 		}
 		for _, key := range []string{"accessToken", "refreshToken", "owner", "account", "email", "returnRegistrationId"} {

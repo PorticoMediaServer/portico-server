@@ -189,6 +189,9 @@ func TestMoveOldPasswordOnlyIssuesBoundSingleUseLinkTicket(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
+	if m, ends, e := s.PublicAccountMoveWindow(ctx); e != nil || m == nil || *m != "to_portico" || !ends.After(time.Now().Add(29*24*time.Hour)) || ends.After(time.Now().Add(31*24*time.Hour)) {
+		t.Fatalf("a waiting member must see the move and when it ends %v %v %v", m, ends, e)
+	}
 	ticket, e := s.ProveMovePassword(ctx, MovePasswordRequest{Username: "member", Password: "Testing2!"})
 	if e != nil || len(ticket.Ticket) != 43 {
 		t.Fatalf("ticket %+v %v", ticket, e)
@@ -206,6 +209,13 @@ func TestMoveOldPasswordOnlyIssuesBoundSingleUseLinkTicket(t *testing.T) {
 	}
 	if _, e = s.RedeemPorticoMove(ctx, PorticoMoveProof{Ticket: ticket.Ticket, Who: who}); !errors.Is(e, ErrMoveCode) {
 		t.Fatalf("ticket replay %v", e)
+	}
+	// P2-66: the last waiting member reconnected, so no app offers the old sign-in again.
+	if m, e := s.PublicAccountMove(ctx); e != nil || m != nil {
+		t.Fatalf("move still announced after the last member reconnected %v %v", m, e)
+	}
+	if _, e = s.ProveMovePassword(ctx, MovePasswordRequest{Username: "member", Password: "Testing2!"}); e == nil {
+		t.Fatal("the old password still works after reconnecting")
 	}
 	var name string
 	if e = s.db.QueryRow(`SELECT name FROM direct_profiles WHERE id=?`, member.PrimaryProfileID).Scan(&name); e != nil || name != "Member" {
@@ -245,5 +255,21 @@ func TestMemberDeviceSignOutRetainsBindingsAndOtherDevices(t *testing.T) {
 	raw, _ := json.Marshal(third)
 	if strings.Contains(string(raw), "deviceApprovalPending") {
 		t.Fatal("retired approval DTO")
+	}
+}
+
+// P2-66: a move that left nobody waiting (an owner alone, or everyone already back) is not
+// announced, so a fresh or fully reconnected Portico server never offers the old sign-in.
+func TestMoveWithNobodyWaitingIsNotAnnounced(t *testing.T) {
+	s, owner, _, _ := memberWithSession(t)
+	ctx := moveWebContext(t)
+	if m, e := s.PublicAccountMove(ctx); e != nil || m != nil {
+		t.Fatalf("fresh server announced a move %v %v", m, e)
+	}
+	if _, e := s.db.Exec(`INSERT INTO identity_moves(id,owner_id,owner_revision,from_kind,to_kind,start_over,stage,revision,people,devices,profiles,server_name,created_ms) VALUES('move-empty',?,1,'local','portico',0,'moving_to_portico',1,0,1,1,'Fixture',?)`, owner.Account.ID, time.Now().UnixMilli()); e != nil {
+		t.Fatal(e)
+	}
+	if m, e := s.PublicAccountMove(ctx); e != nil || m != nil {
+		t.Fatalf("a move with nobody waiting was announced %v %v", m, e)
 	}
 }

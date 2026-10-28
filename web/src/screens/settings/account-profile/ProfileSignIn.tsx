@@ -50,7 +50,16 @@ type ProfileSignInProps={
  * already in flight still finishes in the original security owner below. Local servers are unchanged. */
 export function ProfileSignIn(props:ProfileSignInProps){
  const providerReturn=useOriginalAccountSecurity();
- return props.signIn==='portico'&&!providerReturn?<PorticoAccountSignIn {...props}/>:<AccountSecurity {...props}/>;
+ // At web.getportico.tv the Portico Account session is this page's own, so its password, email and
+ // two-step are managed right here (22 Oct inline rule, P2-66). A server's own address has no
+ // Portico Account session and links to the account instead (H09).
+ const inline=props.signIn!=='portico'||providerReturn||porticoAccountHere();
+ return inline?<AccountSecurity {...props}/>:<PorticoAccountSignIn {...props}/>;
+}
+
+/** This page is served from the Portico Account's own address. */
+export function porticoAccountHere(page:Pick<Location,'origin'|'hostname'>=globalThis.location):boolean{
+ try{return browserAccountOrigin(import.meta.env,page)===page.origin;}catch{return false;}
 }
 
 function PorticoAccountSignIn({profiles,isCurrent,session}:ProfileSignInProps){

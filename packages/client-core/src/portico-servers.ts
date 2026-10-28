@@ -188,6 +188,13 @@ export async function leavePorticoServer(hosted:HostedRequestApi,hostedOrigin:st
  await hostedGate(hostedOrigin).run('interactive',()=>hosted.request(hostedEncodedRoutePath("server_leave", {"id": encodeURIComponent(serverId)}),'POST',hostedRouteBody("server_leave", {}),signal));
 }
 
+/** The owner retires an owned server at Hosted (`DELETE /v1/servers/{server}`): it leaves the
+ * owner's list and every member's. A member uses leavePorticoServer instead. */
+export async function removePorticoServer(hosted:HostedRequestApi,hostedOrigin:string,serverId:string,signal?:AbortSignal):Promise<void>{
+ if(!text(serverId,128))throw new CodedError('not_portico_server','This server is not a Portico server.');
+ await hostedGate(hostedOrigin).run('interactive',()=>hosted.request(hostedEncodedRoutePath("server_remove", {"server": encodeURIComponent(serverId)}),'DELETE',undefined,signal));
+}
+
 /** The server no longer admits this account: drop the server or go to sign-in. */
 export const isAccessRefused=(e:unknown):boolean=>e instanceof ApiError&&e.status===403&&e.code==='access_refused';
 /** A session the server's move to its own membership ended (server migration 0120). Not a

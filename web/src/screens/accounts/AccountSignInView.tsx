@@ -1,6 +1,7 @@
 import {useEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import {ApiError} from '@core/index.ts';
+import {moveOfferDays} from '@core/sign-in.ts';
 import type {TakeAccountMove} from '../../route-registry-arrival';
 import type {TakeAccountReturn} from '../../route-registry-return';
 import {router} from '../../router';
@@ -9,6 +10,7 @@ import {hasTwoStepSetup} from '../../platform/two-step-continuation';
 import type {BrowserAccountEntry} from '../../platform/account-entry';
 import {browserAppSessions} from '../../platform/server-connections';
 import {browserAccountOrigin} from '../../platform/account-origin';
+import {moveReconnected, rememberMoveReconnected} from '../../platform/move-reconnected';
 import {AuthError, AuthStage, LocalServerSignIn, PorticoServerSignIn} from '../../kit/accounts';
 import {RequiredPasswordDialog} from '../../kit/accounts/RequiredSetup';
 import {ServerChallenge} from '../../kit/accounts/ServerChallenge';
@@ -45,6 +47,9 @@ export function AccountSignInView({entry, form, takeReturn, takeMove, initialize
     const {id: accountId, username} = state.snapshot.account;
     rememberLocalAccount(localAccountStorage(), rememberedKey, {accountId, username});
   }, [entry, state, input, rememberedKey]);
+  // A browser that has reconnected to this server after its move never offers the old sign-in there again.
+  const reconnectedServer = state.memberMoveCompleted ? state.server?.id : undefined;
+  useEffect(() => {if (reconnectedServer) rememberMoveReconnected(reconnectedServer);}, [reconnectedServer]);
   const [recoveryChoice, setRecoveryChoice] = useState(false);
   const [recovery, setRecovery] = useState<RecoveryTarget>();
   const [porticoRecovery, setPorticoRecovery] = useState<RecoveryTarget>();
@@ -178,7 +183,7 @@ export function AccountSignInView({entry, form, takeReturn, takeMove, initialize
     onForgotPassword={state.invitation ? undefined : openRecovery}
     onMoveCode={state.server.move === 'to_local' && !state.invitation ? () => openMember('code') : undefined} />;
   if (state.phase === 'portico' && state.server?.signIn === 'portico') return <PorticoServerSignIn serverName={state.server.name} busy={busy} error={failure} onContinue={continuePortico}
-    moving={state.server.move === 'to_portico' && !state.invitation} onOldPassword={() => openMember('old-password')}
+    moveDays={state.server.move === 'to_portico' && !state.invitation && !moveReconnected(state.server.id) ? moveOfferDays(state.server.moveEndsAt) : undefined} onOldPassword={() => openMember('old-password')}
     onRecovery={state.invitation ? undefined : openPorticoRecovery}/>;
   if (!failure && (initializing || busy || state.phase === 'checking' || state.phase === 'profiles' || state.phase === 'ready')) return <AuthStage legal={false}>
     <p role="status">{defaultI18n.t(state.phase === 'profiles' || state.phase === 'ready' ? 'auth.loadingProfiles' : 'status.loading')}</p>

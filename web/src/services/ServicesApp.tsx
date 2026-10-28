@@ -29,6 +29,8 @@ type Context = {providerReturn?: boolean; account: ServicesAccount; bootstrap: S
 const ProviderFailureContext = createContext<Context['providerFailure']>(undefined);
 const root = createRootRouteWithContext<Context>()({component: ServicesRoot, notFoundComponent: InvalidLink});
 const home = createRoute({getParentRoute: () => root, path: '/', component: HomeRoute});
+// The app's own sign-in address at web.getportico.tv is the Portico Account sign-in (P2-66).
+const signIn = createRoute({getParentRoute: () => root, path: '/sign-in', component: HomeRoute});
 const workspace = createRoute({getParentRoute: () => root, path: '/account', component: AccountRoute,
   validateSearch: (value: Record<string, unknown>) => {
     const transaction = typeof value.identityTransaction === 'string' && /^[A-Za-z0-9_-]{1,160}$/.test(value.identityTransaction) ? value.identityTransaction : undefined;
@@ -43,7 +45,7 @@ const invitation = createRoute({getParentRoute: () => root, path: '/join', compo
 const claim = createRoute({getParentRoute: () => root, path: '/claim', component: ClaimStart});
 type ServicesRouter = ReturnType<typeof makeRouter>;
 function makeRouter(context: Context) {
-  return createRouter({routeTree: root.addChildren([home, workspace, device, reset, resetPassword, verify, claim, invitation]), context});
+  return createRouter({routeTree: root.addChildren([home, signIn, workspace, device, reset, resetPassword, verify, claim, invitation]), context});
 }
 // This router's types stay local. The server app remains the only global TanStack Register.
 export function ServicesApp({capture, invalidContinuation, join, plainShortJoin, signIn, owner, identityTransaction, providerFailure, providerReturn}: {capture?: LinkCapture; invalidContinuation?: boolean; join?: JoinLink; plainShortJoin?: boolean; signIn?: SignInCapture; owner?: HostedOwnerClaimCapture; identityTransaction?: string; providerFailure?: 'google' | 'apple' | 'unknown'; providerReturn?: boolean} = {}) {
@@ -75,7 +77,7 @@ function ServicesRoot() {
   if (state.phase === 'restoring') return <ServicesAuthStage><></></ServicesAuthStage>;
   // A signed-out account is a resolved opening too. Public email links and the
   // sign-in shell must retire the same static first paint as the server app.
-  const waitingForAuth = providerReturn || !session && (location.pathname === '/' || location.pathname === '/account');
+  const waitingForAuth = providerReturn || !session && (location.pathname === '/' || location.pathname === '/sign-in' || location.pathname === '/account');
   return <ProviderFailureContext.Provider value={providerFailure}><DocumentBootReady ready={Boolean(!waitingForAuth || state.phase === 'error' || providerFailure && session || invalidContinuation || state.invalidSignIn || state.invalidOwner)}>{state.phase === 'error'
     ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
       primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => { void bootstrap.start(); }}} />

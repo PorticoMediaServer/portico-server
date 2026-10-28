@@ -19,7 +19,7 @@ async function fixture(previous = session('previous')) {
   const events: string[] = [], retired: string[] = [];
   const store = new AppSessionStore({read: async () => raw, change: async update => {if (fail) throw new Error('fixture-write-failure');raw = update(raw);}});
   await store.connectionStorage(serverId, {signIn: 'local', expectedRevision: 0}).change(() => record(previous));
-  const next = session('admitted'), system = {id: serverId, name: 'Actual server', version: '1', signIn: 'local', move: null, setupRequired: false, hostedConfigured: false, hostedAttached: false};
+  const next = session('admitted'), system = {id: serverId, name: 'Actual server', version: '1', signIn: 'local', move: null, setupRequired: false, hostedConfigured: false, hostedAttached: false, apiLevel: 1};
   const snapshot = {authority: 'local', serverId, canManage: false, twoStepSetupRequired: true,
     capabilities: {manageAccount: false, managePeople: false, manageServer: false, manageSignIn: false},
     account: {id: 'account-a', username: 'actual-user', primaryProfileId: 'main', role: 'member', revision: 1, disabled: false, allowedLibraries: []},

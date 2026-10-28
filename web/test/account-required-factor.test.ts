@@ -12,7 +12,7 @@ function fixture() {
   const calls: {path: string; body: unknown}[] = [], admitted: string[] = [];
   let selections = 0, signIns = 0;
   const tokens: string[] = [];
-  const system = {id: serverId, name: 'Actual server', signIn: 'local', move: null, version: '1', setupRequired: false, hostedConfigured: false, hostedAttached: false};
+  const system = {id: serverId, name: 'Actual server', signIn: 'local', move: null, version: '1', setupRequired: false, hostedConfigured: false, hostedAttached: false, apiLevel: 1};
   const pin = {serverId, publicKey: 'p'.repeat(43), fingerprint: 'f'.repeat(43)};
   const snapshot = () => ({authority: 'local', serverId, canManage: !required,
     capabilities: {manageAccount: !required, managePeople: false, manageServer: false, manageSignIn: false},

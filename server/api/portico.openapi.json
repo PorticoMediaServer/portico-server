@@ -203440,6 +203440,11 @@
       },
       "GetSystemResponse": {
         "properties": {
+          "apiLevel": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "hostedAttached": {
             "type": "boolean"
           },
@@ -203456,6 +203461,16 @@
                   "to_portico",
                   "to_local"
                 ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "moveEndsAt": {
+            "anyOf": [
+              {
                 "type": "string"
               },
               {
@@ -203485,10 +203500,12 @@
           "name",
           "signIn",
           "move",
+          "moveEndsAt",
           "setupRequired",
           "hostedConfigured",
           "hostedAttached",
-          "version"
+          "version",
+          "apiLevel"
         ],
         "type": "object"
       },
@@ -742356,6 +742373,11 @@
               "application/json": {
                 "schema": {
                   "properties": {
+                    "apiLevel": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "hostedAttached": {
                       "type": "boolean"
                     },
@@ -742372,6 +742394,16 @@
                             "to_portico",
                             "to_local"
                           ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "moveEndsAt": {
+                      "anyOf": [
+                        {
                           "type": "string"
                         },
                         {
@@ -742401,10 +742433,12 @@
                     "name",
                     "signIn",
                     "move",
+                    "moveEndsAt",
                     "setupRequired",
                     "hostedConfigured",
                     "hostedAttached",
-                    "version"
+                    "version",
+                    "apiLevel"
                   ],
                   "type": "object"
                 }

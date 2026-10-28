@@ -1,6 +1,7 @@
 import {routePath} from '../../contracts/src/route-paths.ts';
 import {ApiError, type SystemInfo} from './index.ts';
 import {RouteError, routeOrigin, routeJSON} from './route-identity.ts';
+import {API_LEVEL} from '../../contracts/src/api-level.ts';
 import type {SignInKind} from './app-sessions.ts';
 
 export type ServerSignIn = Readonly<SystemInfo & {signIn: SignInKind}>;
@@ -10,11 +11,28 @@ const text = (v: unknown, max: number): v is string => typeof v === 'string' && 
 export function parseServerSignIn(raw: unknown): ServerSignIn {
   if (!object(raw) || !text(raw.id, 256) || !text(raw.name, 120) || !text(raw.version, 256) ||
       !['portico', 'local'].includes(String(raw.signIn)) || raw.move!==null&&!['to_portico','to_local'].includes(String(raw.move)) || typeof raw.setupRequired !== 'boolean' ||
-      typeof raw.hostedConfigured !== 'boolean' || typeof raw.hostedAttached !== 'boolean')
+      typeof raw.hostedConfigured !== 'boolean' || typeof raw.hostedAttached !== 'boolean' || !Number.isSafeInteger(raw.apiLevel) || (raw.apiLevel as number) < 1)
     throw new RouteError('invalid_system', 'This server did not report how to sign in.');
   if(raw.move==='to_portico'&&raw.signIn!=='portico'||raw.move==='to_local'&&raw.signIn!=='local')throw new RouteError('invalid_system','The server reported a different sign-in move.');
+  const moveEndsAt=raw.moveEndsAt===undefined||raw.moveEndsAt===null?null:typeof raw.moveEndsAt==='string'&&raw.moveEndsAt.length<=64&&raw.move==='to_portico'&&Number.isFinite(Date.parse(raw.moveEndsAt))?raw.moveEndsAt:undefined;
+  if(moveEndsAt===undefined)throw new RouteError('invalid_system','The server reported an unreadable move window.');
   return Object.freeze({id: raw.id, name: raw.name, version: raw.version, signIn: raw.signIn as SignInKind,move:raw.move as ServerSignIn['move'],
-    setupRequired: raw.setupRequired, hostedConfigured: raw.hostedConfigured, hostedAttached: raw.hostedAttached});
+    setupRequired: raw.setupRequired, hostedConfigured: raw.hostedConfigured, hostedAttached: raw.hostedAttached, apiLevel: raw.apiLevel as number, moveEndsAt});
+}
+/** Whole calendar days left to use the old sign-in during a move, counted on this device's
+ * calendar: 0 when it ends today, 1 when it ends tomorrow. Undefined when nothing is offered. */
+export function moveOfferDays(endsAt: string | null | undefined, now: Date = new Date()): number | undefined {
+  const end = endsAt ? new Date(endsAt) : undefined;
+  if (!end || !Number.isFinite(end.getTime()) || end.getTime() <= now.getTime()) return undefined;
+  const day = (value: Date) => Date.UTC(value.getFullYear(), value.getMonth(), value.getDate());
+  return Math.round((day(end) - day(now)) / 86_400_000);
+}
+/** Thrown before any sign-in when a server speaks another API level than this app. */
+export const API_LEVEL_MISMATCH = 'api_level_mismatch';
+/** Before release a client opens only a server of its own API level (P2-66 G-2). Older and
+ * newer servers alike are refused here, before credentials are sent or a session is stored. */
+export function assertSameApiLevel(system: Pick<ServerSignIn, 'apiLevel'>): void {
+  if (system.apiLevel !== API_LEVEL) throw new RouteError(API_LEVEL_MISMATCH, 'This server needs an update to work with this app.');
 }
 export const accountSignInKeys = Object.freeze({
   portico: 'accounts.signIn.portico', local: 'accounts.signIn.local', usesPortico: 'accounts.signIn.usesPortico',

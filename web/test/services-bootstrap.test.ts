@@ -1,14 +1,25 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {ServicesBootstrap} from '../src/services/bootstrap.ts';
-import {servicesBuildMode, servicesPaths} from '../src/services/mode.ts';
+import {hostedServicesPage} from '../src/services/mode.ts';
 import type {ServicesAccount} from '../src/services/session.ts';
 import type {ServicesLinkStore} from '../src/services/intake.ts';
 
-test('only both explicit Hosted switches select the Services entry', () => {
-  for (const env of [{}, {VITE_HOSTED_WEB: 'true'}, {VITE_ACCOUNT_WORKSPACE: 'true'}, {VITE_HOSTED_WEB: '1', VITE_ACCOUNT_WORKSPACE: 'true'}]) assert.equal(servicesBuildMode(env), false);
-  assert.equal(servicesBuildMode({VITE_HOSTED_WEB: 'true', VITE_ACCOUNT_WORKSPACE: 'true'}), true);
-  assert.deepEqual(servicesPaths, ['/', '/account', '/device', '/reset', '/reset-password', '/verify-email', '/claim', '/join']);
+test('web.getportico.tv starts Services only for account pages and the signed-out front door', async () => {
+  const none = async () => undefined, chosen = async () => ({serverId: 'a'}), broken = async () => {throw new Error('locked');};
+  const page = (pathname: string, search = '', hash = '') => ({pathname, search, hash});
+  for (const path of ['/account', '/device', '/reset', '/reset-password', '/verify-email', '/claim', '/join', '/sign-in', '/app/account-return'])
+    assert.equal(await hostedServicesPage(page(path), chosen), true, path);
+  for (const path of ['/servers', '/settings', '/item/x', '/profiles', '/library/a'])
+    assert.equal(await hostedServicesPage(page(path), none), false, path);
+  assert.equal(await hostedServicesPage(page('/'), none), true);
+  assert.equal(await hostedServicesPage(page('/'), broken), true);
+  assert.equal(await hostedServicesPage(page('/'), chosen), false);
+  assert.equal(await hostedServicesPage(page('/', '', '#signIn=abc'), chosen), true);
+  assert.equal(await hostedServicesPage(page('/', '', '#join'), chosen), true);
+  assert.equal(await hostedServicesPage(page('/', '?mode=forgot'), chosen), true);
+  assert.equal(await hostedServicesPage(page('/', '?identityError=google'), chosen), true);
+  assert.equal(await hostedServicesPage(page('/', '', '#other'), chosen), false);
 });
 
 function ports(signedIn = false) {

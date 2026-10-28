@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+
+	"portico.local/server/internal/identity"
 )
 
 // browserOriginAllowed decides whether a browser page on origin may make this
@@ -14,10 +16,12 @@ import (
 //   - the server's own web app, at whatever address the browser used (an IP,
 //     a hostname, a .local name, IPv6, or behind a reverse proxy), and the
 //     built-in Portico web and Cast pages may make any request;
-//   - any other origin may call the API with a token: an API key, a personal
-//     access token or a session token in Authorization, or a media grant in
-//     the path. Preflights are answered for every origin, since they carry no
-//     credential and the real request is checked again here.
+//   - any other origin may call the API with a key of its own: an API key or a
+//     personal access token in Authorization, or a media grant in the path.
+//     A sign-in session never works from another origin: sessions are held
+//     only by the Portico pages above, so a session token presented elsewhere
+//     was taken from them. Preflights are answered for every origin, since they
+//     carry no credential and the real request is checked again here.
 //
 // Nothing is ever allowed with credentials (no Access-Control-Allow-Credentials),
 // and a cookie sent with another origin's request is dropped before anything
@@ -33,13 +37,19 @@ func (d Dependencies) browserOriginAllowed(r *http.Request, origin string) bool 
 	return tokenCredentialPresented(r)
 }
 
-// tokenCredentialPresented reports whether the request carries a bearer
-// credential of its own, without deciding whether it is valid (the route's
-// authentication does that).
+// tokenCredentialPresented reports whether the request carries a key of its
+// own that any origin may use, without deciding whether it is valid (the
+// route's authentication does that). A session token does not count.
 func tokenCredentialPresented(r *http.Request) bool {
 	// A key or token in the address of a GET or HEAD is already here: the
 	// router moves it into Authorization (liftQueryCredential) before this runs.
-	if strings.TrimSpace(r.Header.Get("Authorization")) != "" {
+	if headers := r.Header.Values("Authorization"); len(headers) > 0 {
+		for _, header := range headers {
+			token, ok := strings.CutPrefix(strings.TrimSpace(header), "Bearer ")
+			if !ok || !identity.CredentialShaped(token) {
+				return false
+			}
+		}
 		return true
 	}
 	if r.Method == http.MethodGet || r.Method == http.MethodHead {

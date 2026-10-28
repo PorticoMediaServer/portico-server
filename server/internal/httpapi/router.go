@@ -1019,12 +1019,17 @@ func New(d Dependencies) http.Handler {
 			failure(w, err)
 			return
 		}
-		move, err := d.Identity.PublicAccountMove(r.Context())
+		move, ends, err := d.Identity.PublicAccountMoveWindow(r.Context())
 		if err != nil {
 			failure(w, err)
 			return
 		}
-		write(w, 200, SystemInfo{Move: move, ID: d.Identity.ID(), Name: d.Identity.Name(), SignIn: kind, SetupRequired: d.Identity.SetupRequired(), HostedConfigured: d.Hosted != nil && d.Hosted.Configured(), HostedAttached: d.Identity.Hosted(), Version: buildinfo.Info()["version"]})
+		var moveEnds *string
+		if !ends.IsZero() {
+			value := ends.Format(time.RFC3339)
+			moveEnds = &value
+		}
+		write(w, 200, SystemInfo{Move: move, MoveEndsAt: moveEnds, ID: d.Identity.ID(), Name: d.Identity.Name(), SignIn: kind, SetupRequired: d.Identity.SetupRequired(), HostedConfigured: d.Hosted != nil && d.Hosted.Configured(), HostedAttached: d.Identity.Hosted(), Version: buildinfo.Info()["version"], APILevel: APILevel})
 	})
 	d.httpHandle(mux, "GET /v1/me", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.principal(r)

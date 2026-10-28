@@ -7,6 +7,7 @@ import {discardTwoStepSetup, requestTwoStepSetup} from '../../platform/two-step-
 import {router} from '../../router';
 import {AccountSignInForm} from './sign-in-form';
 import {AccountSignInView} from './AccountSignInView';
+import {currentWebEnvironment} from '../../platform/environment';
 
 type Instance = Readonly<{entry: BrowserAccountEntry; form: AccountSignInForm; continuation: boolean}>;
 
@@ -36,4 +37,11 @@ function SignInScreen() {
   }, []);
   return instance ? <AccountSignInView entry={instance.entry} form={instance.form} initialize={!instance.continuation} takeReturn={takeAccountReturn} takeMove={takeAccountMove} /> : null;
 }
-export default defineWebScreen({id: 'signIn', component: SignInScreen, chrome: 'standalone'});
+/** At web.getportico.tv a server is signed in to from the account's chooser (P2-66); the
+ * Portico Account sign-in itself is the account page at this same address. */
+function HostedSignIn() {
+  useLayoutEffect(() => {void router.navigate({to: '/servers', replace: true});}, []);
+  return null;
+}
+function SignInRoute() {return currentWebEnvironment().hostedWeb ? <HostedSignIn /> : <SignInScreen />;}
+export default defineWebScreen({id: 'signIn', component: SignInRoute, chrome: 'standalone'});
