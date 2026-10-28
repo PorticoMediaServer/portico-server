@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"path/filepath"
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/compactcatalog"
@@ -132,11 +133,12 @@ func (s *Service) completeDeliveryInputTx(ctx context.Context, tx *sql.Tx, p ide
 	if !catalogued {
 		return nil
 	}
-	// Only a source resolved from a checked title offer or immutable live-session
-	// pin may enter here. Reloading the physical asset would replace its title.
+	// Only a source resolved from a checked title offer, an immutable live-session
+	// pin or a STRM's measured facts may enter here. Reloading the physical
+	// asset would replace its title, or a STRM's media with its descriptor.
 	if len(boundDisc) > 0 && boundDisc[0] != nil {
 		input.Source = boundDisc[0]
-		input.Disc = true
+		input.Disc = !boundDisc[0].Remote
 		var err error
 		input.ExcludedByEngine, err = routeFailuresTx(ctx, tx, p, input.SourceID)
 		return err
@@ -211,7 +213,7 @@ type planInputs struct {
 // records every input. Sessions (legacy and v1) and the v1 plan preview share it,
 // which is what makes "the same request and profile always produce the same plan"
 // true across them.
-func (s *Service) planInputsTx(ctx context.Context, tx *sql.Tx, p identity.Principal, item, aid, container, video, audio string, duration float64, remote, catalogued bool, explicitAudio *int, v1 *V1Choice) (planInputs, error) {
+func (s *Service) planInputsTx(ctx context.Context, tx *sql.Tx, p identity.Principal, item, aid, container, video, audio string, duration float64, remote *DeliverySource, catalogued bool, explicitAudio *int, v1 *V1Choice) (planInputs, error) {
 	if v1 == nil {
 		v1 = &V1Choice{}
 	}
@@ -245,12 +247,18 @@ func (s *Service) planInputsTx(ctx context.Context, tx *sql.Tx, p identity.Princ
 				break
 			}
 		}
+	} else if remote != nil {
+		// A STRM is planned from what the server measured of its target.
+		measured = remote
+		if remote.Video != nil {
+			sourceHeight = remote.Video.Height
+		}
 	} else if e := tx.QueryRow(`SELECT COALESCE(a.height,0),COALESCE((SELECT f.color_transfer FROM asset_streams f WHERE f.asset_id=a.token AND f.type='video' ORDER BY f.stream_index LIMIT 1),''),COALESCE((SELECT f.color_primaries FROM asset_streams f WHERE f.asset_id=a.token AND f.type='video' ORDER BY f.stream_index LIMIT 1),'') FROM catalog_assets a WHERE a.token=?`, aid).Scan(&sourceHeight, &transfer, &primaries); e != nil {
 		return planInputs{}, e
 	}
 	hardware := preparedDelivery.hardware
 	target := v1.target(policy, cfg)
-	input := DeliveryInput{SourceID: aid, Container: container, VideoCodec: video, AudioCodec: audio, Duration: duration, Height: sourceHeight, ColorTransfer: transfer, ColorPrimaries: primaries, Remote: remote, Policy: policy, Target: target, Config: cfg, TranscodingEnabled: ownerTranscoding, Hardware: hardware}
+	input := DeliveryInput{SourceID: aid, Container: container, VideoCodec: video, AudioCodec: audio, Duration: duration, Height: sourceHeight, ColorTransfer: transfer, ColorPrimaries: primaries, Remote: remote != nil, Policy: policy, Target: target, Config: cfg, TranscodingEnabled: ownerTranscoding, Hardware: hardware}
 	// The caller authorized this public title in this transaction. The
 	// catalogue's accepted publication is the sole original-language source.
 	originalLanguage, err := publishedOriginalLanguageTx(ctx, tx, item)
@@ -291,12 +299,8 @@ func (s *Service) planInputsTx(ctx context.Context, tx *sql.Tx, p identity.Princ
 			return planInputs{}, err
 		}
 		// Apply after same-as-source normalization, which may remove only the
-		// viewer's chosen rung, never an account's independent ceiling.
-		// STRM preflight currently has no trustworthy peak-rate evidence and
-		// its byte relay cannot convert. Never advertise an unprovable cap.
-		if remote && ceiling.MaxVideoBitrateBPS > 0 {
-			return planInputs{}, ErrQualityUnavailable
-		}
+		// viewer's chosen rung, never an account's independent ceiling. A STRM
+		// over the ceiling is converted like any other file.
 		input.Target = narrowMemberTarget(input.Target, ceiling)
 	}
 	return planInputs{input: input, cfg: cfg, values: values, ownerTranscoding: ownerTranscoding}, nil
@@ -473,9 +477,10 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 		if revision != prepared.networkRevision {
 			return Session{}, identity.ErrUnauthorized
 		}
-		video, audio, duration = prepared.facts.VideoCodec, prepared.facts.AudioCodec, prepared.facts.Duration
+		var width, height int
+		video, audio, width, height, duration = prepared.facts.summary()
 		mode = "remote"
-		if _, _, e = compactcatalog.UpsertAssetTx(ctx, tx, compactcatalog.Asset{Path: sourcePath, Size: assetSize, ModifiedNS: assetModified, Container: container, VideoCodec: video, AudioCodec: audio, Width: prepared.facts.Width, Height: prepared.facts.Height, Duration: duration}); e != nil {
+		if _, _, e = compactcatalog.UpsertAssetTx(ctx, tx, compactcatalog.Asset{Path: sourcePath, Size: assetSize, ModifiedNS: assetModified, Container: container, VideoCodec: video, AudioCodec: audio, Width: width, Height: height, Duration: duration}); e != nil {
 			return Session{}, e
 		}
 		// The probe refreshed the asset's facts; re-derive availability from it.
@@ -488,7 +493,12 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 		}
 	}
 	explicitAudio := v1.AudioStream
-	inputs, e := s.planInputsTx(ctx, tx, p, item, aid, container, video, audio, duration, mode == "remote", derivative == nil && mode != "remote", explicitAudio, v1)
+	var remoteSource *DeliverySource
+	if mode == "remote" {
+		measured := prepared.facts.source(aid)
+		remoteSource = &measured
+	}
+	inputs, e := s.planInputsTx(ctx, tx, p, item, aid, container, video, audio, duration, remoteSource, derivative == nil, explicitAudio, v1)
 	if e != nil {
 		return Session{}, e
 	}
@@ -517,8 +527,10 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 		if s.hls == nil {
 			return Session{}, ErrIncompatible
 		}
-		mode = "hls"
-
+		if remoteSource != nil && (s.hls.WindowInputs == nil || prepared.subtitleEvidence == "") {
+			// A STRM's HLS reads the retained remote version, nothing else.
+			return Session{}, ErrIncompatible
+		}
 	}
 
 	replacing := ""
@@ -596,7 +608,7 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 	if e != nil {
 		return Session{}, e
 	}
-	pinResult, e := tx.Exec(`INSERT INTO playback_source_pins SELECT ?,token,size,modified_ns FROM catalog_assets WHERE token=?`, id, aid)
+	pinResult, e := tx.Exec(`INSERT INTO playback_source_pins(session_id,asset_id,size,modified_ns) SELECT ?,token,size,modified_ns FROM catalog_assets WHERE token=?`, id, aid)
 	if e != nil {
 		return Session{}, e
 	}
@@ -612,7 +624,7 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 			return Session{}, e
 		}
 	}
-	if mode == "remote" && prepared.subtitleEvidence != "" {
+	if remoteSource != nil && prepared.subtitleEvidence != "" {
 		if _, e = tx.Exec(`INSERT INTO subtitle_remote_sessions VALUES(?,?)`, id, prepared.subtitleEvidence); e != nil {
 			return Session{}, e
 		}
@@ -631,8 +643,14 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 	if e = persistDeliveryPlan(tx, id, &delivery); e != nil {
 		return Session{}, e
 	}
-	if mode == "remote" {
-		if _, e = tx.Exec(`INSERT INTO remote_playback VALUES(?,?,?)`, id, prepared.descriptorDigest, prepared.networkRevision); e != nil {
+	if remoteSource != nil {
+		// Relayed, remuxed or converted, every STRM session keeps the facts it
+		// was planned from; its re-plans read them, never the catalogue row.
+		facts, e := prepared.facts.encode()
+		if e != nil {
+			return Session{}, e
+		}
+		if _, e = tx.Exec(`INSERT INTO remote_playback(session_id,descriptor_digest,network_revision,facts_json) VALUES(?,?,?,?)`, id, prepared.descriptorDigest, prepared.networkRevision, facts); e != nil {
 			return Session{}, e
 		}
 	}
@@ -720,6 +738,12 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 			return Session{}, e
 		}
 	}
+	discSession := v1.discBorrow != nil
+	if !discSession {
+		if discSession, e = hasDiscSessionTx(ctx, tx, id); e != nil {
+			return Session{}, e
+		}
+	}
 	if v1.discBorrow != nil {
 		if _, e = tx.ExecContext(ctx, `INSERT INTO playback_physical_source_pins(session_id,source_id,incarnation,configuration_generation) VALUES(?,?,?,?)`, id, measuredDisc.Source.LibrarySourceID, measuredDisc.Source.Incarnation, measuredDisc.Source.LibraryGeneration); e != nil {
 			return Session{}, e
@@ -734,8 +758,17 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 		if e = v1.discBorrow.bindSubtitleResourcesTx(ctx, tx, s, p, item, automatic); e != nil {
 			return Session{}, e
 		}
-	} else if _, e = tx.ExecContext(ctx, `INSERT INTO playback_physical_source_pins SELECT ?,source.id,source.incarnation,source.generation FROM inventory_objects object JOIN library_sources source ON source.id=object.source_id JOIN catalog_entities item ON item.id=? JOIN catalog_libraries cl ON cl.id=item.library_id AND cl.library_id=source.library_id WHERE object.asset_id=? AND object.retired=0 AND object.state='available' AND object.root_incarnation=source.incarnation AND source.enabled=1 ORDER BY source.id LIMIT 1`, id, entityID, aid); e != nil {
+	} else if _, e = tx.ExecContext(ctx, `INSERT INTO playback_physical_source_pins SELECT ?,source.id,source.incarnation,source.generation FROM inventory_objects object JOIN library_sources source ON source.id=object.source_id JOIN catalog_entities item ON item.id=? JOIN catalog_libraries cl ON cl.id=item.library_id AND cl.library_id=source.library_id WHERE object.asset_id=? AND object.retired=0 AND object.state='available' AND object.root_incarnation=source.incarnation AND source.enabled=1
+ AND (? OR (object.size=(SELECT size FROM catalog_assets WHERE token=object.asset_id) AND object.modified_ns=(SELECT modified_ns FROM catalog_assets WHERE token=object.asset_id)
+ AND source.kind IN('local','remote') AND source.identity_confirmed=1 AND source.health NOT IN('offline','root_changed','removing') AND source.root_identity!='' AND object.object_identity!=''
+ AND rtrim(source.root,?)||?||object.relative_path=(SELECT path FROM catalog_assets WHERE token=object.asset_id)))
+ ORDER BY source.id,object.id LIMIT 1`, id, entityID, aid, discSession, string(filepath.Separator), string(filepath.Separator)); e != nil {
 		return Session{}, e
+	}
+	if !discSession {
+		if e = assets.PinPlaybackBindingTx(ctx, tx, id); e != nil {
+			return Session{}, e
+		}
 	}
 	if e = gated.Commit(); e != nil {
 		return Session{}, e

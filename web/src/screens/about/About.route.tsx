@@ -1,3 +1,4 @@
+import {useShellFacts} from '../../shell/fact-hooks';
 import {useState} from 'react';
 import {defaultI18n} from '@i18n';
 import {defineWebScreen} from '../../route-registry';
@@ -11,6 +12,7 @@ import styles from './about.module.css';
 const t = defaultI18n.t;
 function About() {
   const captured = useProtectedWebScreenContext(), feedback = useWebAction('feedback');
+  useShellFacts(captured?.context);
   const [licenses, setLicenses] = useState(false);
   if (!captured) return null;
   const identity = captured.context.facts.identity;

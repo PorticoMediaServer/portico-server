@@ -57,7 +57,7 @@ func rcloneSourceFailure(err error) error {
 func registerRcloneSourceSave(registry *apikit.Registry, d Dependencies) {
 	registerRcloneSourceEdit(registry, d)
 	registerRcloneSourceRemoval(registry, d)
-	v1Route(registry, apikit.Metadata{ID: "get_storage_source_rclone_operation", Method: "GET", Path: "/v1/storage/sources/rclone/operations/{id}", Summary: "Recover an imported rclone source save receipt", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneBrowsing, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "administration_unavailable", "storage_command_conflict", "storage_operation_expired", "internal"}}, func(ctx context.Context, r *http.Request, _ struct{}) (RcloneSourceResponse, error) {
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_storage_source_rclone_operation", Method: "GET", Path: "/v1/storage/sources/rclone/operations/{id}", Summary: "Recover an imported rclone source save receipt", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneBrowsing, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "administration_unavailable", "storage_command_conflict", "storage_operation_expired", "internal"}}, func(ctx context.Context, r *http.Request, _ struct{}) (RcloneSourceResponse, error) {
 		p, scope, err := d.storageOwner(r)
 		if err != nil {
 			return RcloneSourceResponse{}, rcloneSourceFailure(err)
@@ -78,7 +78,7 @@ func registerRcloneSourceSave(registry *apikit.Registry, d Dependencies) {
 		}
 		return RcloneSourceResponse{Scope: scope, Receipt: receipt}, nil
 	})
-	v1Route(registry, apikit.Metadata{ID: "create_storage_source_rclone", Method: "POST", Path: "/v1/storage/sources/rclone", Summary: "Save an imported rclone source using the bundled program", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdminLong, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "source_credentials_required", "administration_unavailable", "storage_command_conflict", "storage_operation_expired", "storage_command_capacity", "storage_allocation_recovery_required", "request_in_progress", "internal"}}, func(ctx context.Context, r *http.Request, in mounts.RcloneSourceInput) (RcloneSourceResponse, error) {
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, ID: "create_storage_source_rclone", Method: "POST", Path: "/v1/storage/sources/rclone", Summary: "Save an imported rclone source using the bundled program", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdminLong, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "source_credentials_required", "administration_unavailable", "storage_command_conflict", "storage_operation_expired", "storage_command_capacity", "storage_allocation_recovery_required", "request_in_progress", "internal"}}, func(ctx context.Context, r *http.Request, in mounts.RcloneSourceInput) (RcloneSourceResponse, error) {
 		p, scope, err := d.storageOwner(r)
 		if err != nil {
 			return RcloneSourceResponse{}, rcloneSourceFailure(err)

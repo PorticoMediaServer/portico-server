@@ -194,6 +194,6 @@ func (d Dependencies) readingDiscover(w http.ResponseWriter, r *http.Request) {
 // operation; the vocabulary is a rows-only payload of the existing item shape.
 func registerReadingDiscoverHTTPContract(registry *apikit.Registry) error {
 	errors := []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_required", "revision_mismatch", "request_in_progress", "body_too_large", "internal"}
-	m := apikit.Metadata{ID: "get_reading_discover", Method: "GET", Path: "/v1/reading/discover", Summary: "Read the server-composed Discover rows", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Errors: errors, Query: []string{"libraryId", "limit", "seriesLimit", "shortReadsLimit", "newIssuesLimit", "newspaperLimit", "row", "cursor"}}
+	m := apikit.Metadata{Audience: apikit.Clients, ID: "get_reading_discover", Method: "GET", Path: "/v1/reading/discover", Summary: "Read the server-composed Discover rows", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Errors: errors, Query: []string{"libraryId", "limit", "seriesLimit", "shortReadsLimit", "newIssuesLimit", "newspaperLimit", "row", "cursor"}}
 	return apikit.RegisterHTTP[struct{}, ReadingDiscoverResponse](registry, m)
 }

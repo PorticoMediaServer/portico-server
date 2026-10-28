@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"strings"
@@ -75,6 +76,15 @@ func (s *Service) SummarizeLibraries(ctx context.Context, viewer Viewer, librari
 // librarySummary retains the original current-snapshot response composition.
 func (s *Service) librarySummary(ctx context.Context, viewer Viewer, library Library) (LibrarySummary, error) {
 	core, err := s.reusableLibrarySummaryCore(ctx, viewer, library)
+	if errors.Is(err, ErrReadingProjectionChanged) && isReadingLibrary(library.Kind) {
+		// The rail needs base titles, not exact author/series membership. Keep
+		// serving it while that projection builds, under the same live policy
+		// and supported publication/link checks. Never cache an unfinished view.
+		reading := &readingBrowseScope{kind: library.Kind, mobi: library.Kind == "book" && s.readingMobiConfigured()}
+		if err = s.read().QueryRowContext(ctx, `SELECT id FROM catalog_libraries WHERE library_id=? AND retired=0`, library.ID).Scan(&reading.library); err == nil {
+			core, err = s.computeLibrarySummaryCandidates(ctx, viewer, library, reading, true)
+		}
+	}
 	if err != nil {
 		return LibrarySummary{}, err
 	}
@@ -148,6 +158,10 @@ func (s *Service) computeLibrarySummaryCore(ctx context.Context, viewer Viewer, 
 }
 
 func (s *Service) computeLibrarySummaryCoreWithReading(ctx context.Context, viewer Viewer, library Library, reading *readingBrowseScope) (librarySummaryCore, error) {
+	return s.computeLibrarySummaryCandidates(ctx, viewer, library, reading, false)
+}
+
+func (s *Service) computeLibrarySummaryCandidates(ctx context.Context, viewer Viewer, library Library, reading *readingBrowseScope, partial bool) (librarySummaryCore, error) {
 	out := librarySummaryCore{Counts: []LibraryKindCount{}, Empty: true}
 	kinds := summaryKinds(library.Kind)
 	clause, args := EntityRestrictionSQL("e.id", viewer.Restrictions)
@@ -164,9 +178,11 @@ func (s *Service) computeLibrarySummaryCoreWithReading(ctx context.Context, view
 		// artwork must additionally belong to the same ready Reading membership
 		// and canonical publication/link/format choice as Browse. Availability
 		// does not exclude an otherwise eligible Reading title.
-		clause = "(" + clause + ") AND " + reading.eligibleSQL("e.id") +
-			" AND EXISTS(SELECT 1 FROM reading_attribution_members m WHERE " + reading.memberScope() + " AND m.item_id=e.id)"
-		if library.Kind == "book" {
+		clause = "(" + clause + ") AND " + reading.eligibleSQL("e.id")
+		if !partial {
+			clause += " AND EXISTS(SELECT 1 FROM reading_attribution_members m WHERE " + reading.memberScope() + " AND m.item_id=e.id)"
+		}
+		if library.Kind == "book" && !partial {
 			publicationTypeSQL = `(SELECT m.publication_type FROM reading_attribution_members m WHERE ` + reading.memberScope() + ` AND m.item_id=e.id)`
 		}
 	}
@@ -243,16 +259,16 @@ func (s *Service) computeLibrarySummaryCoreWithReading(ctx context.Context, view
 	if err != nil {
 		return out, err
 	}
-	out.EmptyKnown = true
+	out.EmptyKnown = !partial
 	for _, n := range visited {
 		if n > librarySummaryCap {
 			out.EmptyKnown = false
 		}
 	}
 	for _, kind := range kinds {
-		out.Counts = append(out.Counts, LibraryKindCount{Kind: kind, Count: counts[kind], AtLeast: visited[kind] > librarySummaryCap})
+		out.Counts = append(out.Counts, LibraryKindCount{Kind: kind, Count: counts[kind], AtLeast: partial || visited[kind] > librarySummaryCap})
 	}
-	if library.Kind == "book" {
+	if library.Kind == "book" && !partial {
 		for _, kind := range []string{"book", "magazine", "newspaper"} {
 			out.PublicationCounts = append(out.PublicationCounts, LibraryKindCount{Kind: kind, Count: publicationCounts[kind], AtLeast: visited["ebook"] > librarySummaryCap})
 		}

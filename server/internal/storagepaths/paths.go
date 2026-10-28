@@ -23,6 +23,27 @@ type Options struct {
 	Mounts                                                   []Mount
 }
 
+// AllowsTranscodeDirectory keeps container output within its two documented
+// writable conversion roots. The disk folder remains configurable within them.
+func (l Layout) AllowsTranscodeDirectory(path string) bool {
+	if path == "" {
+		return true
+	}
+	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
+		return false
+	}
+	if !l.Container {
+		return true
+	}
+	for _, root := range []string{"/transcode", filepath.Join(l.Data, "Transcode")} {
+		rel, err := filepath.Rel(root, path)
+		if err == nil && (rel == "." || filepath.IsLocal(rel)) {
+			return true
+		}
+	}
+	return false
+}
+
 // Resolve is pure; the caller obtains service/container identity and mountinfo.
 func Resolve(o Options) (Layout, error) {
 	platform := o.Platform
@@ -49,16 +70,16 @@ func Resolve(o Options) (Layout, error) {
 		if strings.Contains(base, `\`) {
 			sep = `\`
 		}
-		data, transcode = strings.TrimRight(base, `/\`)+sep+"Portico", strings.TrimRight(base, `/\`)+sep+"Portico Transcode"
+		data = strings.TrimRight(base, `/\`) + sep + "Portico"
 	case platform == "darwin":
-		data, transcode = filepath.Join(o.Home, "Library", "Application Support", "Portico"), filepath.Join(o.Home, "Library", "Caches", "Portico Transcode")
+		data = filepath.Join(o.Home, "Library", "Application Support", "Portico")
 	case o.Service:
-		data, transcode = "/var/lib/portico", "/var/cache/portico"
+		data = "/var/lib/portico"
 	default:
 		if o.Home == "" {
 			return Layout{}, errors.New("user home is unavailable")
 		}
-		data, transcode = filepath.Join(o.Home, ".local", "share", "portico"), filepath.Join(o.Home, ".cache", "portico")
+		data = filepath.Join(o.Home, ".local", "share", "portico")
 	}
 	if o.DataDirectory != "" {
 		data = o.DataDirectory
@@ -69,9 +90,16 @@ func Resolve(o Options) (Layout, error) {
 		}
 		data = filepath.Clean(data)
 	}
+	if !o.Container {
+		if platform == "windows" && runtime.GOOS != "windows" && strings.Contains(data, `\`) {
+			transcode = strings.TrimRight(data, `\/`) + `\Transcode`
+		} else {
+			transcode = filepath.Join(data, "Transcode")
+		}
+	}
 	l := At(data)
 	l.Container = o.Container
-	if o.Container && (!IsMount("/transcode", o.Mounts) || MemoryFilesystem(Filesystem("/transcode", o.Mounts))) {
+	if o.Container && !IsMount("/transcode", o.Mounts) {
 		transcode = filepath.Join(data, "Transcode")
 		l.TranscodeFallback = true
 	}

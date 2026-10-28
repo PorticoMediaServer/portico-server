@@ -14,6 +14,7 @@ import (
 )
 
 var ErrOwnerCollision = errors.New("owner change target already exists locally")
+var ErrClaimMoveRequired = errors.New("Local sign-in requires a confirmed move to Portico Account")
 
 type LocalOwner struct {
 	SetupOperationID string
@@ -283,6 +284,18 @@ func (s *SQLiteStore) PreparePurpose(ctx context.Context, b Binding, owner Local
 	}
 	tx := gated3.Tx()
 	defer gated3.Rollback()
+	// Setup cannot enroll an already Local server. Its owner must use the
+	// confirmed switch flow, even when a move preview already exists. Refuse
+	// before creating (or replaying) an intent that HTTP transport cannot send.
+	if purpose.Purpose == "setup" {
+		var local bool
+		if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM identity_state WHERE singleton=1 AND sign_in_kind='local')`).Scan(&local); e != nil {
+			return Intent{}, e
+		}
+		if local {
+			return Intent{}, ErrClaimMoveRequired
+		}
+	}
 	id, e := readIdentity(ctx, tx)
 	if e != nil {
 		return Intent{}, e

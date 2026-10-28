@@ -1,3 +1,6 @@
+import {forwardIdentity} from '../detail/context';
+import {subscribeFacts} from '../../shell/fact-source';
+import {subscribePresentation, useShellFacts} from '../../shell/fact-hooks';
 import {useLayoutEffect, useRef, useState} from 'react';
 import {defaultI18n} from '@i18n';
 import {DVRClient, defaultRecordingOptions, type Recording} from '@core/dvr.ts';
@@ -54,10 +57,10 @@ function chromeScope(context: ShellAssemblyContext) {
 }
 function chromeScreen(context: ShellAssemblyContext): ScreenContext {
   const session = context.session();
-  return {api: context.api, events: context.events, artwork: context.artwork, identity: context.facts.identity,
+  return {api: context.api, events: context.events, artwork: context.artwork, get identity() {return context.facts.identity;}, subscribeIdentity: listener => subscribeFacts(context, listener),
     scope: {serverId: session.viewer.serverId, viewerId: JSON.stringify([session.viewer.authority, session.viewer.accountId, session.viewer.profileId])},
     isCurrent: context.isCurrent,
-    preferences: {getSnapshot: () => context.preferences?.getSnapshot() ?? context.facts.preferences, subscribe: listener => context.preferences?.subscribe(listener) ?? (() => {})},
+    preferences: {getSnapshot: () => context.preferences?.getSnapshot() ?? context.facts.preferences, subscribe: listener => subscribePresentation(context, listener)},
     effects: {reportError: () => {}, openEntry: () => {}, openSettings: () => {}, openHome: () => {}, play: async () => {}}};
 }
 
@@ -72,13 +75,14 @@ function chromeScreen(context: ShellAssemblyContext): ScreenContext {
  */
 export function useLiveChromePort(context: ShellAssemblyContext | undefined, runtime: WebShellPlaybackRuntime | undefined, snapshot: WebPlaybackRuntimeSnapshot | undefined,
   skips: Readonly<{back: number; forward: number}>): LiveChromePort | undefined {
+  useShellFacts(context);
   const scopeKey = context ? chromeScope(context) : '';
   const [publishedChrome, publishChrome] = useState<ChromeAuthority>();
   useLayoutEffect(() => {
     if (!context || !scopeKey) return;
     let chromeLive = true;
     const base = chromeScreen(context);
-    const screen: ScreenContext = {...base, isCurrent: () => chromeLive && context.isCurrent()};
+    const screen: ScreenContext = forwardIdentity(base, {isCurrent: () => chromeLive && context.isCurrent()});
     const life = screenLifetime(screen);
     const client = new DVRClient(life.api, screen.scope.serverId, randomHex);
     const held: ChromeAuthority = {id: crypto.randomUUID(), scopeKey, context, live: true, screen, life, client};

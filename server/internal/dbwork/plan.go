@@ -18,8 +18,9 @@ import (
 )
 
 // A WritePlan is the work one gated write transaction is allowed: the rows it
-// changes (counting every trigger and foreign-key action), the pages it writes
-// to the WAL, and the SQLite VM operations it runs. The writer is a single
+// changes (counting every trigger and foreign-key action), the cache-page writes it makes, and the SQLite VM operations it runs.
+// Actual WAL bytes (including spills/rollback/reuse) have a separate VFS
+// counter and source-qualified reservation ledger in wal_reservation.go. The writer is a single
 // non-preemptive connection, so one transaction that does a thousand times the
 // usual work holds every other writer — sign-in, playback stop, a security
 // fence — for a thousand times as long.
@@ -48,8 +49,8 @@ type WritePlan struct {
 	// Rows bounds rows inserted, updated or deleted, including trigger and
 	// foreign-key programs. Zero means unbounded.
 	Rows int64
-	// Pages bounds pages written to the WAL (4 KiB each at the default page
-	// size), including index and commit overhead. Zero means unbounded.
+	// Pages budgets SQLite cache-page writes. It is telemetry, not actual
+	// WAL-byte accounting or a source proof. Zero means unbounded.
 	Pages int64
 	// VMOps bounds SQLite VM operations across every statement of the
 	// transaction. Zero means unbounded.
@@ -61,12 +62,15 @@ type WritePlan struct {
 
 // Default budgets, from the writer-discipline design (F §4): at most 32
 // accepted units and 128 child effects, so 160 changed rows; a WAL reservation
-// of 128 KiB for a security fence, 512 KiB for user work and 1 MiB for
-// background work; and 250,000 VM operations.
+// of 256 KiB for a security fence, 512 KiB for user work and 1 MiB for
+// background work; and 250,000 VM operations. The design's 128 KiB fence was
+// too small for this schema: identity fences touch many indexed tables and
+// measure 34–66 pages (136–264 KiB), so the fence budget is 256 KiB. Budgets
+// are telemetry, never a refusal.
 const (
 	planRows          = 160
 	planVMOps         = 250_000
-	planPagesSecurity = 128 * 1024 / 4096
+	planPagesSecurity = 256 * 1024 / 4096
 	planPagesUser     = 512 * 1024 / 4096
 	planPagesBulk     = 1024 * 1024 / 4096
 )
@@ -129,11 +133,14 @@ type writeMeter struct {
 	vmStart, pagesStart int64
 	vmEnd, pagesEnd     int64
 	started, ended      bool
+	walStart            uint64
+	walKnown            bool
+	wal                 *walRequest
 }
 
 type meterKey struct{}
 
-// connCounters reads a driver connection's cumulative VM operations and WAL
+// connCounters reads a driver connection's cumulative VM operations and cache
 // page writes. A connection that cannot answer reports ok false and is not
 // measured.
 func connCounters(inner any) (vm, pages int64, ok bool) {
@@ -157,6 +164,12 @@ func (m *writeMeter) begin(inner any) {
 		return
 	}
 	m.vmStart, m.pagesStart, m.started = connCounters(inner)
+	if c, ok := inner.(*observedConn); ok {
+		inner = c.inner
+	}
+	if counter, ok := inner.(interface{ WALWriteBytes() (uint64, bool) }); ok {
+		m.walStart, m.walKnown = counter.WALWriteBytes()
+	}
 }
 
 func (m *writeMeter) end(inner any) {
@@ -164,6 +177,25 @@ func (m *writeMeter) end(inner any) {
 		return
 	}
 	m.vmEnd, m.pagesEnd, m.ended = connCounters(inner)
+	if c, ok := inner.(*observedConn); ok {
+		inner = c.inner
+	}
+	var attempted uint64
+	var known bool
+	if counter, ok := inner.(interface{ WALWriteBytes() (uint64, bool) }); ok {
+		attempted, known = counter.WALWriteBytes()
+	}
+	known = known && m.walKnown && attempted >= m.walStart
+	if known {
+		attempted -= m.walStart
+	}
+	m.wal.measured(attempted, known)
+	if counter, ok := inner.(interface{ WALIO() sqlitedrv.WALIOStats }); ok {
+		stats := counter.WALIO()
+		if stats.Qualified {
+			m.wal.retained(stats.CurrentEnd)
+		}
+	}
 }
 
 // WriteCost is what one gated write transaction did.

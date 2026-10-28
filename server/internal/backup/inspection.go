@@ -51,7 +51,7 @@ func (s *Service) InspectSource(ctx context.Context, source Source) (SourceInspe
 		}
 		defer root.Close()
 		if _, err = root.Lstat(encryptedSummary); err == nil {
-			raw, err := inspectRootFile(ctx, root, encryptedSummary, maxEncryptedSummaryBytes, true)
+			raw, err := s.inspectRootFile(ctx, root, encryptedSummary, maxEncryptedSummaryBytes, true)
 			if err != nil {
 				return out, err
 			}
@@ -59,7 +59,7 @@ func (s *Service) InspectSource(ctx context.Context, source Source) (SourceInspe
 			if json.Unmarshal(raw, &summary) != nil || summary.Format != Format || summary.Version != Version || len(summary.Files) != 0 {
 				return out, ErrSourceInvalid
 			}
-			prefix, err := inspectRootFile(ctx, root, encryptedPayload, 100, false)
+			prefix, err := s.inspectRootFile(ctx, root, encryptedPayload, 100, false)
 			if err != nil || !inspectionEncryptedHeader(prefix) {
 				return out, ErrSourceInvalid
 			}
@@ -67,7 +67,7 @@ func (s *Service) InspectSource(ctx context.Context, source Source) (SourceInspe
 		} else if !errors.Is(err, os.ErrNotExist) {
 			return out, ErrSourceInvalid
 		} else {
-			raw, err := inspectRootFile(ctx, root, ManifestName, maxManifestBytes, true)
+			raw, err := s.inspectRootFile(ctx, root, ManifestName, maxManifestBytes, true)
 			if err != nil {
 				return out, err
 			}
@@ -80,18 +80,34 @@ func (s *Service) InspectSource(ctx context.Context, source Source) (SourceInspe
 			if json.Unmarshal(raw, &identity) != nil || identity.Format != Format || identity.Version != Version && identity.Version != LegacyVersion {
 				return out, ErrSourceInvalid
 			}
-			prefix, err := inspectRootFile(ctx, root, DatabaseName, 100, false)
+			prefix, err := s.inspectRootFile(ctx, root, DatabaseName, 100, false)
 			if err != nil || !inspectionSQLiteHeader(prefix) {
 				return out, ErrSourceInvalid
 			}
 		}
 	} else if info.Mode().IsRegular() {
+		files, err := s.sourceGuard.files()
+		if err != nil {
+			return out, err
+		}
+		if kind := liveSourceKind(info, files); kind != 0 {
+			if kind == 2 || canonicalDirectory(filepath.Dir(path), false) != nil {
+				return out, ErrSourceInvalid
+			}
+			after, err := os.Lstat(path)
+			if err != nil || !os.SameFile(info, after) {
+				return out, ErrSourceInvalid
+			}
+			// The open live main is already known to be plaintext SQLite.
+			// Reading its header through another descriptor would drop locks.
+			return out, ctx.Err()
+		}
 		root, err := openCanonicalRoot(filepath.Dir(path))
 		if err != nil {
 			return out, ErrSourceInvalid
 		}
 		defer root.Close()
-		prefix, err := inspectRootFile(ctx, root, filepath.Base(path), 100, false)
+		prefix, err := s.inspectRootFile(ctx, root, filepath.Base(path), 100, false)
 		if err != nil {
 			return out, err
 		}
@@ -126,7 +142,7 @@ func sameInspectionFile(before, after os.FileInfo) bool {
 	return os.SameFile(before, after) && before.Mode() == after.Mode() && before.Size() == after.Size() && before.ModTime().Equal(after.ModTime())
 }
 
-func inspectRootFile(ctx context.Context, root *os.Root, name string, limit int64, whole bool) ([]byte, error) {
+func (s *Service) inspectRootFile(ctx context.Context, root *os.Root, name string, limit int64, whole bool) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -139,6 +155,10 @@ func inspectRootFile(ctx context.Context, root *os.Root, name string, limit int6
 	}
 	before, err := root.Lstat(name)
 	if err != nil || !before.Mode().IsRegular() || whole && before.Size() > limit {
+		return nil, ErrSourceInvalid
+	}
+	files, err := s.sourceGuard.files()
+	if err != nil || liveSourceKind(before, files) != 0 {
 		return nil, ErrSourceInvalid
 	}
 	file, err := root.Open(name)

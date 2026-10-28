@@ -103,7 +103,7 @@ func (l Layout) Usage(ctx context.Context, mounts []Mount) (Usage, error) {
 		}
 	}
 	if l.TranscodeFallback {
-		out.Notices = append(out.Notices, Notice{"transcode_not_mapped", "Map /transcode to a fast disk. Unmapped or RAM-backed /transcode uses the data volume's Transcode folder; bounded RAM playback is not yet available."})
+		out.Notices = append(out.Notices, Notice{"transcode_not_mapped", "Map /transcode to a fast disk. Unmapped /transcode uses the data volume's Transcode folder."})
 	}
 	if SharedFilesystem(Filesystem(l.Data, mounts)) {
 		out.Notices = append(out.Notices, Notice{"data_on_shared_drive", "The data folder is on a shared or network drive, which can make the database slow or damage it. Use a local disk or Unraid's cache pool (for example /mnt/cache/appdata/portico)."})

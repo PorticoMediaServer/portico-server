@@ -323,6 +323,9 @@ func (s *Service) decryptSource(ctx context.Context, source Source, password str
 		return source, func() {}, nil
 	}
 	if info.IsDir() {
+		if e = s.sourceFilesSafe(filepath.Join(folder, encryptedSummary), payload); e != nil {
+			return source, func() {}, e
+		}
 		if _, e = os.Lstat(filepath.Join(folder, encryptedSummary)); os.IsNotExist(e) {
 			return source, func() {}, nil
 		}
@@ -338,7 +341,7 @@ func (s *Service) decryptSource(ctx context.Context, source Source, password str
 		if e != nil {
 			return source, func() {}, ErrSourceInvalid
 		}
-		prefix, e := inspectRootFile(ctx, root, filepath.Base(folder), 100, false)
+		prefix, e := s.inspectRootFile(ctx, root, filepath.Base(folder), 100, false)
 		closeErr := root.Close()
 		if e != nil {
 			return source, func() {}, e
@@ -362,6 +365,9 @@ func (s *Service) decryptSource(ctx context.Context, source Source, password str
 		payload = folder
 	} else {
 		return source, func() {}, ErrSourceInvalid
+	}
+	if e = s.sourceFilesSafe(payload); e != nil {
+		return source, func() {}, e
 	}
 	in, e := os.Open(payload)
 	if e != nil {

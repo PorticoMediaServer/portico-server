@@ -153,7 +153,7 @@ func (d Dependencies) readingSetMark(rate *personalLimiter) http.HandlerFunc {
 	}
 }
 func registerReadingMarkHTTPContracts(registry *apikit.Registry) error {
-	m := apikit.Metadata{ID: "get_items_itemId_reading_mark", Method: "GET", Path: "/v1/items/{itemId}/reading/mark", Summary: "Read this profile's explicit Reading completion mark", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}
+	m := apikit.Metadata{Audience: apikit.Clients, ID: "get_items_itemId_reading_mark", Method: "GET", Path: "/v1/items/{itemId}/reading/mark", Summary: "Read this profile's explicit Reading completion mark", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}
 	if err := apikit.RegisterHTTP[struct{}, ReadingMarkResponse](registry, m); err != nil {
 		return err
 	}

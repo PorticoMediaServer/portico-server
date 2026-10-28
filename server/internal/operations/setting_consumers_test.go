@@ -31,6 +31,17 @@ END;`
 // Semantic tests beside those consumers verify behavior; this guard catches new
 // unowned fields and consumer removal. It is not a substitute for runtime tests.
 var settingConsumers = map[string]settingConsumer{
+	"livechannels.LiveSourceSettings.enabled":                                {"internal/livechannels/persisted_configuration.go", "Enabled", "Pause or activate the source and fence its publishers"},
+	"livechannels.LiveSourceSettings.viewerAccess":                           {"internal/livechannels/persisted_configuration.go", "ViewerAccess", "Persist and enforce owner-only or server-member access"},
+	"livechannels.LiveSourceSettings.remote.kind":                            {"internal/livechannels/persisted_configuration.go", "Kind", "Keep the saved remote provider grammar immutable"},
+	"livechannels.LiveSourceSettings.remote.guideUrl":                        {"internal/livechannels/persisted_configuration.go", "GuideURL", "Admit and persist the replacement guide address"},
+	"livechannels.LiveSourceSettings.remote.guideUrlRedacted":                {"internal/livechannels/persisted_configuration.go", "GuideURLRedacted", "Preserve the private guide address when its redacted readback is saved"},
+	"livechannels.LiveSourceSettings.remote.refreshMs":                       {"internal/livechannels/persisted_configuration.go", "RefreshMs", "Schedule the next remote guide refresh"},
+	"livechannels.LiveSourceSettings.remote.ownerLimit":                      {"internal/livechannels/persisted_configuration.go", "OwnerLimit", "Limit the effective tuner capacity"},
+	"livechannels.LiveSourceSettings.remote.useDiscoveredCapacity":           {"internal/livechannels/persisted_configuration.go", "UseDiscoveredCapacity", "Choose discovered versus owner-provided tuner capacity"},
+	"livechannels.LiveSourceSettings.remote.username":                        {"internal/livechannels/persisted_configuration.go", "Username", "Replace or preserve the write-only provider username"},
+	"livechannels.LiveSourceSettings.remote.password":                        {"internal/livechannels/persisted_configuration.go", "Password", "Replace or preserve the write-only provider password"},
+	"livechannels.LiveSourceSettings.remote.confirmedLanRoots":               {"internal/livechannels/persisted_configuration.go", "ConfirmedLANRoots", "Approve exact local-network endpoints before changing source configuration"},
 	"metadata.MetadataSettingsUpdate.libraries.lyricsSource":                 {"internal/lyrics/bulk.go", "literal:lyrics_source", "Fence lyric acquisition with the selected library source"},
 	"metadata.MetadataSettingsUpdate.libraries.episodeThumbnailMode":         {"internal/metadata/runtime_libraries.go", "ApplyEpisodeThumbnailModeTx", "Apply the library's canonical episode-thumbnail publication policy"},
 	"metadata.MetadataSettingsUpdate.libraries.scrubPreviews":                {"internal/metadata/runtime_libraries.go", "ApplyScanPolicyTx", "Add or remove trickplay from the library's admitted scan operations"},
@@ -160,6 +171,8 @@ var settingConsumers = map[string]settingConsumer{
 	"operations.Settings.diagnosticDays":                                     {"internal/operations/evidence.go", "DiagnosticDays", "Prune the corresponding history by its retention rule"},
 	"operations.Settings.directStreamRemux":                                  {"internal/httpapi/delivery_settings_adapter.go", "DirectStreamRemux", "Project conversion policy to runtime delivery settings"},
 	"operations.Settings.ffmpegPath":                                         {"cmd/server/main.go", "FFmpegPath", "Configure the running listener or media process"},
+	"operations.Settings.transcodeLocation":                                  {"internal/playback/hls_memory.go", "TranscodeLocation", "Choose bounded RAM preference or disk conversion output"},
+	"operations.Settings.memoryCap":                                          {"internal/playback/hls_memory.go", "function:memoryBudget", "Bound RAM conversion output before placement and spill"},
 	"operations.Settings.hardwareBackend":                                    {"internal/playback/delivery_plan.go", "HardwareBackend", "Plan media delivery using owner policy"},
 	"operations.Settings.hardwareSelection":                                  {"internal/playback/delivery_context.go", "hardwareConfiguration", "Convert on the owner's chosen adapter or the processor"},
 	"operations.Settings.hardwareDecode":                                     {"internal/playback/delivery_context.go", "function:withoutHardwareDecode", "Keep decoding on the processor when hardware decoding is off"},

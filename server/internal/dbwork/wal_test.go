@@ -2,6 +2,7 @@ package dbwork
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
 	"testing"
 )
@@ -32,7 +33,7 @@ func TestWALReportsFramesAndFileSize(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	stats := WAL(ctx, db)
+	stats := copyWALForTest(t, ctx, db)
 	if stats.LastError != "" {
 		t.Fatalf("the WAL probe failed: %s", stats.LastError)
 	}
@@ -59,15 +60,55 @@ func TestWALSeparatesCopiedBacklogFromReusedPhysicalAllocation(t *testing.T) {
 	if _, err := ExecWrite(ctx, db, ClassInteractive, `CREATE TABLE payload(body BLOB); WITH RECURSIVE ids(id) AS (VALUES(1) UNION ALL SELECT id+1 FROM ids WHERE id<128) INSERT INTO payload SELECT zeroblob(8192) FROM ids`); err != nil {
 		t.Fatal(err)
 	}
-	copied := WAL(ctx, db)
+	copied := copyWALForTest(t, ctx, db)
 	if copied.LastError != "" || copied.LogFrames <= 100 || copied.BacklogFrames != 0 || copied.FileBytes <= 1<<20 {
 		t.Fatalf("PASSIVE did not expose copied physical allocation: %+v", copied)
 	}
 	if _, err := ExecWrite(ctx, db, ClassInteractive, `INSERT INTO sample VALUES(3)`); err != nil {
 		t.Fatal(err)
 	}
-	reused := WAL(ctx, db)
+	reused := copyWALForTest(t, ctx, db)
 	if reused.LastError != "" || reused.LogFrames >= copied.LogFrames || reused.BacklogFrames != 0 || reused.FileBytes != copied.FileBytes {
 		t.Fatalf("physical allocation was confused with logical backlog: before%+v after%+v", copied, reused)
+	}
+}
+
+// Explicit fixture copying used to be a hidden side effect of WAL diagnostics.
+// Tests that need a copied/reused native log prepare it here, then inspect the
+// exact same cached diagnostic surface production uses.
+func copyWALForTest(t *testing.T, ctx context.Context, db *sql.DB) WALStats {
+	t.Helper()
+	var r CheckpointResult
+	if err := db.QueryRowContext(ctx, `PRAGMA wal_checkpoint(PASSIVE)`).Scan(&r.Busy, &r.LogFrames, &r.Checkpoint); err != nil {
+		t.Fatal(err)
+	}
+	l := ledgerFor(db)
+	l.mu.Lock()
+	l.lastCheckpoint, l.checkpointKnown = r, true
+	l.mu.Unlock()
+	return WAL(ctx, db)
+}
+
+func TestWALDiagnosticsDoNotCopyOrAcquireWriter(t *testing.T) {
+	db := testDB(t)
+	before := WriteGate().Stats().Acquired
+	ctx, statements := TraceStatements(context.Background())
+	first := WAL(ctx, db)
+	if first.LastError == "" {
+		t.Fatal("an absent owner sample was represented as known")
+	}
+	if got := statements(); len(got) != 0 {
+		t.Fatalf("diagnostic issued SQL: %v", got)
+	}
+	if WriteGate().Stats().Acquired != before {
+		t.Fatal("diagnostic acquired writer")
+	}
+	copied := copyWALForTest(t, context.Background(), db)
+	_ = WAL(ctx, db)
+	if got := statements(); len(got) != 0 {
+		t.Fatalf("cached diagnostic issued SQL: %v", got)
+	}
+	if copied.LastError != "" {
+		t.Fatal(copied.LastError)
 	}
 }

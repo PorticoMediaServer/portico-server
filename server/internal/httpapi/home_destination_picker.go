@@ -10,7 +10,7 @@ import (
 )
 
 func registerHomeDestinationPicker(registry *apikit.Registry, d Dependencies) {
-	v1Route(registry, apikit.Metadata{Admission: laneBrowsing, ID: "post_home_destination_picker", Method: "POST", Path: "/v1/home/destination-picker", Summary: "Search one authorized playlist or collection destination window", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "invalid_cursor", "unauthorized", "not_found", "revision_mismatch", "internal"}},
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, Admission: laneBrowsing, ID: "post_home_destination_picker", Method: "POST", Path: "/v1/home/destination-picker", Summary: "Search one authorized playlist or collection destination window", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "invalid_cursor", "unauthorized", "not_found", "revision_mismatch", "internal"}},
 		func(ctx context.Context, r *http.Request, in catalog.HomeDestinationPickerRequest) (catalog.HomeDestinationPickerPage, error) {
 			ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 			defer cancel()

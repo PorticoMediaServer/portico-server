@@ -64,7 +64,34 @@ func TestLibrarySummaryCoreHTTPUsesLiveAuthorityAndReadyProjection(t *testing.T)
 
 			check("", http.StatusUnauthorized, false, 0)
 			readingSeriesOwnerField(t, r, r.item, "author", "Changed attribution")
-			check(r.f.owner.AccessToken, http.StatusPreconditionFailed, false, 0)
+			// An attribution rebuild must not take down shell-critical reads.
+			for _, path := range []string{"/v1/direct", "/v1/system", "/v1/libraries"} {
+				w := readingHTTP(t, h, "GET", path, r.f.owner.AccessToken, "", nil)
+				if w.Code != http.StatusOK {
+					t.Fatalf("shell read during building generation %s: %d %s", path, w.Code, w.Body.String())
+				}
+				if path == "/v1/libraries" {
+					var body struct {
+						Items []catalog.Library `json:"items"`
+					}
+					if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+						t.Fatal(err)
+					}
+					found := false
+					for _, library := range body.Items {
+						if library.ID == r.library {
+							found = true
+							got := library.Summary
+							if got == nil || got.EmptyKnown || len(got.Counts) != 1 || got.Counts[0].Count != 1 || !got.Counts[0].AtLeast || len(got.PublicationCounts) != 0 {
+								t.Fatalf("shell partial summary: %+v", got)
+							}
+						}
+					}
+					if !found {
+						t.Fatal("building Reading library disappeared from the shell")
+					}
+				}
+			}
 			readingSeriesDrain(t, r)
 			owner := readingOwnerLogin(t, r)
 			profiles, err := r.f.id.CreateDirectProfile(context.Background(), owner.AccountToken, "Summary reader", "blue")

@@ -111,7 +111,7 @@ type Gate struct {
 // still grants before its final pause. A revocation is never kept waiting
 // behind a checkpoint for long, and a stream of them cannot defer the reset
 // for ever.
-const RecoverySecurityReserve = 256
+const RecoverySecurityReserve = 128
 
 type gateClassCounters struct {
 	acquired, queued, cancelled, refused, busy uint64
@@ -121,6 +121,7 @@ type gateClassCounters struct {
 // ticket is one queued acquisition. It holds no SQL, payload or connection:
 // only its place, its owner and whether capacity took that place away.
 type ticket struct {
+	wal     *walRequest
 	id      uint64
 	class   Class
 	owner   string
@@ -190,6 +191,7 @@ func (g *Gate) acquire(ctx context.Context, class Class, stuck stuckClock) (func
 	g.mu.Lock()
 	g.nextID++
 	t := &ticket{id: g.nextID, class: class, owner: ownerFrom(ctx), since: start}
+	t.wal, _ = ctx.Value(walRequestKey{}).(*walRequest)
 	if !class.Background() && g.userQueued >= WriterQueueCapacity && !g.makeRoomLocked(t) {
 		g.refuseLocked(t)
 		g.mu.Unlock()
@@ -223,6 +225,7 @@ func (g *Gate) acquireTicket(ctx context.Context, t *ticket, stuck stuckClock) (
 			return nil, err
 		}
 		if !g.active && g.grant == t {
+			t.wal.take()
 			g.removeWaiterLocked(t, true)
 			g.grant = nil
 			if g.holdEpoch != 0 && t.class == ClassSecurityFence {
@@ -501,7 +504,11 @@ func (g *Gate) pickWinnerLocked() *ticket {
 		// Hard WAL pressure: no new writer but a bounded number of security
 		// fences until the recovery attempt has had its chance.
 		if g.holdSecurity < RecoverySecurityReserve {
-			return g.queues[ClassSecurityFence].front()
+			next := g.queues[ClassSecurityFence].front()
+			if next != nil && next.wal.ready() {
+				return next
+			}
+			return nil
 		}
 		return nil
 	}
@@ -510,10 +517,11 @@ func (g *Gate) pickWinnerLocked() *ticket {
 			if class.Background() {
 				break
 			}
-			if next := g.queues[class].front(); next != nil {
+			if next := g.queues[class].front(); next != nil && next.wal.ready() {
 				return next
 			}
 		}
+		return nil // A blocked user is never overtaken by background work.
 	}
 	now := time.Now()
 	var selected *ticket
@@ -523,7 +531,7 @@ func (g *Gate) pickWinnerLocked() *ticket {
 			continue
 		}
 		next := g.queues[class].front()
-		if next == nil {
+		if next == nil || !next.wal.ready() {
 			continue
 		}
 		priority := promotedPriority(class, next.since, now)

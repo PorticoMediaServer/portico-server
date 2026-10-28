@@ -1,3 +1,4 @@
+import {useShellFacts} from '../../shell/fact-hooks';
 import {useLayoutEffect, useRef} from 'react';
 import {defaultI18n} from '@i18n';
 import {playbackUserMessage} from '@core/playback-messages.ts';
@@ -13,6 +14,7 @@ const t = defaultI18n.t;
 /** A refused start has no admitted fence/presentation. Its original HTTP owner is
  * the complete command authority; this view never looks up a later runtime. */
 export function WatchStartFailure({failure, authority, context, reportError}: {failure: WebPlaybackStartFailure; authority: WebPlaybackAuthority; context?: WatchPlaybackContext; reportError: (error: unknown) => void}) {
+  useShellFacts(context);
   const root = useRef<HTMLDivElement>(null), restore = useRef<HTMLElement | null>(null);
   useLayoutEffect(() => {
     restore.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;

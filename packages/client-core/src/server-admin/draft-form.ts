@@ -10,7 +10,7 @@
  * server calls out of date is read again and sent again by itself (`freshness-actions.ts`). Only
  * a setting they changed that was also changed elsewhere, to something else, is ever reported.
  */
-import {ALREADY_DONE, rebaseDraft, retryWhenStale} from '../freshness-actions.ts';
+import {ALREADY_DONE, rebaseDraft, retryWhenStale, type QuietRefreshOutcome} from '../freshness-actions.ts';
 
 export type FormState<T, S = undefined> = Readonly<{
   /** The first read has not answered yet. */
@@ -50,6 +50,8 @@ export class DraftForm<T extends object, S = undefined> {
   private state: FormState<T, S> = Object.freeze({loading: true, unavailable: false, dirty: false, saving: false});
   private listeners = new Set<() => void>();
   private generation = 0;
+  private refreshSerial = 0;
+  private refreshRead?: AbortController;
   private controller?: AbortController;
   private disposed = false;
   private readonly o: DraftFormOptions<T, S>;
@@ -79,8 +81,46 @@ export class DraftForm<T extends object, S = undefined> {
     this.publish({loading: false, unavailable: false, loadError: undefined, saved: loaded.value, status: loaded.status, draft});
   }
 
+  private invalidateRefresh() {
+    this.refreshSerial++;
+    this.refreshRead?.abort();
+    this.refreshRead = undefined;
+  }
+
+  /** A mounted buffered input cancels adoption before its local edit reaches set(). */
+  invalidateQuiet = (): void => {this.invalidateRefresh();};
+
+  /** Reads without replacing the edit's base on conflict or acknowledging a write. */
+  async refresh(): Promise<QuietRefreshOutcome> {
+    if (this.disposed || this.state.saving || this.controller !== undefined) return {kind: 'deferred'};
+    this.invalidateRefresh();
+    const serial = this.refreshSerial, saved = this.state.saved, status = this.state.status;
+    const read = this.refreshRead = new AbortController();
+    const owns = () => !this.disposed && !read.signal.aborted && serial === this.refreshSerial &&
+      !this.state.saving && this.state.saved === saved && this.state.status === status;
+    try {
+      const loaded = await this.o.load(read.signal);
+      if (!owns()) return {kind: 'deferred'};
+      // Rebase against the draft at completion, including edits made during this read.
+      const draft = this.state.draft;
+      if (loaded === null && this.state.dirty) return {kind: 'conflict'};
+      if (loaded !== null && saved !== undefined && draft !== undefined) {
+        const rebased = rebaseDraft(saved, draft, loaded.value);
+        if (rebased.conflict) return {kind: 'conflict'};
+        this.publish({loading: false, unavailable: false, loadError: undefined,
+          saved: loaded.value, status: loaded.status, draft: rebased.merged});
+      } else this.adopt(loaded, false);
+      return {kind: 'adopted'};
+    } catch (error) {
+      return owns() ? {kind: 'unreadable', error} : {kind: 'deferred'};
+    } finally {
+      if (this.refreshRead === read) this.refreshRead = undefined;
+    }
+  }
+
   /** Reads the document. A failure keeps what was loaded before. */
   async load(): Promise<void> {
+    this.invalidateRefresh();
     const generation = ++this.generation;
     this.controller?.abort();
     const controller = this.controller = new AbortController();
@@ -90,6 +130,8 @@ export class DraftForm<T extends object, S = undefined> {
       if (generation === this.generation) this.adopt(loaded, true);
     } catch (error) {
       if (generation === this.generation && !controller.signal.aborted) this.publish({loading: false, loadError: error});
+    } finally {
+      if (this.controller === controller) this.controller = undefined;
     }
   }
 
@@ -101,6 +143,7 @@ export class DraftForm<T extends object, S = undefined> {
   }
 
   discard() {
+    this.invalidateRefresh();
     if (this.state.saved !== undefined && !this.state.saving) this.publish({draft: this.state.saved, saveError: undefined});
   }
 
@@ -114,6 +157,7 @@ export class DraftForm<T extends object, S = undefined> {
     const {saved, draft, status, dirty, saving, problem} = this.state;
     if (!dirty || saving || saved === undefined || draft === undefined) return;
     if (problem) throw new Error(problem);
+    this.invalidateRefresh();
     this.publish({saving: true, saveError: undefined});
     let base = saved, sending = draft, sendingStatus = status, conflict = false, gone = false, moved = false;
     try {
@@ -141,6 +185,7 @@ export class DraftForm<T extends object, S = undefined> {
   }
 
   dispose() {
+    this.invalidateRefresh();
     this.disposed = true;
     this.controller?.abort();
     this.listeners.clear();

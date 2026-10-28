@@ -36,11 +36,11 @@ type Captured = NonNullable<ReturnType<typeof useProtectedWebScreenContext>>;
 type ReadAttempt = {readonly context: Captured['context']; readonly entry: typeof router.state.location; readonly sourceId: string | undefined; readonly retry: number; readonly fileLife: AbortController; session?: ReadingSession; saving?: boolean; rereading?: boolean; live: boolean; ready: boolean; target?: (index: number) => ReaderContentsTarget};
 const {t} = defaultI18n;
 /** The primary Item registration supplies a genuine Reading resource result. */
-export function ReadItemEntry({itemId, eligibility}: {itemId: string; eligibility: ReadItemEligibility}) {
-  const captured = useProtectedWebScreenContext();
-  return captured && eligibility.itemId === itemId ? <BoundReadItem key={itemId} captured={captured} eligibility={eligibility}/> : null;
+export function ReadItemEntry({captured: provided, handoff, itemId, eligibility}: {captured?: Captured; handoff?: Captured['context']; itemId: string; eligibility: ReadItemEligibility}) {
+  const original = useProtectedWebScreenContext(), captured = provided ?? original;
+  return captured && eligibility.itemId === itemId ? <BoundReadItem key={itemId} captured={captured} handoff={handoff ?? captured.context} eligibility={eligibility}/> : null;
 }
-function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility: ReadItemEligibility}) {
+function BoundReadItem({captured, handoff, eligibility}: {captured: Captured; handoff: Captured['context']; eligibility: ReadItemEligibility}) {
   const context = useLibraryScreenContext(captured);
   const phone = usePhone();
   // The entry this render was produced on, committed by layout. A reused component with
@@ -199,9 +199,9 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
     try {target = index === undefined ? undefined : original?.target?.(index);}
     catch (error) {errorSink.current(error); return;}
     if (index !== undefined && !target) return;
-    stageContentsTarget(captured.context, eligibility.itemId, manifest.sourceId, target);
+    stageContentsTarget(handoff, eligibility.itemId, manifest.sourceId, target);
     void router.navigate(readDestination(eligibility.itemId, manifest.sourceId)).catch(error => {
-      retireContentsTarget(captured.context, target);
+      retireContentsTarget(handoff, target);
       if (factsCurrent()) errorSink.current(error);
     });
   };

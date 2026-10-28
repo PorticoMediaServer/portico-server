@@ -55,11 +55,11 @@ type cursorValue struct {
 	// opaque and HMAC-signed, so what it holds is this server's business; what a
 	// client round-trips is unchanged.
 	Keys []string `json:"keys,omitempty"`
-	// Total carries a list's exact count from the page that counted it, so a
-	// continuation doesn't count again. It is carried only when the compiled
-	// restriction clause is revision-invariant (no live restriction); a
-	// restriction-bound page recounts after its cursor checks.
+	// Total is the raw count (including a capped filter's threshold+1 sentinel).
+	// Reading's full witness permits reuse only after every cursor validation.
 	Total int `json:"total,omitempty"`
+	// TotalPresent distinguishes an exact zero from an absent legacy count.
+	TotalPresent bool `json:"totalPresent,omitempty"`
 	// Start is the index, in the whole query, of the next page's first row.
 	Start           int         `json:"start,omitempty"`
 	Fingerprint     string      `json:"fingerprint,omitempty"`
@@ -177,10 +177,12 @@ func (s *Service) decodeRevisionCursor(raw string, scope cursorScope, revision C
 	}
 	if out.Expires < time.Now().Unix() {
 		out.Total = 0
+		out.TotalPresent = false
 		out.Expires = time.Now().Add(30 * time.Minute).Unix()
 	}
 	if out.CatalogRevision != revision.Catalog || out.ViewerRevision != revision.Viewer {
 		out.Total = 0
+		out.TotalPresent = false
 	}
 	return out, nil
 }

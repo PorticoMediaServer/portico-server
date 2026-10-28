@@ -27,7 +27,18 @@ type Chapter struct {
 	Start float64 `json:"startSeconds"`
 	End   float64 `json:"endSeconds"`
 }
+
+// AudioFileMetadata is the file-owned baseline before local sidecars are applied.
+// It is retained separately so removing a sidecar restores embedded evidence.
+type AudioFileMetadata struct {
+	MusicCueTracks                                 []Chapter
+	Tags                                           map[string]string
+	Chapters                                       []Chapter
+	ChapterStatus, ArtworkKey, Issue, ArtworkIssue string
+}
+
 type Facts struct {
+	AudioFileMetadata   *AudioFileMetadata   `json:"-"`
 	DiscAlternate       bool                 `json:"-"`
 	DiscSelection       *DiscMediaSelection  `json:"-"`
 	MusicCueTracks      []Chapter            `json:"-"`
@@ -180,6 +191,10 @@ func (p Probe) probeOutputMode(ctx context.Context, path, input string, options 
 	}
 	return out.data, nil
 }
+
+// DecodeProbe reads an ffprobe JSON document (format and streams) the way a
+// scan does. A remote source's planner reads its measured streams through it.
+func DecodeProbe(data []byte) (Facts, error) { return decodeMediaProbe(data) }
 
 func decodeMediaProbe(data []byte) (Facts, error) {
 	var raw struct {
@@ -387,8 +402,7 @@ func SupportedForKind(path, kind string) bool {
 	return SupportedPath(path) && !audio
 }
 
-// OpenPlayback checks pinned size/mtime and current local inventory custody.
-// Immutable session-accepted object identity requires additional persisted pins.
+// OpenPlayback acquires the exact accepted local object and checks pinned size/mtime.
 func OpenPlayback(db *sql.DB, session, grantHash string) (*os.File, error) {
 	v, e := ResolvePlaybackSource(context.Background(), db, session, grantHash)
 	if e != nil {

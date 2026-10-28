@@ -9,21 +9,19 @@ import (
 	"errors"
 	"image"
 	"image/draw"
-	_ "image/jpeg"
+	"image/jpeg"
 	"image/png"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/imagework"
 	"time"
-
-	_ "golang.org/x/image/webp"
 )
 
-var ErrAvatarUpload = errors.New("That image could not be read. Upload a JPEG, PNG or WebP picture.")
+var ErrAvatarUpload = errors.New("That image could not be read. Upload a JPEG or PNG picture.")
 var ErrAvatarMissing = errors.New("no avatar")
 
 // Profile avatars follow the artwork-upload approach in internal/metadata: the
 // declared content type and the file name are ignored, the bytes are sniffed, the
-// image is fully decoded and re-encoded to PNG (which strips EXIF, colour profiles,
+// image is fully decoded and re-encoded (which strips EXIF, colour profiles,
 // trailing data and anything else an original file carried), and only the
 // re-encoded renditions are stored.
 //
@@ -50,8 +48,6 @@ func sniffAvatar(raw []byte) string {
 		return "image/png"
 	case bytes.HasPrefix(raw, []byte{0xff, 0xd8, 0xff}):
 		return "image/jpeg"
-	case len(raw) >= 12 && bytes.Equal(raw[0:4], []byte("RIFF")) && bytes.Equal(raw[8:12], []byte("WEBP")):
-		return "image/webp"
 	}
 	return ""
 }
@@ -92,7 +88,7 @@ func squareCrop(src image.Image) image.Rectangle {
 	return image.Rect(x, y, x+side, y+side)
 }
 
-// renderAvatar produces one square PNG rendition. The sampler is the same
+// renderAvatar produces one square JPEG (opaque) or PNG (transparent) rendition. The sampler is the same
 // nearest-neighbour reduction the artwork worker uses: no new dependency, and a
 // deterministic output for a given input, which keeps the digest stable.
 func renderAvatar(src image.Image, crop image.Rectangle, size int) ([]byte, error) {
@@ -108,7 +104,13 @@ func renderAvatar(src image.Image, crop image.Rectangle, size int) ([]byte, erro
 		}
 	}
 	var buf bytes.Buffer
-	if err := (&png.Encoder{CompressionLevel: png.BestSpeed}).Encode(&buf, out); err != nil {
+	var err error
+	if out.Opaque() {
+		err = jpeg.Encode(&buf, out, &jpeg.Options{Quality: 90})
+	} else {
+		err = (&png.Encoder{CompressionLevel: png.BestSpeed}).Encode(&buf, out)
+	}
+	if err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
@@ -152,58 +154,15 @@ func (s *Service) UploadProfileAvatar(ctx context.Context, bearer, profile strin
 	if !validFamilyID(profile) {
 		return ProfileAvatar{}, ErrDirectInput
 	}
-	if len(raw) == 0 || len(raw) > AvatarUploadBytes {
-		return ProfileAvatar{}, ErrAvatarUpload
-	}
-	mime := sniffAvatar(raw)
-	if mime == "" {
-		return ProfileAvatar{}, ErrAvatarUpload
-	}
-	config, _, e := image.DecodeConfig(bytes.NewReader(raw))
-	if e != nil || config.Width < 1 || config.Height < 1 || config.Width > avatarMaxDimension || config.Height > avatarMaxDimension || config.Width*config.Height > avatarMaxPixels {
-		return ProfileAvatar{}, ErrAvatarUpload
-	}
-	if e = s.AuthorizeProfileAvatarUpload(ctx, bearer, profile); e != nil {
+	if e := s.AuthorizeProfileAvatarUpload(ctx, bearer, profile); e != nil {
 		return ProfileAvatar{}, e
 	}
-	release, e := imagework.Acquire(ctx)
+	prepared, e := PrepareProfileAvatar(ctx, raw)
 	if e != nil {
 		return ProfileAvatar{}, e
 	}
-	defer release()
-	decoded, _, e := image.Decode(bytes.NewReader(raw))
-	if e != nil {
-		return ProfileAvatar{}, ErrAvatarUpload
-	}
-	if e = ctx.Err(); e != nil {
-		return ProfileAvatar{}, e
-	}
-	if decoded.Bounds().Dx() != config.Width || decoded.Bounds().Dy() != config.Height {
-		return ProfileAvatar{}, ErrAvatarUpload
-	}
-	crop := squareCrop(decoded)
-	if crop.Dx() < 1 {
-		return ProfileAvatar{}, ErrAvatarUpload
-	}
-	renditions := map[int][]byte{}
-	digest := sha256.New()
-	for _, size := range AvatarRenditions {
-		if e = ctx.Err(); e != nil {
-			return ProfileAvatar{}, e
-		}
-		encoded, err := renderAvatar(decoded, crop, size)
-		if err != nil {
-			return ProfileAvatar{}, err
-		}
-		renditions[size] = encoded
-		digest.Write(encoded)
-	}
-	release()
-	if e = ctx.Err(); e != nil {
-		return ProfileAvatar{}, e
-	}
-	key := base64.RawURLEncoding.EncodeToString(digest.Sum(nil))
-	gated, e := dbwork.Begin(ctx, s.db, dbwork.ClassSecurityFence)
+	ctx = profilePictureWriteContext(ctx)
+	gated, e := dbwork.Begin(ctx, s.db, dbwork.ClassInteractive)
 	if e != nil {
 		return ProfileAvatar{}, e
 	}
@@ -217,13 +176,7 @@ func (s *Service) UploadProfileAvatar(ctx context.Context, bearer, profile strin
 	if e = tx.QueryRowContext(ctx, `SELECT deleted FROM direct_profiles WHERE account_id=? AND id=?`, c.account.ID, profile).Scan(&deleted); e != nil || deleted != 0 {
 		return ProfileAvatar{}, ErrNotVisible
 	}
-	for size, encoded := range renditions {
-		if _, e = tx.ExecContext(ctx, `INSERT INTO profile_avatar_objects(digest,rendition,bytes,image) VALUES(?,?,?,?) ON CONFLICT(digest,rendition) DO NOTHING`, key, size, len(encoded), encoded); e != nil {
-			return ProfileAvatar{}, e
-		}
-	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	if _, e = tx.ExecContext(ctx, `INSERT INTO profile_avatars(profile_id,digest,source_mime,version,updated_at) VALUES(?,?,?,1,?) ON CONFLICT(profile_id) DO UPDATE SET digest=excluded.digest,source_mime=excluded.source_mime,updated_at=excluded.updated_at,version=profile_avatars.version+1`, profile, key, mime, now); e != nil {
+	if e = StorePreparedProfileAvatarTx(ctx, tx, profile, prepared); e != nil {
 		return ProfileAvatar{}, e
 	}
 	out, e := s.avatarRecordTx(ctx, tx, profile)
@@ -316,7 +269,8 @@ func (s *Service) DeleteProfileAvatar(ctx context.Context, bearer, profile strin
 	if !validFamilyID(profile) {
 		return ErrDirectInput
 	}
-	gated3, e := dbwork.Begin(ctx, s.db, dbwork.ClassSecurityFence)
+	ctx = profilePictureWriteContext(ctx)
+	gated3, e := dbwork.Begin(ctx, s.db, dbwork.ClassInteractive)
 	if e != nil {
 		return e
 	}
@@ -340,4 +294,86 @@ func (s *Service) DeleteProfileAvatar(ctx context.Context, bearer, profile strin
 		return e
 	}
 	return gated3.Commit()
+}
+
+// PreparedProfileAvatar holds only bounded, decoded and re-encoded renditions.
+// Preparation runs outside the writer; publishing rechecks the caller and profile.
+type PreparedProfileAvatar struct {
+	renditions map[int][]byte
+	digest     string
+	mime       string
+}
+
+// PrepareProfileAvatar accepts JPEG or PNG and makes every stored rendition now.
+func PrepareProfileAvatar(ctx context.Context, raw []byte) (PreparedProfileAvatar, error) {
+	if len(raw) == 0 || len(raw) > AvatarUploadBytes {
+		return PreparedProfileAvatar{}, ErrAvatarUpload
+	}
+	mime := sniffAvatar(raw)
+	if mime == "" {
+		return PreparedProfileAvatar{}, ErrAvatarUpload
+	}
+	config, _, e := image.DecodeConfig(bytes.NewReader(raw))
+	if e != nil || config.Width < 1 || config.Height < 1 || config.Width > avatarMaxDimension || config.Height > avatarMaxDimension || config.Width*config.Height > avatarMaxPixels {
+		return PreparedProfileAvatar{}, ErrAvatarUpload
+	}
+	release, e := imagework.Acquire(ctx)
+	if e != nil {
+		return PreparedProfileAvatar{}, e
+	}
+	defer release()
+	decoded, _, e := image.Decode(bytes.NewReader(raw))
+	if e != nil {
+		return PreparedProfileAvatar{}, ErrAvatarUpload
+	}
+	if e = ctx.Err(); e != nil {
+		return PreparedProfileAvatar{}, e
+	}
+	if decoded.Bounds().Dx() != config.Width || decoded.Bounds().Dy() != config.Height {
+		return PreparedProfileAvatar{}, ErrAvatarUpload
+	}
+	crop := squareCrop(decoded)
+	if crop.Dx() < 1 {
+		return PreparedProfileAvatar{}, ErrAvatarUpload
+	}
+	renditions := map[int][]byte{}
+	digest := sha256.New()
+	for _, size := range AvatarRenditions {
+		if e = ctx.Err(); e != nil {
+			return PreparedProfileAvatar{}, e
+		}
+		encoded, err := renderAvatar(decoded, crop, size)
+		if err != nil {
+			return PreparedProfileAvatar{}, err
+		}
+		renditions[size] = encoded
+		digest.Write(encoded)
+	}
+	release()
+	if e = ctx.Err(); e != nil {
+		return PreparedProfileAvatar{}, e
+	}
+	key := base64.RawURLEncoding.EncodeToString(digest.Sum(nil))
+	return PreparedProfileAvatar{renditions: renditions, digest: key, mime: mime}, nil
+}
+
+// StorePreparedProfileAvatarTx publishes pre-made images under the caller's transaction.
+func StorePreparedProfileAvatarTx(ctx context.Context, tx *sql.Tx, profile string, prepared PreparedProfileAvatar) error {
+	if len(prepared.renditions) != len(AvatarRenditions) || prepared.digest == "" {
+		return ErrAvatarUpload
+	}
+	for size, encoded := range prepared.renditions {
+		if _, e := tx.ExecContext(ctx, `INSERT INTO profile_avatar_objects(digest,rendition,bytes,image) VALUES(?,?,?,?) ON CONFLICT(digest,rendition) DO NOTHING`, prepared.digest, size, len(encoded), encoded); e != nil {
+			return e
+		}
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, e := tx.ExecContext(ctx, `INSERT INTO profile_avatars(profile_id,digest,source_mime,version,updated_at) SELECT ?,?,?,revision+1,? FROM direct_profiles WHERE id=? ON CONFLICT(profile_id) DO UPDATE SET digest=excluded.digest,source_mime=excluded.source_mime,updated_at=excluded.updated_at,version=excluded.version`, profile, prepared.digest, prepared.mime, now, profile); e != nil {
+		return e
+	}
+	return nil
+}
+
+func profilePictureWriteContext(ctx context.Context) context.Context {
+	return dbwork.WithPlan(ctx, dbwork.WritePlan{Name: "profile-picture", Rows: 64, Pages: 1024, VMOps: 100000, Why: "The fixed renditions, profile revision and removal of superseded personal images publish atomically."})
 }

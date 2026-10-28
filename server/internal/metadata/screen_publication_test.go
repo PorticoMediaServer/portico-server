@@ -44,6 +44,7 @@ func screenConfirm(t *testing.T, s *Service) {
 	if e != nil {
 		t.Fatal(e)
 	}
+	settleScreenFanout(t, s)
 }
 
 // screenWithdraw withdraws the server-wide online-lookup consent through the
@@ -59,6 +60,7 @@ func screenWithdraw(t *testing.T, s *Service) {
 	if e = s.UpdateScreenPolicy(ctx, "lib", ScreenPolicyUpdate{ExpectedRevision: p.Revision, ExpectedConsentRevision: p.ConsentRevision, ConfirmRemote: &no, DisclosureVersion: ScreenDisclosureVersion, Enabled: true, Providers: []string{"tmdb"}, Language: "en-US", RefreshMode: "replace_unlocked"}, nil); e != nil {
 		t.Fatal(e)
 	}
+	settleScreenFanout(t, s)
 }
 
 // B84 / D1: lookups are on by default; the reported status distinguishes a

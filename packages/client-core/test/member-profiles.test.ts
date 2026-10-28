@@ -40,3 +40,29 @@ test('edits are fenced on the revision read and must come back as the same profi
   await assert.rejects(client(() => profile('main')).profiles.rename(movies, {name: 'x'}));
   await assert.rejects(client(() => profile('movies')).profiles.resetPIN(movies));
 });
+
+test('pictures bind the account, profile and revision and validate confirmation', async () => {
+  const picture = (version: number, url = `/v1/admin/access/members/nana/profiles/movies/avatar?v=${version}`) => ({profileId: 'movies', version, updatedAt: '2026-10-28T12:00:00Z', sourceMime: 'image/png', url});
+  let answer: unknown = profile('movies', {revision: 4, avatar: picture(4)});
+  const uploads: unknown[][] = [];
+  const api: MemberProfilesApi = {request: (async () => answer) as MemberProfilesApi['request']};
+  const profiles = new MemberProfilesClient(api, 'nana', async (...args) => {uploads.push(args); return answer;});
+  const current = (await client(() => ({accountId: 'nana', items: [profile('movies')]})).profiles.list())[0];
+  const uploaded = await profiles.uploadPicture(current, new Uint8Array([1, 2]), 'image/png');
+  assert.equal(uploaded.avatar?.version, 4);
+  assert.equal(uploads[0][0], '/v1/admin/access/members/nana/profiles/movies/avatar?expectedRevision=3');
+  assert.equal(uploads[0][2], 'image/png');
+  for (const mime of ['image/webp', 'image/gif']) await assert.rejects(profiles.uploadPicture(current, new Uint8Array([1]), mime));
+  await assert.rejects(profiles.uploadPicture(current, new Uint8Array(4 * 1024 * 1024 + 1), 'image/png'));
+  assert.equal(uploads.length, 1);
+  for (const bad of [profile('main'), profile('movies', {revision: 4}), profile('movies', {revision: 4, avatar: picture(4, 'https://foreign.invalid/photo')}),
+    profile('movies', {revision: 4, avatar: picture(4, '/v1/admin/access/members/other/profiles/movies/avatar?v=4')})]) {
+    answer = bad;
+    await assert.rejects(profiles.uploadPicture(current, new Uint8Array([1]), 'image/png'));
+  }
+  answer = profile('movies', {revision: 5});
+  const removed = await profiles.removePicture(uploaded);
+  assert.equal(removed.avatar, undefined);
+  answer = profile('movies', {revision: 5, avatar: picture(4)});
+  await assert.rejects(profiles.removePicture(uploaded));
+});

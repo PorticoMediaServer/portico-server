@@ -1,3 +1,4 @@
+import {subscribePresentation} from '../../shell/fact-hooks';
 import {shellLanguage} from '../../shell/settings';
 import {GroupSessionService, type GroupSessionSnapshot} from '@core/group-session.ts';
 import {encodedRoutePath} from '../../../../packages/contracts/src/routes.ts';
@@ -16,7 +17,7 @@ export function createTogetherBindings(context: ShellAssemblyContext, playback: 
   let i18n = shellLanguage(context.preferences?.getSnapshot('web') ?? context.facts.preferences);
   const isCurrent = () => context.isCurrent() && !life.signal.aborted && !playback.runtime.getSnapshot().disposed
     && context.session().sessionFamilyId === captured.sessionFamilyId
-    && (['serverId', 'authority', 'accountId', 'profileId'] as const).every(key => context.session().viewer[key] === captured.viewer[key]);
+    && (['serverId', 'authority', 'accountId', 'profileId', 'role'] as const).every(key => context.session().viewer[key] === captured.viewer[key]);
   const guard = () => {if (!isCurrent()) throw new DOMException('Room authority retired', 'AbortError');};
   const api = {baseUrl: context.api.baseUrl, async request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T> {
     guard();const active = signal ? AbortSignal.any([signal, life.signal]) : life.signal;
@@ -55,7 +56,7 @@ export function createTogetherBindings(context: ShellAssemblyContext, playback: 
   });
   return {
     service, runtime: playback.runtime, environment: playback.environment, artwork: playback.artwork, get t() {return i18n.t;}, get number() {return i18n.number;},
-    profileName: context.facts.identity.profileName, profileArt: context.facts.identity.profileArt,
+    get profileName() {return context.facts.identity.profileName;}, get profileArt() {return context.facts.identity.profileArt;},
     openSettings: () => {guard();void router.navigate({to: '/settings'});},
     isCurrent, getSnapshot: () => snapshot, subscribe: (listener: () => void) => {listeners.add(listener);return () => {listeners.delete(listener);};},
     start: () => {guard();if (started) return;started = true;offGroup = playback.runtime.bindGroup(service, isCurrent, playback.reportError);
@@ -69,7 +70,7 @@ export function createTogetherBindings(context: ShellAssemblyContext, playback: 
           summaries.invalidate(value => value.libraryId === change.resourceId);
         }
       });
-      offPreferences = context.preferences?.subscribe(() => {if (isCurrent()) {i18n = shellLanguage(context.preferences?.getSnapshot('web') ?? context.facts.preferences);service.setI18n(i18n);publish();}});
+      offPreferences = subscribePresentation(context, () => {if (isCurrent()) {i18n = shellLanguage(context.preferences?.getSnapshot('web') ?? context.facts.preferences);service.setI18n(i18n);publish();}});
     },
     reportError: playback.reportError,
     dispose: () => {if (life.signal.aborted) return;life.abort();offFreshness?.();summaries.dispose();offGroup?.();offPreferences?.();off();service.dispose();snapshot = {room: service.getSnapshot(), items: new Map()};for (const listener of [...listeners]) listener();listeners.clear();},

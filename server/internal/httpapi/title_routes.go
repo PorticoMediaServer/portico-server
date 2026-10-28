@@ -121,7 +121,7 @@ func registerIdentityRoutes(r *apikit.Registry, d Dependencies) {
 			id = "preview_delete_title_version"
 			method = "POST"
 		}
-		meta := apikit.Metadata{Admission: laneAdminHeavy, ID: id, Method: method, Path: path, Summary: "Delete one file version while keeping its title and personal state", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Cost: apikit.PageSized, Status: status, BodyLimit: 4096, Errors: []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "revision_mismatch", "confirmation_mismatch", "administration_unavailable", "internal"}}
+		meta := apikit.Metadata{Audience: apikit.Clients, Admission: laneAdminHeavy, ID: id, Method: method, Path: path, Summary: "Delete one file version while keeping its title and personal state", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Cost: apikit.PageSized, Status: status, BodyLimit: 4096, Errors: []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "revision_mismatch", "confirmation_mismatch", "administration_unavailable", "internal"}}
 		if preview {
 			meta.OptionalBody = true
 			v1Route(r, meta, func(ctx context.Context, q *http.Request, _ noBody) (administration.VersionDeletePreview, error) {
@@ -164,7 +164,7 @@ func registerIdentityRoutes(r *apikit.Registry, d Dependencies) {
 	registerDownloadProfileRevoke(r, d)
 	registerDownloadProfileCache(r, d)
 	ownerErrors := []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "internal"}
-	v1Route(r, apikit.Metadata{Admission: laneAdmin, ID: "list_missing_titles", Method: "GET", Path: "/v1/admin/missing-titles", Summary: "List titles whose files are no longer on disk, oldest first, with when each will be removed",
+	v1Route(r, apikit.Metadata{Audience: apikit.Clients, Admission: laneAdmin, ID: "list_missing_titles", Method: "GET", Path: "/v1/admin/missing-titles", Summary: "List titles whose files are no longer on disk, oldest first, with when each will be removed",
 		Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Query: []string{"libraryId", "cursor", "limit"}, Errors: ownerErrors},
 		func(ctx context.Context, q *http.Request, _ noBody) (catalog.MissingTitlesPage, error) {
 			limit := 50
@@ -180,7 +180,7 @@ func registerIdentityRoutes(r *apikit.Registry, d Dependencies) {
 			out, err := d.Catalog.MissingTitlesAuthorized(ctx, library, q.URL.Query().Get("cursor"), limit, d.missingLibraryAuthority(p, library))
 			return out, identityRouteError(err)
 		})
-	v1Route(r, apikit.Metadata{Admission: laneAdminHeavy, ID: "empty_missing_titles", Method: "POST", Path: "/v1/admin/missing-titles/empty", Summary: "Remove missing titles and missing files now, whatever the owner's rule says; call again while more is true",
+	v1Route(r, apikit.Metadata{Audience: apikit.Clients, Admission: laneAdminHeavy, ID: "empty_missing_titles", Method: "POST", Path: "/v1/admin/missing-titles/empty", Summary: "Remove missing titles and missing files now, whatever the owner's rule says; call again while more is true",
 		Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.PageSized, BodyLimit: 4096, OptionalBody: true, Status: 200, Errors: ownerErrors},
 		func(ctx context.Context, q *http.Request, in emptyMissingRequest) (catalog.MissingEmptied, error) {
 			p, _ := d.foundationCaller(q)
@@ -211,21 +211,21 @@ func registerIdentityRoutes(r *apikit.Registry, d Dependencies) {
 				}
 			}
 		})
-	v1Route(r, apikit.Metadata{Admission: laneAdminHeavy, ID: "merge_titles", Method: "POST", Path: "/v1/admin/titles/merge", Summary: "Say that two titles of one library are the same title: the first becomes part of the second, with its files as versions (an album, book, artist or author: its songs, files, albums or books) and everyone's state combined",
+	v1Route(r, apikit.Metadata{Audience: apikit.Clients, Admission: laneAdminHeavy, ID: "merge_titles", Method: "POST", Path: "/v1/admin/titles/merge", Summary: "Say that two titles of one library are the same title: the first becomes part of the second, with its files as versions (an album, book, artist or author: its songs, files, albums or books) and everyone's state combined",
 		Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Cost: apikit.PageSized, BodyLimit: 4096, Status: 200, Errors: ownerErrors},
 		func(ctx context.Context, q *http.Request, in mergeTitlesRequest) (mergeTitlesResponse, error) {
 			p, _ := d.foundationCaller(q)
 			err := d.Catalog.MergeTitles(ctx, in.FromID, in.IntoID, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") })
 			return mergeTitlesResponse{ItemID: in.IntoID}, identityRouteError(err)
 		})
-	v1Route(r, apikit.Metadata{Admission: laneAdmin, ID: "separate_artist", Method: "POST", Path: "/v1/admin/titles/separate-artist", Summary: "Say that some albums are not by the artist they are filed under: they move, with their songs' credits, to a new artist of the same name that is never joined back automatically; at least one album stays",
+	v1Route(r, apikit.Metadata{Audience: apikit.Clients, Admission: laneAdmin, ID: "separate_artist", Method: "POST", Path: "/v1/admin/titles/separate-artist", Summary: "Say that some albums are not by the artist they are filed under: they move, with their songs' credits, to a new artist of the same name that is never joined back automatically; at least one album stays",
 		Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Cost: apikit.PageSized, BodyLimit: 8192, Status: 200, Errors: ownerErrors},
 		func(ctx context.Context, q *http.Request, in separateArtistRequest) (separateArtistResponse, error) {
 			p, _ := d.foundationCaller(q)
 			artist, err := d.Catalog.SeparateArtist(ctx, in.AlbumIDs, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") })
 			return separateArtistResponse{ArtistID: artist}, identityRouteError(err)
 		})
-	v1Route(r, apikit.Metadata{Admission: laneAdmin, ID: "remove_library", Method: "DELETE", Path: "/v1/admin/libraries/{id}", Summary: "Remove a library: it disappears at once and is taken apart in the background; files on disk are not touched and each profile's state is kept in case its titles return",
+	v1Route(r, apikit.Metadata{Audience: apikit.Clients, Admission: laneAdmin, ID: "remove_library", Method: "DELETE", Path: "/v1/admin/libraries/{id}", Summary: "Remove a library: it disappears at once and is taken apart in the background; files on disk are not touched and each profile's state is kept in case its titles return",
 		Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: 4096, Status: 202, Errors: append([]string{"revision_mismatch", "confirmation_mismatch", "administration_unavailable"}, ownerErrors...)},
 		func(ctx context.Context, q *http.Request, in removeLibraryRequest) (removeLibraryResponse, error) {
 			p, _ := d.foundationCaller(q)

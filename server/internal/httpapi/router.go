@@ -1399,6 +1399,16 @@ func New(d Dependencies) http.Handler {
 	routeMuxMu.Unlock()
 	d.self.h = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r = detachCanceledConnection(w, r)
+		if d.self != nil && d.self.registry != nil {
+			if m, ok := d.self.registry.Lookup(r.Method, r.URL.EscapedPath()); ok && m.Protocol == apikit.ProtocolCompatibility {
+				r = normalizeCompatibilityCredential(r)
+				w.Header().Set("Cache-Control", "no-store")
+				if err := d.requireIntegrations(r.Context()); err != nil {
+					policyErrors.Write(w, "", err)
+					return
+				}
+			}
+		}
 		// A key in the address is taken out of it before anything else reads
 		// the request: no handler, log or error ever sees it there.
 		r = liftQueryCredential(r)

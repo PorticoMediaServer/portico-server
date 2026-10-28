@@ -643,6 +643,8 @@ func TestReadPathGoldenEquivalence(t *testing.T) {
 		// generated section carries the same published card facts.
 		want.Response = goldenAggregateCardFacts(t, f, actual, want.Response)
 		want.Response = goldenSearchEpisodeFacts(t, f, actual, want.Response)
+		// Offers decorate every container the pages above composed.
+		want.Response = goldenBrowseOffers(t, f, actual, want.Response)
 		if want.Status != actual.Status {
 			differences++
 			t.Errorf("%s: status %d, golden %d\n  body: %s", actual.Name, actual.Status, want.Status, truncate(actual.Response))

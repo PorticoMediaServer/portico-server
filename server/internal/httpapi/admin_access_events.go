@@ -96,7 +96,7 @@ func (adminEvents) JSONSchema() map[string]any {
 // device or limit widens that. The caller must still be an administrator in a
 // fresh authority snapshot both before and after the read.
 func registerAdminAccessEvents(registry *apikit.Registry, d Dependencies) {
-	v1Route(registry, apikit.Metadata{Admission: laneAdmin, ID: "get_admin_access_events", Method: "GET", Path: "/v1/admin/access/events", Summary: "Read the latest eligible maintenance events for an administrator", Access: apikit.Admin, Requires: apikit.ScopeAdmin, AdminScope: "access", Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"unauthorized", "not_permitted", "internal"}}, func(ctx context.Context, r *http.Request, _ noBody) (adminEvents, error) {
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, Admission: laneAdmin, ID: "get_admin_access_events", Method: "GET", Path: "/v1/admin/access/events", Summary: "Read the latest eligible maintenance events for an administrator", Access: apikit.Admin, Requires: apikit.ScopeAdmin, AdminScope: "access", Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"unauthorized", "not_permitted", "internal"}}, func(ctx context.Context, r *http.Request, _ noBody) (adminEvents, error) {
 		principal, err := d.administrator(r)
 		if err != nil {
 			return adminEvents{}, err

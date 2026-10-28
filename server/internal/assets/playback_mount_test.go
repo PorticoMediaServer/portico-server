@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -72,6 +73,7 @@ func mountedPlaybackFixture(t *testing.T, physical bool) (*sql.DB, *storage.Clie
 			t.Fatal(err)
 		}
 	}
+	pinTestPlaybackBinding(t, db)
 	binary, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -154,14 +156,25 @@ func TestRemotePlaybackResolverRetainsSourceAndCatalogFences(t *testing.T) {
 			if _, err := db.Exec(`UPDATE library_sources SET kind='remote'`); err != nil {
 				t.Fatal(err)
 			}
+			pinTestPlaybackBinding(t, db)
 			if source, err := ResolvePlaybackSource(context.Background(), db, "session", ""); err != nil || source.Binding == nil || !source.Binding.Mounted {
 				t.Fatalf("initial remote scan evidence was not admitted: %+v %v", source, err)
 			}
 			if _, err := db.Exec(mutation); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := ResolvePlaybackSource(context.Background(), db, "session", ""); err == nil {
-				t.Fatal("remote compatibility bypassed a stale-source fence")
+			accepted, err := ResolvePlaybackSource(context.Background(), db, "session", "")
+			if strings.HasPrefix(mutation, "UPDATE library_sources") || strings.HasPrefix(mutation, "UPDATE catalog_assets") {
+				if err == nil {
+					t.Fatal("remote session bypassed source/catalog fence")
+				}
+			} else if err != nil || accepted.Binding == nil || !accepted.Binding.Mounted || accepted.Binding.ObjectIdentity != "ino:42" {
+				t.Fatalf("mounted session followed inventory: %+v %v", accepted, err)
+			}
+			if mutation != `UPDATE library_sources SET generation=4` {
+				if _, err := ResolveCatalogPlaybackSource(context.Background(), db, "asset"); err == nil {
+					t.Fatal("catalog bypassed stale remote inventory")
+				}
 			}
 		})
 	}

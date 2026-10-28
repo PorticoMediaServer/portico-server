@@ -35,21 +35,27 @@ func (s *Service) excludeDirectory(ctx context.Context, job, relative, reason st
 		return err
 	}
 	if reason == "directory_changed" {
-		if err = recordNoticeTx(ctx, tx, source.ID, relative, time.Now().UnixMilli()); err != nil {
+		if err = recordRunNoticeTx(ctx, tx, job, source.ID, relative, time.Now().UnixMilli()); err != nil {
 			return err
 		}
 	}
 	return gated.Commit()
 }
 
-func (s *Service) inventoryBatch(ctx context.Context) int {
-	switch dbwork.BackgroundSpeed(ctx) {
-	case dbwork.SpeedGentle:
-		return 32
-	case dbwork.SpeedFast:
-		return 128
-	}
-	return 64
+// Inventory source limits are independent of scan speed: pacing between
+// completed pages is controlled by dbwork.PaceBackground. Two raw names
+// include filtered names/issues, not just returned entries; two folders bound
+// progress/cache/ignore-diagnostic overhead even when every folder is empty.
+// Focused on-disk measurements live in TestInventorySourcePageCost. These
+// conservative producer caps do not qualify arbitrary existing-object fanout
+// for the default WritePlan; the atomic inventory-pages exception remains.
+const (
+	inventorySourceNames   = 2
+	inventorySourceFolders = 2
+)
+
+func (s *Service) inventoryBatch(context.Context) int {
+	return inventorySourceNames
 }
 
 func waitScanPace(ctx context.Context, d time.Duration) bool {

@@ -2,4 +2,4 @@
 export function servicesBuildMode(env: {VITE_HOSTED_WEB?: string; VITE_ACCOUNT_WORKSPACE?: string}) {
   return env.VITE_HOSTED_WEB === 'true' && env.VITE_ACCOUNT_WORKSPACE === 'true';
 }
-export const servicesPaths = ['/', '/account', '/device', '/reset', '/verify-email', '/claim', '/join'] as const;
+export const servicesPaths = ['/', '/account', '/device', '/reset', '/reset-password', '/verify-email', '/claim', '/join'] as const;

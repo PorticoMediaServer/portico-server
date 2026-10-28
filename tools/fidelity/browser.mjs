@@ -21,6 +21,49 @@ function chromeTempBase(scratch) {
   return base;
 }
 
+// These public-fixture measurements need no desktop session, keyring, media
+// router, extensions, updates or background sign-in. Use the automation launch
+// switches also used by Playwright, while retaining the existing renderer and
+// font/viewport behavior. A missing D-Bus service must fail its connection
+// immediately rather than inherit a runner's invalid/autolaunch address.
+export function measurementLaunch(profile, chromeTemp) {
+  return {
+    args: ['--headless=new', '--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu',
+      '--renderer-process-limit=1', '--no-first-run', '--no-default-browser-check',
+      '--disable-background-networking', '--disable-component-update', '--disable-default-apps',
+      '--disable-extensions', '--disable-sync', '--disable-features=MediaRouter',
+      '--password-store=basic', '--use-mock-keychain',
+      '--remote-debugging-address=127.0.0.1', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'],
+    options: {stdio: ['ignore', 'ignore', 'pipe'], detached: true,
+      env: {...process.env, TMPDIR: chromeTemp,
+        DBUS_SESSION_BUS_ADDRESS: 'unix:path=/dev/null', DBUS_SYSTEM_BUS_ADDRESS: 'unix:path=/dev/null'}},
+  };
+}
+
+// One launch, one bounded wait: no restart/retry loop. This covers a cold runner
+// startup; the independent CDP, per-test and per-file deadlines stay unchanged.
+export function waitForMeasurementEndpoint(chrome, timeoutMs = 30_000) {
+  return new Promise((resolve, reject) => {
+    let stderr = '';
+    const detail = () => stderr.trim() ? `; Chromium stderr: ${stderr.trim().slice(-4000)}` : '; no Chromium stderr';
+    const finish = (error, endpoint) => {
+      clearTimeout(timer);
+      chrome.removeListener('error', onError); chrome.removeListener('exit', onExit);
+      chrome.stderr.removeListener('data', onData);
+      if (error) reject(error); else {chrome.stderr.resume?.(); resolve(endpoint);}
+    };
+    const onError = error => finish(new Error(`Measurement Chromium failed to start (${error.code ?? 'spawn error'})${detail()}`, {cause: error}));
+    const onExit = (code, signal) => finish(new Error(`Measurement Chromium exited before DevTools (${code ?? signal})${detail()}`));
+    const onData = bytes => {
+      stderr = (stderr + bytes.toString()).slice(-8192);
+      const match = stderr.match(/DevTools listening on (ws:\/\/[^\s]+)/);
+      if (match) finish(undefined, match[1]);
+    };
+    const timer = setTimeout(() => finish(new Error(`Measurement Chromium did not publish its DevTools endpoint within ${timeoutMs}ms (single headless launch; no desktop D-Bus required)${detail()}`)), timeoutMs);
+    chrome.once('error', onError); chrome.once('exit', onExit); chrome.stderr.on('data', onData);
+  });
+}
+
 /** An owned, isolated measurement browser. No cookies, auth state, or screenshots. */
 export async function withMeasurementBrowser({scratch, executable, viewport, allowedOrigins}, run) {
   if (!scratch || !executable) throw new Error('Explicit owned scratch and Chromium executable required');
@@ -33,10 +76,8 @@ export async function withMeasurementBrowser({scratch, executable, viewport, all
     await rm(profile, {recursive: true, force: true});
     throw error;
   }
-  const chrome = spawn(executable, ['--headless=new', '--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu',
-    '--renderer-process-limit=1', '--no-first-run', '--no-default-browser-check', '--remote-debugging-address=127.0.0.1',
-    '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'], {stdio: ['ignore', 'ignore', 'pipe'], detached: true,
-    env: {...process.env, TMPDIR: chromeTemp}});
+  const launch = measurementLaunch(profile, chromeTemp);
+  const chrome = spawn(executable, launch.args, launch.options);
   let socket, session, sequence = 0;
   const pending = new Map(), blocked = [], pageErrors = [];
   const fontResources = new Map(), fontRegistrations = new Map(); let excessiveFonts = false;
@@ -54,18 +95,7 @@ export async function withMeasurementBrowser({scratch, executable, viewport, all
     return result.result.value;
   }
   try {
-    let stderr = '';
-    const endpoint = await new Promise((resolve, reject) => {
-      const detail = () => stderr.trim() ? `: ${stderr.trim().slice(-4000)}` : '';
-      const timer = setTimeout(() => reject(new Error(`Measurement Chromium startup timeout${detail()}`)), 15_000);
-      chrome.once('error', error => {clearTimeout(timer); reject(error);});
-      chrome.once('exit', (code, signal) => {clearTimeout(timer); reject(new Error(`Measurement Chromium exited ${code ?? signal}${detail()}`));});
-      chrome.stderr.on('data', bytes => {
-        stderr = (stderr + bytes.toString()).slice(-8192);
-        const match = stderr.match(/DevTools listening on (ws:\/\/[^\s]+)/);
-        if (match) {clearTimeout(timer); resolve(match[1]);}
-      });
-    });
+    const endpoint = await waitForMeasurementEndpoint(chrome);
     socket = new WebSocket(endpoint); await once(socket, 'open');
     socket.addEventListener('message', async event => {
       const message = JSON.parse(event.data);

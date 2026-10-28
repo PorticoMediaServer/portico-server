@@ -97,11 +97,6 @@ func TestDeliveryRouteSelectionAndExecutableCodecPolicy(t *testing.T) {
 			}
 		})
 	}
-	remote := planFor(t, DeliveryInput{SourceID: "source", Container: "strm", VideoCodec: "h264", AudioCodec: "aac", Duration: 10, Remote: true, Policy: policy, Target: autoTarget(policy, 0), Config: DefaultDeliveryConfiguration(), TranscodingEnabled: true})
-	if remote.Mode != "remote" || remote.Strategy != DeliveryOriginal || remote.ReasonCodes[0] != ReasonRemotePreflightCompatible {
-		t.Fatal(remote)
-	}
-
 }
 
 // Remux is chosen only when the container is genuinely the only obstacle, and

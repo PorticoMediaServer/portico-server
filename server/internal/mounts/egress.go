@@ -15,7 +15,19 @@ import (
 // retained until physical process retirement, including failed startup.
 type SourceEgress struct {
 	HTTPProxy, SFTPProxy string
-	Close                func()
+	// Configuration is an optional launch-only copy with checked SMB hosts.
+	// It is never material for a retained-configuration digest check.
+	Configuration []byte
+	// CheckSMBPins fences the process lease when DNS drops its launch address.
+	CheckSMBPins func(context.Context) error
+	Close        func()
+}
+
+func (e *SourceEgress) TransientConfiguration(original []byte) []byte {
+	if e.Configuration != nil {
+		return e.Configuration
+	}
+	return original
 }
 
 func validPolicyProxy(raw string) bool {
@@ -29,8 +41,8 @@ func validPolicyProxy(raw string) bool {
 }
 
 // prepareBackendEgress captures the same bytes that were checked and places
-// only that transient copy in the helper. The retained configuration is never
-// rewritten to add credentials or transport options.
+// only its launch-specific transient copy in the helper. The retained
+// configuration is never rewritten to add credentials or transport options.
 func (s *Service) prepareBackendEgress(ctx context.Context, id, generation string) (string, *SourceEgress, error) {
 	if s.PrepareSourceEgress == nil {
 		return "", nil, storage.ErrRemoteConfig
@@ -50,7 +62,7 @@ func (s *Service) prepareBackendEgress(ctx context.Context, id, generation strin
 		}
 		return "", nil, storage.ErrRemoteConfig
 	}
-	file, err := s.candidateFile(material.Configuration)
+	file, err := s.candidateFile(egress.TransientConfiguration(material.Configuration))
 	if err != nil {
 		egress.Close()
 		return "", nil, err

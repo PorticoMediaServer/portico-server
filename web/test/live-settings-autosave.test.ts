@@ -68,3 +68,8 @@ test('invalid drafts never autosave', async context => {
   form.set({name: 'New'});context.mock.timers.tick(500);await settled();assert.equal(calls, 1);
   form.dispose();
 });
+
+test('autosave quiet refresh defers for pending debounce and failed-save acknowledgement',async context=>{
+ context.mock.timers.enable({apis:['setTimeout']});let reads=0,fail=false;const error=new Error('original');const raw=new DraftForm({load:async()=>{reads++;return {value:{number:1}};},save:async value=>{if(fail)throw error;return {value};}}),form=new AutoSaveForm(raw,()=>true,()=>{});
+ await form.load();form.set({number:2});assert.deepEqual(await form.refresh(),{kind:'deferred'});assert.equal(reads,1);fail=true;await form.save();const before=form.getSnapshot();assert.deepEqual(await form.refresh(),{kind:'deferred'});assert.equal(form.getSnapshot(),before);assert.equal(form.getSnapshot().saveError,error);form.discard();assert.deepEqual(await form.refresh(),{kind:'adopted'});assert.equal(reads,2);form.dispose();
+});

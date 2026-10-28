@@ -41,8 +41,10 @@ export type ToneMappingStatus={status:'disabled'|'available'|'limited'|'unavaila
 export type TemporaryDirectory={path:string;ready:boolean;freeBytes:number|null;
  /** No owner directory is set and the server's own state directory is used. */
  fallback:boolean;
- /** The RAM file system a conversion directory can use, or '' when this platform has none to offer. */
- memoryPath:string};
+ /** Candidate RAM file system; independent of the disk folder and owner preference. */
+ memoryPath:string;
+ /** Playback admission for this host and the configured memory cap. Missing facts mean unavailable. */
+ memoryAvailable:boolean};
 export type TranscodePreset={id:string;label:string;height:number;videoKbps:number;audioKbps:number};
 export type RuntimeDependency={path:string;version:string;ok:boolean};
 export type TranscodeCapacity={
@@ -141,9 +143,8 @@ export function parseTranscodeCapacity(value:unknown):TranscodeCapacity{
  const toneStatus=oneOfOr('transcode-capacity','hdrToneMapping.status',tone.status,['disabled','available','limited','unavailable'] as const,'unavailable');
  const directory=base(c.temporaryDirectory);
  if(!text(directory.path,1024)||typeof directory.ready!=='boolean'||directory.freeBytes!==null&&!integer(directory.freeBytes))invalid();
- // An older server publishes neither fact: no fallback is claimed and no memory
- // filesystem is offered, which keeps that choice out of the drawn select.
- const directoryFacts={fallback:directory.fallback===true,...(text(directory.memoryPath,1024)&&directory.memoryPath?{memoryPath:directory.memoryPath as string}:{memoryPath:''})};
+ // Missing or malformed admission facts mean unavailable, even if a candidate path exists.
+ const directoryFacts={fallback:directory.fallback===true,memoryAvailable:directory.memoryAvailable===true&&text(directory.memoryPath,1024)&&!!directory.memoryPath,...(text(directory.memoryPath,1024)&&directory.memoryPath?{memoryPath:directory.memoryPath as string}:{memoryPath:''})};
  if(!Array.isArray(c.presets)||c.presets.length>20)invalid();
  const presets=keepReadable('transcode-capacity','presets',c.presets,preset=>{const p=base(preset);if(!text(p.id,40)||!text(p.label,80)||!integer(p.height)||!integer(p.videoKbps)||!integer(p.audioKbps))invalid();return p as TranscodePreset;});
  const published=base(c.dependencies);

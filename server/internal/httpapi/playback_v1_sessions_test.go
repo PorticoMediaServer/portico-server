@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"strconv"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/playbackv1"
+	"portico.local/server/internal/storage"
 )
 
 func startBody(item string, extra map[string]any) map[string]any {
@@ -239,8 +241,7 @@ func TestPlaybackV1SkipReportsAreMarkerEvidence(t *testing.T) {
 	f := newV1Fixture(t, 2)
 	asset, other := f.records[0].Token, f.records[1].Token
 	for _, q := range []string{
-		`INSERT OR IGNORE INTO library_sources(id,library_id,configured_root,root,incarnation,generation) VALUES('skip-source','` + f.library + `','/isolated/skips','/isolated/skips','incarnation',1)`,
-		`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns) VALUES('object','skip-source','` + asset + `','incarnation','a.mp4','revision','{}',1,1),('other-object','skip-source','` + other + `','incarnation','b.mp4','revision','{}',1,1)`,
+		`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns) SELECT CASE a.token WHEN '` + asset + `' THEN 'object' ELSE 'other-object' END,s.id,a.token,s.incarnation,a.path,'revision','{}',a.size,a.modified_ns FROM catalog_assets a JOIN library_sources s ON s.id='` + f.library + `' WHERE a.token IN('` + asset + `','` + other + `')`,
 		`INSERT INTO analysis_markers(id,object_id,source_revision,source_binding,kind,start_us,end_us,confidence,provenance,result_id,approved) VALUES
  ('safe-intro','object','revision','binding','intro',5000000,35000000,.9,'season_audio_match:intro:v1','result',0),
  ('unsafe-recap','object','revision','binding','recap',0,4000000,.85,'embedded_chapter_label:v1','result',0),
@@ -250,6 +251,8 @@ func TestPlaybackV1SkipReportsAreMarkerEvidence(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	confirmPlaybackInventory(t, f, "object")
+	confirmPlaybackInventory(t, f, "other-object")
 	drainPlaybackCatalogue(t, f.db)
 	evidence := make(chan string, 8)
 	f.v1.SkipEvidence = func(_ context.Context, code string, _ map[string]int64) { evidence <- code }
@@ -356,5 +359,35 @@ func TestPlaybackV1RestoreEndsSessionsAndRevokesMedia(t *testing.T) {
 	w := f.raw("PUT", "/v1/playback/sessions/"+s.ID+"/observation", f.owner.AccessToken, nil, map[string]any{"epoch": strings.Repeat("e", 22), "seq": 1, "generation": s.Presentation.Generation, "state": "playing", "positionMs": 1000, "rate": 1})
 	if w.Code < 400 {
 		t.Fatalf("a restored session accepted an observation: %d", w.Code)
+	}
+}
+
+// An unconfirmed inventory source refuses acceptance with the existing typed,
+// retryable v1 answer, and cannot leave a half-created session behind.
+func TestPlaybackV1UnconfirmedSourceIsRetryable(t *testing.T) {
+	f := newV1Fixture(t, 1)
+	f.call("PUT", "/v1/me/devices/current/capabilities", nil, webCapabilities(), 204, nil)
+	f.catalogTest.Exec(`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns) SELECT 'unconfirmed',s.id,a.token,s.incarnation,a.path,'r','{}',a.size,a.modified_ns FROM catalog_assets a JOIN library_sources s ON s.library_id=? WHERE a.token=? LIMIT 1`, f.library, f.records[0].Token)
+	confirmPlaybackInventory(t, f, "unconfirmed")
+	f.catalogTest.Exec(`UPDATE library_sources SET identity_confirmed=0 WHERE id=(SELECT source_id FROM inventory_objects WHERE id='unconfirmed')`)
+	w := f.raw("POST", "/v1/playback/sessions", f.owner.AccessToken, map[string]string{"Idempotency-Key": "unconfirmed-start-0001"}, startBody(f.items[0], nil))
+	var body struct{ Error struct{ Code, Retry string } }
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if w.Code != 503 || body.Error.Code != "source_unavailable" || body.Error.Retry != "same_request" {
+		t.Fatalf("%d %s", w.Code, w.Body.String())
+	}
+	var count int
+	if err := f.db.QueryRow(`SELECT count(*) FROM playback_sessions`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("refused start left %d sessions: %v", count, err)
+	}
+	for _, cause := range []error{storage.ErrPlaybackSource, storage.ErrPlaybackTimeout, storage.ErrBusy} {
+		mapped := v1Error(fmt.Errorf("accept source: %w", cause))
+		reply := httptest.NewRecorder()
+		v1Catalogue().Write(reply, "source-test", mapped)
+		if reply.Code != 503 {
+			t.Fatalf("%v: %d %s", cause, reply.Code, reply.Body.String())
+		}
 	}
 }

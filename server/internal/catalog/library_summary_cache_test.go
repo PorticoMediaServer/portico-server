@@ -389,8 +389,10 @@ func TestLibrarySummaryCoreReadingReadyAndPublicationInvalidation(t *testing.T) 
 			c, s, v, items := readingBrowseFixture(t, kind)
 			lib := Library{ID: "reading", Kind: kind}
 			before := telemetry.LibrarySummaryCacheCounters()
-			if _, err := s.SummarizeLibraries(context.Background(), v, []Library{lib}); !errors.Is(err, ErrReadingProjectionChanged) {
+			if partial, err := s.SummarizeLibraries(context.Background(), v, []Library{lib}); err != nil {
 				t.Fatal(err)
+			} else {
+				assertReadingSummaryPreparing(t, partial[lib.ID], 4)
 			}
 			if telemetry.LibrarySummaryCacheCounters()[telemetry.SummaryBypassReading] != before[telemetry.SummaryBypassReading]+1 {
 				t.Fatal("reading bypass counter")
@@ -410,8 +412,10 @@ func TestLibrarySummaryCoreReadingReadyAndPublicationInvalidation(t *testing.T) 
 			summaryParity(t, hit, cold)
 			key := summaryKeyRead(t, s, v, lib)
 			c.Exec(`UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE library_id=?`, key.Handle)
-			if _, err := s.SummarizeLibraries(context.Background(), v, []Library{lib}); !errors.Is(err, ErrReadingProjectionChanged) {
-				t.Fatal("cached unready Reading", err)
+			if partial, err := s.SummarizeLibraries(context.Background(), v, []Library{lib}); err != nil {
+				t.Fatal(err)
+			} else {
+				assertReadingSummaryPreparing(t, partial[lib.ID], 4)
 			}
 			c.Drain()
 			next := summaryKeyRead(t, s, v, lib)
@@ -445,8 +449,10 @@ func TestLibrarySummaryCoreReadingReadyAndPublicationInvalidation(t *testing.T) 
 				_, e := tx.Exec(`UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE library_id=?`, key.Handle)
 				return e
 			})
-			if _, err := s.SummarizeLibraries(context.Background(), v, []Library{lib}); !errors.Is(err, ErrReadingProjectionChanged) {
+			if partial, err := s.SummarizeLibraries(context.Background(), v, []Library{lib}); err != nil {
 				t.Fatal(err)
+			} else {
+				assertReadingSummaryPreparing(t, partial[lib.ID], 4)
 			}
 			c.Drain()
 			live, scans = summaryRead(t, s, v, lib)

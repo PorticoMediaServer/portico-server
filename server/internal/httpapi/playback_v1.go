@@ -16,6 +16,7 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/playback"
 	"portico.local/server/internal/playbackv1"
+	"portico.local/server/internal/storage"
 )
 
 // Playback Protocol v1 (Spec — Playback Protocol v1) is served from the typed
@@ -48,6 +49,7 @@ func v1ErrorDefinitions() []apierror.Definition {
 		{Code: "access_refused", Status: 403, Message: identity.ErrAccessRefused.Error(), Retry: apierror.Never},
 		{Code: "move_collision", Status: 409, Message: identity.ErrMoveCollision.Error(), Retry: apierror.Never},
 		{Code: "move_confirmation", Status: 409, Message: identity.ErrMoveConfirmation.Error(), Retry: apierror.Never},
+		{Code: "claim_move_required", Status: 409, Message: "In Settings, change sign-in from Local to Portico Account and confirm the move before connecting this server.", Retry: apierror.Never},
 		{Code: "move_code_invalid", Status: 410, Message: identity.ErrMoveCode.Error(), Retry: apierror.Never},
 		{Code: "account_move_waiting", Status: 403, Message: identity.ErrMoveWaiting.Error(), Retry: apierror.Never},
 		{Code: "factor_setup_required", Status: 403, Message: identity.ErrFactorSetupRequired.Error(), Retry: apierror.Never},
@@ -159,7 +161,7 @@ func v1Error(err error) error {
 	switch {
 	case errors.Is(err, catalog.ErrDiscSelectionChanged):
 		code = "revision_mismatch"
-	case errors.Is(err, catalog.ErrSourceBusy):
+	case errors.Is(err, catalog.ErrSourceBusy), errors.Is(err, storage.ErrPlaybackSource), errors.Is(err, storage.ErrPlaybackTimeout), errors.Is(err, storage.ErrBusy):
 		code = "source_unavailable"
 	case errors.Is(err, catalog.ErrDiscPreparing):
 		code = "source_unavailable"

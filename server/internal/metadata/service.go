@@ -95,8 +95,8 @@ type Service struct {
 	// The owner's Advanced metadata choices the workers consult on every pass.
 	refreshPolicy atomic.Value // string
 	castPhotos    atomic.Bool
-	artClient            *http.Client
-	artDirectory         *os.File
+	artClient     *http.Client
+	artDirectory  *os.File
 }
 
 func New(db *sql.DB, token string) *Service {
@@ -172,6 +172,7 @@ func (s *Service) Run(ctx context.Context) {
 			}
 		}
 		batchStarted := time.Now()
+		_ = s.ScreenFanoutStep(ctx)
 		var batch sync.WaitGroup
 		for i := 0; i < dbwork.BackgroundConcurrency(ctx); i++ {
 			batch.Add(1)

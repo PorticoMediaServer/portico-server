@@ -1,3 +1,4 @@
+import {useCallback, useSyncExternalStore} from 'react';
 import type {EntryMetadataEffect} from '../../shell/entry-metadata';
 import type {BrowserDownloadPort} from '../../platform/browser-download';
 import type {EntryActionTarget} from '../../shell/entry-actions';
@@ -17,8 +18,10 @@ export type ScreenContext = Readonly<{
   events: EventsClient;
   scope: ContentScope;
   isCurrent: () => boolean;
+  libraryRouteSignal?: AbortSignal;
   artwork: ShellArtwork;
   identity?: ShellIdentity;
+  subscribeIdentity?: (listener: () => void) => () => void;
   preferences: Readonly<{getSnapshot: () => PreferenceSnapshot; subscribe: (listener: () => void) => () => void}>;
   effects: Readonly<{
     openEntry: (entry: SearchEntry) => void;
@@ -51,9 +54,10 @@ export function runScreenCommand(context: ScreenContext, command: () => unknown)
 /** Every request, including reads started by a service retry, checks the captured authority. */
 export function screenLifetime(context: ScreenContext) {
   const life = new AbortController();
-  const current = () => !life.signal.aborted && context.isCurrent();
+  const current = () => !life.signal.aborted && !context.libraryRouteSignal?.aborted && context.isCurrent();
   const assert = () => { if (!current()) throw new DOMException('Screen authority changed', 'AbortError'); };
-  const signal = (input?: AbortSignal) => input ? AbortSignal.any([life.signal, input]) : life.signal;
+  const inherited = context.libraryRouteSignal;
+  const signal = (input?: AbortSignal) => inherited || input ? AbortSignal.any([life.signal, ...(inherited ? [inherited] : []), ...(input ? [input] : [])]) : life.signal;
   const api = {
     async request<T>(path: string, method?: string, body?: unknown, input?: AbortSignal): Promise<T> {
       assert();
@@ -70,4 +74,14 @@ export function screenLifetime(context: ScreenContext) {
     },
   };
   return {api, current, assert, signal, dispose: () => life.abort()};
+}
+
+/** Preserve the original command/currentness ports while forwarding display observations. */
+export function forwardIdentity<T extends Pick<ScreenContext, 'identity' | 'subscribeIdentity'>, E extends object>(context: T, extra: E): T & E {
+  return {...context, ...extra, get identity() {return context.identity;}, subscribeIdentity: context.subscribeIdentity} as T & E;
+}
+export function useScreenIdentity(context: Pick<ScreenContext, 'identity' | 'subscribeIdentity'> | undefined) {
+  const subscribe = useCallback((listener: () => void) => context?.subscribeIdentity?.(listener) ?? (() => {}), [context]);
+  const read = useCallback(() => context?.identity, [context]);
+  return useSyncExternalStore(subscribe, read, read);
 }

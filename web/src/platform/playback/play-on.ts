@@ -4,7 +4,7 @@ import type {WebPlaybackPresentation, WebPlaybackRuntimeSnapshot} from './types'
 import type {WebShellPlaybackRuntime} from './runtime';
 
 /** Structural contract agreed with platform/cast. No SDK, script, receiver or URL logic here. */
-export type WebCastPort = Pick<WebCastSender, 'getSnapshot' | 'subscribe' | 'prepareOnIdle' | 'prepareForPlayer' | 'start' | 'cancelConnecting' | 'play' | 'pause' | 'toggle' | 'seek' | 'setAudioTrack' | 'setSubtitleTrack' | 'answerTakeover' | 'stop' | 'dismiss' | 'dispose'>;
+export type WebCastPort = Pick<WebCastSender, 'getSnapshot' | 'subscribe' | 'prepareOnIdle' | 'prepareForPlayer' | 'start' | 'cancelConnecting' | 'play' | 'pause' | 'toggle' | 'seek' | 'setAudioTrack' | 'setSubtitleTrack' | 'answerTakeover' | 'stop' | 'dismiss' | 'dispose'> & Partial<Pick<WebCastSender, 'retainsMedia' | 'onRetention'>>;
 export type AirPlayPort = Readonly<{
   available(): boolean;
   subscribe(listener: () => void): () => void;
@@ -43,7 +43,7 @@ export type PlayOnControllerOptions = Readonly<{
   sender: WebCastPort; airPlay?: AirPlayPort;
   /** The server's Portico television directory; a panel may open for these alone. */
   receivers?: PlayOnReceiversPort;
-  runtime: Pick<WebShellPlaybackRuntime, 'getSnapshot' | 'subscribe' | 'stop' | 'play'>;
+  runtime: Pick<WebShellPlaybackRuntime, 'getSnapshot' | 'subscribe' | 'stop' | 'play' | 'bindRemoteRetention'>;
   /** The assembly's real viewer/authority lifetime, never a route lifetime. */
   isCurrent(): boolean;
   reportError(error: unknown): void;
@@ -88,6 +88,13 @@ export class PlayOnController {
     this.state = Object.freeze({cast: options.sender.getSnapshot(), airPlayAvailable: options.airPlay?.available() === true, panel: null, disposed: false});
     this.detach.push(options.sender.subscribe(this.senderChanged), options.runtime.subscribe(this.runtimeChanged), options.sender.prepareOnIdle());
     if (options.airPlay) this.detach.push(options.airPlay.subscribe(() => this.publish({airPlayAvailable: options.airPlay!.available()})));
+    this.detach.push(options.runtime.bindRemoteRetention({
+      retainsMedia: () => !this.disposed && (!!this.state.remote || this.state.cast.transferPending === true || options.sender.retainsMedia?.() === true),
+      subscribe: listener => {
+        const off = this.subscribe(listener), offSender = options.sender.onRetention?.(listener);
+        return () => {off();offSender?.();};
+      },
+    }));
     this.runtimeChanged(); this.senderChanged();
   }
   getSnapshot = (): PlayOnSnapshot => this.state;

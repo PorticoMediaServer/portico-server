@@ -7,7 +7,7 @@ import (
 )
 
 func TestPreparingResponseHeadersStayOnTheirStatus(t *testing.T) {
-	metadata := Metadata{ID: "prepared_read", Method: "GET", Path: "/v1/prepared-read", Summary: "Prepared read", Access: Public, Requires: ScopeOpen, Lane: Browsing, Cost: PageSized, Status: 200, SuccessStatuses: []int{202},
+	metadata := Metadata{Audience: Clients, ID: "prepared_read", Method: "GET", Path: "/v1/prepared-read", Summary: "Prepared read", Access: Public, Requires: ScopeOpen, Lane: Browsing, Cost: PageSized, Status: 200, SuccessStatuses: []int{202},
 		ResponseHeaders: []ResponseHeader{{Status: 202, Name: "Location", Description: "Same-server poll path", Required: true}, {Status: 202, Name: "Retry-After", Description: "Minimum delay before polling", Required: true}}}
 	if err := validate(metadata); err != nil {
 		t.Fatal(err)
@@ -43,7 +43,7 @@ func TestPreparingResponseHeadersStayOnTheirStatus(t *testing.T) {
 }
 
 func TestResponseHeaderMetadataRejectsUnpublishedOrAmbiguousHeaders(t *testing.T) {
-	base := Metadata{ID: "read", Method: "GET", Path: "/v1/read", Summary: "Read", Access: Public, Requires: ScopeOpen, Lane: Default, Cost: Constant, Status: 200}
+	base := Metadata{Audience: Clients, ID: "read", Method: "GET", Path: "/v1/read", Summary: "Read", Access: Public, Requires: ScopeOpen, Lane: Default, Cost: Constant, Status: 200}
 	for _, headers := range [][]ResponseHeader{
 		{{Status: 202, Name: "Location", Description: "Poll"}},
 		{{Status: 200, Name: "Bad\r\nName", Description: "Invalid"}},

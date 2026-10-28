@@ -1,3 +1,4 @@
+import {integrationMessages} from './en-US/integrations.ts';
 /**
  * Portico Product Language catalogue — en-US, the source locale (decision
  * D-I18N: US English is the source; English (Canada) is the trial locale).
@@ -989,7 +990,7 @@ export const enUS = {
   'profile.changePicture': 'Change picture…',
   'profile.removePicture': 'Remove picture',
   'profile.forgetDevices': 'Forget remembered devices',
-  'profile.pictureRejected': 'Choose a JPEG, PNG or WebP picture.',
+  'profile.pictureRejected': 'Choose a JPEG or PNG picture.',
   'profile.rename': 'Rename…',
   'profile.renameTitle': 'Rename {name}',
   'profile.setPin': 'Set a PIN…',
@@ -2299,6 +2300,7 @@ export const enUS = {
   ...servicesMessages,
   ...savedViewSummaryMessages,
   ...liveOwnerMessages,
+  ...integrationMessages,
   ...nextMessages,
   ...musicMixMessages,
 } as const satisfies Record<string, string>;

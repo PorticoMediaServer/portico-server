@@ -77,7 +77,12 @@ func registerSubtitleRaw[Req, Resp any](registry *apikit.Registry, pattern strin
 	}
 
 	identifier := strings.NewReplacer("/", "_", "{", "", "}", "", "-", "_", ".", "_").Replace(strings.ToLower(method) + path)
-	return apikit.RegisterRaw(registry, apikit.RawRoute[Req, Resp]{Metadata: apikit.Metadata{Admission: admission, ID: identifier, Method: method, Path: path, Summary: "Read or change authorized subtitles", Access: access, Requires: requires, Lane: lane, Cost: apikit.Constant, BodyLimit: body, Query: []string{"segment"}, Status: 200, ResponseContentType: contentType, Errors: subtitleRouteErrors()}, Serve: handler})
+	// Saving a file also accepts a multipart upload (subtitleMutationDecode).
+	var requestTypes []string
+	if method == "POST" && path == "/v1/items/{itemId}/subtitles" || method == "PUT" && path == "/v1/items/{itemId}/subtitles/{resource}" {
+		requestTypes = []string{"application/json", "multipart/form-data"}
+	}
+	return apikit.RegisterRaw(registry, apikit.RawRoute[Req, Resp]{Metadata: apikit.Metadata{Audience: apikit.Clients, Admission: admission, ID: identifier, Method: method, Path: path, Summary: "Read or change authorized subtitles", Access: access, Requires: requires, Lane: lane, Cost: apikit.Constant, BodyLimit: body, Query: []string{"segment"}, Status: 200, ResponseContentType: contentType, RequestContentTypes: requestTypes, Errors: subtitleRouteErrors()}, Serve: handler})
 }
 func (d Dependencies) originalSubtitleRoute(w http.ResponseWriter, r *http.Request) {
 	subtitleHeaders(w)

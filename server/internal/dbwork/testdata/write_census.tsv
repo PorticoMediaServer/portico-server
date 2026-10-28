@@ -3,6 +3,7 @@ cmd/server/maintenance.go	runDatabaseHousekeeping	Begin	ClassMaintenance	-
 cmd/server/maintenance.go	runDatabaseHousekeeping	ExecWrite	ClassMaintenance	-	×2
 internal/access/credentials.go	(*Store).PruneCredentials	ExecWrite	ClassMaintenance	-
 internal/access/credentials.go	(*Store).RecordCredentialUse	WithWriteTx	ClassMaintenance	-
+internal/access/members.go	(*Store).SetMemberProfilePicture	Begin	ClassInteractive	dbwork.WritePlan{Name: "member-profile-picture", Rows: 64, Pages: 1024, VMOps: 100000, Why: "The fixed renditions, profile revision and removal of superseded personal images publish atomically."}
 internal/access/store.go	(*Store).transaction	Begin	ClassSecurityFence	-
 internal/administration/activity_updates.go	(*Service).publishUpdateTransition	WithWriteTx	ClassMaintenance	-
 internal/administration/guide_image_worker.go	(*Service).RunGuideImageImports	ExecWrite	ClassBackgroundMedia	-
@@ -19,8 +20,12 @@ internal/audiofacts/store.go	Fail	ExecWrite	ClassBackgroundMedia	-
 internal/audiofacts/store.go	Save	Begin	ClassBackgroundMedia	-
 internal/audiofacts/store.go	retryOldFailures	ExecWrite	ClassBackgroundMedia	-	×2
 internal/backup/apply.go	VerifyRestored	Begin	ClassMaintenance	-
-internal/backup/checkpoint_guard.go	(*Service).holdWriterCheckpoint	WithWriteTx	ClassMaintenance	-
-internal/backup/checkpoint_guard.go	(*Service).releaseWriterCheckpoint	ExecWrite	ClassMaintenance	-
+internal/backup/copy.go	(*copyRun).finish	ReserveWriterConn	ClassInteractive	-
+internal/backup/copy.go	(*copyRun).step	ReserveWriterConn	r.limits.class	-
+internal/backup/holds.go	(*Service).ReleaseInterruptedHold	ExecWrite	ClassMaintenance	-
+internal/backup/holds.go	(*Service).advanceHold	ExecWrite	limits.class	dbwork.WritePlan{Name: dbwork.BackupHoldPhasePlanName, Rows: 1, Pages: 4, VMOps: 250_000, Why: "one singleton state update; no indexed state column, foreign-key action or trigger"}
+internal/backup/holds.go	(*Service).holdBlobs	ExecWrite	limits.class	-
+internal/backup/holds.go	(*Service).releaseHold	ExecWrite	ClassInteractive	-
 internal/backup/policy.go	(*PolicyStore).Update	Begin	ClassMaintenance	-
 internal/catalog/admin.go	(*Service).OrderLibraries	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	libraryOrderPlan
 internal/catalog/admin.go	(*Service).RenameLibrary	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
@@ -49,15 +54,15 @@ internal/catalog/disc_title_media.go	(*Service).CommitDiscAlternate	Begin	ClassB
 internal/catalog/episode_repository.go	(*Service).AssignEpisodes	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/catalog/episodic_reparse.go	(*Service).ReparseEpisodicIssues	ExecWrite	ClassMaintenance	-
 internal/catalog/episodic_reparse.go	(*Service).ReparseEpisodicIssues	WithWriteTx	ClassMaintenance	-
-internal/catalog/inventory.go	(*Service).CommitInventoryAnalysis	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
+internal/catalog/inventory.go	(*Service).CommitInventoryAnalysis	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	audioFilePublicationPlan
 internal/catalog/inventory.go	(*Service).CommitInventoryDiscRoot	Begin	ClassBackgroundMedia	-
 internal/catalog/inventory.go	(*Service).CommitInventoryNaming	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
-internal/catalog/inventory.go	(*Service).CommitInventoryPage	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
+internal/catalog/inventory.go	(*Service).CommitInventoryPage	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	inventoryPagesPlan
 internal/catalog/inventory.go	(*Service).CommitInventoryPages	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	inventoryPagesPlan
 internal/catalog/inventory_admin.go	(*Service).AssociateInventoryVersion	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/catalog/inventory_admin.go	(*Service).CheckSource	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/catalog/inventory_admin.go	(*Service).SeparateInventoryVersion	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
-internal/catalog/inventory_local_refresh.go	(*Service).CommitInventoryLocalRefresh	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
+internal/catalog/inventory_local_refresh.go	(*Service).CommitInventoryLocalRefresh	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	audioFilePublicationPlan
 internal/catalog/inventory_text_import.go	(*Service).CompleteInventoryTextImports	Begin	ClassBackgroundMedia	-
 internal/catalog/library_pins.go	(*Service).SetLibraryNavigation	Begin	ClassFrom(context.Background(), dbwork.ClassInteractive)	-
 internal/catalog/library_pins.go	(*Service).SetPinOrder	Begin	ClassFrom(context.Background(), dbwork.ClassInteractive)	-
@@ -170,8 +175,8 @@ internal/identity/account_moves.go	(*Service).MakeMoveCodes	WithWriteTx	ClassSec
 internal/identity/account_moves.go	(*Service).PreviewAccountMove	WithWriteTx	ClassSecurityFence	-
 internal/identity/account_moves.go	(*Service).RedeemLocalMove	WithWriteTx	ClassSecurityFence	-
 internal/identity/account_moves.go	(*Service).RedeemPorticoMove	WithWriteTx	ClassSecurityFence	-
-internal/identity/avatars.go	(*Service).DeleteProfileAvatar	Begin	ClassSecurityFence	-
-internal/identity/avatars.go	(*Service).UploadProfileAvatar	Begin	ClassSecurityFence	-
+internal/identity/avatars.go	(*Service).DeleteProfileAvatar	Begin	ClassInteractive	-
+internal/identity/avatars.go	(*Service).UploadProfileAvatar	Begin	ClassInteractive	-
 internal/identity/browser_accounts.go	(*Service).ForgetBrowserAccount	Begin	ClassSecurityFence	-
 internal/identity/browser_accounts.go	(*Service).RememberBrowserAccount	Begin	ClassSecurityFence	-
 internal/identity/credential_security.go	(*Service).passwordAttempt	WithWriteTx	ClassSecurityFence	-
@@ -228,7 +233,6 @@ internal/identity/quick_connect.go	(*Service).StartQuick	Begin	ClassSecurityFenc
 internal/identity/recovery_codes.go	(*Service).ReplaceRecoveryCodes	Begin	ClassSecurityFence	-
 internal/identity/refresh.go	(*Service).RefreshSession	Begin	ClassSecurityFence	-
 internal/identity/restore.go	(*Service).SignEveryoneOutAfterRestore	WithWriteTx	ClassSecurityFence	-
-internal/identity/restore.go	ScrubBackupCopy	WithWriteTx	ClassMaintenance	-
 internal/identity/restrictions.go	(*Service).SetProfileRestrictions	Begin	ClassSecurityFence	-
 internal/identity/self_registration.go	(*Service).Register	Begin	ClassSecurityFence	selfRegistrationPlan
 internal/identity/self_registration.go	(*Service).SaveRegistrationPolicy	WithWriteTx	ClassSecurityFence	-
@@ -260,6 +264,9 @@ internal/ingestion/inventory.go	(*Service).schedule	Begin	ClassBackgroundMedia	-
 internal/ingestion/inventory.go	(*Service).verifyPage	Begin	ClassBackgroundMedia	-
 internal/ingestion/legacy_inventory.go	(*Service).adoptLegacyPage	Begin	ClassBackgroundMedia	-
 internal/ingestion/operation_group.go	(*Service).CancelOperation	Begin	ClassBackgroundMedia	-
+internal/ingestion/reading_closure.go	(*Service).blockReadingClosure	WithWriteTx	ClassBackgroundMedia	-
+internal/ingestion/reading_closure.go	(*Service).readingClosureQuantum	WithWriteTx	ClassBackgroundMedia	-	×2
+internal/ingestion/reading_closure.go	(*Service).renewReadingClosure	WithWriteTx	ClassBackgroundMedia	-
 internal/ingestion/remote.go	(*Service).inspectRemote	ExecWrite	ClassBackgroundMedia	-
 internal/ingestion/remote.go	(*Service).recordDescriptorAnalysis	ExecWrite	ClassBackgroundMedia	-
 internal/ingestion/retention.go	(*Service).PruneSource	Begin	ClassBackgroundMedia	-
@@ -274,6 +281,9 @@ internal/ingestion/targeted.go	(*Service).handOverToReports	Begin	ClassBackgroun
 internal/ingestion/targeted.go	(*Service).startWaitingReports	Begin	ClassBackgroundMedia	-
 internal/ingestion/targeted.go	(*Service).startWaitingReports	ExecWrite	ClassBackgroundMedia	-
 internal/ingestion/targeted.go	(*Service).widenTarget	Begin	ClassBackgroundMedia	-
+internal/ingestion/targeted_strict.go	(*Service).ReportPathsStrict	Begin	ClassBackgroundMedia	-
+internal/ingestion/targeted_strict.go	(*Service).strictSources	Begin	ClassBackgroundMedia	-
+internal/integrationids/ids.go	(Store).Encode	Begin	ClassSecurityFence	-
 internal/livechannels/configuration.go	(*Store).fetchSource	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/livechannels/directory.go	(*Store).DeleteReminder	WithWriteTxContext	ClassSecurityFence	-
 internal/livechannels/directory.go	(*Store).SaveReminder	WithWriteTxContext	ClassSecurityFence	-
@@ -395,12 +405,14 @@ internal/metadata/repair_bulk.go	(*Service).bulkTarget	Begin	ClassBackgroundMedi
 internal/metadata/repair_cascade_completion.go	(*Service).reconcileRepairCascades	Begin	ClassBackgroundMedia	-
 internal/metadata/repair_relationships.go	(*Service).RepairCascadeStep	Begin	ClassBackgroundMedia	-
 internal/metadata/runtime_settings.go	(*Service).UpdateMetadataSettings	Begin	ClassInteractive	-
+internal/metadata/screen_fanout.go	(*Service).ScreenFanoutStep	Begin	ClassBackgroundMedia	screenFanoutPlan
+internal/metadata/screen_fanout.go	(*Service).screenFanoutBackoff	Begin	ClassBackgroundMedia	-
 internal/metadata/screen_publish.go	(*Service).publishScreen	Begin	ClassBackgroundMedia	screenPublishPlan
 internal/metadata/screen_review.go	(*Service).RetryScreen	Begin	ClassBackgroundMedia	-
 internal/metadata/screen_review.go	(*Service).SearchScreen	Begin	ClassBackgroundMedia	-
 internal/metadata/screen_review.go	(*Service).SelectAnimeSeason	Begin	ClassBackgroundMedia	-
 internal/metadata/screen_review.go	(*Service).SelectScreen	Begin	ClassBackgroundMedia	-
-internal/metadata/screen_review.go	(*Service).UpdateScreenPolicy	Begin	ClassBackgroundMedia	-
+internal/metadata/screen_review.go	(*Service).UpdateScreenPolicy	Begin	ClassBackgroundMedia	screenPolicyConsentPlan
 internal/metadata/screen_worker.go	(*Service).claimScreen	Begin	ClassBackgroundMedia	-
 internal/metadata/screen_worker.go	(*Service).dispatchScreenChildren	Begin	ClassBackgroundMedia	-
 internal/metadata/screen_worker.go	(*Service).failScreen	Begin	ClassBackgroundMedia	-
@@ -469,8 +481,11 @@ internal/persistence/metadata_discovery.go	StoreDiscoverySnapshot	Begin	ClassFro
 internal/persistence/planner_stats.go	RefreshPlannerStatistics	WithWriteTx	ClassMaintenance	-	×2
 internal/persistence/planner_stats.go	dropEmptyTableStatistics	WithWriteTx	ClassMaintenance	-
 internal/persistence/planner_stats.go	ensurePlannerStatTable	WithWriteTx	ClassMaintenance	-
-internal/persistence/rebase.go	RebaseStatePaths	Begin	ClassMaintenance	-
-internal/persistence/rebase.go	RebaseStatePaths	ExecWrite	ClassMaintenance	-
+internal/persistence/rebase.go	RebaseStatePaths	ExecWrite	ClassMaintenance	-	×2
+internal/persistence/rebase.go	rebaseColumn	WithWriteTx	ClassMaintenance	-
+internal/persistence/rebase.go	runRebase	ExecWrite	ClassMaintenance	-
+internal/persistence/rebase.go	runRebase	WithWriteTx	ClassMaintenance	-
+internal/persistence/rebase.go	saveRebasePosition	ExecWrite	ClassMaintenance	-
 internal/persistence/schema.go	installBaseline	Begin	ClassMaintenance	baselinePlan
 internal/persistence/template.go	regenerateDatabaseSecrets	WithWriteTx	ClassMaintenance	-
 internal/playback/activity.go	(*Service).ActivityStop	Begin	ClassEstablishedPlayback	-
@@ -500,6 +515,7 @@ internal/playback/hls.go	(*HLS).CleanupGenerated	Begin	ClassPlaybackStart	-
 internal/playback/hls.go	(*HLS).observeConversion	WithWriteTx	ClassEstablishedPlayback	-	×2
 internal/playback/hls.go	NewHLS	ExecWrite	ClassEstablishedPlayback	-
 internal/playback/hls_copy_timeline.go	storeCopyTimeline	ExecWrite	ClassEstablishedPlayback	-
+internal/playback/hls_memory.go	(*HLS).spillMemory	ExecWrite	ClassEstablishedPlayback	-
 internal/playback/hls_produce_support.go	(*HLS).downgradeCopyPlan	Begin	ClassEstablishedPlayback	-
 internal/playback/hls_restart.go	(*HLS).restart	ExecWrite	ClassEstablishedPlayback	-
 internal/playback/occurrence_io.go	(*HLS).producerWrite	ExecWrite	class	-
@@ -576,7 +592,7 @@ internal/remotesources/configuration.go	(*Service).ConfigureDAV	Begin	ClassBackg
 internal/remotesources/configuration.go	(*Service).RemoveDAV	Begin	ClassBackgroundMedia	-
 internal/remotesources/contact_history.go	(*Service).flushContactBatch	Begin	ClassBackgroundMedia	-
 internal/remotesources/fences.go	(*Service).CheckScan	ExecWrite	ClassBackgroundMedia	-
-internal/remotesources/inventory.go	(*Service).ListPage	ExecWrite	ClassBackgroundMedia	-
+internal/remotesources/inventory.go	(*Service).ListInventoryPage	ExecWrite	ClassBackgroundMedia	-
 internal/remotesources/inventory_native.go	(*Service).startNativeListing	Begin	ClassBackgroundMedia	-
 internal/remotesources/inventory_native.go	(*Service).startNativeListing	ExecWrite	ClassBackgroundMedia	-	×2
 internal/remotesources/inventory_proof.go	(*Service).VerifyInventoryDirectory	ExecWrite	ClassBackgroundMedia	-	×2
@@ -615,17 +631,25 @@ internal/webhooks/webhooks.go	(*Store).write	WithWriteTx	ClassFrom(ctx, dbwork.C
 # every declared plan: plan	file	function	plan
 plan	internal/access/invitations.go	(*Store).Accept	invitationAcceptPlan
 plan	internal/access/invitations.go	(*Store).AcceptPortico	invitationAcceptPlan
+plan	internal/access/members.go	(*Store).SetMemberProfilePicture	dbwork.WritePlan{Name: "member-profile-picture", Rows: 64, Pages: 1024, VMOps: 100000, Why: "The fixed renditions, profile revision and removal of superseded personal images publish atomically."}
 plan	internal/administration/library_settings.go	(*Service).SaveLibrarySettings	librarySettingsPlan
+plan	internal/backup/holds.go	(*Service).advanceHold	dbwork.WritePlan{Name: dbwork.BackupHoldPhasePlanName, Rows: 1, Pages: 4, VMOps: 250_000, Why: "one singleton state update; no indexed state column, foreign-key action or trigger"}
 plan	internal/catalog/admin.go	(*Service).OrderLibraries	libraryOrderPlan
 plan	internal/catalog/delete_title.go	(*Service).RemoveTitle	titleRemovalPlan
+plan	internal/catalog/inventory.go	(*Service).CommitInventoryAnalysis	audioFilePublicationPlan
+plan	internal/catalog/inventory.go	(*Service).CommitInventoryPage	inventoryPagesPlan
 plan	internal/catalog/inventory.go	(*Service).CommitInventoryPages	inventoryPagesPlan
+plan	internal/catalog/inventory_local_refresh.go	(*Service).CommitInventoryLocalRefresh	audioFilePublicationPlan
 plan	internal/catalog/title_merge.go	(*Service).MergeTitles	titleMergePlan
 plan	internal/compactcatalog/derive.go	(*Worker).Step	DrainPlan
 plan	internal/compactcatalog/derive.go	(*Worker).Step	derivationUnitPlan
 plan	internal/hosted/membership_push.go	(*Service).pushMembers	memberPushPlan
 plan	internal/identity/account_moves.go	(*Service).ConfirmLocalMove	accountMovePlan
+plan	internal/identity/avatars.go	profilePictureWriteContext	dbwork.WritePlan{Name: "profile-picture", Rows: 64, Pages: 1024, VMOps: 100000, Why: "The fixed renditions, profile revision and removal of superseded personal images publish atomically."}
 plan	internal/identity/self_registration.go	(*Service).Register	selfRegistrationPlan
+plan	internal/metadata/screen_fanout.go	(*Service).ScreenFanoutStep	screenFanoutPlan
 plan	internal/metadata/screen_publish.go	(*Service).publishScreen	screenPublishPlan
+plan	internal/metadata/screen_review.go	(*Service).UpdateScreenPolicy	screenPolicyConsentPlan
 plan	internal/metadata/tvdb_episode_credits.go	(*Service).tvdbEpisodeCreditsStep	tvdbEpisodeCreditsPlan
 plan	internal/persistence/schema.go	installBaseline	baselinePlan
 plan	internal/playbackv1/observations.go	(*Service).applyObservationBatch	observationBatchPlan(len(batch))

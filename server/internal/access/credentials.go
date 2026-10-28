@@ -240,7 +240,7 @@ func (s *Store) CreateCredential(ctx context.Context, auth Authorize, issuer *id
 		}
 		if body != "" {
 			// A replay names the credential that was made. It cannot show the
-			// secret again: the server no longer has it.
+			// secret again through an issuance receipt. Owner recovery is explicit.
 			var made struct {
 				ID string `json:"id"`
 			}
@@ -276,8 +276,8 @@ func (s *Store) CreateCredential(ctx context.Context, auth Authorize, issuer *id
 			expiresMs = expires.UTC().Truncate(time.Second).UnixMilli()
 		}
 		hint := issued.Secret[len(issued.Secret)-6:]
-		if _, e = tx.ExecContext(ctx, `INSERT INTO api_credentials(id,kind,account_id,profile_id,name,scopes,secret_hash,hint,family_id,device_id,created_ms,expires_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
-			id, kind, maker.AccountID, maker.ProfileID, name, strings.Join(scopes, ","), identity.Digest(issued.Secret), hint, issued.FamilyID, issued.DeviceID, now, expiresMs); e != nil {
+		if _, e = tx.ExecContext(ctx, `INSERT INTO api_credentials(id,kind,account_id,profile_id,name,scopes,secret_hash,hint,family_id,device_id,created_ms,expires_ms,secret) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			id, kind, maker.AccountID, maker.ProfileID, name, strings.Join(scopes, ","), identity.Digest(issued.Secret), hint, issued.FamilyID, issued.DeviceID, now, expiresMs, recoverableCredentialSecret(kind, issued.Secret)); e != nil {
 			return e
 		}
 		if out.Credential, e = s.credentialTx(ctx, tx, id); e != nil {
@@ -381,6 +381,7 @@ func (s *Store) RevokeCredential(ctx context.Context, auth Authorize, issuer *id
 // credential's scopes and limits. Whether the member behind it is still
 // entitled to anything is decided, as for every session, by authentication.
 type ResolvedCredential struct {
+	ParentID  string
 	ExpiresAt time.Time
 	ID        string
 	Kind      string
@@ -397,7 +398,7 @@ func (s *Store) ResolveCredential(ctx context.Context, secretDigest string) (Res
 	}
 	var scopes string
 	var expires, revoked int64
-	err := dbwork.QueryRow(ctx, s.DB, `SELECT id,kind,account_id,scopes,expires_ms,revoked_ms FROM api_credentials WHERE secret_hash=?`, secretDigest).Scan(&out.ID, &out.Kind, &out.AccountID, &scopes, &expires, &revoked)
+	err := dbwork.QueryRow(ctx, s.DB, `SELECT id,kind,account_id,scopes,expires_ms,revoked_ms,COALESCE(parent_id,'') FROM api_credentials c WHERE secret_hash=? AND (c.parent_id IS NULL OR EXISTS(SELECT 1 FROM api_credentials p WHERE p.id=c.parent_id AND p.kind='app_password' AND p.revoked_ms=0 AND (p.expires_ms=0 OR p.expires_ms>?)))`, secretDigest, s.now()).Scan(&out.ID, &out.Kind, &out.AccountID, &scopes, &expires, &revoked, &out.ParentID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ResolvedCredential{}, identity.ErrUnauthorized
 	}

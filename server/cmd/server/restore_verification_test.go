@@ -7,7 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"portico.local/server/internal/storagepaths"
@@ -583,9 +583,11 @@ func TestRestoreOfThisServersBackupFolderIsKept(t *testing.T) {
 }
 
 // A background priority start-up would not accept never reaches a restore: the
-// column's own constraint makes the copy fail its integrity check when it is
-// staged. The start-up requirement refuses it as well, on its own, should a
-// value ever get that far.
+// column's own constraint fails the copy's integrity check when it is staged,
+// so staging recovers it (JUSTIN-ANSWERS #21): the row the schema refuses is
+// left out, the setting is this version's default, and the owner is told
+// which table lost rows. The start-up requirement refuses such a value as
+// well, on its own, should one ever get that far.
 func TestRestoreRefusesABackgroundPriorityStartupWouldNotAccept(t *testing.T) {
 	ctx := context.Background()
 	state, serverID := startedState(t)
@@ -601,8 +603,18 @@ func TestRestoreRefusesABackgroundPriorityStartupWouldNotAccept(t *testing.T) {
 	}
 	folder := storagepaths.Path(state, backup.BackupsDir, id)
 	changeBackupDatabase(t, folder, `PRAGMA ignore_check_constraints=ON`, `UPDATE maintenance_policy SET background_priority='whenever'`)
-	if _, e = service.Stage(ctx, backup.Source{BackupID: id}); !errors.Is(e, persistence.ErrCandidateIntegrity) {
-		t.Fatalf("a database with a setting outside its allowed values was staged: %v", e)
+	staged, e := service.Stage(ctx, backup.Source{BackupID: id})
+	if e != nil || staged.Validation.Integrity != "recovered" || staged.Validation.Recovery == nil || fmt.Sprint(staged.Validation.Recovery.DamagedTables) != "[maintenance_policy]" {
+		t.Fatalf("a database with a setting outside its allowed values: %+v %v", staged, e)
+	}
+	recovered, e := persistence.Open(storagepaths.Path(state, backup.RestoreStagedDir, backup.DatabaseName))
+	if e != nil {
+		t.Fatal(e)
+	}
+	priority, e := storedBackgroundPriority(ctx, recovered)
+	recovered.Close()
+	if e != nil || storage.CheckBackgroundTaskPriority(priority) != nil {
+		t.Fatalf("recovered background priority %q: %v", priority, e)
 	}
 	spoiled, e := persistence.Open(filepath.Join(folder, backup.DatabaseName))
 	if e != nil {

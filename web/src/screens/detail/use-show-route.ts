@@ -1,3 +1,4 @@
+import {forwardIdentity} from '../detail/context';
 import {useLayoutEffect, useState} from 'react';
 import type {ShowWorkspaceRoute} from '@core/show-workspace.ts';
 import type {WebShellPlaybackRuntime} from '../../platform/playback/runtime';
@@ -25,7 +26,7 @@ export function useShowRoute(context: ScreenContext | undefined, captured: Prote
     const request = new AbortController();
     let live = true;
     const current = () => live && !request.signal.aborted && context.isCurrent();
-    const original: ScreenContext = {...context, isCurrent: current};
+    const original: ScreenContext = forwardIdentity(context, {isCurrent: current});
     const binding = createShowBindings(original);
     const selection = createEpisodeSelection(original, binding,
       {serverId: viewer.serverId, authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId},

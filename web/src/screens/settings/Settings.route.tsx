@@ -1,10 +1,12 @@
+import {dependsOn} from '@core/freshness-hub.ts';
+import {forwardFacts, subscribeFacts} from '../../shell/fact-source';
+import {mountQuietInput, type QuietInput} from './quiet-refresh';
 import {Fragment, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
-import {transcodeLocationTarget} from '@core/presentation/transcode-location.ts';
 import {Button} from '../../kit/controls';
 import {useRouterState} from '@tanstack/react-router';
 import {peopleStreamLimits, settingsBinding} from '@core/presentation/settings-bindings.ts';
-import {settingsRowIndex} from '@core/presentation/settings-spec.ts';
+import {settingsRowIndex, settingsSpec} from '@core/presentation/settings-spec.ts';
 import {captureReportContext, type ReportContext} from '@core/report-context.ts';
 import {SettingsPeopleClient} from '@core/settings-people.ts';
 import {encodedRoutePath} from '../../../../packages/contracts/src/routes.ts';
@@ -21,7 +23,7 @@ import {SettingsScreen, type SettingsBindings, type SettingsContext, type Settin
 import {SecureAddressProvider} from './SecureAddressProvider';
 import {CustomizeHomeRow} from './account-appearance/CustomizeHome';
 import {SettingsController, type SettingsControllerOptions} from './controller';
-import {createSettingsBindings} from './bindings';
+import {createSettingsBindings, forwardSettingsBindings} from './bindings';
 import {LibraryManagementService} from '@core/library-management.ts';
 import {LibrariesPanel} from './libraries/LibrariesPanel';
 import {MetadataSource} from './libraries/MetadataSource';
@@ -125,7 +127,7 @@ const remoteSourcesPageSnapshot = Object.freeze({loading: false});
 const sameBuildInputs = (a: readonly unknown[], b: readonly unknown[]) => a.length === b.length && a.every((value, index) => Object.is(value, b[index]));
 const settingsBuildFacts = (context?: ShellAssemblyContext) => {
   const identity = context?.facts.identity, viewer = context?.session().viewer;
-  return [identity?.primaryProfile, identity?.capabilities?.manageServer, identity?.capabilities?.managePeople,
+  return [identity?.primaryProfile, identity?.capabilities?.manageAccount, identity?.capabilities?.manageServer, identity?.capabilities?.managePeople,
     identity?.capabilities?.manageSignIn, identity?.signIn, viewer?.role, viewer?.serverId, viewer?.authority, viewer?.accountId, viewer?.profileId] as const;
 };
 const settingsLocationRoute = (location: Readonly<{pathname: string; searchStr: string}>) => settingsRoute(location.pathname === '/dashboard'
@@ -143,6 +145,7 @@ export function SettingsEntry() {
   const [profilePIN, setProfilePIN] = useState<ProfilePINRequest>();
   const [failure, setFailure] = useState(false), [retry, setRetry] = useState(0);
   const context = protectedContext?.context;
+  useSyncExternalStore(context?.factsSource?.subscribe ?? noPreferences, () => context?.factsSource?.getSnapshot() ?? context?.facts, () => undefined);
   // The same confirmed reader drives calendar lifetime. A zone change retires
   // the old report factory/results; no old rows can acquire the new zone label.
   const preferences = useSyncExternalStore(context?.preferences?.subscribe ?? noPreferences, () => context?.preferences?.getSnapshot('web'), () => undefined);
@@ -150,7 +153,7 @@ export function SettingsEntry() {
   const raw = Object.fromEntries(new URLSearchParams(location.searchStr));
   const route = settingsLocationRoute(location);
   const facts = settingsBuildFacts(context);
-  const [buildPrimary, buildServer, buildPeople, buildSignIn, buildKind, buildRole, buildServerId, buildAuthority, buildAccountId, buildProfileId] = facts;
+  const [buildPrimary, buildAccount, buildServer, buildPeople, buildSignIn, buildKind, buildRole, buildServerId, buildAuthority, buildAccountId, buildProfileId] = facts;
   const routeScope = route.scope, routeSection = route.section, hasPreferences = !!preferences;
   // Keep the original build dependencies: ordinary preference confirmations and
   // row-only deep links keep their controller, forms and outstanding intents.
@@ -165,6 +168,9 @@ export function SettingsEntry() {
     const reader = context?.preferences, snapshot = preferences;
     if (!context || !reader || !snapshot || !context.isCurrent() || transferredOwnerContexts.has(context)) return;
     let active = true;
+    let inputActive = false,inputRevision = 0;
+    const inputListeners = new Set<() => void>();
+    const inputActivity = {active:()=>inputActive,revision:()=>inputRevision,subscribe:(listener:()=>void)=>{inputListeners.add(listener);return()=>{inputListeners.delete(listener);};}};
     const lifetime = new AbortController(), authorityListeners = new Set<() => void>();
     let preferencesAvailable = true, confirmedZone = reportTimeZone;
     // Confirmed preference changes narrow this same build immediately. The
@@ -225,7 +231,7 @@ export function SettingsEntry() {
       if (held && held.original === value) return held.bound;
       const bound = value.bind(target);methods.set(property, {original: value, bound});return bound;
     }});
-    const buildContext: ShellAssemblyContext = {...context, api, isCurrent: current};
+    const buildContext = forwardFacts(context, {api, isCurrent: current});
     const reportError = () => {if (current()) setFailure(true);};
     const language = snapshot ? shellLanguage(snapshot) : defaultI18n;
     const uiLocale = language.locale, appLocale = language.region.formatLocale;
@@ -242,7 +248,7 @@ export function SettingsEntry() {
         const response = await api.routeFetch(api.baseUrl + path, {method: 'POST', signal, headers: {Authorization: 'Bearer ' + context.session().accessToken, 'Content-Type': contentType}, body: body as BodyInit});
         if (!response.ok) throw Object.assign(new Error('Profile picture could not be saved.'), {status: response.status});
         return response.json();
-      }) : undefined;
+      }, buildContext.observeDirect) : undefined;
     const restrictions = profiles ? new ProfileRestrictionsSource(api, profiles, current) : undefined;
     const offRestrictions = restrictions?.subscribe(() => {if (current() && restrictions.getSnapshot().error) reportError();});
     const profileDevices = profiles && identity.signIn === 'local' ? new ProfileDevicesSource(api, profiles, current) : undefined;
@@ -289,6 +295,7 @@ export function SettingsEntry() {
       eligibility: {library: () => undefined, hasEngine: row => privacy.eligible(row) ? true : presetEnginesAvailable(row, engine) ?? engine(row)},
     };
     const controller = new SettingsController(options);
+    const libraryScope = Object.freeze({serverId:viewer.serverId,viewerId:options.viewerId});
     const session = context.session(), transferOrigin = originalApi.baseUrl, transferRoute = originalApi.getRouteConnection();
     const transferPrincipal = Object.freeze({...viewer, family: session.sessionFamilyId});
     // Independent of this Settings build or dialog. After a known write, only
@@ -378,7 +385,13 @@ export function SettingsEntry() {
       }) : undefined;
     const people: PeopleBindings | undefined = route.section === 'people' && identity.primaryProfile === true && identity.capabilities?.managePeople === true &&
       (role === 'owner' || role === 'admin') && (viewer.authority === 'local' || viewer.authority === 'hosted') ? {
-        client: new SettingsPeopleClient(api, current), devices: createPeopleDevicesApi(api, current), memberProfiles: createPeopleMemberProfilesApi(api, current), serverName: context.facts.serverName, libraries: identity.libraries, memberResetCodes,
+        inputActivity, client: new SettingsPeopleClient(api, current), devices: createPeopleDevicesApi(api, current), memberProfiles: createPeopleMemberProfilesApi(api, current, async (path, body, contentType) => {
+          assert();
+          const response = await api.routeFetch(api.baseUrl + path, {method: 'POST', redirect: 'error', credentials: 'omit', referrerPolicy: 'no-referrer',
+            headers: {Authorization: 'Bearer ' + context.session().accessToken, 'Content-Type': contentType}, body: body as BodyInit});
+          if (!response.ok) throw Object.assign(new Error('Profile picture could not be saved.'), {status: response.status});
+          return response.json();
+        }, context.artwork), get serverName() {return buildContext.facts.serverName;}, get libraries() {return buildContext.facts.identity.libraries;}, subscribe: listener => subscribeFacts(buildContext, listener), memberResetCodes,
         actor: {accountId: viewer.accountId, role}, streamLimits: peopleStreamLimits,
         invitations: new SettingsInvitations(api, current, api.baseUrl, viewer.serverId), signIn: identity.signIn, openHome, reportError,
         // The owner's invite expiry, in whole days on the server and hours in the
@@ -423,10 +436,9 @@ export function SettingsEntry() {
     // restart confirmation and the notification composer, both over their real
     // owner routes (no section read, no invented state).
     const generalActions = route.section === 'general' && role === 'owner' && identity.primaryProfile === true && identity.capabilities?.manageServer === true;
-    // The conversion folder the server stores, read from the runtime form the
-    // controller owns, so the drawn location choice follows the save at once.
-    const storedDirectory = (): string | undefined => {
-      const location = settingsRowIndex.get('streaming.transcodeFolder');
+    // Location is its own runtime preference, independent of the disk folder.
+    const storedLocation = (): string | undefined => {
+      const location = settingsRowIndex.get('streaming.transcodeLocation');
       if (!location) return undefined;
       const state = controller.rowState(location.row);
       return typeof state.value === 'string' ? state.value : undefined;
@@ -434,7 +446,7 @@ export function SettingsEntry() {
     // The owner's Libraries page owns its own bounded directory read and scan
     // commands; the settings controller keeps the per-library panel only.
     const libraries = route.section === 'libraries' && identity.primaryProfile === true && identity.capabilities?.manageServer === true && (role === 'owner' || role === 'admin')
-      ? new LibraryManagementService({api: api, scope: {serverId: viewer.serverId, viewerId: options.viewerId}}) : undefined;
+      ? new LibraryManagementService({api: api, scope: libraryScope}) : undefined;
     // Storage & backups owns one bounded usage sweep shared by its drawn rows.
     const server = route.section === 'storage' && role === 'owner' && identity.primaryProfile === true && identity.capabilities?.manageServer === true ? createServerSettingsSurfaces({transport: api, serverId: viewer.serverId, isCurrent: current, openTarget: openSettingsRow,
       backups: controller.backups, subscribe: controller.subscribe, scopeKey: `${viewer.serverId}/${options.viewerId}`, reportError}) : undefined;
@@ -463,12 +475,13 @@ export function SettingsEntry() {
     const webhooks = integrationKeys ? new SettingsWebhooksSource(api, current, reportError) : undefined;
     const missing = route.section === 'libraries' && role === 'owner' && identity.primaryProfile === true && identity.capabilities?.manageServer === true
       ? new SettingsMissingSource(api, current, reportError) : undefined;
+    const channelPorts = live ? libraryChannelAdmission(buildContext, live) : undefined;
     const source = createSettingsBindings(controller, options, identity, {openHome, signIn,
       special: (row, state, rowContext, openPanel) => {
         if (row.id === 'profile.devices' && profileDevices) return <ProfileDevices source={profileDevices} isCurrent={current} onFailure={reportError} signOut={context.signOut} />;
         if (row.id === 'profile.pinForgot' && profiles && identity.signIn === 'local') return <ProfileForgotPIN source={profiles} api={api} selectedFamilyId={() => context.session().sessionFamilyId} isCurrent={current} />;
         if (row.id === 'profile.signOutElsewhere' && otherDeviceSignOut) return <ProfileOtherSignOut command={otherDeviceSignOut} isCurrent={current} disabled={state.disabled} onFailure={reportError} />;
-        if (row.id === 'profile.signOut') return <ProfileSignOut serverName={identity.serverName} isCurrent={current} signOut={context.signOut} />;
+        if (row.id === 'profile.signOut') return <ProfileSignOut serverName={buildContext.facts.identity.serverName} isCurrent={current} signOut={context.signOut} />;
         if (row.id === 'profile.hiddenLabels' && restrictions) return <SettingsStringList label={defaultI18n.t(row.label)} values={restrictions.getSnapshot().document?.blockedLabels ?? []} addLabel={defaultI18n.t(row.control.addLabel!)} disabled={state.disabled} onChange={value => {void changeRestriction(restrictions, row.id, value)?.catch(reportError);}} />;
         if (row.id === 'remote.homeNets') return <SettingsStringList label={defaultI18n.t(row.label)} values={Array.isArray(state.value) ? state.value as string[] : []} addLabel={defaultI18n.t(row.control.addLabel!)} disabled={state.disabled} onChange={value => controller.change(row, value, rowContext)} />;
         if (row.id === 'profile.picture' && profiles) return <ProfilePicture source={profiles} isCurrent={current} onFailure={reportError} />;
@@ -520,13 +533,13 @@ export function SettingsEntry() {
           const libraryId = rowContext.recordId;
           return <RenameLibrary key={libraryId} name={state.value} disabled={state.disabled === true || state.saving === true} rename={name => controller.renameLibrary(libraryId, name)} />;
         }
-        if (row.id === 'libraries.list' && libraries) return <LibrariesPanel api={api} service={libraries} serverName={identity.serverName}
+        if (row.id === 'libraries.list' && libraries) return <LibrariesPanel api={api} service={libraries} serverName={buildContext.facts.identity.serverName}
           onEdit={libraryId => { if (current()) openPanel('library', libraryId); }} onError={reportError} />;
         if (row.id === 'libraries.skipped' && isLibraryPanelContext(rowContext) && rowContext.recordId && libraries)
           return <SkippedFiles libraryId={rowContext.recordId} api={options.api} service={libraries} isCurrent={current} label={defaultI18n.t(row.control.label ?? row.label)} />;
         if (row.id === 'libraries.folders' && isLibraryPanelContext(rowContext) && rowContext.recordId) {
-          return <LibraryFolders libraryId={rowContext.recordId} api={options.api} serverName={identity.serverName}
-            scope={{serverId: viewer.serverId, viewerId: options.viewerId}} isCurrent={current} onError={reportError} />;
+          return <LibraryFolders libraryId={rowContext.recordId} api={options.api} serverName={buildContext.facts.identity.serverName}
+            scope={libraryScope} isCurrent={current} onError={reportError} />;
         }
         if (row.id === 'libraries.remove' && isLibraryPanelContext(rowContext) && rowContext.recordId && libraries && role === 'owner')
           return <RemoveLibraryButton key={rowContext.recordId} libraryId={rowContext.recordId} service={libraries} api={api}
@@ -557,17 +570,26 @@ export function SettingsEntry() {
           </>}</SignInMoveWatch>
         : selected.section.scope === 'server' && selected.section.id === 'remote'
         ? <ServerRemotePage api={api} isCurrent={current} source={remoteForm} certificate={certificate} groups={renderRows({groups: selected.section.groups})} advanced={selected.section.advanced ? renderRows({advanced: selected.section.advanced}) : null}/>
-        : selected.section.scope === 'server' && selected.section.id === 'metadata' && metadataCurrent() ? <MetadataSettingsPage api={api} isCurrent={metadataCurrent} onLibraries={() => openSettings('libraries')}/> : selected.section.id === 'integrations' && integrationKeys && webhooks ? <IntegrationsPage source={integrationKeys} webhooks={webhooks} baseUrl={api.baseUrl} isCurrent={current} reportError={reportError}
+        : selected.section.scope === 'server' && selected.section.id === 'metadata' && metadataCurrent() ? <MetadataSettingsPage api={api} isCurrent={metadataCurrent} onLibraries={() => openSettings('libraries')}/> : selected.section.id === 'integrations' && integrationKeys && webhooks ? <IntegrationsPage api={api} source={integrationKeys} webhooks={webhooks} baseUrl={api.baseUrl} isCurrent={current} reportError={reportError}
         otherRows={renderRows({groups: selected.section.groups?.filter(group => !group.rows.some(row => ['integrations.apiKeys', 'integrations.webhooks', 'integrations.assistantAddress', 'integrations.assistantKey'].includes(row.id)))})}
-        advancedRows={renderRows({advanced: selected.section.advanced})} /> : selected.section.id === 'live' && live ? <OwnerSourcesPage source={live} libraryChannels={<LibraryChannelsPage {...libraryChannelAdmission(buildContext, live)}/>}/> : selected.section.id === 'remote-sources' ? <RemoteSourcesPage api={api} serverId={viewer.serverId} viewerId={options.viewerId} isCurrent={current} reportError={reportError} openSection={openSettings} /> : selected.section.id === 'segments' && intros ? <ServerIntros source={intros} onPreview={(libraryId, itemId, startSeconds) => {if (current()) void preview({libraryId, itemId, startSeconds}, previewLife.signal, current).catch(reportError);}} modeRows={renderRows({groups: selected.section.groups?.map(group => ({...group, rows: group.rows.filter(row => row.id === 'segments.mode')})).filter(group => group.rows.length), advanced: selected.section.advanced})} /> : selected.section.id === 'people' && people ? <MoveCodesPortProvider>{signIn?.ownerSwitch && <MoveCodesHost source={signIn.ownerSwitch} serverName={identity.serverName} isCurrent={current} onError={reportError}/>}<SignInMoveWatch source={signIn?.ownerSwitch}>{move => <PeopleScreen bindings={people} advancedRows={selected.section.advanced ? renderRows({advanced: selected.section.advanced}) : undefined} initialStatus={move ? 'waiting' : undefined}
+        advancedRows={renderRows({advanced: selected.section.advanced})} /> : selected.section.id === 'live' && live ? <OwnerSourcesPage source={live} libraryChannels={<LibraryChannelsPage ports={channelPorts!}/>}/> : selected.section.id === 'remote-sources' ? <RemoteSourcesPage api={api} serverId={viewer.serverId} viewerId={options.viewerId} isCurrent={current} reportError={reportError} openSection={openSettings} /> : selected.section.id === 'segments' && intros ? <ServerIntros source={intros} onPreview={(libraryId, itemId, startSeconds) => {if (current()) void preview({libraryId, itemId, startSeconds}, previewLife.signal, current).catch(reportError);}} modeRows={renderRows({groups: selected.section.groups?.map(group => ({...group, rows: group.rows.filter(row => row.id === 'segments.mode')})).filter(group => group.rows.length), advanced: selected.section.advanced})} /> : selected.section.id === 'people' && people ? <MoveCodesPortProvider>{signIn?.ownerSwitch && <MoveCodesHost source={signIn.ownerSwitch} serverName={buildContext.facts.identity.serverName} isCurrent={current} onError={reportError}/>}<SignInMoveWatch source={signIn?.ownerSwitch}>{move => <PeopleScreen bindings={people} advancedRows={selected.section.advanced ? renderRows({advanced: selected.section.advanced}) : undefined} initialStatus={move ? 'waiting' : undefined}
               rowActions={person => person.status === 'waiting' ? <MoveCodeRowAction accountId={person.accountId} hasCode={person.hasMoveCode} /> : null} />}</SignInMoveWatch></MoveCodesPortProvider> : selected.section.id === 'dashboard' && dashboard ? <DashboardScreen bindings={dashboard} embedded /> : selected.section.id === 'history' && dashboard ? <><HistoryScreen bindings={dashboard} embedded /><HistoryRetention section={selected.section} renderRows={renderRows}/></> : selected.section.id === 'troubleshooting' ? troubleshooting?.render(<MessageOptions>{renderRows({groups:selected.section.advanced?.groups?.map(group=>({...group,rows:group.rows.filter(row=>['troubleshooting.logLevel','troubleshooting.detailLength','troubleshooting.keepLogs','troubleshooting.keepLogsByKind'].includes(row.id))})).filter(group=>group.rows.length)})}</MessageOptions>,controller.messageDetailMinutes(),playbackProblems && <div id="troubleshooting.playbackProblems"><PlaybackProblems source={playbackProblems}/></div>,selected.section.advanced?.groups?.flatMap(group=>group.rows).filter(row=>controller.rowState(row).changed).map(row=>defaultI18n.t(row.label))) : undefined,
-    });
-    const deviceFacts = {serverName: identity.serverName, linkTvAvailable: !!api, ...(identity.serverVersion === undefined ? {} : {serverVersion: identity.serverVersion})};
+    }, {identity: () => buildContext.facts.identity, subscribe: listener => subscribeFacts(buildContext, listener), getSnapshot: () => buildContext.facts});
+    const deviceFacts = {get serverName() {return buildContext.facts.identity.serverName;}, linkTvAvailable: !!api, get serverVersion() {return buildContext.facts.identity.serverVersion;}};
     const lyricsSourceIsLrclib = (selected: SettingsContext) => {
       const row = settingsRowIndex.get('libraries.lyrics')?.row;
       return !!row && controller.rowState(row, selected).value === 'lrclib';
     };
-    const settings: SettingsBindings = {...source,
+    const quietInterests: ReturnType<typeof mountQuietInput>[] = [];
+    const settings = forwardSettingsBindings(source, {
+      setOpen: open => {for(const interest of quietInterests)interest.setOpen(open);},
+      inputActive: value => {
+        if(!current() || inputActive===value)return;
+        inputActive=value;++inputRevision;
+        controller.setQuietInputActive(value);profiles?.setQuietInputActive(value);
+        if(value){remoteForm?.invalidateQuiet();certificate?.invalidateQuiet();}
+        for(const listener of inputListeners)listener();
+      },
       panelIntro: selected => selected.recordId && selected.tabId === 'metadata' && libraries ? <MetadataSource key={selected.recordId} libraryId={selected.recordId} api={api} isCurrent={current} /> : null,
       panelHeader: (selected, title) => selected.recordId && libraries ? <LibraryHeader key={selected.recordId} libraryId={selected.recordId} name={title} rename={name => controller.renameLibrary(selected.recordId!, name)} service={libraries} artwork={context.artwork} onError={reportError}
         lyrics={{api: api, available: lyricsSourceIsLrclib(selected), isCurrent: current}} /> : null,
@@ -577,15 +599,6 @@ export function SettingsEntry() {
         if (remoteForm?.has(row.id)) {remoteForm.change(row.id, value);return;}
         if (certificate?.has(row.id)) {certificate.change(row.id, value);return;}
         if (restrictions && isProfileRestriction(row.id)) {void changeRestriction(restrictions, row.id, value)?.catch(reportError);return;}
-        if (row.id === 'streaming.transcodeLocation' && hardware) {
-          // One stored directory, three drawn choices: the choice writes it, and
-          // "folder" only reveals the path row that already holds it.
-          const target = value === 'separate' || value === 'memory' || value === 'folder' ? transcodeLocationTarget(value, hardware.getSnapshot().capacity?.temporaryDirectory) : undefined;
-          if (typeof target === 'string') {
-            controller.change(settingsRowIndex.get('streaming.transcodeFolder')!.row, target, selected);
-          }
-          return;
-        }
         if (profiles && row.id === 'profile.pin' && typeof value === 'boolean') {openProfilePIN(!value);return;}
         if (profiles && profileRow(row.id)) {void changeProfileSetting(profiles, row.id, value)?.catch(reportError);return;}
         source.change(row, value, selected);
@@ -594,7 +607,7 @@ export function SettingsEntry() {
       // server-section configuration read would replace that page with a failure.
       getSnapshot: section => section.scope === 'server' && section.id === 'remote' && remoteForm ? remoteForm.pageSnapshot(source.getSnapshot(section), certificate?.getSnapshot()) : section.scope === 'account' && section.id === 'profile' && profiles ? profiles.getSnapshot() : section.scope === 'server' && (section.id === 'remote-sources' || section.id === 'metadata' && metadataCurrent() || section.id === 'live' && !!live) ? remoteSourcesPageSnapshot : section.scope === 'server' && section.id === 'storage' && server ? server.pageSnapshot(source.getSnapshot(section)) : section.scope === 'server' && section.id === 'streaming' && hardware ? hardware.pageSnapshot(source.getSnapshot(section)) : source.getSnapshot(section),
       load: section => section.scope === 'server' && section.id === 'remote' && remoteForm ? Promise.all([remoteForm.load(), certificate?.load(), source.load(section)]).then(() => undefined) : section.scope === 'account' && section.id === 'profile' && profiles ? Promise.all([profiles.load(), source.load(section)]).then(() => undefined) : section.scope === 'server' && (section.id === 'remote-sources' || section.id === 'metadata' && metadataCurrent() || section.id === 'live' && !!live) ? Promise.resolve() : source.load(section),
-      eligible: (row, selected) => (remoteForm?.has(row.id) || certificate?.has(row.id)) ? !!remoteForm?.current() && selected.section.scope === 'server' && selected.section.id === 'remote' && controller.sectionVisible(selected.section) : row.id === 'libraries.list' ? !!libraries && current() && controller.sectionVisible(selected.section) : profileSecurityRows(row.id) ? profileSecurityCurrent() : hardware && hardwareEligible(row.id, hardware.getSnapshot(), storedDirectory()) ? current() && controller.sectionVisible(selected.section) : row.id === 'profile.devices' ? !!profileDevices && current() && selected.section.scope === 'account' && selected.section.id === 'profile' : row.id === 'profile.pinForgot' ? !!profiles && identity.signIn === 'local' && current() : row.id === 'profile.signOutElsewhere' ? !!otherDeviceSignOut && current() && selected.section.scope === 'account' && selected.section.id === 'profile' : row.id === 'profile.signOut' ? current() && selected.section.scope === 'account' && selected.section.id === 'profile' : row.id === 'signin.people' ? current() && (role === 'owner' || role === 'admin') && controller.sectionVisible(selected.section) : row.id === 'signin.outside' ? current() && role === 'owner' && controller.sectionVisible(selected.section) : row.id === 'signin.dataFolder' ? !!signinStorage && current() && controller.sectionVisible(selected.section) : row.id === 'general.message' || row.id === 'general.restart' ? generalActions && current() && controller.sectionVisible(selected.section) : row.id === 'storage.missingNow' ? !!missing && current() : row.id === 'storage.removeMissing' ? false : profileRow(row.id) ? current() && selected.section.scope === 'account' && selected.section.id === 'profile' : server?.eligible(row) ?? ((row.id === 'libraries.folders' || (row.id === 'libraries.skipped' || row.id === 'libraries.unmatched') && !!libraries || (row.id === 'libraries.fetchLyrics' || row.id === 'libraries.remove') && !!libraries && role === 'owner') ? current() && isLibraryPanelContext(selected) && controller.sectionVisible(selected.section) : libraryScanAction(row.id) ? current() && !!libraries && selected.panelId === 'library' && !!selected.recordId && controller.sectionVisible(selected.section) : isSubtitlePreview(row.id) ? current() && controller.sectionVisible(selected.section) : row.id === 'device.remote' ? current() && selected.section.scope === 'account' && selected.section.id === 'device' : isDeviceSyntheticRow(row.id) ? current() && controller.sectionVisible(selected.section) && deviceRowState(row, deviceFacts) !== undefined : row.id === 'music.eq' ? current() && controller.sectionVisible(selected.section) && musicEqualizerAvailable(platform) : row.id === 'people.table' ? !!people && current() && controller.sectionVisible(selected.section) : row.id === 'metadata.perLibrary' || row.id === 'appearance.customizeHome' ? current() && controller.sectionVisible(selected.section) : source.eligible(row, selected)),
+      eligible: (row, selected) => (remoteForm?.has(row.id) || certificate?.has(row.id)) ? !!remoteForm?.current() && selected.section.scope === 'server' && selected.section.id === 'remote' && controller.sectionVisible(selected.section) : row.id === 'libraries.list' ? !!libraries && current() && controller.sectionVisible(selected.section) : profileSecurityRows(row.id) ? profileSecurityCurrent() : hardware && hardwareEligible(row.id, hardware.getSnapshot(), storedLocation()) ? current() && controller.sectionVisible(selected.section) : row.id === 'profile.devices' ? !!profileDevices && current() && selected.section.scope === 'account' && selected.section.id === 'profile' : row.id === 'profile.pinForgot' ? !!profiles && identity.signIn === 'local' && current() : row.id === 'profile.signOutElsewhere' ? !!otherDeviceSignOut && current() && selected.section.scope === 'account' && selected.section.id === 'profile' : row.id === 'profile.signOut' ? current() && selected.section.scope === 'account' && selected.section.id === 'profile' : row.id === 'signin.people' ? current() && (role === 'owner' || role === 'admin') && controller.sectionVisible(selected.section) : row.id === 'signin.outside' ? current() && role === 'owner' && controller.sectionVisible(selected.section) : row.id === 'signin.dataFolder' ? !!signinStorage && current() && controller.sectionVisible(selected.section) : row.id === 'general.message' || row.id === 'general.restart' ? generalActions && current() && controller.sectionVisible(selected.section) : row.id === 'storage.missingNow' ? !!missing && current() : row.id === 'storage.removeMissing' ? false : profileRow(row.id) ? current() && selected.section.scope === 'account' && selected.section.id === 'profile' : server?.eligible(row) ?? ((row.id === 'libraries.folders' || (row.id === 'libraries.skipped' || row.id === 'libraries.unmatched') && !!libraries || (row.id === 'libraries.fetchLyrics' || row.id === 'libraries.remove') && !!libraries && role === 'owner') ? current() && isLibraryPanelContext(selected) && controller.sectionVisible(selected.section) : libraryScanAction(row.id) ? current() && !!libraries && selected.panelId === 'library' && !!selected.recordId && controller.sectionVisible(selected.section) : isSubtitlePreview(row.id) ? current() && controller.sectionVisible(selected.section) : row.id === 'device.remote' ? current() && selected.section.scope === 'account' && selected.section.id === 'device' : isDeviceSyntheticRow(row.id) ? current() && controller.sectionVisible(selected.section) && deviceRowState(row, deviceFacts) !== undefined : row.id === 'music.eq' ? current() && controller.sectionVisible(selected.section) && musicEqualizerAvailable(platform) : row.id === 'people.table' ? !!people && current() && controller.sectionVisible(selected.section) : row.id === 'metadata.perLibrary' || row.id === 'appearance.customizeHome' ? current() && controller.sectionVisible(selected.section) : source.eligible(row, selected)),
       reset: (row, selected) => {if (remoteForm?.has(row.id)) remoteForm.reset(row.id);else if (certificate?.has(row.id)) certificate.reset(row.id);else source.reset(row, selected);},
       rowState: (row, selected) => {
         if (remoteForm?.has(row.id)) return remoteForm.rowState(row);
@@ -633,24 +646,35 @@ export function SettingsEntry() {
           const state = source.rowState(row, selected), devices = hardware?.getSnapshot().capacity?.hardware.devices ?? [];
           return state.present ? {...state, choices: hardwareSelectionChoices(devices, state.value, defaultI18n.t)} : state;
         }
-        const hardwareState = hardware ? hardwareRowState(row.id, hardware.getSnapshot(), hardwareRowIds.includes(row.id) ? storedDirectory() : undefined) : undefined;
+        const hardwareState = hardware ? hardwareRowState(row.id, hardware.getSnapshot(), hardwareRowIds.includes(row.id) ? storedLocation() : undefined) : undefined;
         if (hardwareState !== undefined) return hardwareState;
         const device = isDeviceSyntheticRow(row.id) ? deviceRowState(row, deviceFacts) : undefined;
         return server?.rowState(row) ?? device ?? (row.id === 'music.eq' ? {present: current() && controller.sectionVisible(selected.section) && musicEqualizerAvailable(platform)} : row.id === 'people.table' ? {present: !!people && current() && controller.sectionVisible(selected.section)} : row.id === 'metadata.perLibrary' || row.id === 'appearance.customizeHome' ? {present: current() && controller.sectionVisible(selected.section)} : source.rowState(row, selected));
       },
-    };
-    const publishedSettings: SettingsBindings = {...settings,
+    });
+    const publishedSettings = forwardSettingsBindings(settings, {
       change: (...args) => {if (current()) settings.change(...args);},
       reset: (...args) => {if (current()) settings.reset(...args);},
       load: (...args) => current() ? settings.load(...args) : Promise.resolve(),
       ...(settings.loadContext ? {loadContext: (...args: Parameters<NonNullable<SettingsBindings['loadContext']>>) => current() ? settings.loadContext!(...args) : Promise.resolve()} : {}),
-    };
+    });
+    const section=settingsSpec.find(section=>section.scope===route.scope && section.id===route.section)!;
+    const quietInputs: QuietInput[] = route.scope==='server' && ['signin','live','metadata','remote-sources'].includes(route.section) ? [] : [...controller.quietInputs(section)];
+    if(profiles)quietInputs.push({id:'profiles',refresh:profiles.refresh,cancel:profiles.invalidateQuiet,subscribe:profiles.subscribe,
+      blocked:()=>profiles.quietBlocked() || profiles.getSnapshot().loading,settlement:()=>profiles.getSnapshot().document});
+    if(remoteForm)quietInputs.push({id:'remote',refresh:remoteForm.refresh,cancel:remoteForm.invalidateQuiet,subscribe:remoteForm.subscribe,blocked:remoteForm.quietBlocked,settlement:()=>remoteForm.getSnapshot().draft});
+    if(certificate)quietInputs.push({id:'certificate',refresh:certificate.refresh,cancel:certificate.invalidateQuiet,subscribe:certificate.subscribe,blocked:certificate.quietBlocked,settlement:()=>certificate.getSnapshot().draft});
+    if(signIn && route.section==='signin')quietInputs.push({id:'signin',refresh:signIn.refresh,cancel:signIn.invalidateQuiet,subscribe:signIn.subscribe,settlement:()=>signIn.getSnapshot().document});
+    quietInterests.push(...quietInputs.map(input=>mountQuietInput(context.freshness.hub,`settings/${route.scope}/${route.section}`,[dependsOn.settings('server'),dependsOn.libraries],{
+      ...input,blocked:()=>inputActive || !!input.blocked?.(),
+      subscribe:listener=>{const off=input.subscribe?.(listener),offInput=inputActivity.subscribe(listener);return()=>{off?.();offInput();};},
+    })));
     setFailure(false);setOwned({context, api, inputs, current, settings: publishedSettings, dashboard, profiles, profilePINCurrent, closeProfilePIN});
-    return () => {active = false;offPreferenceFence();pinRequest = undefined;lifetime.abort();setProfilePIN(held => held?.source === profiles ? undefined : held);profileDevices?.dispose();otherDeviceSignOut?.dispose();offRestrictions?.();restrictions?.dispose();offProfileFailures?.();profiles?.dispose();previewLife.abort();signinStorage?.dispose();signIn?.dispose();memberResetCodes?.dispose();people?.invitations?.dispose();people?.client.dispose();for (const listener of authorityListeners) {try {listener();} catch { /* Retire the other captured readers too. */ }}authorityListeners.clear();dashboard?.dispose();libraries?.dispose();privacy.dispose();intros?.dispose();server?.dispose();troubleshooting?.dispose();playbackProblems?.dispose();live?.dispose();integrationKeys?.dispose();webhooks?.dispose();updates?.dispose();missing?.dispose();hardware?.dispose();remoteForm?.dispose();certificate?.dispose();controller.dispose();};
+    return () => {active = false;for(const interest of quietInterests)interest.dispose();inputListeners.clear();offPreferenceFence();pinRequest = undefined;lifetime.abort();setProfilePIN(held => held?.source === profiles ? undefined : held);profileDevices?.dispose();otherDeviceSignOut?.dispose();offRestrictions?.();restrictions?.dispose();offProfileFailures?.();profiles?.dispose();previewLife.abort();signinStorage?.dispose();signIn?.dispose();memberResetCodes?.dispose();people?.invitations?.dispose();people?.client.dispose();for (const listener of authorityListeners) {try {listener();} catch { /* Retire the other captured readers too. */ }}authorityListeners.clear();dashboard?.dispose();libraries?.dispose();privacy.dispose();intros?.dispose();server?.dispose();troubleshooting?.dispose();playbackProblems?.dispose();live?.dispose();integrationKeys?.dispose();webhooks?.dispose();updates?.dispose();missing?.dispose();hardware?.dispose();remoteForm?.dispose();certificate?.dispose();controller.dispose();};
   // Each setup owns and retires exactly its own sources. No shared "latest"
   // slot participates in cleanup, including the owner's update reader.
   }, [context, retry, routeScope, routeSection, hasPreferences, reportTimeZone,
-    buildPrimary, buildServer, buildPeople, buildSignIn, buildKind, buildRole, buildServerId, buildAuthority, buildAccountId, buildProfileId]);
+    buildPrimary, buildAccount, buildServer, buildPeople, buildSignIn, buildKind, buildRole, buildServerId, buildAuthority, buildAccountId, buildProfileId]);
   const selected = protectedContext && owned && sameBuildInputs(owned.inputs, inputs) && owned.current() ? owned : undefined;
   if (!selected) return null;
   const navigate = (next: Parameters<typeof SettingsScreen>[0]['route']) => {if (selected.current()) void router.navigate({to: '/settings', search: () => next});};

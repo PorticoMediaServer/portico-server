@@ -240,9 +240,8 @@ func ApplyLibraryAgentTx(ctx context.Context, tx *sql.Tx, library, agent string)
 		if _, err := tx.ExecContext(ctx, `UPDATE metadata_provider_policies SET enabled=? WHERE library_id=? AND provider='tmdb'`, online && seen["tmdb"], library); err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error='' WHERE library_id=?`, library); err != nil {
-			return err
-		}
+		// The screen policy trigger requests the pass. Agent changes have never
+		// rematched identities, and must not acquire that behavior here.
 	case "music", "audiobook":
 		if _, err := tx.ExecContext(ctx, `UPDATE mb_provider_policies SET enabled=? WHERE library_id=? AND enabled<>?`, online, library, online); err != nil {
 			return err

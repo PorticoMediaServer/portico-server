@@ -22,7 +22,7 @@ func TestTypedChangesRequireASentRevision(t *testing.T) {
 	r := New(func(context.Context, *http.Request, Metadata) error { return nil }, nil)
 	ran := map[string]int{}
 	for _, method := range []string{"PUT", "PATCH", "DELETE", "POST"} {
-		m := Metadata{ID: "change_" + strings.ToLower(method), Method: method, Path: "/v1/things/" + strings.ToLower(method), Summary: "Change a thing", Access: Device, Requires: ScopeRead, Lane: Default, Cost: Constant, BodyLimit: 256, Status: 200, Errors: []string{"invalid_request"}}
+		m := Metadata{Audience: Clients, ID: "change_" + strings.ToLower(method), Method: method, Path: "/v1/things/" + strings.ToLower(method), Summary: "Change a thing", Access: Device, Requires: ScopeRead, Lane: Default, Cost: Constant, BodyLimit: 256, Status: 200, Errors: []string{"invalid_request"}}
 		if err := Register(r, Route[fencedChange, testResponse]{Metadata: m, Handler: func(_ context.Context, q *http.Request, in fencedChange) (testResponse, error) {
 			ran[q.Method]++
 			return testResponse{Name: in.Name, Items: []string{}}, nil

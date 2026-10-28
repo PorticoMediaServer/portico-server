@@ -42,7 +42,7 @@ func TestCheckpointPinnedReaderBoundsGateRestoresPolicyAndRecovers(t *testing.T)
 	if _, err = ExecWrite(ctx, db, ClassBackgroundMedia, `WITH RECURSIVE ids(id) AS (VALUES(1) UNION ALL SELECT id+1 FROM ids WHERE id<9000) INSERT INTO sample SELECT id,zeroblob(8192) FROM ids`); err != nil {
 		t.Fatal(err)
 	}
-	if stats := WAL(ctx, db); stats.LogFrames < CheckpointTruncateFrames {
+	if stats := copyWALForTest(t, ctx, db); stats.LogFrames < CheckpointTruncateFrames {
 		t.Fatalf("fixture has only%d WAL frames", stats.LogFrames)
 	}
 	bg := ReadHandle(WithClass(ctx, ClassMaintenance), db)
@@ -185,6 +185,9 @@ func (c *checkpointCleanupConn) QueryContext(ctx context.Context, query string, 
 	}
 	if query == "PRAGMA busy_timeout" {
 		return &checkpointRows{values: []driver.Value{int64(c.busy)}}, nil
+	}
+	if query == "PRAGMA page_size" {
+		return &checkpointRows{values: []driver.Value{int64(4096)}}, nil
 	}
 	if query == "PRAGMA database_list" {
 		return &checkpointRows{values: []driver.Value{int64(0), "main", ""}}, nil

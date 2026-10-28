@@ -49,6 +49,9 @@ func (s *Service) currentServeProcessTx(ctx context.Context, tx *sql.Tx, source 
 // accepting caller-supplied file facts, then publishes normalized observations
 // in the catalogue's transaction. It never contacts rclone inside that writer.
 func (s *Service) commitListingObservationsTx(ctx context.Context, tx *sql.Tx, job string, page storage.RemotePage, replay bool) error {
+	if page.Limit < 1 || page.Limit > 128 {
+		return storage.ErrRemoteCursor
+	}
 	var receipt serveListingReceipt
 	var rawReceipt []byte
 	if err := tx.QueryRowContext(ctx, `SELECT token FROM remote_listing_progress WHERE listing_id=? AND mode='serve' AND steps=1`, page.ID).Scan(&rawReceipt); err != nil {
@@ -75,11 +78,11 @@ func (s *Service) commitListingObservationsTx(ctx context.Context, tx *sql.Tx, j
 		}
 		after = c.After
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT snapshot FROM remote_listing_entries WHERE listing_id=? AND name>? ORDER BY name LIMIT 129`, page.ID, after)
+	rows, err := tx.QueryContext(ctx, `SELECT snapshot FROM remote_listing_entries WHERE listing_id=? AND name>? ORDER BY name LIMIT ?`, page.ID, after, page.Limit+1)
 	if err != nil {
 		return err
 	}
-	values := make([]serveListingEntry, 0, 129)
+	values := make([]serveListingEntry, 0, page.Limit+1)
 	for rows.Next() {
 		var raw string
 		var value serveListingEntry
@@ -99,9 +102,9 @@ func (s *Service) commitListingObservationsTx(ctx context.Context, tx *sql.Tx, j
 	if rowErr != nil {
 		return rowErr
 	}
-	complete := len(values) <= 128
+	complete := len(values) <= page.Limit
 	if !complete {
-		values = values[:128]
+		values = values[:page.Limit]
 	}
 	if page.Complete != complete || len(values) != len(page.Entries) {
 		return storage.ErrRemoteCursor

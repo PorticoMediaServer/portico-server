@@ -289,6 +289,16 @@ func (s *Service) runCandidateServe(ctx context.Context, source, generation stri
 		return err
 	}
 	defer egress.Close()
+	checkSource := check
+	check = func(ctx context.Context) error {
+		if err := checkSource(ctx); err != nil {
+			return err
+		}
+		if egress.CheckSMBPins != nil {
+			return egress.CheckSMBPins(ctx)
+		}
+		return ctx.Err()
+	}
 	port, err := privateServePort()
 	if err != nil {
 		return err
@@ -297,7 +307,7 @@ func (s *Service) runCandidateServe(ctx context.Context, source, generation stri
 	if err != nil {
 		return err
 	}
-	spec := rcloneprogram.ServeCommandSpec{SourceID: source, SourceGeneration: generation, ApprovedProgramDigest: digest, PrivateDirectory: s.private, Configuration: raw, Remote: remote, Port: port, MetadataPort: metadata, Username: identity.Token(), Password: identity.Token(), Connections: profile.Limits.Connections, RequestsPerSecond: profile.Limits.RequestsPerSecond, BytesPerSecond: profile.Limits.BytesPerSecond, SharedOperations: hold.Operations(), Enforce: func(cmd *exec.Cmd) error {
+	spec := rcloneprogram.ServeCommandSpec{SourceID: source, SourceGeneration: generation, ApprovedProgramDigest: digest, PrivateDirectory: s.private, Configuration: egress.TransientConfiguration(raw), Remote: remote, Port: port, MetadataPort: metadata, Username: identity.Token(), Password: identity.Token(), Connections: profile.Limits.Connections, RequestsPerSecond: profile.Limits.RequestsPerSecond, BytesPerSecond: profile.Limits.BytesPerSecond, SharedOperations: hold.Operations(), Enforce: func(cmd *exec.Cmd) error {
 		if err := check(life); err != nil {
 			return err
 		}

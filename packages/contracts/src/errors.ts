@@ -61,6 +61,18 @@ export const errors = [
     "retry": "same_request"
   },
   {
+    "code": "avatar_not_found",
+    "status": 404,
+    "message": "This profile picture is no longer available.",
+    "retry": "after_refresh"
+  },
+  {
+    "code": "avatar_unsupported",
+    "status": 415,
+    "message": "Choose a JPEG or PNG picture smaller than 4 MB.",
+    "retry": "never"
+  },
+  {
     "code": "body_too_large",
     "status": 413,
     "message": "The request is too large.",
@@ -137,6 +149,12 @@ export const errors = [
     "status": 503,
     "message": "This channel can't be played right now.",
     "retry": "same_request"
+  },
+  {
+    "code": "claim_move_required",
+    "status": 409,
+    "message": "In Settings, change sign-in from Local to Portico Account and confirm the move before connecting this server.",
+    "retry": "never"
   },
   {
     "code": "client_log_budget",

@@ -58,7 +58,7 @@ func (s *Service) readingBrowseScope(library string) (*readingBrowseScope, error
 	}
 	// Requiring a carried transaction prevents a ready check and its consumers
 	// from silently using different states. Mutation selectors carry a writer.
-	if dbwork.Snapshot(s.Context()) == nil && !dbwork.InWriteTx(s.Context()) {
+	if dbwork.Snapshot(s.Context()) == nil && !dbwork.InWriteTx(s.Context()) && s.readTx == nil {
 		return nil, ErrReadingProjectionChanged
 	}
 	out := &readingBrowseScope{kind: lib.Kind, mobi: lib.Kind == "book" && s.readingMobiConfigured()}

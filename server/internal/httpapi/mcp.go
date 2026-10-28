@@ -1022,7 +1022,7 @@ func (d Dependencies) mcp(w http.ResponseWriter, r *http.Request) {
 }
 
 func registerMCP(registry *apikit.Registry, d Dependencies) error {
-	err := apikit.RegisterRaw(registry, apikit.RawRoute[MCPMessage, MCPMessage]{Metadata: apikit.Metadata{
+	err := apikit.RegisterRaw(registry, apikit.RawRoute[MCPMessage, MCPMessage]{Metadata: apikit.Metadata{Audience: apikit.Clients,
 		Admission: laneTools, ID: "mcp", Method: "POST", Path: mcpPath, Summary: "Model Context Protocol endpoint: JSON-RPC 2.0 over Streamable HTTP, authenticated by an API key or personal access token",
 		Access: apikit.Public, Requires: apikit.ScopeOpen, Lane: apikit.Default, Cost: apikit.PageSized, BodyLimit: mcpMaxBody, Status: 200, Errors: []string{"unauthorized", "invalid_request", "body_too_large", "unsupported_media_type", "internal"},
 	}, Serve: d.mcp})
@@ -1031,7 +1031,7 @@ func registerMCP(registry *apikit.Registry, d Dependencies) error {
 	}
 	// The server starts no stream of its own, which the transport lets it say
 	// with 405.
-	return apikit.RegisterRaw(registry, apikit.RawRoute[struct{}, MCPMessage]{Metadata: apikit.Metadata{
+	return apikit.RegisterRaw(registry, apikit.RawRoute[struct{}, MCPMessage]{Metadata: apikit.Metadata{Audience: apikit.Clients,
 		Admission: laneDefault, ID: "mcp_stream", Method: "GET", Path: mcpPath, Summary: "Not offered: this MCP server answers each request directly and opens no stream",
 		Access: apikit.Public, Requires: apikit.ScopeOpen, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"method_not_allowed"},
 	}, Serve: func(w http.ResponseWriter, _ *http.Request) {

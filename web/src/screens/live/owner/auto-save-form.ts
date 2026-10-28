@@ -1,3 +1,4 @@
+import type {QuietRefreshOutcome} from '@core/freshness-actions.ts';
 import type {DraftForm, FormState} from '@core/server-admin/draft-form.ts';
 
 /** Keep the form locked through its receipt reread, not just the PUT. The
@@ -21,6 +22,9 @@ export class AutoSaveForm<T extends object, S> {
     this.state = Object.freeze({...this.form.getSnapshot(), saving: this.running || this.form.getSnapshot().saving});
     for (const listener of this.listeners) listener();
   }
+  invalidateQuiet = () => this.form.invalidateQuiet();
+  quietBlocked = () => !this.active() || this.running || this.timer !== undefined || this.form.getSnapshot().saving || this.form.getSnapshot().saveError !== undefined;
+  refresh = async (): Promise<QuietRefreshOutcome> => this.quietBlocked() ? {kind: 'deferred'} : this.form.refresh();
   load = async () => {if (this.active() && !this.running) await this.form.load();};
   set(change: Partial<T> | ((draft: T) => T)) {
     if (!this.active() || this.running) return;

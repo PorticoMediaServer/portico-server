@@ -80,6 +80,7 @@ func discoveryConfirmLibrary(t *testing.T, s *Service, library string, providers
 	if e != nil {
 		t.Fatal(e)
 	}
+	settleScreenFanout(t, s)
 }
 
 func TestScreenRegionalCertificationStudioAndPeopleLinks(t *testing.T) {
@@ -473,6 +474,7 @@ func TestScreenCertificationRegionTransitionClearsObsoleteAutomaticValue(t *test
 	if e = s.UpdateScreenPolicy(ctx, "lib", ScreenPolicyUpdate{ExpectedRevision: policy.Revision, ExpectedConsentRevision: policy.ConsentRevision, ConfirmRemote: &yes, DisclosureVersion: ScreenDisclosureVersion, Enabled: true, Providers: []string{"tmdb"}, Language: "en-US", Region: "DE", RefreshMode: "replace_unlocked"}, nil); e != nil {
 		t.Fatal(e)
 	}
+	settleScreenFanout(t, s)
 	publicationExec(t, db, `DELETE FROM metadata_document_freshness`)
 	if e = s.ScreenStep(ctx); e != nil {
 		t.Fatal(e)
@@ -536,6 +538,7 @@ func TestScreenCertificationTransitionPreservesNFOAndOwnerLocks(t *testing.T) {
 	if e = s.UpdateScreenPolicy(ctx, "lib", ScreenPolicyUpdate{ExpectedRevision: policy.Revision, ExpectedConsentRevision: policy.ConsentRevision, ConfirmRemote: &yes, DisclosureVersion: ScreenDisclosureVersion, Enabled: true, Providers: []string{"tmdb"}, Language: "en-US", Region: "DE", RefreshMode: "replace_unlocked"}, nil); e != nil {
 		t.Fatal(e)
 	}
+	settleScreenFanout(t, s)
 	publicationExec(t, db, `DELETE FROM metadata_document_freshness`)
 	if e = s.ScreenStep(ctx); e != nil {
 		t.Fatal(e)
@@ -569,6 +572,7 @@ func TestScreenCertificationTransitionPreservesNFOAndOwnerLocks(t *testing.T) {
 	if e = s.UpdateScreenPolicy(ctx, "lib", ScreenPolicyUpdate{ExpectedRevision: policy.Revision, ExpectedConsentRevision: policy.ConsentRevision, ConfirmRemote: &yes, DisclosureVersion: ScreenDisclosureVersion, Enabled: true, Providers: []string{"tmdb"}, Language: "en-US", Region: "DE", RefreshMode: "replace_unlocked"}, nil); e != nil {
 		t.Fatal(e)
 	}
+	settleScreenFanout(t, s)
 	publicationExec(t, db, `DELETE FROM metadata_document_freshness`)
 	if e = s.ScreenStep(ctx); e != nil {
 		t.Fatal(e)
@@ -634,6 +638,7 @@ func TestScreenProviderChangeRematchesTheLibrary(t *testing.T) {
 	if e = s.UpdateScreenPolicy(ctx, "lib", ScreenPolicyUpdate{ExpectedRevision: policy.Revision, ExpectedConsentRevision: policy.ConsentRevision, Enabled: true, Providers: []string{"tvdb"}, Language: "en-US", Region: "US", RefreshMode: "replace_unlocked", DisclosureVersion: ScreenDisclosureVersion}, nil); e != nil {
 		t.Fatal(e)
 	}
+	settleScreenFanout(t, s)
 	if got := publicationScalar(t, db, `SELECT provider||'|'||provider_id||'|'||selection_mode||'|'||status||'|'||(accepted_publication<>'') FROM screen_metadata_work WHERE target_kind='item' AND target_id=?`, item.ID); got != "||none|pending|1" {
 		t.Fatalf("after the provider changed = %q", got)
 	}
@@ -642,6 +647,7 @@ func TestScreenProviderChangeRematchesTheLibrary(t *testing.T) {
 	if e = s.UpdateScreenPolicy(ctx, "lib", ScreenPolicyUpdate{ExpectedRevision: policy.Revision, ExpectedConsentRevision: policy.ConsentRevision, Enabled: true, Providers: []string{"tmdb"}, Language: "en-US", Region: "US", RefreshMode: "replace_unlocked", DisclosureVersion: ScreenDisclosureVersion}, nil); e != nil {
 		t.Fatal(e)
 	}
+	settleScreenFanout(t, s)
 	if e = s.ScreenStep(ctx); e != nil {
 		t.Fatal(e)
 	}

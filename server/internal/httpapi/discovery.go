@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"crypto/sha256"
 	"fmt"
 	"net/http"
@@ -52,7 +53,7 @@ func (d Dependencies) discoveryRoutes(mux *http.ServeMux) {
 		if !ok {
 			return
 		}
-		tag := d.gridTag(r, p, gridTagBucket)
+		tag := d.gridTag(r, p, gridTagBucket, d.containerOffersValidator(r, p, r.PathValue("id")))
 		if gridNotModified(w, r, tag) {
 			return
 		}
@@ -80,8 +81,27 @@ func (d Dependencies) discoveryRoutes(mux *http.ServeMux) {
 			return
 		}
 		viewer := catalog.Viewer{Profile: identity.PersonalKey(p.Viewer), Fence: fence, Libraries: []string{r.PathValue("id")}, Restrictions: restrictions}
-		result, err := d.Catalog.WithContext(r.Context()).Content(catalog.ContentRequest{Viewer: viewer, Restrictions: restrictions, ServerID: d.Identity.ID(), Library: r.PathValue("id"), Profile: identity.PersonalKey(p.Viewer), ViewerFence: fence, View: q.Get("view"), EntityID: q.Get("entityId"), Sort: q.Get("sort"), Direction: q.Get("direction"), Category: q.Get("category"), Q: q.Get("q"), Cursor: q.Get("cursor"), Limit: limit, Start: start})
+		// The page's displayed containers carry their aggregate selection
+		// offers from the same snapshot (MOB-030), fenced after the read.
+		var result catalog.ContentEnvelope
+		before, err := d.containerOffersFenceBefore(r, p)
 		if err != nil {
+			failure(w, err)
+			return
+		}
+		err = d.composeScope(r, restrictions, func(ctx context.Context, cat *catalog.Service) error {
+			var e error
+			result, e = cat.Content(catalog.ContentRequest{Viewer: viewer, Restrictions: restrictions, ServerID: d.Identity.ID(), Library: r.PathValue("id"), Profile: identity.PersonalKey(p.Viewer), ViewerFence: fence, View: q.Get("view"), EntityID: q.Get("entityId"), Sort: q.Get("sort"), Direction: q.Get("direction"), Category: q.Get("category"), Q: q.Get("q"), Cursor: q.Get("cursor"), Limit: limit, Start: start})
+			if e != nil {
+				return e
+			}
+			return d.projectContainerActions(ctx, p, viewer, cat, r.PathValue("id"), contentEnvelopeEntries(&result))
+		})
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		if err = d.containerOffersFenceAfter(r, p, before); err != nil {
 			failure(w, err)
 			return
 		}
@@ -326,4 +346,19 @@ func (d Dependencies) collectionClassesReady(r *http.Request, p identity.Princip
 		}
 	}
 	return d.Catalog.WithContext(r.Context()).CollectionClassesReady(viewer)
+}
+
+// contentEnvelopeEntries are a content page's displayed entries: its entity
+// and every section's entries.
+func contentEnvelopeEntries(out *catalog.ContentEnvelope) []*catalog.ContentEntry {
+	entries := []*catalog.ContentEntry{}
+	if out.Entity != nil {
+		entries = append(entries, out.Entity)
+	}
+	for i := range out.Sections {
+		for j := range out.Sections[i].Entries {
+			entries = append(entries, &out.Sections[i].Entries[j])
+		}
+	}
+	return entries
 }

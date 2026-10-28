@@ -1,3 +1,4 @@
+import {useShellFacts} from '../../shell/fact-hooks';
 import {useLayoutEffect, useRef, useState} from 'react';
 import {useLocation} from '@tanstack/react-router';
 import {defaultI18n} from '@i18n';
@@ -23,33 +24,36 @@ const kinds = [
 
 type Assembly = ProtectedLibraryScreen['context'];
 type HomeOpening = typeof router.state.location;
-type FirstLibraryLease = Readonly<{context: ScreenContext; assembly: Assembly; identity: Assembly['facts']['identity']; opening: HomeOpening;
+type FirstLibraryLease = Readonly<{context: ScreenContext; assembly: Assembly; opening: HomeOpening;
   runtime: NonNullable<ProtectedLibraryScreen['binding']['playback']>['runtime'] | undefined; key: number; current: () => boolean; serverName: string}>;
 type AddOpening = {kind: Kind; key: number; live: boolean};
 type AddLease = Readonly<{page: FirstLibraryLease; opening: AddOpening; life: ReturnType<typeof screenLifetime>; service: LibraryManagementService; key: number; current: () => boolean}>;
 
-function admittedEmptyHome(assembly: Assembly, identity: Assembly['facts']['identity']) {
-  return assembly.isCurrent() && assembly.facts.identity === identity && assembly.session().viewer.role === 'owner'
-    && identity.primaryProfile === true && identity.capabilities?.manageServer === true
-    && identity.libraries.length === 0 && identity.liveAvailable === false;
+function admittedEmptyHome(assembly: Assembly) {
+  const current = assembly.facts.identity;
+  return assembly.isCurrent() && assembly.session().viewer.role === 'owner'
+    && current.primaryProfile === true && current.capabilities?.manageServer === true
+    && current.libraries.length === 0 && current.liveAvailable === false;
 }
 
 /** states#14: the confirmed owner's empty server, using the real library form. */
 export function FirstLibraryState({captured}: {captured: ProtectedLibraryScreen}) {
+  useShellFacts(captured.context);
   const opening = useLocation({select: value => value}), href = opening.href;
   const context = useCommittedLibraryScreenContext(captured, href, () => router.state.location.pathname === '/' && router.state.location.href === href);
-  const assembly = captured.context, identity = assembly.facts.identity, runtime = captured.binding.playback?.runtime;
+  const assembly = captured.context, runtime = captured.binding.playback?.runtime;
+  const admission = admittedEmptyHome(assembly);
   const [published, publish] = useState<FirstLibraryLease>(), generation = useRef(0);
   useLayoutEffect(() => {
-    if (!context || !admittedEmptyHome(assembly, identity)) return;
+    if (!context || !admittedEmptyHome(assembly)) return;
     let live = true;
     const current = () => live && context.isCurrent() && opening.pathname === '/' && router.state.location === opening
-      && admittedEmptyHome(assembly, identity);
+      && admittedEmptyHome(assembly);
     if (!current()) return;
-    publish({context, assembly, identity, opening, runtime, key: ++generation.current, current, serverName: assembly.facts.serverName});
+    publish({context, assembly, opening, runtime, key: ++generation.current, current, get serverName() {return assembly.facts.serverName;}});
     return () => {live = false;};
-  }, [context, assembly, identity, opening, runtime]);
-  const owned = published && published.context === context && published.assembly === assembly && published.identity === identity
+  }, [context, assembly, admission, opening, runtime]);
+  const owned = published && published.context === context && published.assembly === assembly
     && published.opening === opening && published.runtime === runtime && published.current() ? published : undefined;
   return owned ? <FirstLibraryBody key={owned.key} page={owned}/> : null;
 }

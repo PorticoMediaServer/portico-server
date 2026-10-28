@@ -67,9 +67,11 @@ func TestIncrementalScanObservesFileFactsAndRetainsIntegrityCadence(t *testing.T
 	}
 	run("", "first-import")
 	second := run("", "incremental")
-	var pages, skipped int
-	if err = db.QueryRow(`SELECT sum(pages),sum(skipped) FROM inventory_directories WHERE job_id=?`, second).Scan(&pages, &skipped); err != nil || pages != 2 || skipped != 0 {
-		t.Fatal("local folders were not enumerated", pages, skipped, err)
+	var pages, skipped, directories, completed int
+	// Both directories must be enumerated completely. A two-name source page
+	// can need another page to prove EOF; page count is not directory count.
+	if err = db.QueryRow(`SELECT count(*),sum(pages),sum(skipped),sum(state='done' AND pages>0) FROM inventory_directories WHERE job_id=?`, second).Scan(&directories, &pages, &skipped, &completed); err != nil || directories != 2 || completed != directories || pages < directories || skipped != 0 {
+		t.Fatal("local folders were not enumerated", directories, completed, pages, skipped, err)
 	}
 	if err = os.WriteFile(filepath.Join(media, "nested/New (2002).mp4"), []byte("new"), 0600); err != nil {
 		t.Fatal(err)

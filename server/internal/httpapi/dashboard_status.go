@@ -26,7 +26,7 @@ type DashboardStatus struct {
 }
 
 func registerDashboardStatus(registry *apikit.Registry, d Dependencies) error {
-	return apikit.RegisterRaw(registry, apikit.RawRoute[struct{}, DashboardStatus]{Metadata: apikit.Metadata{
+	return apikit.RegisterRaw(registry, apikit.RawRoute[struct{}, DashboardStatus]{Metadata: apikit.Metadata{Audience: apikit.Clients,
 		ID: "get_admin_dashboard_status", Method: "GET", Path: "/v1/admin/dashboard/status", Summary: "Read qualified owner Dashboard alerts and tasks",
 		Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "internal"}},
 		Serve: func(w http.ResponseWriter, r *http.Request) {

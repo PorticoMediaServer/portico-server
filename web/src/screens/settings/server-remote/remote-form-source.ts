@@ -1,3 +1,4 @@
+import type {QuietRefreshOutcome} from '@core/freshness-actions.ts';
 import {defaultI18n} from '@i18n';
 import {remoteAccessForm} from '@core/server-admin/server-forms.ts';
 import {checkRemoteAccess, type RemoteConfiguration} from '@core/remote-access.ts';
@@ -69,6 +70,9 @@ export class RemoteFormSource {
     this.listeners.add(listener);const stop = this.form.subscribe(listener);
     return () => {this.listeners.delete(listener);stop();};
   };
+  invalidateQuiet = () => this.form.invalidateQuiet();
+  quietBlocked = () => !this.current() || !!(this.pending || this.automaticSave || this.checking) || this.getSnapshot().saving || this.getSnapshot().saveError !== undefined;
+  refresh = async (): Promise<QuietRefreshOutcome> => this.quietBlocked() ? {kind: 'deferred'} : this.form.refresh();
   load = (): Promise<void> => {
     if (!this.current()) return Promise.resolve();
     if (this.pending) return this.pending;
@@ -150,6 +154,7 @@ export class RemoteFormSource {
     if (this.checking) return this.checking;
     const state = this.getSnapshot();
     if (!state.status || state.loading || state.saving || state.dirty) return Promise.resolve();
+    this.form.invalidateQuiet();
     const pending = Promise.resolve().then(async () => {
       this.assert();await checkRemoteAccess(this.api as HttpLocalApi, this.life.signal);this.assert();await this.load();
     }).finally(() => {

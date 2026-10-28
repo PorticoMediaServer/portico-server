@@ -38,30 +38,12 @@ func (d Dependencies) identityProfileRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		release, e := imagework.AcquireUploadBody(r.Context())
+		raw, release, e := readAvatarUpload(w, r)
 		if e != nil {
-			closeUnreadUpload(w, r)
 			failure(w, e)
 			return
 		}
 		defer release()
-		if deadline, ok := r.Context().Deadline(); ok {
-			_ = http.NewResponseController(w).SetReadDeadline(deadline)
-			defer func() {
-				if r.Context().Err() == nil && w.Header().Get("Connection") != "close" {
-					_ = http.NewResponseController(w).SetReadDeadline(time.Time{})
-				}
-			}()
-		}
-		// A picture is not JSON, so this route reads the body itself rather than
-		// through decode. The envelope allowance covers multipart framing only.
-		r.Body = http.MaxBytesReader(w, r.Body, identity.AvatarUploadBytes+(1<<20))
-		raw, e := avatarBody(r)
-		if e != nil {
-			closeUnreadUpload(w, r)
-			failure(w, e)
-			return
-		}
 		out, e := d.Identity.UploadProfileAvatar(r.Context(), directBearer(r), r.PathValue("id"), raw)
 		if e != nil {
 			failure(w, e)
@@ -108,14 +90,14 @@ func (d Dependencies) identityProfileRoutes(mux *http.ServeMux) {
 			return
 		}
 		modified, _ := time.Parse(time.RFC3339, updated)
-		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Content-Type", http.DetectContentType(raw))
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		if requested == "" {
 			w.Header().Set("Cache-Control", "private, no-cache")
 		} else {
 			w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
 		}
-		http.ServeContent(w, r, "avatar.png", modified, bytes.NewReader(raw))
+		http.ServeContent(w, r, "avatar", modified, bytes.NewReader(raw))
 	})
 }
 
@@ -308,4 +290,30 @@ func (d Dependencies) identityAuthRoutes(mux *http.ServeMux) {
 		}
 		w.WriteHeader(204)
 	})
+}
+
+func readAvatarUpload(w http.ResponseWriter, r *http.Request) ([]byte, func(), error) {
+	release, e := imagework.AcquireUploadBody(r.Context())
+	if e != nil {
+		closeUnreadUpload(w, r)
+		return nil, nil, e
+	}
+	if deadline, ok := r.Context().Deadline(); ok {
+		_ = http.NewResponseController(w).SetReadDeadline(deadline)
+		defer func() {
+			if r.Context().Err() == nil && w.Header().Get("Connection") != "close" {
+				_ = http.NewResponseController(w).SetReadDeadline(time.Time{})
+			}
+		}()
+	}
+	// A picture is not JSON, so this route reads the body itself rather than
+	// through decode. The envelope allowance covers multipart framing only.
+	r.Body = http.MaxBytesReader(w, r.Body, identity.AvatarUploadBytes+(1<<20))
+	raw, e := avatarBody(r)
+	if e != nil {
+		closeUnreadUpload(w, r)
+		release()
+		return nil, nil, e
+	}
+	return raw, release, nil
 }

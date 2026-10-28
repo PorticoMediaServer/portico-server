@@ -213,12 +213,13 @@ func (s *Service) analysisWindowTx(ctx context.Context, tx *sql.Tx, job string, 
 		rows, err = tx.QueryContext(ctx, `WITH batch AS MATERIALIZED (
  SELECT o.* FROM inventory_objects o JOIN inventory_runs r ON r.source_id=o.source_id
  WHERE r.job_id=? AND o.id IN (SELECT value FROM json_each(?)) AND o.retired=0 AND o.state='available' AND o.root_incarnation=r.root_incarnation AND o.unsupported_reason=''
+ AND (r.reported<>? OR (EXISTS(SELECT 1 FROM inventory_run_targets WHERE job_id=r.job_id) AND `+targetScopeSQL+`))
  ORDER BY o.id)
  SELECT o.id,o.revision,(lower(substr(o.relative_path,-5)) NOT IN('.epub','.mobi','.azw3') AND lower(substr(o.relative_path,-4)) NOT IN('.pdf','.cbz','.cb7','.cbr') AND (lower(substr(o.relative_path,-5))<>'.strm' OR ?=1) AND (o.analysis_revision<>o.revision OR o.analysis_policy<>? OR o.analysis_state='pending' OR o.analysis_generation<>r.source_generation OR (o.analysis_algorithm<>? AND EXISTS(SELECT 1 FROM json_each((SELECT operations_json FROM library_scan_policies WHERE library_id=?)) WHERE value IN('checksum','chapter_images','trickplay','waveform','loudness','fingerprint'))) OR
  (lower(substr(o.relative_path,-5))<>'.strm' AND EXISTS(SELECT 1 FROM json_each(?) wanted WHERE NOT EXISTS(SELECT 1 FROM json_each(o.analysis_operations_json) done WHERE done.value=wanted.value))) OR
  EXISTS(SELECT 1 FROM json_each(?) wanted WHERE wanted.value IN('checksum','chapter_images','trickplay','waveform','loudness','fingerprint') AND NOT EXISTS(SELECT 1 FROM analysis_heads h JOIN analysis_results a ON a.id=h.result_id WHERE h.object_id=o.id AND h.source_revision=o.revision AND h.stage=wanted.value AND a.algorithm=? AND a.root_incarnation=r.root_incarnation AND a.configuration_generation=r.source_generation AND a.retired_ms=0)) OR
  (lower(substr(o.relative_path,-5))='.strm' AND NOT EXISTS(SELECT 1 FROM json_each(o.analysis_operations_json) done WHERE done.value=?))))
- FROM batch o JOIN inventory_runs r ON r.source_id=o.source_id WHERE r.job_id=? ORDER BY o.id`, job, string(idsJSON), strmEnabled && policy.Allows("probe"), policy.Revision, mediaanalysis.Algorithm, source.LibraryID, string(requiredJSON), string(requiredJSON), mediaanalysis.Algorithm, "strm_target:"+strconv.FormatInt(strmRevision, 10), job)
+ FROM batch o JOIN inventory_runs r ON r.source_id=o.source_id WHERE r.job_id=? ORDER BY o.id`, job, string(idsJSON), strictReportMode, string(filepath.Separator), strmEnabled && policy.Allows("probe"), policy.Revision, mediaanalysis.Algorithm, source.LibraryID, string(requiredJSON), string(requiredJSON), mediaanalysis.Algorithm, "strm_target:"+strconv.FormatInt(strmRevision, 10), job)
 		if err != nil {
 			return w, err
 		}
@@ -786,6 +787,7 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 // probe: which operations it must redo, and the embedded subtitle tracks and
 // timing that probe recorded.
 type localRefresh struct {
+	audio          *assets.Facts
 	kind           string
 	done           []string
 	metadata, subs bool
@@ -794,7 +796,7 @@ type localRefresh struct {
 	timingKnown    bool
 }
 
-// localRefreshEvidence decides whether a queued video file needs only its
+// localRefreshEvidence decides whether a queued media file needs only its
 // local metadata and subtitle discovery redone (S6). That is the case when its
 // analysis is of this exact revision with the probe and playback analysis
 // recorded, and the only allowed basic operations missing are local_metadata
@@ -837,6 +839,23 @@ func (s *Service) localRefreshEvidence(ctx context.Context, source catalog.Libra
 	if err != nil {
 		return nil, err
 	}
+	if r.kind == "music" || r.kind == "audiobook" {
+		if !r.metadata {
+			return nil, nil
+		}
+		r.audio, err = s.catalog.InventoryAudioFileMetadata(ctx, object, revision)
+		if err != nil || r.audio == nil || r.audio.AudioCodec == "" {
+			return nil, err
+		}
+		if r.audio.ArtworkKey != "" && s.LocalMetadata != nil {
+			cached, _, cacheErr := s.LocalMetadata.Open(r.audio.ArtworkKey)
+			if cacheErr != nil {
+				return nil, nil
+			}
+			cached.Close()
+		}
+		return &r, nil
+	}
 	if r.kind != "movie" && r.kind != "tv" && r.kind != "anime" || videoCodec == "" {
 		return nil, nil
 	}
@@ -849,7 +868,7 @@ func (s *Service) localRefreshEvidence(ctx context.Context, source catalog.Libra
 	return &r, nil
 }
 
-// refreshLocalMetadata re-reads a video file's local metadata and subtitle
+// refreshLocalMetadata re-reads a file's local metadata and subtitle
 // sidecars without probing it again, and publishes them with
 // CommitInventoryLocalRefresh. The reads are the basic path's own, under the
 // same scan read witness, and the file must still be this revision before and
@@ -862,9 +881,13 @@ func (s *Service) refreshLocalMetadata(parent, ctx context.Context, job, object,
 		if err = s.analysisAllowed(ctx, job, source.LibraryID, policy.Revision, "local_metadata"); err != nil {
 			return nil
 		}
-		f = s.LocalMetadata.VideoNFO(readContext("local_metadata"), source.LibraryID, source.ResolvedPath, path, r.kind, f)
-		if r.kind == "movie" {
-			f = s.LocalMetadata.MovieArtwork(readContext("local_metadata"), source.LibraryID, path, f)
+		if r.audio != nil {
+			f = s.LocalMetadata.PrepareAudioSidecars(readContext("local_metadata"), source.LibraryID, r.kind, source.ResolvedPath, path, *r.audio)
+		} else {
+			f = s.LocalMetadata.VideoNFO(readContext("local_metadata"), source.LibraryID, source.ResolvedPath, path, r.kind, f)
+			if r.kind == "movie" {
+				f = s.LocalMetadata.MovieArtwork(readContext("local_metadata"), source.LibraryID, path, f)
+			}
 		}
 		season := -1
 		if r.kind == "tv" || r.kind == "anime" {
@@ -882,12 +905,14 @@ func (s *Service) refreshLocalMetadata(parent, ctx context.Context, job, object,
 		if len(extra) > 0 {
 			f.ArtworkExtra = extra
 		}
-		f.ArtworkCandidates, f.ArtworkCandidatesObserved = s.LocalMetadata.ReadArtworkCandidates(readContext("local_metadata"), source.LibraryID, r.kind, source.ResolvedPath, path, season)
+		if r.audio == nil {
+			f.ArtworkCandidates, f.ArtworkCandidatesObserved = s.LocalMetadata.ReadArtworkCandidates(readContext("local_metadata"), source.LibraryID, r.kind, source.ResolvedPath, path, season)
+		}
 		if f.LocalMetadataIssue == "" {
 			completed = append(completed, "local_metadata")
 		}
 	}
-	if r.subs {
+	if r.subs && r.audio == nil {
 		if err = s.analysisAllowed(ctx, job, source.LibraryID, policy.Revision, "subtitles"); err != nil {
 			return nil
 		}
@@ -897,6 +922,10 @@ func (s *Service) refreshLocalMetadata(parent, ctx context.Context, job, object,
 			completed = append(completed, "subtitles")
 		}
 	}
+	if r.subs && r.audio != nil {
+		completed = append(completed, "subtitles")
+	}
+
 	if ctx.Err() != nil {
 		return nil
 	}
@@ -1153,7 +1182,7 @@ func (s *Service) analysisOutcome(ctx context.Context, job, object, revision str
 			return err
 		}
 		if code == "source_revision_changed" {
-			if err = recordNoticeTx(ctx, tx, source.ID, filepath.Dir(relative), time.Now().UnixMilli()); err != nil {
+			if err = recordRunNoticeTx(ctx, tx, job, source.ID, filepath.Dir(relative), time.Now().UnixMilli()); err != nil {
 				return err
 			}
 		}
@@ -1192,7 +1221,7 @@ func finishScanTx(ctx context.Context, tx *sql.Tx, job, source string) error {
 	if _, err := tx.ExecContext(ctx, `UPDATE inventory_runs SET phase=(SELECT status FROM jobs WHERE id=?),finished_at=?,pause_reason='' WHERE job_id=?`, job, now, job); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE library_sources SET health=CASE WHEN (SELECT warnings FROM inventory_runs WHERE job_id=?)>0 OR `+attention+` THEN 'degraded' ELSE 'healthy' END WHERE id=?`, job, source, source); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE library_sources SET health=CASE WHEN (SELECT warnings FROM inventory_runs WHERE job_id=?)>0 OR `+attention+` THEN 'degraded' WHEN (SELECT reported FROM inventory_runs WHERE job_id=?)=? AND last_complete_at='' THEN 'ready' ELSE 'healthy' END WHERE id=?`, job, source, job, strictReportMode, source); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO library_source_progress(source_id,last_progress_at) SELECT id,? FROM library_sources WHERE id=? ON CONFLICT(source_id) DO UPDATE SET last_progress_at=excluded.last_progress_at`, now, source); err != nil {
@@ -1203,6 +1232,15 @@ func finishScanTx(ctx context.Context, tx *sql.Tx, job, source string) error {
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO inventory_changes(source_id,job_id,kind,created_at) VALUES(?,?,'scan_completed',?)`, source, job, now); err != nil {
 		return err
+	}
+	var reportMode int
+	if err := tx.QueryRowContext(ctx, `SELECT reported FROM inventory_runs WHERE job_id=?`, job).Scan(&reportMode); err != nil {
+		return err
+	}
+	if reportMode == strictReportMode {
+		// The ordinary double-check successor has no target fence. A strict
+		// report never initiates it or consumes another run's second-pass marker.
+		return nil
 	}
 	// One bounded second folder pass per initiating run: the run that asked for
 	// it is remembered, so the follow-up pass itself never asks again, and the

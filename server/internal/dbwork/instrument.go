@@ -425,9 +425,18 @@ func (c *observedConn) BeginTx(ctx context.Context, opts driver.TxOptions) (driv
 			return nil, err
 		}
 	}
+	// Only the write transaction itself is metered: a read snapshot a helper
+	// opens with the write's context is another connection's work.
+	if meter, _ := ctx.Value(meterKey{}).(*writeMeter); meter != nil && !opts.ReadOnly && c.role != roleReader && !meter.started {
+		meter.wal, _ = ctx.Value(walRequestKey{}).(*walRequest)
+		c.meter = meter
+		c.meter.begin(c.inner)
+	}
 	inner, err := beginner.BeginTx(ctx, opts)
 	if err != nil {
 		lease.close()
+		c.meter.end(c.inner)
+		c.meter = nil
 		return nil, err
 	}
 	c.readerTx = lease
@@ -435,12 +444,6 @@ func (c *observedConn) BeginTx(ctx context.Context, opts driver.TxOptions) (driv
 	c.inTx = true
 	c.authorityDirty = false
 	c.changes, _ = ctx.Value(changeKey{}).(*changeSet)
-	// Only the write transaction itself is metered: a read snapshot a helper
-	// opens with the write's context is another connection's work.
-	if meter, _ := ctx.Value(meterKey{}).(*writeMeter); meter != nil && !opts.ReadOnly && c.role != roleReader && !meter.started {
-		c.meter = meter
-		c.meter.begin(c.inner)
-	}
 	return &observedTx{inner: inner, conn: c}, nil
 }
 
@@ -528,9 +531,7 @@ type observedTx struct {
 func (t *observedTx) Commit() error {
 	err := t.inner.Commit()
 	if t.conn.meter != nil {
-		if err == nil {
-			t.conn.meter.end(t.conn.inner)
-		}
+		t.conn.meter.end(t.conn.inner)
 		t.conn.meter = nil
 	}
 	if err == nil && t.conn.authorityDirty {
@@ -547,9 +548,10 @@ func (t *observedTx) Commit() error {
 
 func (t *observedTx) Rollback() error {
 	t.conn.inTx = false
-	t.conn.meter = nil
 	t.conn.testTx = false
 	err := t.inner.Rollback()
+	t.conn.meter.end(t.conn.inner)
+	t.conn.meter = nil
 	t.conn.authorityDirty = false
 	t.conn.finishReadTransaction()
 	return err
@@ -790,19 +792,7 @@ var (
 // whether a viewer may play at all. `internal/identity` takes the security-fence
 // class for all of these anyway, which is the declared signal; this is the
 // textual one, for the paths that take their class from a background loop.
-var authorityTables = []string{
-	"libraries", "library_sources",
-	"accounts", "direct_profiles", "direct_memberships", "direct_profile_trust",
-	"restrictions", "profile_restrictions", "restriction_outbox",
-	"policy", "library_network_policy", "playback_owner_policy",
-	"authorization_session_families", "authorization_family_tokens", "authorization_family_renewals",
-	"dvr_private_libraries", "onboarding_state_v1", "quick_connect_v1",
-	"api_credentials", "identity_account_factors", "identity_browser_accounts",
-	"hosted_profile_revisions", "hosted_profile_erasure_receipts", "social_group_members",
-	// Ending a claim revokes or deletes its grants. Track that authority,
-	// rather than preparation progress, to stop open downloads immediately.
-	"download_grants",
-}
+var authorityTables = registeredAuthorityTables()
 
 // noteWrite preserves statement-time invalidation and remembers authority writes
 // until commit. database/sql serializes driver calls on each connection.

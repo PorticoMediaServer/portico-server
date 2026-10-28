@@ -1,4 +1,7 @@
-import {useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
+import {dependsOn} from '@core/freshness-hub.ts';
+import {useFreshness} from '../../../../platform/freshness';
+import {mountQuietInput, SettingsOpenContext} from '../../quiet-refresh';
+import {useContext, useEffect, useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {useLocation} from '@tanstack/react-router';
 import {settingsRoute} from '../../../../kit/settings/search';
 import {defaultI18n} from '@i18n';
@@ -8,34 +11,20 @@ import {Dialog} from '../../../../kit/overlays';
 import {LibraryChannels, type ChannelAction} from './LibraryChannels';
 import {ChannelEditor} from './ChannelEditor';
 import {BlockPresets} from './BlockPresets';
-import {BlockPresetsSource} from './block-presets-source';
-import {SettingsLibraryChannelsSource} from './channels-source';
-import {SettingsChannelEditorSource} from './channel-editor-source';
-import {SettingsChannelActionsSource} from './channel-actions-source';
-import {SettingsChannelLogoSource} from './channel-logo-source';
 import type {LibraryChannelsPageProps} from './types';
 import styles from './channels.module.css';
+import {createSources, forwardChannelPorts} from './channel-sources';
 
 const t = defaultI18n.t;
 let editorSequence = 0;
-function createSources(ports: Pick<LibraryChannelsPageProps, 'api' | 'serverId' | 'isCurrent' | 'reportError' | 'uploadLogo'>) {
-  const lifetime = new AbortController();
-  const current = () => !lifetime.signal.aborted && ports.isCurrent();
-  let dispose = () => lifetime.abort();
-  const report = (error: unknown) => {dispose();ports.reportError(error);};
-  const reader = new SettingsLibraryChannelsSource(ports.api, ports.serverId, current, report);
-  const editor = new SettingsChannelEditorSource(ports.api, ports.serverId, reader, current, report);
-  const actions = new SettingsChannelActionsSource(ports.api, ports.serverId, reader, current, report);
-  const logos = new SettingsChannelLogoSource(ports.uploadLogo, ports.serverId, reader, current, report);
-  const presets = new BlockPresetsSource(ports.api, ports.serverId, current, report);
-  dispose = () => {lifetime.abort();reader.dispose();editor.dispose();actions.dispose();logos.dispose();presets.dispose();};
-  return {reader, editor, actions, logos, presets, current, dispose, report};
-}
 type Sources = ReturnType<typeof createSources>;
 type Modal = Readonly<{kind: 'logo' | 'delete'; channel: LibraryChannel}>;
 
 /** Mounted only with the real captured primary-owner/manageServer admission. */
-export function LibraryChannelsPage(props: LibraryChannelsPageProps) {
+export function LibraryChannelsPage(input: LibraryChannelsPageProps | Readonly<{ports: LibraryChannelsPageProps}>) {
+  const props = 'ports' in input ? input.ports : input;
+  const [,redrawFacts]=useState(0);
+  useEffect(()=>props.subscribe?.(()=>redrawFacts(value=>value+1)),[props]);
   const location = useLocation();
   const initialChannelId = settingsRoute(Object.fromEntries(new URLSearchParams(location.searchStr)), () => true).channelId;
   const {api, serverId, isCurrent, reportError, uploadLogo} = props;
@@ -44,10 +33,17 @@ export function LibraryChannelsPage(props: LibraryChannelsPageProps) {
     const next = createSources({api, serverId, isCurrent, reportError, uploadLogo});setSources(next);
     return () => next.dispose();
   }, [api, serverId, isCurrent, reportError, uploadLogo]);
-  return sources?.current() && isCurrent() ? <ChannelPageBody key={serverId} sources={sources} ports={{...props, initialChannelId}}/> : null;
+  return sources?.current() && isCurrent() ? <ChannelPageBody key={serverId} sources={sources} ports={forwardChannelPorts(props,{initialChannelId})}/> : null;
 }
 
 function ChannelPageBody({sources, ports}: Readonly<{sources: Sources; ports: LibraryChannelsPageProps}>) {
+  const {hub}=useFreshness();
+  const visibility=useContext(SettingsOpenContext);
+  useEffect(() => {
+    const interest=mountQuietInput(hub,'settings/channels',[dependsOn.list('libraryChannels'),dependsOn.settings('server'),dependsOn.libraries],
+      {id:'directory-health-editor',refresh:sources.refreshQuiet,cancel:()=>{sources.reader.invalidateQuiet();sources.editor.invalidateQuiet();},subscribe:sources.subscribe,blocked:sources.blocked,settlement:sources.settlement},visibility);
+    return () => interest.dispose();
+  },[hub,sources,visibility]);
   const reader = useSyncExternalStore(sources.reader.subscribe, sources.reader.getSnapshot, sources.reader.getSnapshot);
   const deepLink = useRef<string | undefined>(undefined);
   const editor = useSyncExternalStore(sources.editor.subscribe, sources.editor.getSnapshot, sources.editor.getSnapshot);
@@ -72,11 +68,11 @@ function ChannelPageBody({sources, ports}: Readonly<{sources: Sources; ports: Li
     if (template) sources.editor.template(template, ports.timeZone);else void sources.editor.blank(ports.timeZone);
   };
   const closeEditor = () => {if (!editorCurrent() || sources.editor.getSnapshot().busy) return;sources.editor.close();view.editor = undefined;setEditorToken(undefined);};
-  const close = () => {if (!current() || view.modal !== modal || sources.actions.getSnapshot().busy || sources.logos.getSnapshot().busy) return;view.modal = undefined;setModal(undefined);};
+  const close = () => {if (!current() || view.modal !== modal || sources.actions.getSnapshot().busy || sources.logos.getSnapshot().busy) return;view.modal = undefined;sources.setOpeningBlocked(false);setModal(undefined);};
   const actionOn = useCallback((channel: LibraryChannel, kind: ChannelAction) => {
     if (!current() || blocked || moving.current || !sources.reader.getSnapshot().channels?.includes(channel)) return;
     if (kind === 'edit') {const token = {id: ++editorSequence, creating: false};lastCreating.current = false;view.editor = token;setEditorToken(token);sources.editor.edit(channel);}
-    else if (kind === 'logo' || kind === 'delete') {const next = {kind, channel};view.modal = next;setModal(next);}
+    else if (kind === 'logo' || kind === 'delete') {const next = {kind, channel};sources.setOpeningBlocked(true);view.modal = next;setModal(next);}
     else void sources.actions.perform(channel, kind === 'up' || kind === 'down' ? 'move' : kind, kind === 'up' ? -1 : kind === 'down' ? 1 : undefined);
   }, [current, blocked, sources, view]);
   useLayoutEffect(() => {
@@ -98,6 +94,7 @@ function ChannelPageBody({sources, ports}: Readonly<{sources: Sources; ports: Li
     } catch {if (current()) setReorderError(true);}
     finally {moving.current = false;if (current()) setReordering(false);}
   };
+  useLayoutEffect(() => {sources.setOpeningBlocked(!!modal);return () => sources.setOpeningBlocked(false);},[sources,modal]);
   const held = modal && current() && view.modal === modal ? modal : undefined;
   const selected = () => !!held && current() && view.modal === held && sources.reader.getSnapshot().channels?.includes(held.channel) === true;
   const remove = async () => {const captured = held;if (!captured || captured.kind !== 'delete' || !selected()) return;const done = await sources.actions.perform(captured.channel, 'delete');if (done && current() && view.modal === captured) close();};

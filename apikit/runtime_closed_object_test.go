@@ -43,7 +43,7 @@ func (startPreparationTransportMessage) JSONSchema() map[string]any {
 }
 
 func TestGeneratedStartWaitCannotStripSessionMembersThroughAnyOf(t *testing.T) {
-	artifacts, err := Generate([]Definition{{Metadata: Metadata{ID: "start_wait", Method: "POST", Path: "/v1/start-wait", Summary: "Preparation union fixture", Access: Public, Requires: ScopeOpen, Lane: Default, Cost: Constant, Status: 202}, Request: reflect.TypeFor[struct{}](), Response: reflect.TypeFor[startPreparationTransportMessage]()}})
+	artifacts, err := Generate([]Definition{{Metadata: Metadata{Audience: Clients, ID: "start_wait", Method: "POST", Path: "/v1/start-wait", Summary: "Preparation union fixture", Access: Public, Requires: ScopeOpen, Lane: Default, Cost: Constant, Status: 202}, Request: reflect.TypeFor[struct{}](), Response: reflect.TypeFor[startPreparationTransportMessage]()}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ for(const bad of [
 }
 
 func TestGeneratedRuntimeRejectsUnknownFieldsOnlyOnExplicitlyClosedObjects(t *testing.T) {
-	artifacts, err := Generate([]Definition{{Metadata: Metadata{ID: "closed", Method: "GET", Path: "/v1/closed", Summary: "Closed transport fixture", Access: Public, Requires: ScopeOpen, Lane: Default, Cost: Constant, Status: 200}, Request: reflect.TypeFor[struct{}](), Response: reflect.TypeFor[closedTransportMessage]()}})
+	artifacts, err := Generate([]Definition{{Metadata: Metadata{Audience: Clients, ID: "closed", Method: "GET", Path: "/v1/closed", Summary: "Closed transport fixture", Access: Public, Requires: ScopeOpen, Lane: Default, Cost: Constant, Status: 200}, Request: reflect.TypeFor[struct{}](), Response: reflect.TypeFor[closedTransportMessage]()}})
 	if err != nil {
 		t.Fatal(err)
 	}

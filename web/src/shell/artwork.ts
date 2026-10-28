@@ -3,6 +3,7 @@ import {retryAfterSecondsFrom, type AuthRecovery, type HttpLocalApi} from '@core
 import {ambientArtworkSource, artworkRenditionFor, type AmbientArtworkIdentity, type ArtworkFailure, type ArtworkRequestOptions} from '@core/artwork/index.ts';
 import {createArtworkRuntime, type ArtworkLoadRequest} from '../kit/artwork/source';
 import type {ArtworkImage} from '../kit/artwork/types';
+import type {ProfileAvatar} from '@core/identity-restrictions.ts';
 
 /** pixels is the painted width in device pixels and aspect its width ÷ height:
  * the box the picture covers. The slot whose actual pixels fill that box is
@@ -15,6 +16,7 @@ export function foregroundArtwork(url: string | undefined, pixels: number, aspec
   return {url: selected, cacheKey: JSON.stringify([identity.serverId, identity.viewerId, identity.authorityKey, selected])};
 }
 const channelLogoPattern = new RegExp('^' + routePattern('get_library_channels_id_logo').replace('{id}', '[A-Za-z0-9_-]{1,128}') + '$');
+const memberProfileAvatarPattern = new RegExp('^' + routePattern('get_admin_access_members_id_profiles_profile_avatar').replace('{id}', '([^/?#]+)').replace('{profileId}', '([^/?#]+)') + '\\?v=([1-9]\\d{0,15})&size=(64|160|512)$');
 /** A logo is a separate foreground representation. Its revision is the checked
  * upload receipt's integer, never an ambient digest or a channel config revision. */
 export function channelLogoArtwork(url: string, identity: AmbientArtworkIdentity) {
@@ -23,6 +25,17 @@ export function channelLogoArtwork(url: string, identity: AmbientArtworkIdentity
   if (parts.length === 2) {
     const query = parts[1]!;if (!/^v=[1-9]\d{0,15}$/.test(query) || !Number.isSafeInteger(Number(query.slice(2)))) return undefined;
   }
+  return {url, cacheKey: JSON.stringify([identity.serverId, identity.viewerId, identity.authorityKey, url])};
+}
+/** People's pictures use their own authorized route and the upload receipt's
+ * version. They enter the same foreground queue as other authenticated art. */
+export function memberProfileAvatarArtwork(url: string, identity: AmbientArtworkIdentity) {
+  if (url.length > 1024 || /[\s\\#\x00-\x1f\x7f]/.test(url) || ![identity.serverId, identity.viewerId, identity.authorityKey].every(value => typeof value === 'string' && value.length > 0 && value.length <= 512 && !/[\x00-\x1f\x7f]/.test(value))) return undefined;
+  const match = memberProfileAvatarPattern.exec(url);
+  if (!match || !Number.isSafeInteger(Number(match[3]))) return undefined;
+  try {
+    if (!match.slice(1, 3).every(value => {const id = decodeURIComponent(value!); return id.length > 0 && id.length <= 128 && id !== '.' && id !== '..' && !/[\x00-\x1f\x7f]/.test(id) && encodeURIComponent(id) === value;})) return undefined;
+  } catch {return undefined;}
   return {url, cacheKey: JSON.stringify([identity.serverId, identity.viewerId, identity.authorityKey, url])};
 }
 export function artworkFailure(error: unknown): ArtworkFailure {
@@ -62,7 +75,7 @@ export function authenticatedArtwork(options: {
     scopeKey: JSON.stringify([identity.serverId, identity.viewerId, identity.authorityKey]),
     classify: artworkFailure,
     load: async (request: ArtworkLoadRequest, signal: AbortSignal): Promise<ArtworkImage> => {
-      if (!isCurrent() || !(ambientArtworkSource(request.url, identity) || request.kind === 'foreground' && channelLogoArtwork(request.url, identity))) throw Object.assign(new Error('Artwork authority changed.'), {status: 403});
+      if (!isCurrent() || !(ambientArtworkSource(request.url, identity) || request.kind === 'foreground' && (channelLogoArtwork(request.url, identity) || memberProfileAvatarArtwork(request.url, identity)))) throw Object.assign(new Error('Artwork authority changed.'), {status: 403});
       const token = await auth.token(options.currentToken());
       signal.throwIfAborted();
       if (!isCurrent()) throw Object.assign(new Error('Artwork authority changed.'), {status: 403});
@@ -102,6 +115,14 @@ export function authenticatedArtwork(options: {
       if (!isCurrent() || !/^[A-Za-z0-9_-]{1,128}$/.test(id) || revision !== undefined && (!Number.isSafeInteger(revision) || revision < 1)) return undefined;
       const url = encodedRoutePath('get_library_channels_id_logo', {id: encodeURIComponent(id)}) + (revision === undefined ? '' : '?v=' + revision);
       const selected = channelLogoArtwork(url, identity);
+      return selected ? runtime.source(selected) : undefined;
+    },
+    memberProfileAvatar(accountId: string, avatar: ProfileAvatar | undefined, pixels: number) {
+      if (!isCurrent() || !avatar || !Number.isSafeInteger(avatar.version) || avatar.version < 1) return undefined;
+      const url = encodedRoutePath('get_admin_access_members_id_profiles_profile_avatar', {id: encodeURIComponent(accountId), profileId: encodeURIComponent(avatar.profileId)}) + '?v=' + avatar.version;
+      if (avatar.url !== url) return undefined;
+      const size = pixels <= 64 ? 64 : pixels <= 160 ? 160 : 512;
+      const selected = memberProfileAvatarArtwork(url + '&size=' + size, identity);
       return selected ? runtime.source(selected) : undefined;
     },
     ambient(url: string | undefined, request?: Omit<ArtworkRequestOptions, 'signal'>) {

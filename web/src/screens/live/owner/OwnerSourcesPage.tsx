@@ -1,4 +1,7 @@
-import {type ReactNode, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
+import {dependsOn} from '@core/freshness-hub.ts';
+import {useFreshness} from '../../../platform/freshness';
+import {mountQuietInput, SettingsOpenContext} from '../../settings/quiet-refresh';
+import {useContext, type ReactNode, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import type {LibraryContentApi} from '@core/library-content.ts';
 import {ConsoleClient} from '@core/console.ts';
@@ -68,6 +71,8 @@ export function createOwnerSources(options: OwnerSourcesOptions) {
 }
 export type OwnerSources = ReturnType<typeof createOwnerSources>;
 export function OwnerSourcesPage({source, libraryChannels}: {source: OwnerSources; libraryChannels?: ReactNode}) {
+  const {hub}=useFreshness();
+  const visibility=useContext(SettingsOpenContext);
   const snapshot = useSyncExternalStore(source.sources.subscribe, source.sources.getSnapshot, source.sources.getSnapshot);
   const defaults = useSyncExternalStore(source.defaults.subscribe, source.defaults.getSnapshot, source.defaults.getSnapshot);
   const recordingDefaults = useSyncExternalStore(source.recording.subscribe, source.recording.getSnapshot, source.recording.getSnapshot);
@@ -104,6 +109,26 @@ export function OwnerSourcesPage({source, libraryChannels}: {source: OwnerSource
     if (!sourceCurrent() || modalRef.current !== original || (isOpening(original) && !original.token.live)) return;
     retireOpening(original);modalRef.current = undefined;setModal(undefined);
   };
+  useEffect(() => {
+    if(!admittedSource?.token)return;
+    const dependencies=[dependsOn.list('liveSources'),dependsOn.settings('server')];
+    const inputs=[
+      mountQuietInput(hub,'settings/live',dependencies,{id:'directory',refresh:source.sources.refreshQuietly,cancel:source.sources.invalidateQuiet,subscribe:source.sources.subscribe,
+        blocked:()=>source.sources.getSnapshot().loading,settlement:()=>source.sources.getSnapshot().busy},visibility),
+      ...([['defaults',source.defaults],['recording',source.recording]] as const).map(([id,form]) => mountQuietInput(hub,'settings/live',dependencies,
+        {id,refresh:form.refresh,cancel:form.invalidateQuiet,subscribe:form.subscribe,blocked:form.quietBlocked,settlement:()=>form.getSnapshot().draft},visibility)),
+    ];
+    return () => {for(const input of inputs)input.dispose();};
+  },[hub,source,admittedSource?.token,visibility]);
+  useEffect(() => {
+    if(modal?.kind!=='settings')return;
+    const controller=modal.controller;
+    const input=mountQuietInput(hub,'settings/live',[dependsOn.list('liveSources'),dependsOn.settings('server')],{
+      id:`configuration/${controller.sourceId}`,refresh:controller.refreshQuietly,cancel:controller.invalidateQuiet,subscribe:controller.subscribe,blocked:controller.quietBlocked,
+      settlement:()=>controller.getSnapshot().draft,
+    },visibility);
+    return () => input.dispose();
+  },[hub,modal,visibility]);
   // Publish only at commit, then sample once for this setup's original lifetime.
   const setupPorts = useRef({sourceCurrent});
   useEffect(() => {setupPorts.current = {sourceCurrent};});
@@ -123,7 +148,7 @@ export function OwnerSourcesPage({source, libraryChannels}: {source: OwnerSource
     const exact = admittedSource;
     const current = () => sourceAdmissionAllowed(exact, sourceToken.current, source) && source.current();
     if (!exact || !current() || !snapshot.document?.refresh.some(row => row.state === 'refreshing')) return;
-    const timer = setTimeout(() => {if (current() && document.visibilityState !== 'hidden') void source.sources.load();}, 5000);
+    const timer = setTimeout(() => {if (current() && document.visibilityState !== 'hidden') void source.sources.refreshQuietly();}, 5000);
     return () => clearTimeout(timer);
   }, [source, snapshot.document, admittedSource?.token]);
   useEffect(() => () => {

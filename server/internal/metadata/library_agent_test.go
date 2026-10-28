@@ -44,6 +44,7 @@ func TestLocalOnlyLibraryNeverGoesOnline(t *testing.T) {
 	if agent, err = s.SetLibraryAgent(ctx, "lib", agent.Revision, AgentLocal, nil); err != nil || agent.Agent != AgentLocal {
 		t.Fatal("switch to local", agent, err)
 	}
+	settleScreenFanout(t, s)
 	if err = s.ScreenStep(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -73,6 +74,7 @@ func TestLocalOnlyLibraryNeverGoesOnline(t *testing.T) {
 	if agent, err = s.SetLibraryAgent(ctx, "lib", agent.Revision, AgentOnline, nil); err != nil || agent.Agent != AgentOnline {
 		t.Fatal("switch back online", agent, err)
 	}
+	settleScreenFanout(t, s)
 	if err = s.ScreenStep(ctx); err != nil {
 		t.Fatal(err)
 	}

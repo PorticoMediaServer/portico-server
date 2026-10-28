@@ -3,6 +3,7 @@ import {createRootRouteWithContext, createRoute, createRouter, Outlet, RouterPro
 import type {JoinLink} from '@core/join-link.ts';
 import {IconSprite} from '../kit/Icon';
 import {StateView} from '../kit/states';
+import {DocumentBootReady} from '../shell/DocumentBootReady';
 import {ServicesAuthStage, ServicesActions, ServicesHeading, ServicesLead, ServicesNotice, ServicesStateIcon} from '../kit/accounts/ServicesAuth';
 import {Button} from '../kit/controls';
 import {servicesAccount, type ServicesAccount} from './session';
@@ -34,13 +35,14 @@ const workspace = createRoute({getParentRoute: () => root, path: '/account', com
   }});
 const device = createRoute({getParentRoute: () => root, path: '/device', component: DeviceRoute});
 const reset = createRoute({getParentRoute: () => root, path: '/reset', component: ResetRoute});
+const resetPassword = createRoute({getParentRoute: () => root, path: '/reset-password', component: ResetRoute});
 const verify = createRoute({getParentRoute: () => root, path: '/verify-email', component: VerifyRoute});
 const invitation = createRoute({getParentRoute: () => root, path: '/join', component: JoinRoute});
 // Owner continuation stays separate from the ordinary signed sign-in root.
 const claim = createRoute({getParentRoute: () => root, path: '/claim', component: ClaimStart});
 type ServicesRouter = ReturnType<typeof makeRouter>;
 function makeRouter(context: Context) {
-  return createRouter({routeTree: root.addChildren([home, workspace, device, reset, verify, claim, invitation]), context});
+  return createRouter({routeTree: root.addChildren([home, workspace, device, reset, resetPassword, verify, claim, invitation]), context});
 }
 // This router's types stay local. The server app remains the only global TanStack Register.
 export function ServicesApp({capture, invalidContinuation, join, plainShortJoin, signIn, owner, identityTransaction}: {capture?: LinkCapture; invalidContinuation?: boolean; join?: JoinLink; plainShortJoin?: boolean; signIn?: SignInCapture; owner?: HostedOwnerClaimCapture; identityTransaction?: string} = {}) {
@@ -63,11 +65,14 @@ function ServicesRoot() {
   const state = useSyncExternalStore(bootstrap.subscribe, bootstrap.getSnapshot);
   const {t} = servicesI18n();
   if (state.phase === 'restoring') return <ServicesAuthStage><></></ServicesAuthStage>;
-  if (state.phase === 'error') return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
-    primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => { void bootstrap.start(); }}} />;
-  if (invalidContinuation || state.invalidSignIn || state.invalidOwner) return <InvalidLink />;
-  if (state.signIn && location.pathname === '/') return <RegisteredSignInPage account={account} pending={state.signIn} />;
-  return <Outlet />;
+  // A signed-out account is a resolved opening too. Public email links and the
+  // sign-in shell must retire the same static first paint as the server app.
+  return <DocumentBootReady>{state.phase === 'error'
+    ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
+      primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => { void bootstrap.start(); }}} />
+    : invalidContinuation || state.invalidSignIn || state.invalidOwner ? <InvalidLink />
+    : state.signIn && location.pathname === '/' ? <RegisteredSignInPage account={account} pending={state.signIn} />
+    : <Outlet />}</DocumentBootReady>;
 }
 function useAccount() {
   const {account} = root.useRouteContext<ServicesRouter>();

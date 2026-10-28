@@ -1,4 +1,6 @@
-import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
+import {useGuardedLibraryContext, useLibraryRouteGuard} from '../browse/library-route-guard';
+import {forwardFacts} from '../../shell/fact-source';
+import {useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {useLocation} from '@tanstack/react-router';
 import {defaultI18n} from '@i18n';
 import {ReadingError, type ReadingSession} from '@portico/client-core';
@@ -99,11 +101,14 @@ function ReadEntryBody({captured, itemId, sourceId, active = true, onClose, rece
   const contentsTarget = receiver.received.kind === 'ordinary' ? stagedContents : undefined;
   const [retry, setRetry] = useState(0);
   const reportError = receiver.reportError;
+  const guard = useLibraryRouteGuard(receiver.context, receiver, receiver.current, {itemId}, reportError,
+    () => receiver.current() && router.state.location.pathname === '/read/' + encodeURIComponent(itemId));
+  const readingContext = useGuardedLibraryContext(receiver.context, guard)!;
+  const currentReading = useCallback(() => receiver.current() && readingContext.isCurrent(), [receiver, readingContext]);
   useEffect(() => {
     retireContentsTarget(captured.context, stagedContents);
-    const original = receiver.context;
-    const bindingContext: ReadBindingContext = {api: original.api, session: original.session, preferences: original.preferences, facts: original.facts,
-      isCurrent: () => original.isCurrent() && receiver.current()};
+    const original = readingContext;
+    const bindingContext: ReadBindingContext = forwardFacts(original, {isCurrent: () => original.isCurrent() && currentReading()});
     const life = new AbortController(), bindings = createReadBindings(bindingContext);
     let alive = true, fonts: ReadFonts | undefined, publication: ReadingPublication | undefined;
     let reader: ReturnType<typeof bindReadPreferences> | undefined, progress: ReturnType<typeof bindReadingProgress> | undefined;
@@ -126,10 +131,10 @@ function ReadEntryBody({captured, itemId, sourceId, active = true, onClose, rece
     };
     setState({});
     void (async () => {
-      if (!receiver.current()) throw new ReadingError('cancelled');
+      if (!currentReading()) throw new ReadingError('cancelled');
       if (receiver.received.kind === 'refused' || receiver.received.kind === 'pending') throw new ReadingError('source_changed');
       const listed = await bindings.client.versions(itemId, life.signal), versions = listed.versions.filter(version => version.inventoryAvailable);
-      if (!alive || !receiver.current()) return;
+      if (!alive || !currentReading()) return;
       // Without an explicit version, open the one the server chose for this reader.
       const selected = versions.find(version => version.sourceId === (sourceId ?? listed.chosenSourceId));
       if (!selected) {
@@ -138,22 +143,22 @@ function ReadEntryBody({captured, itemId, sourceId, active = true, onClose, rece
         return;
       }
       const session = await bindings.open({itemId, sourceId: selected.sourceId});
-      if (!alive || !receiver.current()) throw new ReadingError('cancelled');
+      if (!alive || !currentReading()) throw new ReadingError('cancelled');
       if (receiver.received.kind === 'accepted') {
         const expected = receiver.received.target, manifest = session.manifest;
         if (manifest.itemId !== expected.itemId || manifest.sourceId !== expected.sourceId || manifest.revision !== expected.sourceRevision)
           throw new ReadingError('source_changed');
       }
       publication = await createReadingPublication(session, life.signal);
-      if (!alive || !receiver.current()) throw new ReadingError('cancelled');
+      if (!alive || !currentReading()) throw new ReadingError('cancelled');
       if (contentsTarget) {
         const current = publication.contentsTarget(contentsTarget.index);
         if (current.sourceId !== contentsTarget.sourceId || current.sourceRevision !== contentsTarget.sourceRevision) throw new Error('source_changed');
       }
       const saved = await session.progress(life.signal), location = publication.resumeLocation(saved) ?? undefined;
-      if (!alive || !receiver.current()) throw new ReadingError('cancelled');
+      if (!alive || !currentReading()) throw new ReadingError('cancelled');
       if (publication.format === 'epub') fonts = await loadReadFonts({document, signal: life.signal});
-      if (!alive || !receiver.current()) return;
+      if (!alive || !currentReading()) return;
       const adapters = publication.format === 'epub' ? [createEpubAdapter({fonts: fonts!.fonts})]
         : publication.format === 'pdf' ? [createPdfAdapter(readerPdfAdapterOptions)] : [createComicAdapter({format: publication.format, pages: publication.comicPages!})];
       reader = bindReadPreferences({adapters, preferences: bindings.preferences, authority: bindings.authority, reportError: code => reportError({code})});
@@ -163,16 +168,16 @@ function ReadEntryBody({captured, itemId, sourceId, active = true, onClose, rece
       // A rejected bootstrap must never leave the reader on its loading skeleton. This attempt is
       // still the live one unless it was retired, so show the failure state; report only while the
       // captured authority still holds, since a retired capture owns no error surface.
-      if (alive && !life.signal.aborted && receiver.current()) {if (bindings.authority.isCurrent()) reportError(error); setState({failed: true});}
+      if (alive && !life.signal.aborted && currentReading()) {if (bindings.authority.isCurrent()) reportError(error); setState({failed: true});}
       void dispose().catch(() => {});
     });
     return () => {void dispose().catch(() => {});};
-  }, [captured.context, itemId, sourceId, stagedContents, contentsTarget, reportError, retry, receiver]);
-  if (state.book) return <ReaderBook key={state.book.session.manifest.sessionId} book={state.book} active={active} reportError={reportError} onSearchAll={query => {if (!active || !receiver.current()) return; void router.navigate({to: '/search/reading', search: {q: query}}).catch(error => {if (receiver.current()) reportError(error);});}} onOpenSettings={() => {void router.navigate({to: '/settings', search: {scope: 'account', section: 'reading'}}).catch(reportError);}} onBack={onClose ?? (() => router.history.back())}/>;
+  }, [captured.context, itemId, sourceId, stagedContents, contentsTarget, reportError, retry, receiver, readingContext, currentReading]);
+  if (state.book) return <ReaderBook key={state.book.session.manifest.sessionId} book={state.book} active={active} reportError={reportError} onSearchAll={query => {if (!active || !currentReading()) return; void router.navigate({to: '/search/reading', search: {q: query}}).catch(error => {if (currentReading()) reportError(error);});}} onOpenSettings={() => {if (!currentReading()) return;void router.navigate({to: '/settings', search: {scope: 'account', section: 'reading'}}).catch(reportError);}} onBack={() => {if (currentReading()) (onClose ?? (() => router.history.back()))();}}/>;
   /** The drawn way back stays available while a book is opening and when it cannot open. */
-  const leave = onClose ?? (() => router.history.back());
+  const leave = () => {if (currentReading()) (onClose ?? (() => router.history.back()))();};
   if (state.failed) return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
-    primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => setRetry(value => value + 1)}}
+    primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => {if (currentReading()) setRetry(value => value + 1);}}}
     secondary={{id: 'back', label: t('next.reader.back'), onPress: leave}}/>;
   return <div className={styles.loading}><span className={styles.escape}><Button variant="glass" icon="i-left" iconOnly aria-label={t('next.reader.back')} onClick={leave}/></span><Skeleton height="100dvh"/></div>;
 }

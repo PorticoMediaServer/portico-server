@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	_ "portico.local/server/internal/thirdparty/sqlite"
@@ -19,7 +20,7 @@ func playbackBindingDatabase(t *testing.T) (*sql.DB, string) {
 	t.Cleanup(func() { db.Close() })
 	_, err = db.Exec(`CREATE TABLE catalog_assets(token TEXT,path TEXT,size INTEGER,modified_ns INTEGER,available INTEGER);
 CREATE TABLE playback_sessions(id TEXT,asset_id TEXT,grant_hash TEXT);
-CREATE TABLE playback_source_pins(session_id TEXT,asset_id TEXT,size INTEGER,modified_ns INTEGER);
+CREATE TABLE playback_source_pins(session_id TEXT,asset_id TEXT,size INTEGER,modified_ns INTEGER,binding TEXT NOT NULL DEFAULT 'none',source_id TEXT NOT NULL DEFAULT '',inventory_object_id TEXT NOT NULL DEFAULT '',root TEXT NOT NULL DEFAULT '',root_identity TEXT NOT NULL DEFAULT '',relative_path TEXT NOT NULL DEFAULT '',object_identity TEXT NOT NULL DEFAULT '',follow_symlinks INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE playback_physical_source_pins(session_id TEXT,source_id TEXT,incarnation TEXT,configuration_generation INTEGER);
 CREATE TABLE library_sources(id TEXT,root TEXT,root_identity TEXT,follow_symlinks INTEGER,kind TEXT,enabled INTEGER,identity_confirmed INTEGER,health TEXT,incarnation TEXT,generation INTEGER);
 CREATE TABLE inventory_objects(id TEXT,source_id TEXT,asset_id TEXT,relative_path TEXT,object_identity TEXT,size INTEGER,modified_ns INTEGER,retired INTEGER,state TEXT,root_incarnation TEXT);`)
@@ -36,7 +37,7 @@ CREATE TABLE inventory_objects(id TEXT,source_id TEXT,asset_id TEXT,relative_pat
 		{`INSERT INTO catalog_assets VALUES('asset',?,12,34,1)`, []any{filepath.Join(root, "source.mp4")}},
 		{`INSERT INTO library_sources VALUES('source',?,'root-object',1,'local',1,1,'ready','incarnation',3)`, []any{root}},
 		{`INSERT INTO playback_sessions VALUES('session','asset','grant');
-INSERT INTO playback_source_pins VALUES('session','asset',12,34);
+INSERT INTO playback_source_pins(session_id,asset_id,size,modified_ns) VALUES('session','asset',12,34);
 INSERT INTO playback_physical_source_pins VALUES('session','source','incarnation',3);
 INSERT INTO inventory_objects VALUES('object','source','asset','source.mp4','ino:42',12,34,0,'available','incarnation');`, nil},
 	} {
@@ -44,6 +45,7 @@ INSERT INTO inventory_objects VALUES('object','source','asset','source.mp4','ino
 			t.Fatal(err)
 		}
 	}
+	pinTestPlaybackBinding(t, db)
 	return db, root
 }
 
@@ -68,7 +70,7 @@ func TestPlaybackResolverRetainsRecordedInventoryBinding(t *testing.T) {
 	}
 }
 
-func TestPlaybackResolverDoesNotDowngradeStaleInventory(t *testing.T) {
+func TestPlaybackResolverSeparatesAcceptedBindingFromCurrentInventory(t *testing.T) {
 	for _, mutation := range []string{
 		`UPDATE inventory_objects SET object_identity=''`,
 		`UPDATE inventory_objects SET size=13`,
@@ -90,9 +92,46 @@ func TestPlaybackResolverDoesNotDowngradeStaleInventory(t *testing.T) {
 			if _, err := db.Exec(mutation); err != nil {
 				t.Fatal(err)
 			}
-			if source, err := ResolvePlaybackSource(context.Background(), db, "session", ""); err == nil {
-				t.Fatalf("stale scan evidence downgraded to pathname: %+v", source)
+			accepted, err := ResolvePlaybackSource(context.Background(), db, "session", "")
+			if strings.HasPrefix(mutation, "UPDATE library_sources") {
+				if err == nil {
+					t.Fatalf("session bypassed source liveness: %+v", accepted)
+				}
+			} else if err != nil || accepted.Binding == nil || accepted.Binding.ObjectIdentity != "ino:42" || accepted.Binding.Inventory.RelativePath != "source.mp4" {
+				t.Fatalf("session followed current inventory: %+v %v", accepted, err)
+			}
+			// Session-less reads still require today's inventory. A generation-only
+			// edit has no session fence, and no row retains the source-less fallback.
+			current, err := ResolveCatalogPlaybackSource(context.Background(), db, "asset")
+			switch mutation {
+			case `UPDATE library_sources SET generation=4`:
+				if err != nil || current.Binding == nil {
+					t.Fatal(current, err)
+				}
+			case `DELETE FROM inventory_objects`:
+				if err != nil || current.Binding != nil {
+					t.Fatal(current, err)
+				}
+			default:
+				if err == nil {
+					t.Fatalf("stale catalog evidence downgraded to pathname: %+v", current)
+				}
 			}
 		})
+	}
+}
+
+func pinTestPlaybackBinding(t *testing.T, db *sql.DB) {
+	t.Helper()
+	tx, err := db.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if err := PinPlaybackBindingTx(context.Background(), tx, "session"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
 	}
 }

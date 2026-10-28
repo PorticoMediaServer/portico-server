@@ -18,7 +18,7 @@ func eraseProfileRuntimeDataTx(ctx context.Context, tx *sql.Tx, v Viewer) error 
 	}
 	run := func(q string, args ...any) error { _, e := tx.ExecContext(ctx, q, args...); return e }
 	// Live viewer preferences are optional until the live domain is installed.
-	for _, table := range []string{"live_channel_preferences", "live_preference_receipts"} {
+	for _, table := range profileLiveErasure {
 		if ok, e := exists(table); e != nil {
 			return e
 		} else if ok {
@@ -29,7 +29,7 @@ func eraseProfileRuntimeDataTx(ctx context.Context, tx *sql.Tx, v Viewer) error 
 	}
 	key := PersonalKey(v)
 	// Explicit reading annotations are personal content even when automatic history is paused.
-	for _, table := range []string{"reading_annotations", "reading_annotation_sets", "reading_saved_groups", "reading_saved_group_receipts", "reading_saved_group_owners"} {
+	for _, table := range profileReadingErasure {
 		if ok, e := exists(table); e != nil {
 			return e
 		} else if ok {
@@ -51,7 +51,7 @@ func eraseProfileRuntimeDataTx(ctx context.Context, tx *sql.Tx, v Viewer) error 
 			return e
 		}
 	}
-	for _, table := range []string{"personal_jobs", "personal_completed_plays", "container_personal_state", "container_personal_undo", "personal_watched_intents", "queue_v1_saves"} {
+	for _, table := range profileRuntimeErasure {
 		if ok, e := exists(table); e != nil {
 			return e
 		} else if ok {
@@ -61,7 +61,7 @@ func eraseProfileRuntimeDataTx(ctx context.Context, tx *sql.Tx, v Viewer) error 
 		}
 	}
 
-	for _, table := range []string{"search_history", "book_resume", "playback_personal_claims", "playback_personal_fences"} {
+	for _, table := range profilePositionErasure {
 		if ok, e := exists(table); e != nil {
 			return e
 		} else if ok {

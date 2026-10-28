@@ -889,19 +889,19 @@ func run() (runErr error) {
 	player.ConfigureProbe(assets.Probe{Binary: ffprobeTool, Supervisor: storeIO.Supervisor})
 	supervise.Go("cmd.hardware-report", func() { player.HardwareReport(context.Background()) })
 	appliedConversionSetting := startupMedia.TemporaryDirectory
+	if !layout.AllowsTranscodeDirectory(appliedConversionSetting) {
+		log.Printf("Configured conversion folder is outside the container conversion roots; using the default disk folder")
+		appliedConversionSetting = ""
+	}
 	conversionDirectory := layout.Transcode
 	if appliedConversionSetting != "" {
 		conversionDirectory = operations.ConversionDirectory(layout.Transcode, appliedConversionSetting)
-		if layout.Container {
-			return errors.New("container transcodes must use /transcode or /config/Transcode; clear the previous temporary-directory override")
-		}
 	}
-	requestedConversion := conversionDirectory
-	conversionDirectory, conversionErr := storagepaths.DiskTranscodeDirectory(conversionDirectory, filepath.Join(layout.Data, "Transcode"), startupMounts())
+	// The configured folder is always the disk target. A memory preference is
+	// independent of that folder and can always fall back or spill here.
+	conversionDirectory, _, conversionErr := storagepaths.TranscodeDirectories(conversionDirectory, filepath.Join(layout.Data, "Transcode"), startupMounts())
 	if conversionErr != nil {
 		log.Printf("Media conversion unavailable: %v", conversionErr)
-	} else if conversionDirectory != requestedConversion {
-		log.Printf("RAM-backed conversion storage is unavailable; using disk storage at %s", conversionDirectory)
 	}
 	layout.Transcode = conversionDirectory
 	var hls *playback.HLS
@@ -914,6 +914,14 @@ func run() (runErr error) {
 		hls.SourceStorage = storeIO
 		hls.WindowInputs = subtitleRenderer
 		hls.ConfigureSettings(deliverySettings)
+		memoryDirectory := storagepaths.MemoryTranscodeDirectory(conversionDirectory, startupMounts())
+		if memoryDirectory != "" {
+			if err := hls.ConfigureMemory(memoryDirectory); err != nil {
+				log.Printf("Memory conversion storage unavailable; using disk: %v", err)
+			} else {
+				log.Printf("Conversion storage: disk %s, memory candidate %s", conversionDirectory, memoryDirectory)
+			}
+		}
 		hls.ConfigureMemberCeiling(memberCeilingReader())
 		hls.ConfigureProbe(ffprobeTool)
 		player.ConfigureHLS(hls)
@@ -1122,6 +1130,7 @@ func run() (runErr error) {
 	if console != nil && e == nil {
 		console.FFmpegValidation = operations.FFmpegValidator(ffmpegTool)
 		console.AppliedTemporaryDirectory = &appliedConversionSetting
+		console.TranscodeDirectoryAllowed = layout.AllowsTranscodeDirectory
 		console.AppliedFFmpegPath = &startupMedia.FFmpegPath
 		console.RecordingRoot, e = recordingroot.Runtime(adminOperations, recordingStore, recordingsRoot, operatorRecordingsRoot != "")
 		if e != nil {
@@ -1230,6 +1239,11 @@ func run() (runErr error) {
 	events := eventfeed.New(db)
 	backupService := backup.New(state, db, ident.ID(), buildinfo.Info()["version"], persistence.SchemaVersion())
 	if e = backup.CleanupScratch(state); e != nil {
+		return e
+	}
+	// A backup interrupted by the last stop left its artwork hold; its
+	// scratch is gone now, so artwork clean-up may resume.
+	if e = backupService.ReleaseInterruptedHold(ctx); e != nil {
 		return e
 	}
 	backupPolicy.ConfigurationCommitted = configurationStore.FlushConfiguration

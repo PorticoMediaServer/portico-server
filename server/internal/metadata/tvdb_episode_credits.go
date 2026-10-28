@@ -3,6 +3,7 @@ package metadata
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -33,6 +34,88 @@ const tvdbEpisodeCreditAttempts = 5
 // the cleanup stays inside the writer's per-transaction effect budget.
 const tvdbEpisodeCreditCleanup = 32
 
+type tvdbEpisodeCreditClaim struct {
+	item, providerID int64
+}
+
+// tvdbEpisodeCreditClaims merges at most eight active library streams. Every
+// excluded library starts at or after the eighth initial minimum, so it cannot
+// contribute an earlier item to the global first eight. Each seek retains the
+// authoritative joins; an inconsistent head requires repair, never a full scan.
+func (s *Service) tvdbEpisodeCreditClaims(ctx context.Context) ([]tvdbEpisodeCreditClaim, error) {
+	type stream struct {
+		library int64
+		next    tvdbEpisodeCreditClaim
+	}
+	rows, err := dbwork.Query(ctx, s.db, `SELECT h.library_id,h.next_item,h.next_provider FROM tvdb_episode_credit_heads h INDEXED BY tvdb_episode_credit_heads_due JOIN catalog_libraries cl ON cl.id=h.library_id JOIN tvdb_provider_policies tp ON tp.library_id=cl.library_id AND tp.enabled=1 WHERE h.enabled=1 AND h.next_item IS NOT NULL ORDER BY h.next_item,h.library_id LIMIT ?`, tvdbEpisodeCreditPage)
+	if err != nil {
+		return nil, err
+	}
+	var streams []stream
+	for rows.Next() {
+		var st stream
+		if err = rows.Scan(&st.library, &st.next.item, &st.next.providerID); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		streams = append(streams, st)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	seek := func(library, afterItem, afterProvider int64) (tvdbEpisodeCreditClaim, bool, error) {
+		rows, err := dbwork.Query(ctx, s.db, `SELECT p.item_id,p.provider_id FROM tvdb_episode_credit_pending p INDEXED BY tvdb_episode_credit_pending_library JOIN provider_evidence pe ON pe.item_id=p.item_id AND pe.provider='tvdb' AND pe.provider_id=p.provider_id JOIN catalog_episodes ep ON ep.entity_id=p.item_id JOIN catalog_entities e ON e.id=p.item_id AND e.kind=4 AND e.library_id=p.library_id JOIN catalog_libraries cl ON cl.id=e.library_id JOIN tvdb_provider_policies tp ON tp.library_id=cl.library_id AND tp.enabled=1 JOIN tvdb_episode_credit_evidence ce ON ce.item_id=p.item_id AND ce.provider_id=p.provider_id AND ce.credits IS NULL AND ce.attempts<5 WHERE p.library_id=? AND (p.item_id,p.provider_id)>(?,?) ORDER BY p.item_id,p.provider_id LIMIT 1`, library, afterItem, afterProvider)
+		if err != nil {
+			return tvdbEpisodeCreditClaim{}, false, err
+		}
+		defer rows.Close()
+		var c tvdbEpisodeCreditClaim
+		found := rows.Next()
+		if found {
+			err = rows.Scan(&c.item, &c.providerID)
+		}
+		if err == nil {
+			err = rows.Err()
+		}
+		return c, found, err
+	}
+	for _, st := range streams {
+		first, found, err := seek(st.library, st.next.item, st.next.providerID-1)
+		if err != nil {
+			return nil, err
+		}
+		if !found || first != st.next {
+			return nil, fmt.Errorf("TVDB episode-credit head for library %d requires repair", st.library)
+		}
+	}
+	claims := make([]tvdbEpisodeCreditClaim, 0, tvdbEpisodeCreditPage)
+	for len(streams) > 0 && len(claims) < tvdbEpisodeCreditPage {
+		best := 0
+		for i := 1; i < len(streams); i++ {
+			if streams[i].next.item < streams[best].next.item {
+				best = i
+			}
+		}
+		st := &streams[best]
+		claims = append(claims, st.next)
+		if len(claims) == tvdbEpisodeCreditPage {
+			break
+		}
+		next, found, err := seek(st.library, st.next.item, st.next.providerID)
+		if err != nil {
+			return nil, err
+		}
+		if found {
+			st.next = next
+		} else {
+			streams = append(streams[:best], streams[best+1:]...)
+		}
+	}
+	return claims, nil
+}
+
 // tvdbEpisodeCreditsStep gives TVDB-matched episodes their cast. TVDB episodes
 // are delegated past the screen pipeline (screenEpisodeStep answers
 // delegated_tvdb), so nothing ever writes their screen credits; this step
@@ -46,42 +129,25 @@ func (s *Service) tvdbEpisodeCreditsStep(ctx context.Context) error {
 	if !ok {
 		return nil
 	}
-	type claim struct {
-		item       int64
-		providerID int64
-	}
-	claims := []claim{}
-	stale := []claim{}
+	var claims, stale []tvdbEpisodeCreditClaim
 	// This is a read-pick, not a reservation. Admit the catalogue walk as
 	// background reading and close its snapshot before fetching or publishing.
 	err := dbwork.WithReadSnapshot(dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia), s.db, func(readCtx context.Context) error {
-		rows, err := dbwork.Query(readCtx, s.db, `SELECT pe.item_id,pe.provider_id FROM provider_evidence pe JOIN catalog_episodes e ON e.entity_id=pe.item_id JOIN catalog_entities i ON i.id=pe.item_id JOIN catalog_libraries cl ON cl.id=i.library_id JOIN tvdb_provider_policies tp ON tp.library_id=cl.library_id AND tp.enabled=1 WHERE pe.provider='tvdb' AND pe.provider_id>0 AND i.kind=4 AND NOT EXISTS(SELECT 1 FROM tvdb_episode_credit_evidence ce WHERE ce.item_id=pe.item_id AND ce.provider_id=pe.provider_id AND ce.credits IS NOT NULL) AND COALESCE((SELECT ce.attempts FROM tvdb_episode_credit_evidence ce WHERE ce.item_id=pe.item_id AND ce.provider_id=pe.provider_id),0)<? ORDER BY pe.item_id LIMIT ?`, tvdbEpisodeCreditAttempts, tvdbEpisodeCreditPage)
+		var err error
+		claims, err = s.tvdbEpisodeCreditClaims(readCtx)
 		if err != nil {
 			return err
 		}
-		for rows.Next() {
-			var c claim
-			if err := rows.Scan(&c.item, &c.providerID); err != nil {
-				rows.Close()
-				return err
-			}
-			claims = append(claims, c)
-		}
-		if err = rows.Err(); err != nil {
-			rows.Close()
-			return err
-		}
-		rows.Close()
 		// A rematch leaves evidence for a pair the catalog no longer holds.
 		// Find at most one writer-sized batch here, outside the writer; each
 		// key is rechecked before it is deleted.
-		rows, err = dbwork.Query(readCtx, s.db, `SELECT ce.item_id,ce.provider_id FROM tvdb_episode_credit_evidence ce WHERE NOT EXISTS(SELECT 1 FROM provider_evidence pe WHERE pe.item_id=ce.item_id AND pe.provider='tvdb' AND pe.provider_id=ce.provider_id) ORDER BY ce.item_id,ce.provider_id LIMIT ?`, tvdbEpisodeCreditCleanup)
+		rows, err := dbwork.Query(readCtx, s.db, `SELECT item_id,provider_id FROM tvdb_episode_credit_cleanup ORDER BY item_id,provider_id LIMIT ?`, tvdbEpisodeCreditCleanup)
 		if err != nil {
 			return err
 		}
 		defer rows.Close()
 		for rows.Next() {
-			var c claim
+			var c tvdbEpisodeCreditClaim
 			if err := rows.Scan(&c.item, &c.providerID); err != nil {
 				return err
 			}
@@ -140,6 +206,9 @@ func (s *Service) tvdbEpisodeCreditsStep(ctx context.Context) error {
 		}
 		for _, c := range stale {
 			if _, err := tx.ExecContext(ctx, `DELETE FROM tvdb_episode_credit_evidence WHERE item_id=? AND provider_id=? AND NOT EXISTS(SELECT 1 FROM provider_evidence pe WHERE pe.item_id=? AND pe.provider='tvdb' AND pe.provider_id=?)`, c.item, c.providerID, c.item, c.providerID); err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(ctx, `DELETE FROM tvdb_episode_credit_cleanup WHERE item_id=? AND provider_id=?`, c.item, c.providerID); err != nil {
 				return err
 			}
 		}

@@ -13308,6 +13308,10 @@ export const settingsSpec: readonly SettingsSection[] = [
     "title": "next.settingsSpec.server.integrations.title",
     "groups": [
       {
+        "title": "integrations.compatibility.title",
+        "rows": [{"id":"integrations.compatibility","scope":"server","key":"integrations.compatibilityEnabled","label":"integrations.compatibility.title","help":"integrations.compatibility.help","control":{"type":"toggle"}}]
+      },
+      {
         "title": "next.settingsSpec.server.integrations.groups.0.title",
         "rows": [
           {
@@ -13886,21 +13890,15 @@ export const settingsSpec: readonly SettingsSection[] = [
             "help": "next.settingsSpec.server.streaming.groups.2.rows.1.help",
             "control": {
               "type": "select",
-              "default": "separate",
+              "default": "memory",
               "options": [
                 {
-                  "value": "separate",
-                  "label": "next.settingsSpec.server.streaming.groups.2.rows.1.control.options.0.label",
-                  "hint": "next.settingsSpec.server.streaming.groups.2.rows.1.control.options.0.hint"
-                },
-                {
                   "value": "memory",
-                  "label": "next.settingsSpec.server.streaming.groups.2.rows.1.control.options.1.label",
-                  "hint": "next.settingsSpec.server.streaming.groups.2.rows.1.control.options.1.hint"
+                  "label": "next.settingsSpec.server.streaming.groups.2.rows.1.control.options.0.label"
                 },
                 {
-                  "value": "folder",
-                  "label": "next.settingsSpec.server.streaming.groups.2.rows.1.control.options.2.label"
+                  "value": "disk",
+                  "label": "next.settingsSpec.server.streaming.groups.2.rows.1.control.options.1.label"
                 }
               ]
             },
@@ -13909,12 +13907,6 @@ export const settingsSpec: readonly SettingsSection[] = [
                 "id": "streaming.transcodeFolder",
                 "scope": "server",
                 "key": "streaming.transcode_folder",
-                "enableWhen": {
-                  "id": "streaming.transcodeLocation",
-                  "in": [
-                    "folder"
-                  ]
-                },
                 "label": "next.settingsSpec.server.streaming.groups.2.rows.1.children.0.label",
                 "help": "next.settingsSpec.server.streaming.groups.2.rows.1.children.0.help",
                 "control": {

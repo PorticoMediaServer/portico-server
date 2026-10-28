@@ -1,0 +1,21 @@
+# Mixed client load
+
+Run the driver on mini-2 or portico-runner. Its only live target is mini-1's Tailscale IP. No CI entry point exists; `--execute` is refused in CI even if manually supplied.
+
+```sh
+node --experimental-transform-types scripts/batch-round/load.ts --users 80 --seconds 900
+node --experimental-transform-types scripts/batch-round/load.ts --self-check
+# AFTER batch start, on mini-2, with private configuration:
+node --experimental-transform-types scripts/batch-round/load.ts --users 80 --seconds 900 --ramp-seconds 60 --target "$TARGET" --manifest "$PRIVATE_MANIFEST" --out "$EVIDENCE/load-80.json" --execute
+node --experimental-transform-types scripts/batch-round/load.ts --users 100 --seconds 1800 --ramp-seconds 60 --target "$TARGET" --manifest "$PRIVATE_MANIFEST" --out "$EVIDENCE/load-100.json" --execute
+```
+
+For backup comparisons add `--label scheduled-backup` or `--label manual-backup` and `--operator-window <receipt-id>`; run the owner-triggered backup concurrently. These labels identify an operator-recorded window, they do not trigger or prove a backup. Use `observe-host.py` on the target to correlate physical WAL/RSS/cgroup data. No user write is paused.
+
+The driver imports the real `HttpLocalApi`, `BrowseQueryBuilder`, `SearchService`, `HomeService`, `SessionsClient`, `ObservationReporter`, `CapabilityPublisher`, `LibraryManagementService`, `EventsClient` and Saved batch validators. It publishes captured real capabilities, verifies each identity/device against the API, staggers startup, opens real direct media bodies and paces byte consumption, reports the simulated consumer at 1 Hz, mixes browse/search/Home/Saved and owner scans, and gives a separate quiet profile an SSE stream. Progress is observation-driven and Stop sends the final position. It bounds metrics in logarithmic histograms and fails its declared latency/error/count/cleanup gates. Reported p99 is a conservative bucket upper bound. Default 2 s read/write and 2.5 s observation-gap gates are preparation proposals; the plan identifies where stricter established release gates also apply.
+
+The private manifest is an operator-owned, non-symlink 0600 JSON file, up to 4 MiB. Export `Manifest` and `User` shapes in load.ts are the schema. Top-level: `version:1`, exact `target` (`http[s]://100.120.50.24:<port>`), `serverId`, `conversionMode:'never'`, `stateAdapterReceipt`, `owner`, `quietMember`, and 80 or 100 `users`. Every identity needs a distinct `accessToken`, account/profile/device/installation IDs, `authority`, `role`, non-expiring `expiresAt` and an actual valid `capabilities` document. Each user also supplies `libraryId`, `pivot`, search text, known playable `itemIds`, `bytesPerSecond` and `directVerifiedAt`. Owner supplies a scan library. Existing three-account walk credentials are insufficient: provision 102 real independent identities before the 100-user run. No implicit token refresh/storage adapter is supplied; session lifetime is checked before starting.
+
+Media must be long enough to cover the complete window; the short Contabo synthetic clips alone cannot establish sustained streaming. An early EOF is a failure. Repeated data with fake positions is never called decoding/device acceptance. Real hardware-only transcoding has no no-fallback launch flag in the inspected session contract: the driver locally refuses its 2–3 requested conversion slots and never starts software encoding. The direct-only result explicitly cannot establish the entire 80–100-user + hardware-conversion target. Close that gap with Media's controlled hardware-only process/encoder fixture before campaign acceptance; do not simply enable software fallback. Set server conversions to Never and independently read it back before the direct test. A manifest assertion alone is not proof of server settings.
+
+The 2-user/4-second `--self-check` is offline on mini-2. It exercises real client-core observer claim/sample/stop semantics and Saved validation with a mock wire, including no sends after retirement. It is not a complete server, browser, workload or performance check. Full workloads remain unrun before batch start. Retain JSON receipts privately; no bearer, request body, grant URL, source URL or raw server error is emitted.

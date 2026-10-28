@@ -44,3 +44,20 @@ test('range presets are exclusive controlled toggles rather than independent che
   assert.match(html, /aria-pressed="true"[^>]*>Under 30 min/);
   assert.doesNotMatch(html, /role="checkbox"/);
 });
+
+test('retained facet chips and selected states remain beside refresh and error notices', async () => {
+  const {FilterBuilder} = await import('../../src/kit/browse/FilterBuilder.tsx');
+  for (const platform of ['desktop','phone','tv'] as const) for (const status of ['loading','error'] as const) {
+    const html=renderToStaticMarkup(createElement(FilterBuilder,{
+      platform,model:{groups:[{id:'title',fields:[{id:'genre',labelKey:'filter.field.genre',type:'identity-set',operators:['equals','not-in'],controlHint:'facet-multi-select',complexity:'quick',cost:'indexed',applicableKinds:['movie']}]}]},
+      labels:{field:()=> 'Genre'},fields:{genre:{kind:'values',match:'any',query:'',status,error:'Refresh failed',included:['retained'],excluded:['excluded'],values:[{value:'retained',label:'Retained choice',count:4},{value:'excluded',label:'Excluded choice',count:2}]}},
+      openFields:['genre'],onFieldOpenChange(){},onFieldChange(){},onSearchChange(){},onRetry(){},
+    }));
+    assert.match(html,/role="checkbox" aria-checked="true"/);
+    assert.match(html,/role="checkbox" aria-checked="mixed"/);
+    assert.match(html,/Retained choice/);assert.match(html,/Excluded choice/);
+    assert.match(html,status==='loading'?/role="status"/:/role="alert"/);
+    if(status==='error'){assert.match(html,/Refresh failed/);assert.match(html,/Try again/);}
+    assert.doesNotMatch(html,/No values/);
+  }
+});

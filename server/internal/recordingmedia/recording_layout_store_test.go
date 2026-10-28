@@ -83,6 +83,17 @@ func TestRecordingLayoutActualStoreAndIO(t *testing.T) {
 		return "owner", func(string, string) bool { return true }, nil
 	}
 	owner := livechannels.Owner{Authority: "local", AccountID: "account", ProfileID: "profile"}
+	// Scheduling uses the production profile permission; this recording fixture
+	// explicitly grants it rather than relying on a missing profile's default.
+	for _, statement := range []string{
+		`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('account','account',x'00','profile',1)`,
+		`INSERT OR IGNORE INTO direct_profiles(id,account_id,name) VALUES('profile','account','Profile')`,
+		`INSERT INTO profile_restrictions(profile_id,allow_dvr) VALUES('profile',1) ON CONFLICT(profile_id) DO UPDATE SET allow_dvr=1`,
+	} {
+		if _, err = db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
 	store, err := dvr.New(db, live, func(_ context.Context, _ *sql.Tx, o livechannels.Owner, _, _ string) error {
 		if o != owner {
 			return dvr.ErrDenied

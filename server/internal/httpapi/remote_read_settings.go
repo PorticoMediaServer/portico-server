@@ -47,7 +47,7 @@ func sourceReadSettingsError(err error) error {
 
 func registerSourceReadSettings(registry *apikit.Registry, d Dependencies) {
 	failures := []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "revision_mismatch", "idempotency_key_reused", "request_in_progress", "administration_unavailable", "internal"}
-	v1Route(registry, apikit.Metadata{ID: "get_storage_source_read_profile", Method: "GET", Path: "/v1/storage/sources/{id}/settings/read-profile", Summary: "Read one source's normalized reading profile and current revisions", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (SourceReadSettingsResponse, error) {
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_storage_source_read_profile", Method: "GET", Path: "/v1/storage/sources/{id}/settings/read-profile", Summary: "Read one source's normalized reading profile and current revisions", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (SourceReadSettingsResponse, error) {
 		p, scope, err := d.storageOwner(r)
 		if err != nil {
 			return SourceReadSettingsResponse{}, sourceReadSettingsError(err)
@@ -67,7 +67,7 @@ func registerSourceReadSettings(registry *apikit.Registry, d Dependencies) {
 		}
 		return SourceReadSettingsResponse{Scope: scope, Settings: out}, nil
 	})
-	v1Route(registry, apikit.Metadata{ID: "put_storage_source_read_profile", Method: "PUT", Path: "/v1/storage/sources/{id}/settings/read-profile", Summary: "Save one source's reading limits with current revisions and a durable receipt", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, in remotesources.SourceReadSettingsChange) (SourceReadSettingsReceiptResponse, error) {
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, ID: "put_storage_source_read_profile", Method: "PUT", Path: "/v1/storage/sources/{id}/settings/read-profile", Summary: "Save one source's reading limits with current revisions and a durable receipt", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, in remotesources.SourceReadSettingsChange) (SourceReadSettingsReceiptResponse, error) {
 		p, scope, err := d.storageOwner(r)
 		if err != nil {
 			return SourceReadSettingsReceiptResponse{}, sourceReadSettingsError(err)

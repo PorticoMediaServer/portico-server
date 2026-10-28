@@ -46,6 +46,10 @@ type conn struct {
 	progressToken uintptr
 	// vmSteps is the VM steps of every finished statement (VMOperations).
 	vmSteps atomic.Int64
+	// backups are the online backups reading from this connection; Close
+	// finishes them first (backup.go).
+	backups map[*Backup]struct{}
+	walIO   *walIOState
 
 	// errorRcMode is the opt-in error-string reporting mode toggled by
 	// the _error_rc DSN parameter. When true, error strings synthesised
@@ -100,7 +104,9 @@ func newConn(dsn string) (*conn, error) {
 	// first time; after that point SQLITE_CONFIG_PCACHE2 can no longer be
 	// installed. See pagecache.go for the lifecycle contract.
 	var db uintptr
+	var accounting bool
 	if gateErr := withOpenGate(func() error {
+		vfsName, accounting = accountingVFS(c, vfsName)
 		db, err = c.openV2(
 			dsn,
 			vfsName,
@@ -130,7 +136,11 @@ func newConn(dsn string) (*conn, error) {
 		return nil, mainErr
 	}
 	defer libc.Xfree(c.tls, zMain)
-	c.inMemory = libc.GoString(sqlite3.Xsqlite3_db_filename(c.tls, c.db, zMain)) == ""
+	nativePath := libc.GoString(sqlite3.Xsqlite3_db_filename(c.tls, c.db, zMain))
+	c.inMemory = nativePath == ""
+	if accounting && nativePath != "" {
+		c.walIO = retainWALState(nativePath)
+	}
 
 	// _defensive is applied first so that everything the driver and the
 	// caller run afterwards is already subject to the restriction: the
@@ -932,11 +942,14 @@ func (c *conn) Close() (err error) {
 	defer c.Unlock()
 
 	if c.db != 0 {
+		c.finishAttached()
 		if err := c.closeV2(c.db); err != nil {
 			return err
 		}
 
 		c.db = 0
+		releaseWALState(c.walIO)
+		c.walIO = nil
 	}
 
 	if c.tls != nil {
@@ -1265,7 +1278,15 @@ func (c *conn) backup(remoteConn *conn, restore bool) (_ *Backup, finalErr error
 		return nil, errstrForDB(c.tls, rc, destDb, destMode)
 	}
 
-	return &Backup{srcConn: c, dstConn: remoteConn, pBackup: pBackup}, nil
+	out := &Backup{srcConn: c, dstConn: remoteConn, pBackup: pBackup}
+	// Every Backup runs on c's per-connection state, in either direction.
+	c.Lock()
+	if c.backups == nil {
+		c.backups = map[*Backup]struct{}{}
+	}
+	c.backups[out] = struct{}{}
+	c.Unlock()
+	return out, nil
 }
 
 // C documentation

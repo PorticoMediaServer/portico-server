@@ -10,6 +10,9 @@ import (
 // is wired to this struct through DeliverySettings, so the two concerns can be
 // built independently and neither owns the other's file.
 type DeliveryConfiguration struct {
+	// MemoryCap bounds aggregate tmpfs output; read on admission and each sweep.
+	MemoryCap         string `json:"memoryCap"`
+	TranscodeLocation string `json:"transcodeLocation"`
 	// Empty ConversionMode retains the legacy owner boolean until the canonical
 	// adapter supplies a validated mode. Canonical settings default to all.
 	ConversionMode     string `json:"conversionMode"`
@@ -81,7 +84,9 @@ func validPlanningPolicy(p string) bool {
 // does. It is deliberately the same shape the registry will fill in.
 func DefaultDeliveryConfiguration() DeliveryConfiguration {
 	return DeliveryConfiguration{
-		HardwareBackend: "auto", HardwareSelection: "auto",
+		MemoryCap:         "quarter",
+		TranscodeLocation: "memory",
+		HardwareBackend:   "auto", HardwareSelection: "auto",
 		OutputFormat: "auto", DownloadMaxQuality: "original",
 		MaxMusicQuality:        "original",
 		SessionStorageMiB:      4096,
@@ -101,6 +106,14 @@ func DefaultDeliveryConfiguration() DeliveryConfiguration {
 // default for that field alone.
 func (c DeliveryConfiguration) Normalized() DeliveryConfiguration {
 	d := DefaultDeliveryConfiguration()
+	if c.TranscodeLocation != "disk" {
+		c.TranscodeLocation = "memory"
+	}
+	switch c.MemoryCap {
+	case "quarter", "half", "2gb", "4gb", "8gb", "16gb":
+	default:
+		c.MemoryCap = d.MemoryCap
+	}
 	switch c.MaxMusicQuality {
 	case "original", "cd-quality", "320", "96":
 	default:

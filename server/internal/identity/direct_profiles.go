@@ -666,12 +666,12 @@ func EraseProfileSavedDataTx(ctx context.Context, tx *sql.Tx, v Viewer) error {
 			return e
 		}
 	}
-	for _, table := range []string{"progress", "personal_items", "personal_receipts", "personal_history", "personal_music_radios", "personal_chapter_completions", "personal_playback_runs", "personal_snapshots", "personal_explicit_events", "personal_conflicts", "personal_activity_receipts", "personal_device_sequences", "personal_evidence_fences", "personal_play_counts"} {
+	for _, table := range profilePersonalErasure {
 		if _, e := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE profile_id=?`, key); e != nil {
 			return e
 		}
 	}
-	for _, table := range []string{"saved_pins", "saved_resource_receipts", "saved_operation_fences"} {
+	for _, table := range profileSavedErasure {
 		if _, e := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE owner_key=?`, key); e != nil {
 			return e
 		}

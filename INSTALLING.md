@@ -183,15 +183,19 @@ before media services reopen it. It refuses unowned scopes, linked roots and mou
 Previous preview layouts are refused read-only: choose a fresh data folder.
 There is no automatic copy migration.
 
-Transcodes use a separate folder: `%LOCALAPPDATA%\Portico Transcode` on Windows
-(`%ProgramData%\Portico Transcode` for the service), `~/Library/Caches/Portico Transcode`
-on macOS, `/var/cache/portico` for Linux services, and `~/.cache/portico` for Linux
-user launches. Containers use a mounted `/transcode`, falling back to
+Transcodes use the data folder's separate `Transcode` directory by default
+on Windows, macOS and Linux. The disk folder can be changed independently of
+the memory preference. Containers use a mounted `/transcode`, falling back to
 `/config/Transcode` when it is not mounted. Transcodes never enter a backup.
-RAM playback is not integrated yet. The tested bounded tmpfs spill primitive is
-not used by the playback producer. RAM-backed conversion paths fall back to a
-verified disk path, or conversion stays unavailable if no disk path exists.
-No new settings keys are introduced by the loader.
+The disk transcode directory is created at startup and remains available for
+fallback and spill. The owner's transcode location setting defaults to **Memory
+when available**; choose **Disk** to keep all output there. Memory output requires
+a kernel-bounded Linux tmpfs no larger than the effective **Memory cap**
+(`streaming.memoryCap`, default quarter of available memory). Portico reserves
+the entire remaining tmpfs capacity above the host and container memory floor.
+When memory is unsuitable or under pressure, new output quietly uses disk and
+active memory output can spill to disk. Playback does not depend on RAM being
+available. See the Docker instructions below for a bounded mount.
 
 Recordings require an explicitly chosen folder outside the data folder.
 Set `PORTICO_RECORDINGS_DIR` to that absolute path for headless use. If no
@@ -210,10 +214,57 @@ docker volume create portico-state
 docker run -d --name portico --restart unless-stopped --stop-timeout 45 \
   -p 32500:32500 -e TZ=America/Halifax -e PUID=1000 -e PGID=1000 -e UMASK=0077 \
   -v portico-state:/config -v /srv/portico-transcode:/transcode -v /srv/media:/media:ro \
+  --tmpfs /memory-transcode:rw,noexec,nosuid,nodev,size=512m,nr_inodes=8192,mode=1777 \
   ghcr.io/porticomediaserver/portico-server:latest
 docker logs --tail 100 portico
 docker restart --time 45 portico
 ```
+
+### Memory transcode mounts
+
+Keep `/transcode` mapped to a writable local **disk** directory; never replace
+that mount with tmpfs. If it is absent or RAM-backed, Portico uses the disk-backed
+`/config/Transcode` fallback. `/config` must also be on disk. Inside a container, the disk folder may be `/transcode` or a child of it,
+or `/config/Transcode` or a child of it; other paths are refused when saved.
+Use a real directory: linked parents cannot establish disk placement. Mount
+memory storage separately at `/memory-transcode`. Startup discovers that tmpfs first, otherwise
+Docker's `/dev/shm`, and uses a private, marker-protected installation child.
+Portico never mounts or resizes a filesystem itself and needs no privileged
+mode or `SYS_ADMIN` capability.
+
+The official Compose examples in `packaging/compose/`, `packaging/truenas/` and
+`packaging/synology/` include the same 512 MiB mount as the command above, with an
+8192-inode bound. The sticky `1777` mode lets numeric container users create their
+private directory; `noexec,nosuid,nodev` restrict the shared mount. The kernel
+limits its data size even between server measurements. These are Linux Docker
+runtime mounts, not image volumes. See Docker's [tmpfs mount options](https://docs.docker.com/engine/storage/tmpfs/).
+
+Choose a mount size **at or below the effective Memory cap**, leaving the host
+and cgroup memory floor intact even if the whole remaining mount fills. The
+512 MiB example fits the default quarter cap when at least 2 GiB is truly
+available and the floor can be held; installed RAM or the container's configured
+limit alone does not establish available memory. A container memory limit also
+covers the server and other container work, so leave headroom for those too.
+On smaller or busy hosts, use a smaller mount such as `size=64m`, or let Portico
+fall back to disk. Changing the mount requires recreating the container.
+
+Quarter and half caps track available memory; they cannot automatically resize
+the kernel mount. A fixed mount that exceeds the effective cap, cannot reserve
+its remaining capacity above the floor, or runs short of space causes safe disk
+fallback or spill. Raising the cap does not enlarge the mount. Keep the disk
+mapping available regardless of your cap choice.
+
+Without an explicit memory mount, plain Docker normally supplies a bounded
+64 MiB `/dev/shm`, which Portico can use with its 16 MiB per-session reserve when
+the cap and floor permit. A larger custom `--shm-size` can exceed the cap and
+cause disk fallback. The Dockerfile cannot declare a runtime tmpfs, and a
+`VOLUME` instruction would not provide one. Unraid templates use the same
+bounded `/dev/shm` fallback; to add the larger dedicated mount, put the
+`--tmpfs /memory-transcode:rw,noexec,nosuid,nodev,size=512m,nr_inodes=8192,mode=1777`
+option in the template's Extra Parameters, retaining any NVIDIA options and the
+disk Transcode mapping.
+
+### Container setup and permissions
 
 For first-run setup at a host name such as `nas.local`, add
 `-e PORTICO_SETUP_HOSTS=nas.local:32500` to `docker run`, or open the host's

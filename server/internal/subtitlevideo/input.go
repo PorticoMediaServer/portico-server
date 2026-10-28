@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 
+	"portico.local/server/internal/assets"
 	"portico.local/server/internal/childprocess"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/remotemedia"
@@ -24,6 +25,8 @@ import (
 )
 
 type selectedInput struct {
+	binding                                      storage.PlaybackBinding
+	bound                                        bool
 	selectedSession                              string
 	physicalID, incarnation                      string
 	configuration                                int64
@@ -36,7 +39,17 @@ func (r *Runtime) selection(ctx context.Context, item, source, session string) (
 	s.item = item
 	s.source = source
 	s.selectedSession = session
-	e := r.db.QueryRowContext(ctx, `SELECT cl.library_id,a.path,COALESCE(physical.root,l.root),a.container,a.size,a.modified_ns,COALESCE(n.revision,0),COALESCE(physical.id,l.id),COALESCE(physical.incarnation,''),COALESCE(physical.generation,0) FROM catalog_entities i JOIN catalog_libraries cl ON cl.id=i.library_id JOIN libraries l ON l.id=cl.library_id JOIN catalog_asset_links link ON link.entity_id=i.id JOIN catalog_assets a ON a.id=link.asset_id LEFT JOIN inventory_objects obj ON obj.asset_id=a.token AND obj.retired=0 AND obj.source_id IN(SELECT id FROM library_sources WHERE library_id=cl.library_id) LEFT JOIN library_sources physical ON physical.id=obj.source_id LEFT JOIN library_network_policy n ON n.library_id=cl.library_id WHERE i.public_id=pid_blob(?) AND a.token=? AND a.available=1 AND (obj.id IS NULL OR physical.enabled=1 AND obj.root_incarnation=physical.incarnation AND obj.state='available') AND (?='' OR NOT EXISTS(SELECT 1 FROM playback_physical_source_pins WHERE session_id=?) OR EXISTS(SELECT 1 FROM playback_physical_source_pins pin WHERE pin.session_id=? AND pin.source_id=physical.id AND pin.incarnation=physical.incarnation AND pin.configuration_generation=physical.generation)) ORDER BY physical.id LIMIT 1`, item, source, session, session, session).Scan(&s.library, &s.path, &s.root, &s.container, &s.size, &s.modified, &s.networkRevision, &s.physicalID, &s.incarnation, &s.configuration)
+	var e error
+	if session != "" {
+		e = r.db.QueryRowContext(ctx, `SELECT cl.library_id,a.path,CASE WHEN pin.binding='none' THEN COALESCE(physical.root,l.root) ELSE pin.root END,a.container,a.size,a.modified_ns,COALESCE(n.revision,0),COALESCE(physical.id,l.id),COALESCE(physical.incarnation,''),COALESCE(physical.generation,0)
+ FROM catalog_entities i JOIN catalog_libraries cl ON cl.id=i.library_id JOIN libraries l ON l.id=cl.library_id
+ JOIN catalog_asset_links link ON link.entity_id=i.id JOIN catalog_assets a ON a.id=link.asset_id
+ JOIN playback_sessions ps ON ps.id=? AND ps.item_id=i.id AND ps.asset_id=a.token JOIN playback_source_pins pin ON pin.session_id=ps.id
+ LEFT JOIN playback_physical_source_pins custody ON custody.session_id=ps.id LEFT JOIN library_sources physical ON physical.id=custody.source_id
+ LEFT JOIN library_network_policy n ON n.library_id=cl.library_id WHERE i.public_id=pid_blob(?) AND a.token=? AND a.available=1`, session, item, source).Scan(&s.library, &s.path, &s.root, &s.container, &s.size, &s.modified, &s.networkRevision, &s.physicalID, &s.incarnation, &s.configuration)
+	} else {
+		e = r.db.QueryRowContext(ctx, `SELECT cl.library_id,a.path,COALESCE(physical.root,l.root),a.container,a.size,a.modified_ns,COALESCE(n.revision,0),COALESCE(physical.id,l.id),COALESCE(physical.incarnation,''),COALESCE(physical.generation,0) FROM catalog_entities i JOIN catalog_libraries cl ON cl.id=i.library_id JOIN libraries l ON l.id=cl.library_id JOIN catalog_asset_links link ON link.entity_id=i.id JOIN catalog_assets a ON a.id=link.asset_id LEFT JOIN inventory_objects obj ON obj.asset_id=a.token AND obj.retired=0 AND obj.source_id IN(SELECT id FROM library_sources WHERE library_id=cl.library_id) LEFT JOIN library_sources physical ON physical.id=obj.source_id LEFT JOIN library_network_policy n ON n.library_id=cl.library_id WHERE i.public_id=pid_blob(?) AND a.token=? AND a.available=1 AND (obj.id IS NULL OR physical.enabled=1 AND obj.root_incarnation=physical.incarnation AND obj.state='available') AND (?='' OR NOT EXISTS(SELECT 1 FROM playback_physical_source_pins WHERE session_id=?) OR EXISTS(SELECT 1 FROM playback_physical_source_pins pin WHERE pin.session_id=? AND pin.source_id=physical.id AND pin.incarnation=physical.incarnation AND pin.configuration_generation=physical.generation)) ORDER BY physical.id LIMIT 1`, item, source, session, session, session).Scan(&s.library, &s.path, &s.root, &s.container, &s.size, &s.modified, &s.networkRevision, &s.physicalID, &s.incarnation, &s.configuration)
+	}
 	if e != nil {
 		return s, e
 	}
@@ -48,6 +61,15 @@ func (r *Runtime) selection(ctx context.Context, item, source, session string) (
 		}
 		if !ok {
 			return s, identity.ErrUnauthorized
+		}
+		accepted, err := assets.ResolvePlaybackSource(ctx, r.db, session, "")
+		if err != nil {
+			return s, err
+		}
+		s.path, s.size, s.modified = accepted.Path, accepted.Size, accepted.ModifiedNS
+		if accepted.Binding != nil {
+			s.binding, s.bound = *accepted.Binding, true
+			s.root = s.binding.Inventory.Root
 		}
 	}
 	return s, nil
@@ -149,7 +171,15 @@ func (r *Runtime) local(ctx context.Context, s selectedInput) (subtitles.RenderI
 		cancel()
 		return nil, e
 	}
-	reader, e := r.storage.OpenObservedPlayback(ctx, lease)
+	var bindings []*storage.PlaybackBinding
+	if s.selectedSession != "" {
+		var binding *storage.PlaybackBinding
+		if s.bound {
+			binding = &s.binding
+		}
+		bindings = append(bindings, binding)
+	}
+	reader, e := r.storage.OpenObservedPlayback(ctx, lease, bindings...)
 	if e != nil {
 		lease.Close()
 		cancel()

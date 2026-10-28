@@ -15,7 +15,7 @@ type CapabilityReport struct {
 }
 
 func registerCapabilityReport(r *apikit.Registry) {
-	v1Route(r, apikit.Metadata{Admission: laneAdmin, ID: "get_capability_report", Method: "GET", Path: "/v1/admin/diagnostics/capabilities", Summary: "Why Live TV, recording, prepared media or hardware encoding is unavailable on this server",
+	v1Route(r, apikit.Metadata{Audience: apikit.Clients, Admission: laneAdmin, ID: "get_capability_report", Method: "GET", Path: "/v1/admin/diagnostics/capabilities", Summary: "Why Live TV, recording, prepared media or hardware encoding is unavailable on this server",
 		Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_permitted"}},
 		func(context.Context, *http.Request, noBody) (CapabilityReport, error) {
 			items := capabilityreport.All()

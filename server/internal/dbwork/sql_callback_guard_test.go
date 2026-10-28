@@ -33,7 +33,6 @@ var sqlFunctionCensus = []string{
 	"function:pid",
 	"function:pid_blob",
 	"function:portico_author_key",
-	"function:portico_bulk_metadata_value",
 	"function:portico_channel_number",
 	"function:portico_fold_text",
 	"function:portico_letter",

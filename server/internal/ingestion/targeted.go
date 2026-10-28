@@ -393,6 +393,15 @@ func (s *Service) widenTarget(ctx context.Context, job, relative string) (bool, 
 	}
 	defer gated.Rollback()
 	tx := gated.Tx()
+	var reportMode int
+	if err = tx.QueryRowContext(ctx, `SELECT reported FROM inventory_runs WHERE job_id=?`, job).Scan(&reportMode); err != nil {
+		return false, err
+	}
+	if reportMode == strictReportMode {
+		// A target lost after admission is protected/excluded by the caller.
+		// Never widen a strict job, including to a non-root ancestor.
+		return false, nil
+	}
 	var untouched int
 	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_run_targets t JOIN inventory_directories d ON d.job_id=t.job_id AND d.relative_path=t.relative_path WHERE t.job_id=? AND t.relative_path=? AND d.state='pending' AND d.cursor='' AND d.pages=0)`, job, relative).Scan(&untouched); err != nil || untouched == 0 {
 		return false, err

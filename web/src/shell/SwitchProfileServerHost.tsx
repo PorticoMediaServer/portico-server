@@ -1,3 +1,4 @@
+import type {ShellIdentity} from './Shell';
 import {useEffect, useLayoutEffect, useRef, useState} from 'react';
 import type {AppSessionRecord} from '@core/app-sessions.ts';
 import {defaultI18n} from '@i18n';
@@ -30,7 +31,7 @@ type Published = Readonly<{record: AppSessionRecord; servers: readonly Choice[];
 
 /** One actual menu opening. No identity is looked up again by a rendered id.
  * Refresh replaces the whole immutable projection; callbacks retain its entries. */
-export function SwitchProfileServerHost({opening, close}: {opening: SwitchProfileServerOpening; close: () => void}) {
+export function SwitchProfileServerHost({opening, close, presentation}: {opening: SwitchProfileServerOpening; close: () => void; presentation?: Pick<ShellIdentity, 'serverName' | 'profiles'>}) {
   const [published, setPublished] = useState<Published>(), [busy, setBusy] = useState(false), [error, setError] = useState<unknown>();
   const holder = useRef<Published | undefined>(undefined), alive = useRef(false), request = useRef<AbortController | undefined>(undefined), claimed = useRef(false);
   const offAccount = useRef<(() => void) | undefined>(undefined);
@@ -126,16 +127,21 @@ export function SwitchProfileServerHost({opening, close}: {opening: SwitchProfil
     } catch (failure) {if (current()) setError(failure);}
     finally {claimed.current = false; if (current()) {setBusy(false); if (changed) void refresh();}}
   };
-  const profiles: readonly SwitchProfileServerProfile[] = Object.freeze(opening.profiles.map(profile => Object.freeze({...profile, current: profile.id === opening.profileId})));
-  return <SwitchProfileServerDialog open onClose={dismiss} profilesLabel={t('web.account.profilesOnServer', {server: opening.serverName})}
-    profiles={profiles} servers={published?.servers.map(row => row.view)} localServers={published?.locals.map(row => row.view)} busy={busy && claimed.current} refreshing={busy && !claimed.current}
+  const serverViews = new Map<SwitchProfileServerEntry, SwitchProfileServerEntry>();
+  const displayServer = (choice: Choice) => {const view = choice.view.current && presentation ? Object.freeze({...choice.view, name: presentation.serverName}) : choice.view;serverViews.set(view, choice.view);return view;};
+  const profiles: readonly SwitchProfileServerProfile[] = Object.freeze(opening.profiles.map(profile => {
+    const display = presentation?.profiles.find(row => row.id === profile.id);
+    return Object.freeze({...profile, ...(display ? {name: display.name, initial: display.initial, art: display.art} : {}), current: profile.id === opening.profileId});
+  }));
+  return <SwitchProfileServerDialog open onClose={dismiss} profilesLabel={t('web.account.profilesOnServer', {server: presentation?.serverName ?? opening.serverName})}
+    profiles={profiles} servers={published?.servers.map(displayServer)} localServers={published?.locals.map(displayServer)} busy={busy && claimed.current} refreshing={busy && !claimed.current}
     error={error ? <AuthError error={error} /> : undefined}
     onSelectProfile={profile => {
       if (!current() || claimed.current) return;
       const index = profiles.indexOf(profile), original = opening.profiles[index];
       if (!original || profile.current) return;
       claimed.current = true; opening.selectProfile(original); dismiss();
-    }} onSelectServer={entry => {void choose(entry);}}
+    }} onSelectServer={entry => {void choose(serverViews.get(entry) ?? entry);}}
     onRefreshServers={() => {void refresh();}} onUseLocalServer={() => {if (current() && !claimed.current) {claimed.current = true; opening.useLocal(); dismiss();}}} />;
 }
 

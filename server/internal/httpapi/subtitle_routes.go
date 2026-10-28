@@ -109,14 +109,20 @@ func subtitleDecode(w http.ResponseWriter, r *http.Request, out any) error {
 	if e != nil {
 		return subtitles.ErrCapacity
 	}
+	return subtitleStrictJSON(raw, out)
+}
+
+// subtitleStrictJSON decodes one strict UTF-8 JSON object with no unknown or
+// trailing fields.
+func subtitleStrictJSON(raw []byte, out any) error {
 	if !utf8.Valid(raw) {
 		return subtitles.ErrInput
 	}
 	tokens := json.NewDecoder(bytes.NewReader(raw))
-	if e = strictJSONValue(tokens, 0); e != nil {
+	if e := strictJSONValue(tokens, 0); e != nil {
 		return subtitles.ErrInput
 	}
-	if _, e = tokens.Token(); e != io.EOF {
+	if _, e := tokens.Token(); e != io.EOF {
 		return subtitles.ErrInput
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
@@ -129,6 +135,104 @@ func subtitleDecode(w http.ResponseWriter, r *http.Request, out any) error {
 		return subtitles.ErrInput
 	}
 	return nil
+}
+
+// subtitleMetadataBytes bounds a multipart upload's JSON metadata part.
+const subtitleMetadataBytes = 16384
+
+// subtitleMutationDecode reads a subtitle save as JSON (content or base64
+// data), or as multipart/form-data (IM04): a bounded JSON "metadata" part
+// first, then the raw "file" and, for a VobSub pair, its "companion". Parts
+// are read one at a time, in order and unencoded, so a binary file crosses
+// the wire once rather than as base64 inside JSON.
+func subtitleMutationDecode(w http.ResponseWriter, r *http.Request, m *subtitles.Mutation) error {
+	typ, _, e := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if e != nil || typ != "multipart/form-data" {
+		return subtitleDecode(w, r, m)
+	}
+	limitBytes := subtitles.BinaryLimitBytes()
+	r.Body = http.MaxBytesReader(w, r.Body, int64(limitBytes)+subtitleMetadataBytes+16384)
+	reader, e := r.MultipartReader()
+	if e != nil {
+		return subtitles.ErrInput
+	}
+	seen := map[string]bool{}
+	files := 0
+	for {
+		// NextRawPart keeps any transfer encoding visible: only unencoded parts
+		// are admitted.
+		part, e := reader.NextRawPart()
+		if e == io.EOF {
+			break
+		}
+		if e != nil {
+			return subtitleUploadFailure(e)
+		}
+		name := part.FormName()
+		if name != "metadata" && name != "file" && name != "companion" || seen[name] || name != "metadata" && !seen["metadata"] || name == "companion" && !seen["file"] || len(part.Header.Values("Content-Disposition")) != 1 {
+			return subtitles.ErrInput
+		}
+		seen[name] = true
+		if encodings := part.Header.Values("Content-Transfer-Encoding"); len(encodings) > 1 || len(encodings) == 1 && !strings.EqualFold(strings.TrimSpace(encodings[0]), "binary") && !strings.EqualFold(strings.TrimSpace(encodings[0]), "8bit") {
+			return subtitles.ErrInput
+		}
+		limit := int64(subtitleMetadataBytes)
+		if name != "metadata" {
+			limit = int64(limitBytes - files)
+		} else if part.FileName() != "" {
+			return subtitles.ErrInput
+		} else if typ := part.Header.Get("Content-Type"); typ != "" {
+			if media, params, e := mime.ParseMediaType(typ); e != nil || media != "application/json" && media != "text/plain" || params["charset"] != "" && !strings.EqualFold(params["charset"], "utf-8") {
+				return subtitles.ErrInput
+			}
+		}
+		value, e := io.ReadAll(io.LimitReader(part, limit+1))
+		if e != nil {
+			return subtitleUploadFailure(e)
+		}
+		if int64(len(value)) > limit {
+			return subtitles.ErrCapacity
+		}
+		if e = part.Close(); e != nil {
+			return subtitleUploadFailure(e)
+		}
+		switch name {
+		case "metadata":
+			if e = subtitleStrictJSON(value, m); e != nil {
+				return e
+			}
+			// The bytes travel as their own parts, never inside the metadata.
+			if m.Content != nil || m.Data != nil || m.Companion != nil {
+				return subtitles.ErrInput
+			}
+		case "file":
+			if len(value) == 0 {
+				return subtitles.ErrInput
+			}
+			m.Data = value
+			files += len(value)
+		case "companion":
+			if len(value) == 0 {
+				return subtitles.ErrInput
+			}
+			m.Companion = value
+			files += len(value)
+		}
+	}
+	if !seen["file"] {
+		return subtitles.ErrInput
+	}
+	return nil
+}
+
+// subtitleUploadFailure is a multipart read failure: an oversize body is a
+// capacity refusal, anything else malformed input.
+func subtitleUploadFailure(e error) error {
+	var tooLarge *http.MaxBytesError
+	if errors.As(e, &tooLarge) {
+		return subtitles.ErrCapacity
+	}
+	return subtitles.ErrInput
 }
 func (d Dependencies) registerSubtitleRoutes(registry *apikit.Registry) error {
 	var registrationError error
@@ -181,7 +285,7 @@ func (d Dependencies) registerSubtitleRoutes(registry *apikit.Registry) error {
 	})
 	register("POST /v1/items/{itemId}/subtitles", func(w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		var m subtitles.Mutation
-		if e := subtitleDecode(w, r, &m); e != nil {
+		if e := subtitleMutationDecode(w, r, &m); e != nil {
 			return nil, e
 		}
 		if m.ResourceID != "" {
@@ -191,7 +295,7 @@ func (d Dependencies) registerSubtitleRoutes(registry *apikit.Registry) error {
 	})
 	register("PUT /v1/items/{itemId}/subtitles/{resource}", func(w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		var m subtitles.Mutation
-		if e := subtitleDecode(w, r, &m); e != nil {
+		if e := subtitleMutationDecode(w, r, &m); e != nil {
 			return nil, e
 		}
 		if m.ResourceID != "" && m.ResourceID != r.PathValue("resource") {

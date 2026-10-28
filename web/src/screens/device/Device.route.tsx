@@ -1,3 +1,4 @@
+import {useShellFacts} from '../../shell/fact-hooks';
 import {useLayoutEffect, useRef, useState} from 'react';
 import {useLocation} from '@tanstack/react-router';
 import {defaultI18n} from '@i18n';
@@ -20,6 +21,7 @@ function DeviceEntry() {
   return <LocalDevicePage key={JSON.stringify([captured.binding.scopeKey, location.href, location.state.__TSR_key])} captured={captured} location={location}/>;
 }
 function LocalDevicePage({captured, location}: {captured: Captured; location: LocalDeviceLocation}) {
+  useShellFacts(captured.context);
   const {context, binding} = captured, scope = binding.scopeKey;
   const original = useRef<Owner | undefined>(undefined), focus = useRef<HTMLHeadingElement>(null);
   const seed = useRef<Readonly<{context: Captured['context']; code?: string}> | undefined>(undefined);

@@ -3,10 +3,12 @@ import {profileArtColors} from '@design';
 import {defaultI18n} from '@i18n';
 import {PROFILE_ART, type ProfileArt} from '@core/profile-management.ts';
 import type {MemberProfile, MemberProfilesClient} from '@core/member-profiles.ts';
+import {AVATAR_MAX_BYTES} from '@core/identity-client.ts';
 import type {RatingSystem} from '@core/identity-restrictions.ts';
 import {presentError} from '@core/presentation/errors.ts';
 import {Button, RichSelect, Switch, TextField} from '../../kit/controls';
 import {Icon} from '../../kit/Icon';
+import {Artwork} from '../../kit/artwork';
 import {Dialog} from '../../kit/overlays/Dialog';
 import {SettingsAction, SettingsStringList} from '../../kit/settings';
 import type {PeopleMemberProfilesApi} from './people-member-profiles-api';
@@ -56,27 +58,35 @@ export function PeopleMemberProfiles({api, accountId, canEdit, serverOwner = fal
         const rating = profile.restrictions.maximumAgeRating;
         const meta = [profile.primary ? t('profile.main') : '', profile.pinRequired ? t('profile.protected') : '', rating ? `${t(K.rating)} ${rating}` : ''].filter(Boolean).join(', ');
         return <li key={profile.id}>
-          <span className={styles.profileIcon} style={{'--profile-color': profileArtColors[profile.art]} as CSSProperties}><Icon name="i-user" size={20} /></span>
+          <MemberProfilePicture profile={profile} api={api} accountId={accountId} />
           <span className={styles.profileName}><b>{profile.name}</b>{meta && <small>{meta}</small>}</span>
           <span className={styles.profileActions}>{canEdit && <Button size="xs" variant="glass" onClick={() => setManaging(profile.id)}>
             {t('next.settingsSpec.server.people.panels.person.tabs.2.groups.0.rows.0.control.itemAction.label')}</Button>}</span>
         </li>;
       })}
     </ul>
-    {editing && client.current && <MemberProfileDialog key={editing.id} profile={editing} client={client.current} systems={systems} serverOwner={serverOwner}
+    {canEdit && editing && client.current && <MemberProfileDialog key={editing.id} profile={editing} client={client.current} api={api} accountId={accountId} systems={systems} serverOwner={serverOwner}
       onSaved={replace} onClose={() => setManaging(undefined)} />}
   </>;
+}
+
+function MemberProfilePicture({profile, api, accountId, large = false}: {profile: MemberProfile; api: PeopleMemberProfilesApi; accountId: string; large?: boolean}) {
+  const fallback = <span className={local.pictureFallback}><Icon name="i-user" size={large ? 40 : 20} /></span>;
+  return <span className={`${styles.profileIcon} ${large ? local.picturePreview : local.pictureIcon}`} style={{'--profile-color': profileArtColors[profile.art]} as CSSProperties}>
+    <Artwork source={api.picture(accountId, profile.avatar, large ? 160 : 64)} alt="" fallback={fallback} />
+  </span>;
 }
 
 type Draft = Readonly<{name: string; art: ProfileArt; rating: string; allowUnrated: boolean; labels: readonly string[]; allowDownloads: boolean; allowLiveTv: boolean; allowDvr: boolean; allowWatchTogether: boolean}>;
 const draftOf = (p: MemberProfile): Draft => ({name: p.name, art: p.art, rating: p.restrictions.maximumAgeRating, allowUnrated: p.restrictions.allowUnrated, labels: p.restrictions.blockedLabels,
   allowDownloads: p.restrictions.allowDownloads, allowLiveTv: p.restrictions.allowLiveTv, allowDvr: p.restrictions.allowDvr, allowWatchTogether: p.restrictions.allowWatchTogether});
 
-function MemberProfileDialog({profile, client, systems, serverOwner, onSaved, onClose}: {profile: MemberProfile; client: MemberProfilesClient; systems: readonly RatingSystem[]; serverOwner: boolean;
+function MemberProfileDialog({profile, client, api, accountId, systems, serverOwner, onSaved, onClose}: {profile: MemberProfile; client: MemberProfilesClient; api: PeopleMemberProfilesApi; accountId: string; systems: readonly RatingSystem[]; serverOwner: boolean;
   onSaved: (profile: MemberProfile) => void; onClose: () => void}) {
   const [draft, setDraft] = useState<Draft>(() => draftOf(profile)), [busy, setBusy] = useState(false), [error, setError] = useState<unknown>(), [removing, setRemoving] = useState(false);
-  const closed = useRef(false);
-  useEffect(() => () => {closed.current = true;}, []);
+  const [pictureError, setPictureError] = useState<'size' | 'type'>();
+  const closed = useRef(false), pending = useRef(false), picker = useRef<HTMLInputElement>(null), pictureTarget = useRef<MemberProfile | undefined>(undefined);
+  useEffect(() => {closed.current = false; return () => {closed.current = true; pictureTarget.current = undefined;};}, []);
   const set = (patch: Partial<Draft>) => setDraft(current => ({...current, ...patch}));
   // The rating scale is the profile's own system, or the first published one for a profile with none yet.
   const system = systems.find(item => item.id === profile.restrictions.ratingSystem) ?? (profile.restrictions.ratingSystem === '' ? systems[0] : undefined);
@@ -84,12 +94,18 @@ function MemberProfileDialog({profile, client, systems, serverOwner, onSaved, on
   const r = profile.restrictions;
   const limited = draft.rating !== r.maximumAgeRating || draft.allowUnrated !== r.allowUnrated || draft.labels.join('\n') !== r.blockedLabels.join('\n')
     || flags.some(([key]) => draft[key] !== r[key]);
-  const run = async (work: () => Promise<MemberProfile | undefined>) => {
-    if (busy) return;
-    setBusy(true); setError(undefined);
-    try {const next = await work(); if (next && !closed.current) onSaved(next); if (!closed.current) onClose();}
+  const run = async (work: () => Promise<MemberProfile | undefined>, close = true) => {
+    if (closed.current || pending.current) return;
+    pending.current = true; setBusy(true); setError(undefined); setPictureError(undefined);
+    try {const next = await work(); if (next && !closed.current) onSaved(next); if (close && !closed.current) onClose();}
     catch (failure) {if (!closed.current) setError(failure);}
-    finally {if (!closed.current) setBusy(false);}
+    finally {pending.current = false; if (!closed.current) setBusy(false);}
+  };
+  const picture = (target: MemberProfile, file?: File) => {
+    if (closed.current || pending.current) return;
+    if (file && (!file.size || file.size > AVATAR_MAX_BYTES)) {setPictureError('size'); return;}
+    if (file && file.type !== 'image/jpeg' && file.type !== 'image/png') {setPictureError('type'); return;}
+    void run(() => file ? client.uploadPicture(target, file, file.type) : client.removePicture(target), false);
   };
   const save = () => run(async () => {
     let current = profile;
@@ -104,6 +120,19 @@ function MemberProfileDialog({profile, client, systems, serverOwner, onSaved, on
         <Button size="small" variant="primary" loading={busy} disabled={busy || !draft.name.trim() || draft.name.trim().length > 120 || !named && !limited} onClick={() => {void save();}}>{t('action.save')}</Button></>}>
       <div className={styles.fields}>
         {error ? <p role="alert">{presentError(error, 'settings').body}</p> : null}
+        <div className={local.picture}>
+          <MemberProfilePicture profile={{...profile, art: draft.art}} api={api} accountId={accountId} large />
+          <div className={local.pictureButtons}>
+            <input ref={picker} type="file" hidden accept="image/jpeg,image/png" onChange={event => {
+              const file = event.currentTarget.files?.[0], target = pictureTarget.current;
+              event.currentTarget.value = ''; pictureTarget.current = undefined;
+              if (file && target) picture(target, file);
+            }} />
+            <Button size="small" variant="glass" disabled={busy} onClick={() => {if (!pending.current && !closed.current) {pictureTarget.current = profile; picker.current?.click();}}}>{t('next.settingsSpec.account.profile.groups.1.rows.2.control.label')}</Button>
+            {profile.avatar && <Button size="small" variant="glass" disabled={busy} onClick={() => picture(profile)}>{t('next.settingsSpec.account.profile.groups.1.rows.2.control.second.label')}</Button>}
+          </div>
+        </div>
+        {pictureError && <p role="alert" className={styles.pictureError}>{t(pictureError === 'size' ? 'web.profile.pictureTooLarge' : 'profile.pictureRejected')}</p>}
         <TextField label={t(K.name)} value={draft.name} maxLength={120} disabled={busy} autoComplete="off" onChange={event => set({name: event.currentTarget.value})} />
         <fieldset className={styles.colors} disabled={busy}><legend>{t(K.color)}</legend><div role="radiogroup" aria-label={t(K.color)}>
           {PROFILE_ART.map((color, index) => <button key={color} type="button" role="radio" aria-checked={draft.art === color}

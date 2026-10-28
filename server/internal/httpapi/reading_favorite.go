@@ -104,7 +104,7 @@ func (d Dependencies) readingSetFavorite(rate *personalLimiter) http.HandlerFunc
 	}
 }
 func registerReadingFavoriteHTTPContracts(registry *apikit.Registry) error {
-	m := apikit.Metadata{ID: "get_items_itemId_reading_favorite", Method: "GET", Path: "/v1/items/{itemId}/reading/favorite", Summary: "Read this profile's Reading Favorite flag", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}
+	m := apikit.Metadata{Audience: apikit.Clients, ID: "get_items_itemId_reading_favorite", Method: "GET", Path: "/v1/items/{itemId}/reading/favorite", Summary: "Read this profile's Reading Favorite flag", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}
 	if err := apikit.RegisterHTTP[struct{}, ReadingFavoriteResponse](registry, m); err != nil {
 		return err
 	}

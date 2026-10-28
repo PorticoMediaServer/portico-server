@@ -28,7 +28,7 @@ func (d Dependencies) controlsRouteAdmission(r *http.Request) error {
 	if err := registryScopeGate(request, apikit.ScopePlayback); err != nil {
 		return err
 	}
-	_, err := d.v1Authorize(request.Context(), request, apikit.Metadata{ID: "get_remote_playback_controls", Method: http.MethodGet, Path: "/v1/playback/controls", Access: apikit.Device, Requires: apikit.ScopePlayback})
+	_, err := d.v1Authorize(request.Context(), request, apikit.Metadata{Audience: apikit.Integrations, ID: "get_remote_playback_controls", Method: http.MethodGet, Path: "/v1/playback/controls", Access: apikit.Device, Requires: apikit.ScopePlayback})
 	return err
 }
 

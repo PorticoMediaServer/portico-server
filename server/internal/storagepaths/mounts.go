@@ -2,11 +2,13 @@ package storagepaths
 
 import (
 	"bufio"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 )
@@ -79,21 +81,60 @@ func CurrentMounts() ([]Mount, error) {
 	return mounts, nil
 }
 
-// DiskTranscodeDirectory keeps production FFmpeg output off RAM until the
-// producer/serve path supports aggregate bounded RAM with live disk spill.
-// The SpillFile primitive alone does not provide that integration.
-func DiskTranscodeDirectory(requested, fallback string, mounts []Mount) (string, error) {
+// TranscodeDirectories separates bounded Linux tmpfs output from its verified
+// disk spill volume. ramfs has no kernel size bound and is never writable output.
+func TranscodeDirectories(requested, fallback string, mounts []Mount) (disk, memory string, err error) {
+	verifiedDisk := func(path string) bool {
+		return filepath.IsAbs(path) && canonicalParents(path) == nil && Filesystem(path, mounts) != "" && !MemoryFilesystem(Filesystem(path, mounts))
+	}
+	// Classifying an alias by its textual mount prefix can turn an apparently
+	// disk-backed folder into unbounded tmpfs output. Refuse aliased parents and
+	// use only a separately verified disk fallback.
+	if !filepath.IsAbs(requested) || canonicalParents(requested) != nil {
+		if verifiedDisk(fallback) {
+			return fallback, "", nil
+		}
+		return "", "", errors.New("conversion directories require verified real disk parents")
+	}
 	kind := Filesystem(requested, mounts)
 	if kind == "" {
-		return "", errors.New("conversion filesystem could not be verified; conversion is unavailable until its disk backing can be identified")
+		return "", "", errors.New("conversion filesystem could not be verified; choose a verified disk directory")
 	}
 	if !MemoryFilesystem(kind) {
-		return requested, nil
+		return requested, "", nil
 	}
-	if fallback != "" && Filesystem(fallback, mounts) != "" && !MemoryFilesystem(Filesystem(fallback, mounts)) {
-		return fallback, nil
+	if !verifiedDisk(fallback) {
+		return "", "", errors.New("RAM-backed conversion storage requires a verified disk spill directory")
 	}
-	return "", errors.New("RAM-backed transcode storage is unavailable until bounded producer spill is integrated; choose a disk directory")
+	if runtime.GOOS == "linux" && kind == "tmpfs" {
+		memory = requested
+	}
+	return fallback, memory, nil
+}
+
+// MemoryTranscodeDirectory never owns a shared tmpfs root. Each disk output
+// root gets its own private child; playback verifies its ownership before any
+// adoption or cleanup. Merely finding tmpfs does not authorize RAM placement:
+// playback also checks its kernel ceiling, the cap and the memory floor.
+func MemoryTranscodeDirectory(disk string, mounts []Mount) string {
+	if runtime.GOOS != "linux" {
+		return ""
+	}
+	canonical, err := filepath.EvalSymlinks(disk)
+	if err != nil {
+		return ""
+	}
+	canonical, err = filepath.Abs(canonical)
+	if err != nil {
+		return ""
+	}
+	identity := fmt.Sprintf("%x", sha256.Sum256([]byte(canonical)))[:16]
+	for _, base := range []string{"/memory-transcode", "/dev/shm"} {
+		if Filesystem(base, mounts) == "tmpfs" {
+			return filepath.Join(base, "portico-hls-"+identity)
+		}
+	}
+	return ""
 }
 
 var ErrCleanupUnavailable = errors.New("destructive cleanup cannot be confined to the owned filesystem")

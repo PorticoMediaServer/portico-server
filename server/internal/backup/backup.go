@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/persistence"
 	"portico.local/server/internal/supervise"
 )
 
@@ -108,7 +109,10 @@ type BackupResult struct {
 
 // RunningJob is the in-progress backup the status endpoint reports.
 type RunningJob struct {
-	JobID      string `json:"jobId"`
+	JobID string `json:"jobId"`
+	// Kind is manual for a backup the owner started: it shares turns with
+	// people's changes, so the server may pause briefly while it runs.
+	Kind       Kind   `json:"kind"`
 	Phase      string `json:"phase"`
 	BytesDone  int64  `json:"bytesDone"`
 	BytesTotal int64  `json:"bytesTotal"`
@@ -123,6 +127,9 @@ type RestoreResult struct {
 	At            string `json:"at"`
 	Outcome       string `json:"outcome"`
 	Reason        string `json:"reason,omitempty"`
+	// Recovery is set when the restored database was damaged: what restore
+	// repaired, and what it could not read.
+	Recovery *persistence.Recovery `json:"recovery,omitempty"`
 }
 
 var (
@@ -212,7 +219,7 @@ func (j *Job) Result() error {
 func (j *Job) Progress() RunningJob {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	return RunningJob{JobID: j.id, Phase: j.phase, BytesDone: j.bytesDone, BytesTotal: j.bytesTotal}
+	return RunningJob{JobID: j.id, Kind: j.kind, Phase: j.phase, BytesDone: j.bytesDone, BytesTotal: j.bytesTotal}
 }
 
 func (j *Job) setTotal(total int64) {
@@ -251,6 +258,7 @@ type Service struct {
 	settingsStore *PolicyStore
 	directory     string
 	db            *sql.DB
+	sourceGuard   sourceFileGuard
 	serverID      string
 	serverVersion string
 	schemaVersion int
@@ -273,37 +281,40 @@ type Service struct {
 	// backup, to end the sessions and remove the live secrets in it. It is
 	// injected by the composition root; nil leaves the copy as it was copied
 	// (tests of the copy itself).
-	scrubCopy func(ctx context.Context, path string) error
+	scrubCopy func(ctx context.Context, copy *dbwork.Candidate) error
 
 	// stageMu makes restore staging one at a time: every stage writes the same
 	// restore-staged folder, so overlapping requests (a retry, a second tab)
 	// wait and then supersede in order instead of deleting each other's copy.
 	stageMu sync.Mutex
 
+	// copyMu runs one backup at a time, whichever entry point starts it;
+	// epoch names this service's artwork holds (holds.go).
+	copyMu sync.Mutex
+	epoch  string
+	// limits gives each kind's copy limits; tests shorten them.
+	limits func(Kind) copyLimits
+
 	mu         sync.Mutex
 	jobs       map[string]*Job
 	operations map[string]string
 	running    *Job
 	lastBackup *BackupResult
-
-	// checkpointMu serializes the writer's automatic-checkpoint hold shared by
-	// overlapping backups; the writer is one connection per service.
-	checkpointMu    sync.Mutex
-	checkpointHolds int
-	checkpointPrior int
 }
 
 // New opens the service on state. db is the live database handle the online
-// backup reads from; the copy itself never takes the write gate, and only the
-// short checkpoint-guard pragmas around it do.
+// backup copies, in short steps on its writer connection (copy.go).
 func New(state string, db *sql.DB, serverID, serverVersion string, schemaVersion int) *Service {
 	return &Service{
 		state:         state,
 		db:            db,
+		sourceGuard:   newSourceFileGuard(db),
 		serverID:      serverID,
 		serverVersion: serverVersion,
 		schemaVersion: schemaVersion,
 		now:           time.Now,
+		epoch:         newToken(),
+		limits:        copyLimitsFor,
 		jobs:          map[string]*Job{},
 		operations:    map[string]string{},
 	}
@@ -338,7 +349,9 @@ func (s *Service) SetRestoreAvailable(available bool) { s.restoreUnavailable = !
 
 // SetCopyScrubber injects what is done to each finished database copy before
 // it becomes a backup. A backup whose copy could not be scrubbed is not kept.
-func (s *Service) SetCopyScrubber(fn func(ctx context.Context, path string) error) { s.scrubCopy = fn }
+func (s *Service) SetCopyScrubber(fn func(ctx context.Context, copy *dbwork.Candidate) error) {
+	s.scrubCopy = fn
+}
 
 // Start begins an asynchronous backup. It is idempotent per operationID: the
 // same id twice returns the same job. Only one backup runs at a time; a new
@@ -412,6 +425,10 @@ func (s *Service) runBackup(ctx context.Context, job *Job) {
 			result.ErrorCode = "internal"
 			if errors.Is(err, ErrInsufficientDisk) {
 				result.ErrorCode = "insufficient_disk"
+			} else if errors.Is(err, ErrBackupPressure) {
+				// The server was too busy for the backup to finish without
+				// holding it up; the last good backup stays.
+				result.ErrorCode = "backup_busy"
 			}
 		}
 		s.lastBackup = result
@@ -492,6 +509,8 @@ func (s *Service) createBackup(ctx context.Context, job *Job, kind Kind) (string
 	if s.db == nil || s.state == "" {
 		return "", ErrInvalid
 	}
+	s.copyMu.Lock()
+	defer s.copyMu.Unlock()
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
@@ -588,25 +607,23 @@ func (s *Service) createBackup(ctx context.Context, job *Job, kind Kind) (string
 			job.report("snapshot", done, max64(total, estimate))
 		}
 	}
-	// The backup's snapshot pins checkpoint progress, so keep the writer's
-	// automatic checkpoint off the gate for the whole copy and drain the log
-	// from the maintenance connection before restoring it.
-	releaseCheckpoint := s.holdWriterCheckpoint(ctx)
-	defer releaseCheckpoint()
-	if err = copyDatabase(ctx, s.db, filepath.Join(partial, DatabaseName), report); err != nil {
+	// No collector may delete a file this backup's database names until the
+	// backup is published or abandoned (holds.go).
+	limits := s.limits(kind)
+	if err = s.holdBlobs(ctx, limits, id, filepath.Base(partial)); err != nil {
+		return "", err
+	}
+	defer s.releaseHold(id)
+	if err = copyDatabase(ctx, s.db, filepath.Join(partial, DatabaseName), report, limits); err != nil {
 		_ = os.RemoveAll(partial)
 		return "", err
 	}
-	if s.scrubCopy != nil {
-		if err = s.scrubCopy(ctx, filepath.Join(partial, DatabaseName)); err != nil {
-			_ = os.RemoveAll(partial)
-			return "", err
-		}
-	}
-	// The scrubber may have written WAL frames. Fold them into the database
-	// and close SQLite before flushing/hashing the final standalone payload.
-	database, err := finalizeDatabase(ctx, filepath.Join(partial, DatabaseName))
+	database, err := s.checkAndScrubCopy(ctx, partial)
 	if err != nil {
+		_ = os.RemoveAll(partial)
+		return "", err
+	}
+	if err = s.advanceHold(ctx, limits, id, "files"); err != nil {
 		_ = os.RemoveAll(partial)
 		return "", err
 	}
@@ -642,6 +659,10 @@ func (s *Service) createBackup(ctx context.Context, job *Job, kind Kind) (string
 		_ = os.RemoveAll(partial)
 		return "", err
 	}
+	if err = s.advanceHold(ctx, limits, id, "publishing"); err != nil {
+		_ = os.RemoveAll(partial)
+		return "", err
+	}
 	if policy.PassphraseProtected {
 		if policy.material == nil {
 			return "", ErrInvalid
@@ -666,6 +687,26 @@ func (s *Service) createBackup(ctx context.Context, job *Job, kind Kind) (string
 
 // CreateKind writes one backup of the given kind synchronously. The schedule
 // uses KindScheduled; the API uses KindManual through Start.
+// checkAndScrubCopy checks the finished copy, ends the sessions in it and
+// folds its log, all on a private candidate handle: none of it is a live
+// write, so none of it takes the write gate. It returns the database's entry.
+func (s *Service) checkAndScrubCopy(ctx context.Context, partial string) (FileEntry, error) {
+	candidate, err := candidateDatabase(partial)
+	if err != nil {
+		return FileEntry{}, err
+	}
+	if err = quickCheck(ctx, candidate); err == nil && s.scrubCopy != nil {
+		err = s.scrubCopy(ctx, candidate)
+	}
+	if err != nil {
+		candidate.Close()
+		return FileEntry{}, err
+	}
+	// The scrubber may have written WAL frames. Fold them into the database
+	// and close SQLite before flushing/hashing the final standalone payload.
+	return finalizeDatabase(ctx, partial, candidate)
+}
+
 func (s *Service) CreateKind(ctx context.Context, kind Kind) (string, error) {
 	return s.create(ctx, nil, kind)
 }

@@ -324,6 +324,9 @@ type browseCompiler struct {
 	// perTitle tests a member condition on each title it is asked of, never
 	// from the value side: the titles are already a short candidate list.
 	perTitle bool
+	// bounded is for a caller that already drives a small candidate page. Its
+	// predicates probe those candidates instead of materializing a library set.
+	bounded bool
 }
 
 // drivenMaximum is the most matching member items a value-side selection
@@ -797,7 +800,7 @@ func (c *browseCompiler) exists(field browseField, condition func() (string, err
 		}
 	}
 	prefix := "EXISTS(SELECT 1 FROM catalog_browse_memberships bei " + field.Join + " WHERE bei.entity_id=e.entity_id AND "
-	if field.ID == "personal-member" {
+	if field.ID == "personal-member" && !c.bounded {
 		prefix = "e.entity_id IN(SELECT bei.entity_id FROM personal_items pi CROSS JOIN catalog_browse_memberships bei ON bei.item_id=pi.item_id WHERE pi.profile_id=? AND "
 	}
 	if field.ID == "list" {
@@ -1100,7 +1103,11 @@ func (c *browseCompiler) personalTitlePredicate(field browseField, node BrowseNo
 	if err != nil {
 		return "", err
 	}
-	own = `e.entity_id IN(SELECT pi.item_id FROM personal_items pi WHERE pi.profile_id=? AND ` + own + `)`
+	if c.bounded {
+		own = `EXISTS(SELECT 1 FROM personal_items pi WHERE pi.item_id=e.entity_id AND pi.profile_id=? AND ` + own + `)`
+	} else {
+		own = `e.entity_id IN(SELECT pi.item_id FROM personal_items pi WHERE pi.profile_id=? AND ` + own + `)`
+	}
 	// A playable title holds only itself. Expanding its personal state through
 	// the membership table adds no matches and prevents the direct profile
 	// index from driving an empty or selective filter.
@@ -1154,6 +1161,9 @@ func (c *browseCompiler) groupMembershipPredicate(field browseField, node Browse
 	}
 	restriction, args := ItemRestrictionSQL("member.item_id", c.restrictions)
 	c.args = append(c.args, args...)
+	if c.bounded {
+		return `EXISTS(SELECT 1 FROM catalog_browse_memberships member WHERE member.entity_id=e.entity_id AND EXISTS(SELECT 1 FROM (` + members + ` AND parent.item_id=member.item_id)) AND (` + restriction + `))`, true, nil
+	}
 	return `e.entity_id IN(SELECT member.entity_id FROM catalog_browse_memberships member WHERE member.item_id IN (` + members + `) AND (` + restriction + `))`, true, nil
 }
 
@@ -1172,11 +1182,28 @@ func (c *browseCompiler) genreExists(condition func() (string, error)) (string, 
 	override := strings.ReplaceAll(body, "COALESCE(ts.label_override,mg.label)", "ts.label_override")
 	restriction, args := ItemRestrictionSQL("member.item_id", c.restrictions)
 	c.args = append(c.args, args...)
-	return `e.entity_id IN(WITH owners AS MATERIALIZED (
- SELECT ts.entity_id FROM catalog_terms mg CROSS JOIN catalog_term_sources ts INDEXED BY catalog_term_sources_term ON ts.term_id=mg.id
+	owners := `SELECT ts.entity_id FROM catalog_terms mg CROSS JOIN catalog_term_sources ts INDEXED BY catalog_term_sources_term ON ts.term_id=mg.id
  WHERE mg.vocab=1 AND ts.label_override IS NULL AND (` + plain + `)
  UNION SELECT ts.entity_id FROM catalog_term_sources ts INDEXED BY catalog_term_sources_overrides JOIN catalog_terms mg ON mg.id=ts.term_id
- WHERE mg.vocab=1 AND ts.label_override IS NOT NULL AND (` + override + `))
+ WHERE mg.vocab=1 AND ts.label_override IS NOT NULL AND (` + override + `)`
+	if c.bounded {
+		related := `(SELECT e.entity_id UNION SELECT item_id FROM catalog_browse_memberships WHERE entity_id=e.entity_id
+   UNION SELECT entity_id FROM catalog_browse_memberships WHERE item_id=e.entity_id
+   UNION SELECT ep.show_id FROM catalog_episodes ep WHERE ep.entity_id IN(SELECT item_id FROM catalog_browse_memberships WHERE entity_id=e.entity_id))`
+		owners = `SELECT ts.entity_id FROM catalog_term_sources ts JOIN catalog_terms mg ON mg.id=ts.term_id WHERE ts.entity_id IN ` + related + ` AND mg.vocab=1 AND ts.label_override IS NULL AND (` + plain + `)
+   UNION SELECT ts.entity_id FROM catalog_term_sources ts JOIN catalog_terms mg ON mg.id=ts.term_id WHERE ts.entity_id IN ` + related + ` AND mg.vocab=1 AND ts.label_override IS NOT NULL AND (` + override + `)`
+
+		// EXISTS/UNION ALL can stop at the first permitted witness. In particular an
+		// episode inheriting a show's genre must not enumerate every sibling.
+		c.args = append(c.args, args...)
+		c.args = append(c.args, args...)
+		return `EXISTS(WITH owners AS MATERIALIZED (` + owners + `)
+   SELECT 1 FROM owners CROSS JOIN catalog_browse_memberships member ON member.item_id=owners.entity_id WHERE member.entity_id=e.entity_id AND (` + restriction + `)
+   UNION ALL SELECT 1 FROM owners CROSS JOIN catalog_browse_memberships member ON member.entity_id=owners.entity_id WHERE member.entity_id=e.entity_id AND (` + restriction + `)
+   UNION ALL SELECT 1 FROM owners CROSS JOIN catalog_episodes ep ON ep.show_id=owners.entity_id CROSS JOIN catalog_browse_memberships member ON member.item_id=ep.entity_id WHERE member.entity_id=e.entity_id AND (` + restriction + `))`, nil
+	}
+
+	return `e.entity_id IN(WITH owners AS MATERIALIZED (` + owners + `)
  SELECT member.entity_id FROM (
  SELECT bei.entity_id,bei.item_id FROM owners CROSS JOIN catalog_browse_memberships bei ON bei.item_id=owners.entity_id
  UNION SELECT bei.entity_id,bei.item_id FROM owners CROSS JOIN catalog_browse_memberships bei ON bei.entity_id=owners.entity_id
@@ -1491,6 +1518,9 @@ func (c *browseCompiler) matchPredicate(node BrowseNode) (string, error) {
  UNION SELECT a.entity_id FROM listening_metadata_attention a WHERE a.retired=0 AND a.kind IN('album','song') AND a.reason NOT IN('pending','searching','pending_search','pending_episodes','pending_children','pending_apply')
  ) attention JOIN catalog_entities target ON target.id=attention.entity_id JOIN catalog_libraries library ON library.id=target.library_id JOIN libraries l ON l.id=library.library_id LEFT JOIN library_metadata_agents agent ON agent.library_id=l.id
  WHERE l.kind IN('movie','tv','anime','music') AND COALESCE(agent.agent,'online')='online' AND target.retired=0 AND ` + visible
+	if c.bounded {
+		current += ` AND attention.entity_id IN(SELECT e.entity_id UNION SELECT item_id FROM catalog_browse_memberships WHERE entity_id=e.entity_id UNION SELECT entity_id FROM catalog_albums WHERE artist_id=e.entity_id)`
+	}
 	// Expand only direct membership edges: an artist can inherit an unmatched
 	// album/song, and a season an unmatched episode. The matching member itself
 	// must be visible, so a hidden member never reveals a parent's match status.

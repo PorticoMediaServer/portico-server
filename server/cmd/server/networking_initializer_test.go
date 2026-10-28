@@ -57,8 +57,23 @@ func TestCurrentNetworkingStartupOwnerAndRestart(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	owner, e := ident.Setup(string(setup), "owner", "test-owner-password", "Current server")
+	web, e := identity.WithIssuingDevice(context.Background(), identity.DeviceRegistration{InstallationID: identity.Token(), Name: "Owner browser", Platform: "web", App: "portico"}, "127.0.0.1:1234")
 	if e != nil {
+		t.Fatal(e)
+	}
+	created, e := ident.SetupWithOptions(web, identity.SetupOptions{SetupToken: string(setup), Username: "owner", Password: "test-owner-password", Name: "Current server", AuthMode: "local"}, true)
+	if e != nil {
+		t.Fatal(e)
+	}
+	owner := created.Envelope
+	// A configured Local server enrolls only through its owner's confirmed
+	// switch. Use the real identity service, rather than seeding move rows or
+	// preparing a setup-purpose claim that cannot leave a Local server.
+	move, e := ident.PreviewAccountMove(web, owner.AccessToken, identity.MovePreviewRequest{To: identity.SignInPortico})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = ident.ConfirmPorticoMove(web, owner.AccessToken, identity.MoveConfirmRequest{MoveID: move.ID, ExpectedRevision: move.Revision}); e != nil {
 		t.Fatal(e)
 	}
 	hostedPub, _, _ := ed25519.GenerateKey(rand.Reader)
@@ -73,7 +88,7 @@ func TestCurrentNetworkingStartupOwnerAndRestart(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	request := httptest.NewRequest("GET", "/v1/networking/claim", nil)
+	request := httptest.NewRequest("GET", "https://web.example/v1/networking/claim", nil)
 	request.Header.Set("Authorization", "Bearer "+owner.AccessToken)
 	request.Header.Set("Origin", "https://web.example")
 	response := httptest.NewRecorder()
@@ -88,11 +103,8 @@ func TestCurrentNetworkingStartupOwnerAndRestart(t *testing.T) {
 
 	// Exercise the actual database-backed display-name callback while preparing.
 	// Component fixtures with a literal name cannot detect nested connection borrowing.
-	raw, _ := json.Marshal(struct {
-		AccountID string                           `json:"accountId"`
-		Expected  networking.ClaimIdentityExpected `json:"expected"`
-	}{"account_for_claim", status.Identity})
-	prepare := httptest.NewRequest("POST", "/v1/networking/claim/prepare", bytes.NewReader(raw))
+	raw, _ := json.Marshal(networking.ClaimPrepareRequest{Purpose: "switch", Expected: status.Identity})
+	prepare := httptest.NewRequest("POST", "https://web.example/v1/networking/claim/prepare", bytes.NewReader(raw))
 	prepare.Header.Set("Authorization", "Bearer "+owner.AccessToken)
 	prepare.Header.Set("Origin", "https://web.example")
 	prepare.Header.Set("Content-Type", "application/json")
@@ -104,7 +116,7 @@ func TestCurrentNetworkingStartupOwnerAndRestart(t *testing.T) {
 		t.Fatal("actual owner preparation failed", prepareResponse.Code, prepareResponse.Body.String())
 	}
 	var prepared networking.ClaimStatus
-	if e = json.Unmarshal(prepareResponse.Body.Bytes(), &prepared); e != nil || prepared.ApprovalRequest == nil || prepared.ApprovalRequest.Name != "Current server" {
+	if e = json.Unmarshal(prepareResponse.Body.Bytes(), &prepared); e != nil || prepared.ApprovalRequest == nil || prepared.ApprovalRequest.Name != "Current server" || prepared.ApprovalRequest.Purpose != "switch" {
 		t.Fatal("missing current approval display name", e)
 	}
 	request.Header.Set("Origin", "https://untrusted.example")

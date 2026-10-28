@@ -1,4 +1,8 @@
-import {useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
+import {dependsOn} from '@core/freshness-hub.ts';
+import {useFreshness} from '../../platform/freshness';
+import {mountQuietInput, SettingsOpenContext} from './quiet-refresh';
+import {peopleQuietInputs} from './people-refresh';
+import {useContext, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import {SettingsPeopleClient, type SettingsPeoplePage, type SettingsPeopleQuery, type SettingsPersonRow, type SettingsBulkAccess, type SettingsBulkAction} from '@core/settings-people.ts';
 import {personMemberResetCodeRow, settingsRowIndex, settingsSpec, type SettingsRow, type SettingsValue} from '@core/presentation/settings-spec.ts';
@@ -56,6 +60,8 @@ export type PeopleStreamLimits = Readonly<{
   patchBulk: (access: SettingsBulkAccess | undefined, choice: SettingsValue) => SettingsBulkAccess;
 }>;
 export type PeopleBindings = Readonly<{
+  inputActivity?: Readonly<{active:()=>boolean;revision:()=>number;subscribe:(listener:()=>void)=>()=>void}>;
+  subscribe?: (listener: () => void) => () => void;
   memberResetCodes?: MemberResetCodeSource; devices?: PeopleDevicesApi;
   client: SettingsPeopleClient; serverName: string; libraries: readonly {id: string; name: string}[]; actor: {accountId: string; role: AccessTier};
   authority: Readonly<{scope: SettingsViewerScope; isCurrent: () => boolean; subscribe: (listener: () => void) => () => void; onAuthorityChanged: () => void}>;
@@ -79,6 +85,10 @@ export function PeopleScreen({bindings, initialStatus, rowActions, advancedRows}
 
 function PeopleWorkspace({bindings, initialStatus, rowActions, advancedRows}: {bindings: PeopleBindings; initialStatus?: SettingsPeopleQuery['status']; rowActions?: (person: SettingsPersonRow) => ReactNode; advancedRows?: ReactNode}) {
   const {client} = bindings;
+  const {hub} = useFreshness();
+  const visibility=useContext(SettingsOpenContext);
+  const [, redrawFacts] = useState(0);
+  useEffect(() => bindings.subscribe?.(() => redrawFacts(value => value + 1)), [bindings]);
   const [issued, setIssued] = useState<ServerInvitation>(), [inviteOpen, setInviteOpen] = useState(false);
   const [invitationVersion, setInvitationVersion] = useState(0);
   const [formOpen, setFormOpen] = useState(false), [choices, setChoices] = useState<InviteChoices>(defaultInviteChoices);
@@ -136,12 +146,6 @@ function PeopleWorkspace({bindings, initialStatus, rowActions, advancedRows}: {b
   const [page, setPage] = useState<SettingsPeoplePage>(), [error, setError] = useState<unknown>();
   // The move read settles after the first render; apply its filter once, and never
   // over a status the owner has already chosen.
-  const waitingApplied = useRef(false);
-  useEffect(() => {
-    if (!initialStatus || waitingApplied.current) return;
-    waitingApplied.current = true;
-    setQuery(current => current.filters.status === 'all' ? {...current, filters: {...current.filters, status: initialStatus}} : current);
-  }, [initialStatus]);
   const [loading, setLoading] = useState(false), [selected, setSelected] = useState<ReadonlySet<string>>(new Set()), [refresh, setRefresh] = useState(0);
   const [person, setPerson] = useState<AccessMember>(), [personId, setPersonId] = useState<string>(), [tab, setTab] = useState(personPanel.tabs![0].id);
   const [advanced, setAdvanced] = useState(false), [saving, setSaving] = useState(false), [saved, setSaved] = useState(false);
@@ -150,8 +154,16 @@ function PeopleWorkspace({bindings, initialStatus, rowActions, advancedRows}: {b
   const [command, setCommand] = useState<{action: SettingsBulkAction; rows: readonly SettingsPersonRow[]} | undefined>(), [bulk, setBulk] = useState<SettingsBulkAccess>();
   const [bulkLibraryChoice, setBulkLibraryChoice] = useState<BulkLibraryChoice>('keep'), [bulkLibraryIds, setBulkLibraryIds] = useState<readonly string[]>([]);
   const tableRef = useRef<SettingsTableHandle>(null), opener = useRef<HTMLElement | null>(null), generation = useRef(0), mounted = useRef(true);
+  const firstPageIds = useRef<ReadonlySet<string>>(new Set());
+  const quietSerial = useRef(0), quietListeners = useRef(new Set<() => void>());
   const requests = useRef(new Set<AbortController>()), retired = useRef(false);
+  const queryRead = useRef<AbortController | undefined>(undefined), detailRead = useRef<AbortController | undefined>(undefined), pagingRead = useRef<AbortController | undefined>(undefined);
+  const quiet = useRef({page,query,personId,person,saving,loading,command,denied,live});
   const confirmOpener = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    quiet.current={page,query,personId,person,saving,loading,command,denied,live};
+    for(const listener of quietListeners.current)listener();
+  });
   useEffect(() => {const activeRequests = requests.current;mounted.current = true;return () => {mounted.current = false;for (const request of activeRequests) request.abort();activeRequests.clear();};}, []);
   const failure = useCallback((error: unknown): boolean => {
     if (!mounted.current || !bindings.authority.isCurrent()) return true;
@@ -165,29 +177,82 @@ function PeopleWorkspace({bindings, initialStatus, rowActions, advancedRows}: {b
     }
     setError(error);return false;
   }, [bindings.authority, client]);
+  const admitQuery = useCallback((next: TableQuery) => {
+    if (!mounted.current || !bindings.authority.isCurrent() || retired.current || next === quiet.current.query) return;
+    ++quietSerial.current;++generation.current;queryRead.current?.abort();pagingRead.current?.abort();pagingRead.current = undefined;
+    quiet.current = {...quiet.current, query: next, loading: true};
+    setQuery(next);setLoading(true);for (const listener of quietListeners.current) listener();
+  }, [bindings.authority]);
+  const admitPerson = useCallback((id?: string) => {
+    if (!mounted.current || !bindings.authority.isCurrent() || retired.current || id === quiet.current.personId) return;
+    ++quietSerial.current;detailRead.current?.abort();
+    quiet.current = {...quiet.current, personId: id, person: undefined};
+    setPersonId(id);setPerson(undefined);for (const listener of quietListeners.current) listener();
+  }, [bindings.authority]);
+  const waitingApplied = useRef(false);
   useEffect(() => {
-    if (!live || denied) return;
-    const current = ++generation.current, controller = new AbortController();
+    if (!initialStatus || waitingApplied.current) return;
+    waitingApplied.current = true;
+    const current = quiet.current.query;
+    if (current.filters.status === 'all') admitQuery({...current, filters: {...current.filters, status: initialStatus}});
+  }, [initialStatus, admitQuery]);
+  useEffect(() => {
+    if (!live || denied || quiet.current.query !== query) return;
+    ++quietSerial.current;const current = ++generation.current, controller = new AbortController();queryRead.current = controller;
+    quiet.current = {...quiet.current, query, page: undefined, loading: true};for (const listener of quietListeners.current) listener();
     setPage(undefined); setLoading(true); setError(undefined); setSelected(new Set());
-    const timer = setTimeout(() => {void client.read(queryOf(query), '', controller.signal).then(value => {if (current === generation.current && bindings.authority.isCurrent()) setPage(value);}).catch(error => {if (!controller.signal.aborted && current === generation.current) failure(error);}).finally(() => {if (current === generation.current) setLoading(false);});}, query.search ? 200 : 0);
-    return () => {clearTimeout(timer); controller.abort();};
+    const timer = setTimeout(() => {void client.read(queryOf(query), '', controller.signal).then(value => {if (!controller.signal.aborted && current === generation.current && bindings.authority.isCurrent() && quiet.current.query === query) {firstPageIds.current = new Set(value.items.map(row => row.accountId));quiet.current = {...quiet.current, page: value};setPage(value);}}).catch(error => {if (!controller.signal.aborted && current === generation.current) failure(error);}).finally(() => {if (queryRead.current === controller && current === generation.current) {queryRead.current = undefined;quiet.current = {...quiet.current, loading: false};setLoading(false);for (const listener of quietListeners.current) listener();}});}, query.search ? 200 : 0);
+    return () => {clearTimeout(timer); controller.abort();if (queryRead.current === controller) queryRead.current = undefined;};
   }, [client, query, refresh, live, denied, failure, bindings.authority]);
   useEffect(() => {
+    if (quiet.current.personId !== personId) return;
     if (!live || denied || !personId) {setPerson(undefined); return;}
-    const controller = new AbortController(); setPerson(undefined); setError(undefined); setChooseLibraries(false); setChooseHours(false);
-    void client.person(personId, controller.signal).then(value => {if (!controller.signal.aborted && bindings.authority.isCurrent()) setPerson(value);}).catch(error => {if (!controller.signal.aborted) failure(error);});
-    return () => controller.abort();
+    const controller = new AbortController();detailRead.current = controller; setPerson(undefined); setError(undefined); setChooseLibraries(false); setChooseHours(false);
+    void client.person(personId, controller.signal).then(value => {if (!controller.signal.aborted && detailRead.current === controller && quiet.current.personId === personId && bindings.authority.isCurrent()) {quiet.current = {...quiet.current, person: value};setPerson(value);}}).catch(error => {if (!controller.signal.aborted) failure(error);});
+    return () => {controller.abort();if (detailRead.current === controller) detailRead.current = undefined;};
   }, [client, personId, live, denied, failure, bindings.authority]);
+  useEffect(() => {
+    const current=() => mounted.current && bindings.authority.isCurrent() && !retired.current;
+    const listeners=quietListeners.current;
+    const subscribe=(listener: () => void) => {listeners.add(listener);const off=bindings.inputActivity?.subscribe(listener);return () => {off?.();listeners.delete(listener);};};
+    const blocked=() => !!bindings.inputActivity?.active() || !quiet.current.live || quiet.current.denied || quiet.current.saving || quiet.current.loading || !!quiet.current.command;
+    const inputs=peopleQuietInputs({client,current,blocked,subscribe,serial:()=>quietSerial.current+(bindings.inputActivity?.revision()??0),
+      get:()=>({...quiet.current,query:queryOf(quiet.current.query)}),firstPageIds:()=>firstPageIds.current,requests:requests.current,
+      installPage:(page,ids)=>{firstPageIds.current=ids;quiet.current={...quiet.current,page};setPage(page);},
+      installPerson:person=>{
+        // This accepted installation supersedes the older ordinary selection read.
+        const older=detailRead.current;detailRead.current=undefined;
+        quiet.current={...quiet.current,person};setPerson(person);older?.abort();
+      },
+      closePerson:id=>{if(quiet.current.personId===id){admitPerson();setSelected(before=>new Set([...before].filter(value=>value!==id)));}},
+      denied:failure,
+    }).map(input=>mountQuietInput(hub,'settings/people',[dependsOn.list('members'),dependsOn.settings('server')],input,visibility));
+    return () => {for(const input of inputs)input.dispose();};
+  },[hub,client,bindings.authority,bindings.inputActivity,failure,visibility,admitPerson]);
   const more = () => {
-    if (!live || denied || !bindings.authority.isCurrent() || loading || !page?.nextCursor) return;
-    const current = generation.current, before = page, request = new AbortController();requests.current.add(request);setLoading(true);
-    void client.read(queryOf(query), page.nextCursor, request.signal).then(next => {if (current === generation.current && bindings.authority.isCurrent()) {
-      const ids = new Set(before.items.map(row => row.accountId));
-      setPage({...next, items: [...before.items, ...next.items.filter(row => !ids.has(row.accountId))]});
-    }}).catch(error => {if (!request.signal.aborted && current === generation.current) failure(error);}).finally(() => {requests.current.delete(request);if (current === generation.current) setLoading(false);});
+    const installed = quiet.current, before = installed.page;
+    if (!mounted.current || !installed.live || installed.denied || !bindings.authority.isCurrent() || installed.loading || !before?.nextCursor) return;
+    const current = generation.current, request = new AbortController();++quietSerial.current;
+    pagingRead.current = request;requests.current.add(request);
+    // SettingsTable can call from a passive effect. Fence before React commits loading.
+    quiet.current = {...installed, loading: true};setLoading(true);for (const listener of quietListeners.current) listener();
+    void client.read(queryOf(installed.query), before.nextCursor, request.signal).then(next => {
+      // Detail selection fences quiet adoption, but does not invalidate this table's page.
+      if (!request.signal.aborted && pagingRead.current === request && mounted.current && current === generation.current && bindings.authority.isCurrent() && quiet.current.query === installed.query && quiet.current.page === before) {
+        const ids = new Set(before.items.map(row => row.accountId));
+        const page = {...next, items: [...before.items, ...next.items.filter(row => !ids.has(row.accountId))]};
+        quiet.current = {...quiet.current, page};setPage(page);
+      }
+    }).catch(error => {if (!request.signal.aborted && current === generation.current) failure(error);}).finally(() => {
+      requests.current.delete(request);
+      if (pagingRead.current === request) {
+        pagingRead.current = undefined;
+        if (mounted.current && current === generation.current) {quiet.current = {...quiet.current, loading: false};setLoading(false);for (const listener of quietListeners.current) listener();}
+      }
+    });
   };
   const run = async (action: () => Promise<void>) => {
-    if (!live || denied || !bindings.authority.isCurrent() || saving) return; setSaving(true); setSaved(false); setError(undefined);
+    if (!live || denied || !bindings.authority.isCurrent() || saving) return; ++quietSerial.current;quiet.current={...quiet.current,saving:true};setSaving(true); setSaved(false); setError(undefined);
     try {await action(); if (mounted.current && bindings.authority.isCurrent() && !retired.current) {setSaved(true); setRefresh(value => value + 1);}}
     catch (error) {if (!failure(error)) bindings.reportError(error);}
     finally {if (mounted.current) setSaving(false);}
@@ -275,7 +340,7 @@ function PeopleWorkspace({bindings, initialStatus, rowActions, advancedRows}: {b
   const applyCommand = () => {
     if (!command || command.action === 'access' && bulkLibraryChoice === 'some' && !bulkLibraryIds.length) return;
     const access = command.action === 'access' ? bulkAccessWithLibraries(bulk, bulkLibraryChoice, bulkLibraryIds) : undefined;
-    void run(async () => {await client.bulk(command.rows, command.action, access); setCommand(undefined); setBulk(undefined); setSelected(new Set()); if (command.action === 'remove' && command.rows.some(row => row.accountId === personId)) {setPersonId(undefined); setPerson(undefined);} else if (personId) {const next = await client.person(personId); setPerson(current => current?.accountId === next.accountId ? next : current);}});
+    void run(async () => {await client.bulk(command.rows, command.action, access); setCommand(undefined); setBulk(undefined); setSelected(new Set()); if (command.action === 'remove' && command.rows.some(row => row.accountId === personId)) {admitPerson();} else if (personId) {const next = await client.person(personId); setPerson(current => current?.accountId === next.accountId ? next : current);}});
   };
   if (!live || denied) return null;
   return <>
@@ -283,13 +348,13 @@ function PeopleWorkspace({bindings, initialStatus, rowActions, advancedRows}: {b
       onClick={event => { if (!bindings.authority.isCurrent()) return; if (bindings.invite) bindings.invite(event.currentTarget); else void openInvite(event.currentTarget); }}>{t(table.addLabel!)}</Button>}>
     {error && !page && !personId ? <SettingsPageFailure retry={() => setRefresh(value => value + 1)} home={bindings.openHome} /> : <SettingsTable ref={tableRef} height={table.height}
       label={t(section.title)} rows={(page?.items ?? []).map(row => peopleTableRow(row, bindings.actor))} columns={table.columns!.map(column => ({id: column.id!, label: t(column.label), kind: column.kind as 'main', sortable: column.sort, width: column.width}))}
-      query={query} onQueryChange={setQuery} filters={table.filters!.map(filter => ({id: filter.id, label: t(filter.label), showAllValue: false,
+      query={query} onQueryChange={admitQuery} filters={table.filters!.map(filter => ({id: filter.id, label: t(filter.label), showAllValue: false,
         options: [...filter.options.map(option => ({value: option.value, label: t(option.label)})),
           ...(filter.id === 'status' && !filter.options.some(option => option.value === 'waiting') ? [{value: 'waiting', label: t('next.settings.personStatus.waiting')}] : [])]}))}
       searchLabel={t(table.search!)} countLabel={page ? t(filtered ? 'next.settings.peopleCount' : 'next.settings.peopleTotal', {matched: page.matchedCount, total: page.totalCount}) : undefined} emptyLabel={t(table.empty!)} loading={loading}
       rowActions={rowActions ? row => {const person = page?.items.find(item => item.accountId === row.id); return person ? rowActions(person) ?? null : null;} : undefined}
       matchedCount={page?.matchedCount} hasMore={!!page?.nextCursor} onLoadMore={more} selected={selected} onSelectionChange={setSelected}
-      rowAction={{label: t(table.rowAction!.label), onAction: (row, element) => {if (row.id === personId) return; if (resetView && !resetView.leave()) return; opener.current = element; setPersonId(row.id); setTab(personPanel.tabs![0].id);}}}
+      rowAction={{label: t(table.rowAction!.label), onAction: (row, element) => {if (row.id === personId) return; if (resetView && !resetView.leave()) return; opener.current = element; admitPerson(row.id); setTab(personPanel.tabs![0].id);}}}
       bulkActions={[
         {id: 'access', label: t(table.select!.bulk[0].label), onAction: (ids, element) => ask('access', ids, element)},
         {id: 'disable', label: t(table.select!.bulk[1].label), onAction: (ids, element) => ask('disable', ids, element)},
@@ -299,9 +364,9 @@ function PeopleWorkspace({bindings, initialStatus, rowActions, advancedRows}: {b
     {bindings.invitations && <PeopleInvitations invitations={bindings.invitations} libraries={bindings.libraries} authority={bindings.authority}
       version={invitationVersion} openInvite={bindings.invite ?? openInvite} openHome={bindings.openHome} reportError={bindings.reportError} />}
     {advancedRows}
-    {personId && <SettingsPanel open onClose={() => {if (resetView && !resetView.leave()) return; setPersonId(undefined); setPerson(undefined);}} title={person?.username ?? personRow?.username ?? t(section.title)} audience={t(bindings.actor.role === 'owner' ? 'next.shell.serverVisibility.ownerShared' : 'next.shell.serverVisibility.administrator')}
+    {personId && <SettingsPanel open onClose={() => {if (resetView && !resetView.leave()) return; admitPerson();}} title={person?.username ?? personRow?.username ?? t(section.title)} audience={t(bindings.actor.role === 'owner' ? 'next.shell.serverVisibility.ownerShared' : 'next.shell.serverVisibility.administrator')}
       returnFocusRef={opener} selectedTab={tab} onTabChange={next => {if (next === tab) return; if (resetView && !resetView.leave()) return; setTab(next);}} saveState={saving ? 'saving' : saved ? 'saved' : undefined}
-      error={error ? t('next.states.pageFailedBody') : undefined} tabs={personPanel.tabs!.map(tab => ({id: tab.id, title: t(tab.title), content: !person ? <p role="status">{t('next.settings.loading')}</p> : tab.id === 'devices' && bindings.devices ? <PeopleDevices key={`${person.accountId}/${person.revision}`} accountId={person.accountId} api={bindings.devices} isCurrent={bindings.authority.isCurrent} canSignOut={canEdit} onError={failure} /> : <SettingsRows holder={tab} state={state} change={change} reset={() => {}} advancedOpen={advanced} onAdvancedChange={setAdvanced}
+      error={error ? t('next.states.pageFailedBody') : undefined} tabs={personPanel.tabs!.map(tab => ({id: tab.id, title: t(tab.title), content: !person ? <p role="status">{t('next.settings.loading')}</p> : tab.id === 'devices' && bindings.devices ? <PeopleDevices key={person.accountId} accountId={person.accountId} api={bindings.devices} isCurrent={bindings.authority.isCurrent} canSignOut={canEdit} onError={failure} /> : <SettingsRows holder={tab} state={state} change={change} reset={() => {}} advancedOpen={advanced} onAdvancedChange={setAdvanced}
         renderSpecial={special} />
       }))} />}
     {resetView?.sheet && <MemberResetCodeSheet {...resetView.sheet} />}

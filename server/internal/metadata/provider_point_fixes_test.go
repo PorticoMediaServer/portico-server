@@ -19,7 +19,8 @@ func tvdbPointClaim(t *testing.T, db *sql.DB, item, providerID int64) {
 // A claim is only a read-pick: the episode can be rematched, its library's
 // policy disabled or its kind changed while the fetch is out. The publishing
 // transaction must recheck the pair and drop a result that is no longer
-// current, leaving no credits, no evidence row and no attempt behind. Sibling
+// current, leaving no credits, result or attempt behind. Seeded unfinished
+// evidence is synchronous pair bookkeeping. Sibling
 // claims picked in the same step stay independent.
 func TestTVDBEpisodeCreditsDropARematchedFetch(t *testing.T) {
 	t.Run("rematched", func(t *testing.T) {
@@ -51,8 +52,11 @@ func TestTVDBEpisodeCreditsDropARematchedFetch(t *testing.T) {
 		if n := readPickCount(t, db, `SELECT count(*) FROM catalog_credits WHERE entity_id=? AND provider='tvdb'`, names["one"].ID); n != 0 {
 			t.Fatalf("rematched fetch wrote %d credits for the old pair", n)
 		}
-		if n := readPickCount(t, db, `SELECT count(*) FROM tvdb_episode_credit_evidence WHERE item_id=?`, names["one"].ID); n != 0 {
-			t.Fatalf("rematched pair left %d evidence rows", n)
+		if n := readPickCount(t, db, `SELECT count(*) FROM tvdb_episode_credit_evidence WHERE item_id=? AND provider_id=100 AND (credits IS NOT NULL OR attempts<>0)`, names["one"].ID); n != 0 {
+			t.Fatalf("rematched pair left %d results or attempts", n)
+		}
+		if n := readPickCount(t, db, `SELECT count(*) FROM tvdb_episode_credit_evidence WHERE item_id=? AND provider_id=999 AND credits IS NULL AND attempts=0`, names["one"].ID); n != 1 {
+			t.Fatal("new-pair bookkeeping missing")
 		}
 		if n := readPickCount(t, db, `SELECT count(*) FROM provider_evidence WHERE item_id=? AND provider='tvdb' AND provider_id=999`, names["one"].ID); n != 1 {
 			t.Fatal("fixture rematch did not take effect")
@@ -90,8 +94,8 @@ func TestTVDBEpisodeCreditsDropARematchedFetch(t *testing.T) {
 		if n := readPickCount(t, db, `SELECT count(*) FROM catalog_credits WHERE entity_id=? AND provider='tvdb'`, names["one"].ID); n != 0 {
 			t.Fatalf("disabled policy still wrote %d credits", n)
 		}
-		if n := readPickCount(t, db, `SELECT count(*) FROM tvdb_episode_credit_evidence WHERE item_id=?`, names["one"].ID); n != 0 {
-			t.Fatalf("disabled policy left %d evidence rows", n)
+		if n := readPickCount(t, db, `SELECT count(*) FROM tvdb_episode_credit_evidence WHERE item_id=? AND provider_id=100 AND (credits IS NOT NULL OR attempts<>0)`, names["one"].ID); n != 0 {
+			t.Fatalf("disabled policy left %d results or attempts", n)
 		}
 	})
 }
@@ -145,9 +149,9 @@ func TestTVDBEpisodeCreditsIdleStepTakesNoWriter(t *testing.T) {
 	defer db.Close()
 	names := tvdbNames(t, db)
 	tvdbPointClaim(t, db, names["one"].ID, 100)
-	mbCurrentExec(t, db, `INSERT INTO tvdb_episode_credit_evidence VALUES(?,100,'now',2,0)`, names["one"].ID)
+	mbCurrentExec(t, db, `INSERT INTO tvdb_episode_credit_evidence VALUES(?,100,'now',2,0) ON CONFLICT(item_id,provider_id) DO UPDATE SET credits=excluded.credits,attempts=excluded.attempts`, names["one"].ID)
 	tvdbPointClaim(t, db, names["two"].ID, 200)
-	mbCurrentExec(t, db, `INSERT INTO tvdb_episode_credit_evidence VALUES(?,200,'now',NULL,?)`, names["two"].ID, tvdbEpisodeCreditAttempts)
+	mbCurrentExec(t, db, `INSERT INTO tvdb_episode_credit_evidence VALUES(?,200,'now',NULL,?) ON CONFLICT(item_id,provider_id) DO UPDATE SET credits=excluded.credits,attempts=excluded.attempts`, names["two"].ID, tvdbEpisodeCreditAttempts)
 	fetched := 0
 	s := New(db, "")
 	s.tvdb = tvdbEpisodeFixture{characters: func(context.Context, int64) ([]metadataprovider.TVDBEpisodeCharacter, error) {

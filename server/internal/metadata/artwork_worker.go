@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/artworkref"
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dirsync"
 	"portico.local/server/internal/entityid"
@@ -683,10 +684,16 @@ const ArtCleanupInterval = 10 * time.Minute
 // artSourceUnreferenced is the indexed "nothing names source o.digest"
 // predicate: one NOT EXISTS per referencing column, never an OR across two.
 // Owner-history pins are text, not keys, and are checked separately.
-const artSourceUnreferenced = `NOT EXISTS(SELECT 1 FROM artwork_selections a WHERE a.digest=o.digest) AND NOT EXISTS(SELECT 1 FROM artwork_uploads u WHERE u.digest=o.digest) AND NOT EXISTS(SELECT 1 FROM artwork_previews p WHERE p.digest=o.digest) AND NOT EXISTS(SELECT 1 FROM metadata_artwork_size_requests r WHERE r.digest=o.digest)`
+const artSourceUnreferenced = `NOT EXISTS(SELECT 1 FROM artwork_selections a WHERE a.digest=o.digest) AND NOT EXISTS(SELECT 1 FROM artwork_uploads u WHERE u.digest=o.digest) AND NOT EXISTS(SELECT 1 FROM artwork_previews p WHERE p.digest=o.digest) AND NOT EXISTS(SELECT 1 FROM metadata_artwork_size_requests r WHERE r.digest=o.digest) AND NOT EXISTS(SELECT 1 FROM (` + artworkref.AudioFallbackKeys + `) fallback WHERE fallback.artwork_key=o.digest)`
 
 // artBlobUnreferenced is the indexed "no source names blob o.digest" predicate.
 const artBlobUnreferenced = `NOT EXISTS(SELECT 1 FROM artwork_sources x WHERE x.small_blob=o.digest) AND NOT EXISTS(SELECT 1 FROM artwork_sources x WHERE x.large_blob=o.digest) AND NOT EXISTS(SELECT 1 FROM artwork_sources x WHERE x.ambient_blob=o.digest)`
+
+// artNoBackupHold is the running backup's hold (backup/holds.go): while a
+// backup copies, nothing it may name is deleted. Every destructive collector
+// statement carries it, so a hold taken between reading a page and deleting
+// from it still wins.
+const artNoBackupHold = `NOT EXISTS(SELECT 1 FROM backup_blob_holds)`
 
 // artworkSweepCursor is a disposable (created_at, digest) position.
 type artworkSweepCursor struct{ created, digest string }
@@ -753,7 +760,7 @@ func (s *Service) collectArtworkSources(ctx context.Context, cut string) error {
 // deleteUnreferencedArtworkSource deletes source only while nothing names it
 // and no owner-history row was written after highWater was read.
 func (s *Service) deleteUnreferencedArtworkSource(ctx context.Context, source string, highWater int64) (bool, error) {
-	result, err := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `DELETE FROM artwork_sources AS o WHERE o.digest=? AND `+artSourceUnreferenced+` AND (SELECT COALESCE(MAX(id),0) FROM metadata_owner_history)=?`, source, highWater)
+	result, err := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `DELETE FROM artwork_sources AS o WHERE o.digest=? AND `+artSourceUnreferenced+` AND `+artNoBackupHold+` AND (SELECT COALESCE(MAX(id),0) FROM metadata_owner_history)=?`, source, highWater)
 	if err != nil {
 		return false, err
 	}
@@ -770,7 +777,7 @@ func (s *Service) collectArtworkBlobs(ctx context.Context, cut string) error {
 		if !artDigest(d) {
 			continue
 		}
-		marked, err := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `UPDATE artwork_blobs AS o SET status='deleting' WHERE o.digest=? AND `+artBlobUnreferenced, d)
+		marked, err := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `UPDATE artwork_blobs AS o SET status='deleting' WHERE o.digest=? AND `+artBlobUnreferenced+` AND `+artNoBackupHold, d)
 		if err != nil {
 			return err
 		}
@@ -780,7 +787,7 @@ func (s *Service) collectArtworkBlobs(ctx context.Context, cut string) error {
 		gone, err := s.retireArtworkFile(ctx, d, func(ctx context.Context) (bool, error) {
 			// Still unnamed now that the file is set aside? A publication that
 			// named it meanwhile keeps it (and reset it to ready).
-			deleted, err := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `DELETE FROM artwork_blobs AS o WHERE o.digest=? AND o.status='deleting' AND `+artBlobUnreferenced, d)
+			deleted, err := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `DELETE FROM artwork_blobs AS o WHERE o.digest=? AND o.status='deleting' AND `+artBlobUnreferenced+` AND `+artNoBackupHold, d)
 			if err != nil {
 				return false, err
 			}

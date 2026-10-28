@@ -23,8 +23,11 @@ type Source struct {
 
 // Validation summarises the staged restore's checks for the reply.
 type Validation struct {
-	SchemaVersion int    `json:"schemaVersion"`
-	Integrity     string `json:"integrity"`
+	SchemaVersion int `json:"schemaVersion"`
+	// Integrity is "ok", or "recovered" when the database was damaged and
+	// Recovery says what restore repaired or could not read.
+	Integrity string                `json:"integrity"`
+	Recovery  *persistence.Recovery `json:"recovery,omitempty"`
 }
 
 // StageResult answers a staged restore: restart to apply it.
@@ -47,6 +50,9 @@ type restoreMarker struct {
 	// incoming restore. They belong to the recovery copy only.
 	Preserved  []string `json:"preserved,omitempty"`
 	PreRestore string   `json:"preRestore,omitempty"`
+	// Recovery is what staging did to a damaged database, kept for the
+	// restore's recorded outcome.
+	Recovery *persistence.Recovery `json:"recovery,omitempty"`
 	// Reason is why a rolling_back restore is being rolled back.
 	Reason      string `json:"reason,omitempty"`
 	CompletedAt string `json:"completedAt,omitempty"`
@@ -96,6 +102,11 @@ func (s *Service) stageWithPassphrase(ctx context.Context, source Source, passph
 		return out, ErrRestorePending
 	}
 	originalSource := source
+	source, liveCleanup, err := s.snapshotLiveSource(ctx, source)
+	if err != nil {
+		return out, err
+	}
+	defer liveCleanup()
 	source, cleanup, err := s.decryptSource(ctx, source, passphrase)
 	if err != nil {
 		return out, err
@@ -172,14 +183,16 @@ func (s *Service) stageWithPassphrase(ctx context.Context, source Source, passph
 		}
 	}
 	s.restoreProgress(work, "integrity", estimate, estimate)
-	schemaVersion, err := persistence.InspectCandidate(ctx, filepath.Join(incoming, DatabaseName))
+	// The staged copy is private, so inspection may repair it in place.
+	inspected, err := persistence.InspectCandidate(ctx, incoming, DatabaseName)
 	if err != nil {
 		return out, err
 	}
+	schemaVersion := inspected.SchemaVersion
 	if err = syncRestoreDirectories(incoming, incoming, files); err != nil {
 		return out, err
 	}
-	marker := restoreMarker{State: markerStaged, Source: originalSource, SchemaVersion: schemaVersion, Files: files, JobID: work.jobID, OperationID: work.operation}
+	marker := restoreMarker{State: markerStaged, Source: originalSource, SchemaVersion: schemaVersion, Files: files, JobID: work.jobID, OperationID: work.operation, Recovery: inspected.Recovery}
 	if err = writeMarker(incoming, marker); err != nil {
 		return out, err
 	}
@@ -203,7 +216,7 @@ func (s *Service) stageWithPassphrase(ctx context.Context, source Source, passph
 		return out, err
 	}
 	failed = false
-	out = StageResult{Staged: true, RestartRequired: true, Validation: Validation{SchemaVersion: schemaVersion, Integrity: "ok"}}
+	out = StageResult{Staged: true, RestartRequired: true, Validation: Validation{SchemaVersion: schemaVersion, Integrity: inspected.Integrity, Recovery: inspected.Recovery}}
 	if s.onStaged != nil {
 		s.onStaged()
 	}
@@ -281,6 +294,9 @@ func (s *Service) resolveSource(source Source) (db, dir string, files []string, 
 		if err != nil {
 			return "", "", nil, nil, ErrSourceInvalid
 		}
+		if err = s.sourceFilesSafe(filepath.Join(folder, ManifestName)); err != nil {
+			return "", "", nil, nil, err
+		}
 		manifest, err := readManifest(folder)
 		if err != nil {
 			return "", "", nil, nil, ErrSourceInvalid
@@ -288,6 +304,9 @@ func (s *Service) resolveSource(source Source) (db, dir string, files []string, 
 		names, ok := stateFileNames(manifest.Files)
 		if !ok {
 			return "", "", nil, nil, ErrSourceInvalid
+		}
+		if err = s.sourceManifestSafe(folder, manifest); err != nil {
+			return "", "", nil, nil, err
 		}
 		if err = checkSourceHashes(folder, manifest); err != nil {
 			return "", "", nil, nil, err
@@ -303,6 +322,9 @@ func (s *Service) resolveSource(source Source) (db, dir string, files []string, 
 		return "", "", nil, nil, ErrSourceInvalid
 	}
 	if info.IsDir() {
+		if err = s.sourceFilesSafe(filepath.Join(path, ManifestName)); err != nil {
+			return "", "", nil, nil, err
+		}
 		manifest, err := readManifest(path)
 		if err != nil {
 			return "", "", nil, nil, ErrSourceInvalid
@@ -310,6 +332,9 @@ func (s *Service) resolveSource(source Source) (db, dir string, files []string, 
 		names, ok := stateFileNames(manifest.Files)
 		if !ok {
 			return "", "", nil, nil, ErrSourceInvalid
+		}
+		if err = s.sourceManifestSafe(path, manifest); err != nil {
+			return "", "", nil, nil, err
 		}
 		if err = checkSourceHashes(path, manifest); err != nil {
 			return "", "", nil, nil, err

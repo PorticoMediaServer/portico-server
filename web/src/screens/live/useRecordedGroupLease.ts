@@ -1,3 +1,4 @@
+import {forwardIdentity} from '../detail/context';
 import {useLayoutEffect, useRef, useState} from 'react';
 import {screenLifetime, type ScreenContext} from '../detail/context';
 import {createRecordedGroupReader, type RecordedGroupReader} from './recorded-group';
@@ -30,7 +31,7 @@ export function useRecordedGroupLease(context: ScreenContext | undefined, group:
     let held: RecordedGroupLease | undefined;
     const doorCurrent = door.current;
     const current = () => !!held && held.live && context.isCurrent() && doorCurrent();
-    const screen: ScreenContext = {...context, isCurrent: current};
+    const screen: ScreenContext = forwardIdentity(context, {isCurrent: current});
     const reader = createRecordedGroupReader(screen, group, sort), playLife = screenLifetime(screen);
     const lease: RecordedGroupLease = {id: crypto.randomUUID(), context, group, sort, live: true, current, reader, playLife};
     held = lease;

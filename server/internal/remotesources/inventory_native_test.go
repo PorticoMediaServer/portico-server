@@ -120,6 +120,11 @@ func runInventoryServeFixture() int {
 		sections, _ = parseServeConfiguration(raw)
 		clear(raw)
 	}
+	for _, fields := range sections {
+		if expected := fields["fixture_expected_smb_host"]; fields["type"] == "smb" && expected != "" && fields["host"] != expected {
+			return 2
+		}
+	}
 	response := func(w http.ResponseWriter, path string, directory bool) {
 		fmt.Fprintf(w, `<d:response><d:href>/%s</d:href><d:propstat><d:prop>`, path)
 		if directory {

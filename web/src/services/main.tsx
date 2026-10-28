@@ -11,6 +11,7 @@ import {AccountSecurityReturnEntry, type AccountSecurityEntry} from './AccountSe
 import {retireOrdinarySecurityOpening} from '../platform/account-security-journal';
 import {captureHostedSecurityArrival} from './account-security-return';
 import {servicesBuildMode} from './mode';
+import {DocumentBootReady} from '../shell/DocumentBootReady';
 
 // Scrub a link synchronously, before React, storage or the account singleton is started.
 const securityReturn = captureHostedSecurityArrival(location, history);
@@ -22,12 +23,12 @@ if (!servicesBuildMode(import.meta.env)) throw new Error('Services entry require
 if (entry.native !== 'forwarded' && !(window as Window & {__porticoUnsupportedBrowser?: boolean}).__porticoUnsupportedBrowser) {
   // Reuse the MAIN browser-floor shims only in a protected context with real cross-tab locks.
   // Its LAN fallbacks must never substitute for Services credential/continuation protection.
-  if (entry.native === 'invalid') createRoot(document.getElementById('root')!).render(<><IconSprite /><ServicesInvalidLink /></>);
+  if (entry.native === 'invalid') createRoot(document.getElementById('root')!).render(<DocumentBootReady><IconSprite /><ServicesInvalidLink /></DocumentBootReady>);
   else {
     if (globalThis.isSecureContext && globalThis.crypto?.subtle && navigator.locks) await import('../platform/polyfills');
     // Device metadata only: a failed claim leaves it unset and never blocks sign-in.
     if (!securityEntry) await retireOrdinarySecurityOpening().catch(() => undefined);
     if (!securityEntry) await initializeAppInstallation(import.meta.env.VITE_APP_VERSION ?? '').catch(() => undefined);
-    createRoot(document.getElementById('root')!).render(securityEntry ? <><IconSprite/><AccountSecurityReturnEntry arrival={securityEntry}/></> : <ServicesApp capture={entry.capture} invalidContinuation={entry.invalidContinuation} join={entry.join} plainShortJoin={entry.plainShortJoin} signIn={entry.signIn} owner={entry.owner} />);
+    createRoot(document.getElementById('root')!).render(securityEntry ? <DocumentBootReady><IconSprite/><AccountSecurityReturnEntry arrival={securityEntry}/></DocumentBootReady> : <ServicesApp capture={entry.capture} invalidContinuation={entry.invalidContinuation} join={entry.join} plainShortJoin={entry.plainShortJoin} signIn={entry.signIn} owner={entry.owner} />);
   }
 }
