@@ -308,7 +308,7 @@ func (d Dependencies) libraryAdministrationRoutes(mux *http.ServeMux) {
 func (d Dependencies) liveAdministrationRoutes(mux *http.ServeMux) {
 
 	d.httpHandle(mux, "GET /v1/admin/live-sources/{id}/channel-map", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
-		query, err := administrationQuery(r, "cursor", "limit")
+		query, err := administrationQuery(r, "cursor", "limit", "channelId")
 		if err != nil {
 			return nil, err
 		}
@@ -316,7 +316,11 @@ func (d Dependencies) liveAdministrationRoutes(mux *http.ServeMux) {
 		if err != nil {
 			return nil, err
 		}
-		return d.Administration.ChannelMap(ctx, d.administrationAuthority(p), r.PathValue("id"), query["cursor"], limit)
+		channelID := query["channelId"]
+		if _, given := query["channelId"]; given && channelID == "" {
+			return nil, &administration.ValidationError{Fields: []string{"channelId"}}
+		}
+		return d.Administration.ChannelMap(ctx, d.administrationAuthority(p), r.PathValue("id"), query["cursor"], channelID, limit)
 	}))
 	d.httpHandle(mux, "PUT /v1/admin/live-sources/{id}/channel-map", d.administrationHandler(60*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		var body administration.ChannelMapChange

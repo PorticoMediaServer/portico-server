@@ -445,21 +445,67 @@ func channelMapPage(ctx context.Context, tx *sql.Tx, id string, after int64, siz
 	return out, nil
 }
 
-// ChannelMap pages the active generation's channels with their overrides.
-func (s *Service) ChannelMap(ctx context.Context, auth Authorize, id, token string, limit int) (ChannelMapPage, error) {
+// channelMapEntry reads one channel of the active generation inside a caller's
+// transaction. A channel the source does not currently carry is reported as a
+// missing resource rather than an empty page, so a lookup that found nothing is
+// distinguishable from a source whose map is empty.
+func channelMapEntry(ctx context.Context, tx *sql.Tx, id, channelID string) (ChannelMapPage, error) {
+	out := ChannelMapPage{SourceID: id, Items: []ChannelMapEntry{}}
+	if _, _, err := liveSourceExists(ctx, tx, id); err != nil {
+		return out, err
+	}
+	if err := tx.QueryRowContext(ctx, `SELECT active_generation FROM live_sources WHERE id=?`, id).Scan(&out.Generation); err != nil {
+		return out, err
+	}
+	if out.Generation == "" {
+		return out, ErrNotFound
+	}
+	var e ChannelMapEntry
+	var override string
+	var hidden int
+	err := tx.QueryRowContext(ctx, `SELECT v.channel_id,v.name,COALESCE(v.source_number,''),v.number,v.group_name,v.position,COALESCE(n.number,''),COALESCE(n.guide_channel_id,''),COALESCE(n.hidden,0) FROM live_channel_versions v LEFT JOIN admin_channel_numbers n ON n.source_id=? AND n.channel_id=v.channel_id WHERE v.generation_id=? AND v.channel_id=?`, id, out.Generation, channelID).Scan(&e.ChannelID, &e.Name, &e.SourceNumber, &e.Number, &e.Group, &e.Position, &override, &e.GuideChannelID, &hidden)
+	if errors.Is(err, sql.ErrNoRows) {
+		return out, ErrNotFound
+	}
+	if err != nil {
+		return out, err
+	}
+	e.Hidden = hidden != 0
+	if override != "" {
+		e.Number, e.Overridden = override, true
+	}
+	out.Items = append(out.Items, e)
+	return out, nil
+}
+
+// ChannelMap pages the active generation's channels with their overrides. A
+// non-empty channelID answers with exactly that channel, without a cursor, so a
+// client changing one entry does not read the whole map first.
+func (s *Service) ChannelMap(ctx context.Context, auth Authorize, id, token, channelID string, limit int) (ChannelMapPage, error) {
 	out := ChannelMapPage{SourceID: id, Items: []ChannelMapEntry{}}
 	size, err := pageSize(limit)
 	if err != nil {
 		return out, err
+	}
+	if channelID != "" && !safeText(channelID, 200) {
+		return out, invalid("channelId")
+	}
+	if channelID != "" && token != "" {
+		return out, invalid("cursor")
 	}
 	c, err := decodeCursor("channel-map", token)
 	if err != nil {
 		return out, err
 	}
 	err = s.snapshot(ctx, auth, func(tx *sql.Tx) error {
-		var err error
-		out, err = channelMapPage(ctx, tx, id, c.Order, size)
-		return err
+		if channelID != "" {
+			page, readErr := channelMapEntry(ctx, tx, id, channelID)
+			out = page
+			return readErr
+		}
+		page, readErr := channelMapPage(ctx, tx, id, c.Order, size)
+		out = page
+		return readErr
 	})
 	return out, err
 }

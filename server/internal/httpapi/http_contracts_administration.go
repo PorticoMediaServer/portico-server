@@ -180,7 +180,7 @@ func registerAdministrationHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/administration.go:262
-	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[administration.ChannelMapPage]](registry, apikit.Metadata{ID: "get_admin_live_sources_id_channel_map", Method: "GET", Path: "/v1/admin/live-sources/{id}/channel-map", Summary: "Read server live sources channel map", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[administration.ChannelMapPage]](registry, apikit.Metadata{ID: "get_admin_live_sources_id_channel_map", Method: "GET", Path: "/v1/admin/live-sources/{id}/channel-map", Summary: "Read server live sources channel map", Query: []string{"channelId", "cursor", "limit"}, Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/administration.go:273
