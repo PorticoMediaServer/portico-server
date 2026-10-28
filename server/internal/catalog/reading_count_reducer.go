@@ -177,12 +177,14 @@ func (s *Service) NewReadingCountReduction(viewer Viewer, request BrowseRequest)
 			age := *policy.MaximumAge
 			r.maxAge = &age
 		}
-		policyRaw, e := json.Marshal(policy)
-		if e != nil {
-			return e
+		policyBytes := int64(4096 + len(policy.ProfileID))
+		for _, labels := range [][]string{policy.BlockedLabels, policy.MemberDeniedLabels} {
+			for _, label := range labels {
+				policyBytes += int64(len(label))*2 + 64
+			}
 		}
-		if len(policyRaw) > BrowseMaximumBytes {
-			return browseIssue("restrictions", "policy exceeds existing request input limit")
+		if policyBytes > ReadingCountMaximumBytes {
+			return ErrReadingCountCapacity
 		}
 		if request.Cursor != "" {
 			_, present, checkErr := read.BrowseReadingCarriedTotal(viewer, request)
@@ -273,7 +275,7 @@ func (s *Service) NewReadingCountReduction(viewer Viewer, request BrowseRequest)
 			}
 		}
 		if r.MemoryBytes() > ReadingCountMaximumBytes {
-			return fmt.Errorf("Reading count retained query state exceeds ordinary budget")
+			return ErrReadingCountCapacity
 		}
 		after, e := read.browseExactWitness(r.library, r.profile, policy)
 		if e != nil {
@@ -287,6 +289,10 @@ func (s *Service) NewReadingCountReduction(viewer Viewer, request BrowseRequest)
 	})
 	return out, err
 }
+
+var ErrReadingCountCapacity = errors.New("Reading count retained state exceeds memory capacity")
+
+var ErrReadingCountTransientUnit = errors.New("Reading count scalar admitted as transient uncached unit")
 
 // ReadingCountResize admits peak reducer memory BEFORE a scalar evaluation.
 // oversized identifies the approved single O(B) transient exception: it is not
@@ -343,7 +349,11 @@ func (s *Service) stepReadingCountReduction(viewer Viewer, r *ReadingCountReduct
 				// Text normalization may expand Unicode; the reservation is
 				// deliberately conservative. No scalar survives the SQL call.
 				if e = resize[0](next.MemoryBytes()+bytes*16, oversized); e != nil {
-					return e
+					if errors.Is(e, ErrReadingCountTransientUnit) {
+						oversized = true
+					} else {
+						return e
+					}
 				}
 			}
 			workErr := next.unit(read, &out)

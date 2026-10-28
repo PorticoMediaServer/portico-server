@@ -83,7 +83,8 @@ type BrowseResult struct {
 type BrowseRequest struct {
 	// preparedTotal is admitted only by BrowseReadingWithPreparedCount in the
 	// same snapshot. It is never decoded from a public request.
-	preparedTotal *ReadingCountResult
+	preparedTotal       *ReadingCountResult
+	readingValidateOnly bool
 	// The HTTP boundary sets this only after admitting the original ordinary
 	// selected viewer in the same Reading snapshot. Browse alone grants no
 	// personal state to internal or narrowed-session callers.
@@ -734,6 +735,22 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 			total, counted = cursor.Total, true
 		}
 	}
+	if request.readingValidateOnly {
+		if compiler.reading == nil || request.Cursor == "" {
+			return out, nil, ErrCursor
+		}
+		after, e := s.browseRevision(request, pivot, sorts)
+		if e != nil {
+			return out, nil, e
+		}
+		if after != revision {
+			return out, nil, ErrStaleContinuation
+		}
+		return out, nil, nil
+	}
+	if request.preparedTotal != nil && request.preparedTotal.ExpiresAt > 0 && expires > request.preparedTotal.ExpiresAt {
+		expires = request.preparedTotal.ExpiresAt
+	}
 	if !counted {
 		switch {
 		case request.Query == nil:
@@ -777,8 +794,12 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 
 	if request.Query != nil && len(sorts) > 0 && sorts[0].Field == "title" && (request.Cursor == "" || request.Seek != nil) {
 		anchors, hit := s.cachedAnchors(out.PageInfo.Revision)
+		if s.readingCountMemoryActive() {
+			anchors = nil
+			hit = false
+		}
 		if !hit {
-			if !restrictionBound && len(sorts) == 1 {
+			if !restrictionBound && len(sorts) == 1 && !s.readingCountMemoryActive() {
 				// The rail's pass also publishes the result's sparse range
 				// anchors, so a deep range after it does not walk its prefix.
 				var ranges []rangeAnchor
@@ -792,7 +813,9 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 			if err != nil {
 				return out, nil, err
 			}
-			s.storeAnchors(out.PageInfo.Revision, anchors)
+			if !s.readingCountMemoryActive() {
+				s.storeAnchors(out.PageInfo.Revision, anchors)
+			}
 		}
 		out.PositionIndex = anchors
 	}
@@ -947,6 +970,9 @@ func (s *Service) browsePositionIndex(where, order string, args, orderArgs []any
 	for rows.Next() {
 		var anchor BrowsePositionAnchor
 		if err = rows.Scan(&anchor.Key, &anchor.Index); err != nil {
+			return nil, err
+		}
+		if err = s.reserveReadingCountAux(128 + int64(len(anchor.Key))*32); err != nil {
 			return nil, err
 		}
 		out = append(out, anchor)
