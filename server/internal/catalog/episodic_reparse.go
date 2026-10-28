@@ -24,8 +24,8 @@ const EpisodeParserVersion = 4
 
 const episodeParserVersionKey = "catalog.episode_parser_version"
 
-// reparseBatch is how many issue rows one read looks at and one write
-// re-commits.
+// reparseBatch bounds the read-ahead only. Each changed source is rechecked
+// and committed in its own maintenance admission, including its fact triggers.
 const reparseBatch = 100
 
 // ReparseEpisodicIssues reads every automatically parsed episodic source that
@@ -89,26 +89,21 @@ func (s *Service) ReparseEpisodicIssues(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if len(changed) > 0 {
+		for _, c := range changed {
 			err = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
-				for _, c := range changed {
-					var issue string
-					var manual int
-					err := tx.QueryRowContext(ctx, `SELECT issue,manual FROM episodic_sources WHERE library_id=? AND asset_id=?`, c.library, c.asset).Scan(&issue, &manual)
-					if errors.Is(err, sql.ErrNoRows) {
-						continue
-					}
-					if err != nil {
-						return err
-					}
-					if issue != c.issue || manual != 0 {
-						continue // assigned or re-read since the batch was read
-					}
-					if err = s.commitEpisodes(tx, c.library, c.asset, c.name, c.plan, false); err != nil {
-						return err
-					}
+				var issue string
+				var manual int
+				err := tx.QueryRowContext(ctx, `SELECT issue,manual FROM episodic_sources WHERE library_id=? AND asset_id=?`, c.library, c.asset).Scan(&issue, &manual)
+				if errors.Is(err, sql.ErrNoRows) {
+					return nil
 				}
-				return nil
+				if err != nil {
+					return err
+				}
+				if issue != c.issue || manual != 0 {
+					return nil // assigned or re-read since the batch was read
+				}
+				return s.commitEpisodes(tx, c.library, c.asset, c.name, c.plan, false)
 			})
 			if err != nil {
 				return err

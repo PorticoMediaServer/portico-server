@@ -220,7 +220,7 @@ async function executeGenreRead(api: SearchGenreApi, descriptor: SearchGenreRequ
   let staleResponse: PreparationResponse | undefined;
   const path = (method: 'poll' | 'cancel', id: string) => {
     const value = paths[method](id);
-    if (!opaqueId(id) || value !== `/v1/genre-queries/${id}`) throw new Error('Invalid genre preparation path.');
+    if (!opaqueId(id) || value !== genreQueryPaths[method](id)) throw new Error('Invalid genre preparation path.');
     return value;
   };
   const raw: PreparationRequestPort = {requestRaw: (url, method, transportOptions = {}) => {

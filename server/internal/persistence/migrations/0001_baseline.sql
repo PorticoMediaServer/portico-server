@@ -1119,8 +1119,6 @@ CREATE TABLE catalog_upstream_sources(
  inner_aux INTEGER NOT NULL DEFAULT 0,
  inner_key TEXT NOT NULL DEFAULT '',
  PRIMARY KEY(domain,source_id)) STRICT, WITHOUT ROWID;
-CREATE INDEX catalog_source_songs_parent ON catalog_songs(album_id,entity_id);
-CREATE INDEX catalog_source_book_files_parent ON catalog_book_files(book_id,entity_id);
 CREATE TABLE catalog_facet_source_state(
  singleton INTEGER PRIMARY KEY CHECK(singleton=1),
  source_epoch INTEGER NOT NULL DEFAULT 1,
@@ -7934,8 +7932,8 @@ CREATE TRIGGER browse_personal_order_update AFTER UPDATE OF library_id,kind,rati
 END;
 CREATE TRIGGER catalog_facet_episode_insert AFTER INSERT ON catalog_episodes BEGIN
  UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1;
- INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,NEW.entity_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
- INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,NEW.show_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
+ INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 33,NEW.entity_id,1 WHERE EXISTS(SELECT 1 FROM catalog_browse_rows WHERE entity_id=NEW.entity_id) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
+ INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 33,NEW.show_id,1 WHERE EXISTS(SELECT 1 FROM catalog_browse_rows WHERE entity_id=NEW.show_id) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
 CREATE TRIGGER catalog_facet_episode_delete AFTER DELETE ON catalog_episodes BEGIN
  UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1;

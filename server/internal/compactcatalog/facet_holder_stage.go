@@ -46,6 +46,7 @@ type facetWork struct {
 	place                          facetPlace
 	placeLoaded                    bool
 	recent                         string
+	quantumBytes                   int
 }
 
 func readFacetWork(ctx context.Context, tx *sql.Tx, key Key, epoch int64) (facetWork, error) {
@@ -254,6 +255,7 @@ func (w *facetWork) stageRaw(ctx context.Context, tx *sql.Tx, budget int) (int, 
 		scope = 0
 	}
 	for _, r := range rows {
+		w.quantumBytes += r.bytes()
 		accept := r.field != "" && r.value.Valid && r.value.String != ""
 		if w.phase == facetEpisodeAttributes || w.phase == facetHolderAttributes {
 			accept = accept && facetAttribute(r.field)
@@ -387,6 +389,7 @@ func (w *facetWork) reconcile(ctx context.Context, tx *sql.Tx, budget int) (int,
 		return 0, err
 	}
 	for _, r := range rows {
+		w.quantumBytes += len(r.field) + len(r.value) + len(r.place.ratingKey) + len(r.place.labelKey) + len(r.recent)
 		k := facetKey{r.field, r.value}
 		switch w.phase {
 		case facetClear, facetFinishClear:
@@ -505,10 +508,16 @@ func drainFacetHolders(ctx context.Context, tx *sql.Tx, keys []Key, limit int) (
 	remaining := min(limit, facetHolderQuantum)
 	changed := false
 	for remaining > 0 {
+		// Share the same eight raw rows across families. After the first batch,
+		// read one row at a time so a wide next scalar yields before another.
+		batch := remaining
+		if w.quantumBytes > 0 {
+			batch = 1
+		}
 		var n int
 		switch w.phase {
 		case facetEpisodeAssets, facetEpisodeCollections, facetEpisodeAttributes, facetHolderGenres, facetHolderAssets, facetHolderCollections, facetHolderAttributes:
-			n, err = w.stageRaw(ctx, tx, remaining)
+			n, err = w.stageRaw(ctx, tx, batch)
 		case facetHolderYear, facetHolderDecade:
 			if w.holder {
 				subject := w.id
@@ -548,16 +557,17 @@ func drainFacetHolders(ctx context.Context, tx *sql.Tx, keys []Key, limit int) (
 			return []int64{w.id}, nil
 		default:
 			phase := w.phase
-			n, err = w.reconcile(ctx, tx, remaining)
+			n, err = w.reconcile(ctx, tx, batch)
 			changed = changed || n > 0 && (phase == facetEpisodeRemove || phase == facetEpisodeAdd || phase == facetHolderRemove || phase == facetHolderAdd)
 		}
 		if err != nil {
 			return nil, err
 		}
 		remaining -= n
-		// A byte-limited/oversized batch must not be followed by another
-		// batch in this transaction. Empty phases remain a fixed-length walk.
-		if n > 0 {
+		// A byte-limited/oversized scalar ends this quantum. An ordinary short
+		// family can use the remaining RAW-row budget without a new admission;
+		// only its next EMPTY read proves EOF, as before.
+		if w.quantumBytes >= facetScalarBudget {
 			break
 		}
 	}

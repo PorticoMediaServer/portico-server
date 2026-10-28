@@ -9,6 +9,7 @@ import (
 
 	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/persistence"
 )
 
@@ -47,8 +48,24 @@ func TestReparseEpisodicIssuesOnceAfterAParserChange(t *testing.T) {
 		}
 	}
 	c.Drain()
+	dbwork.ResetPlans()
 	if err = s.ReparseEpisodicIssues(context.Background()); err != nil {
 		t.Fatal(err)
+	}
+	stats := dbwork.Plans()
+	t.Logf("trigger-inclusive reparse maximum: %+v", stats.Largest)
+	plan := dbwork.DefaultPlan(dbwork.ClassMaintenance)
+	if stats.Largest.Rows > plan.Rows || stats.Largest.Pages > plan.Pages || stats.Largest.VMOps > plan.VMOps || stats.Overruns != 0 {
+		t.Fatalf("reparse exceeds the unchanged maintenance plan: %+v", stats)
+	}
+	// Newly created episode/show rows are queued by their first browse
+	// publication, even when ingress skipped a holder that did not yet exist.
+	c.Drain()
+	for _, key := range []string{"jazz", "stack"} {
+		var present bool
+		if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM catalog_show_facet_episodes f JOIN catalog_asset_links l ON l.entity_id=f.episode_id JOIN catalog_assets a ON a.id=l.asset_id WHERE a.token=? AND f.field='resolution' AND f.value='1080p')`, tokens[key]).Scan(&present); err != nil || !present {
+			t.Fatalf("new episode lost maintained facets: %s %v", key, err)
+		}
 	}
 	issue := func(asset string) string {
 		var v string

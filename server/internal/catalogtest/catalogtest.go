@@ -74,12 +74,25 @@ func (c *Catalog) Exec(query string, args ...any) {
 func (c *Catalog) Drain() {
 	c.T.Helper()
 	w := compactcatalog.NewWorker(c.DB)
-	for i := 0; i < 10000; i++ {
+	// Facet staging spends at most eight raw rows per transaction and can
+	// revisit a holder after an upstream fence changes. A fixed 10,000-turn
+	// guard predates that protocol and is smaller than legitimate fixture work.
+	// Keep a finite guard proportional to the fixture, without changing any
+	// production quantum, writer plan, or requirement to reach an empty queue.
+	var entities int
+	if err := c.DB.QueryRow(`SELECT count(*) FROM catalog_entities`).Scan(&entities); err != nil {
+		c.T.Fatal(err)
+	}
+	maxSteps := 10000 + 32*entities
+	for i := 0; i < maxSteps; i++ {
 		n, err := w.Step(context.Background(), 500)
 		if err != nil {
 			c.T.Fatal(err)
 		}
 		if n == 0 {
+			if i >= 10000 {
+				c.T.Logf("catalogue fixture drained in %d bounded turns (%d entities)", i+1, entities)
+			}
 			return
 		}
 	}

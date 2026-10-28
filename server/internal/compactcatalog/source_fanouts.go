@@ -299,8 +299,8 @@ func (w *upstreamSource) parent(ctx context.Context, tx *sql.Tx, limit int) (int
 			`SELECT item_id FROM catalog_collection_members WHERE collection_id=?`,
 			`SELECT entity_id,number FROM catalog_seasons WHERE show_id=?`,
 			``, // episode stream uses queryShowEpisodeEdges below
-			`SELECT entity_id FROM catalog_songs INDEXED BY catalog_source_songs_parent WHERE album_id=?`,
-			`SELECT entity_id FROM catalog_book_files INDEXED BY catalog_source_book_files_parent WHERE book_id=?`,
+			`SELECT entity_id FROM catalog_songs INDEXED BY catalog_songs_album_entity WHERE album_id=?`,
+			`SELECT entity_id FROM catalog_book_files INDEXED BY catalog_book_files_book_entity WHERE book_id=?`,
 		}
 		columns := []string{"entity_id", "song_id", "item_id", "entity_id", "entity_id", "entity_id", "entity_id"}
 		var edges []sourceEdge

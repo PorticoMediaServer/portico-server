@@ -365,7 +365,7 @@ export class FacetReadSession {
   }
   private domainPath(method: 'poll' | 'cancel', queryId: string): string {
     const path = (this.options.paths ?? generatedQueryPaths)[method](queryId);
-    if (!opaque(queryId) || path !== `/v1/facet-queries/${queryId}`) throw new FacetWindowError('invalid_facet_request');
+    if (!opaque(queryId) || path !== generatedQueryPaths[method](queryId)) throw new FacetWindowError('invalid_facet_request');
     return path;
   }
   private async navigate(direction: 'next' | 'previous' | 'reload', signal?: AbortSignal): Promise<SimpleFacetPage> {
