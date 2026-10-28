@@ -66,7 +66,7 @@ func registerDownloadRequests(r *apikit.Registry, d Dependencies) {
 		out, e := d.Downloads.SubmitContainer(ctx, p, in)
 		return out, downloadRequestError(e)
 	})
-	v1Route(r, apikit.Metadata{Audience: apikit.Clients, Admission: laneBrowsing, ID: "get_download_request", Method: "GET", Path: "/v1/downloads/requests/{id}", Summary: "Read visible request counts and a window of preparations", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, Query: []string{"cursor", "limit"}, Errors: failures}, func(ctx context.Context, q *http.Request, _ noBody) (downloads.RequestView, error) {
+	v1Route(r, apikit.Metadata{Audience: apikit.Clients, Admission: laneBrowsing, ID: "get_download_request", Method: "GET", Path: "/v1/downloads/requests/{id}", Summary: "Read visible request counts and a window of preparations", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, Query: []string{"cursor", "limit"}, QueryIntegers: []apikit.QueryInteger{{Name: "limit", Minimum: 0, Default: 100, Maximum: 100, EmptyIsDefault: true, Description: "Zero returns counts alone and requires an empty cursor."}}, Errors: failures}, func(ctx context.Context, q *http.Request, _ noBody) (downloads.RequestView, error) {
 		p, e := d.principal(q)
 		if e != nil {
 			return downloads.RequestView{}, e

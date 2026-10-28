@@ -354,7 +354,7 @@ func TestBulkReplaySortKeyMatchesExistingCommand(t *testing.T) {
 	}
 }
 
-func TestBulkLocalSearchPlaylistGroupOrderRefusal(t *testing.T) {
+func TestBulkLocalSearchPlaylistGroupOrderAdmission(t *testing.T) {
 	if !selectionBatchLocalSearchEnabled {
 		t.Skip("qualification overlay or final cohort enables new search forms")
 	}
@@ -365,10 +365,9 @@ func TestBulkLocalSearchPlaylistGroupOrderRefusal(t *testing.T) {
 	q.Sort = []BrowseSortSelection{{Field: "groupOrder", Direction: "asc"}}
 	if err := dbwork.WithReadSnapshot(context.Background(), s.db, func(ctx context.Context) error {
 		read := s.WithContext(ctx)
-		_, _, err := read.bulkSelection(p, v, JobRequest{Command: "playlist-add", Selector: JobSelector{Query: &q}})
-		var invalid *BrowseValidationError
-		if !errors.Is(err, ErrSelectionBatchUnsupported) || !errors.As(err, &invalid) || invalid.Path != "sort" {
-			t.Fatal("ordered playlist refusal missing", err)
+		marker, _, err := read.bulkSelection(p, v, JobRequest{Command: "playlist-add", Selector: JobSelector{Query: &q}})
+		if err != nil || marker != bulkReplaySelection {
+			t.Fatal("bounded group Playlist replay admission missing", marker, err)
 		}
 		for _, command := range []string{"personal-state", "collection-add"} {
 			marker, _, err := read.bulkSelection(p, v, JobRequest{Command: command, Selector: JobSelector{Query: &q}})

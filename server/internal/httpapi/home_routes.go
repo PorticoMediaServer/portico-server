@@ -97,7 +97,7 @@ func (d Dependencies) homeRequestFor(r *http.Request, p identity.Principal, rest
 }
 
 // homeLimitQuery is the published contract homeQueryLimit keeps.
-var homeLimitQuery = apikit.QueryInteger{Name: "limit", Minimum: 1, Default: catalog.HomeRowDefaultLimit, Maximum: catalog.HomeRowMaxLimit, Clamped: true}
+var homeLimitQuery = apikit.QueryInteger{Name: "limit", Minimum: 1, Default: catalog.HomeRowDefaultLimit, Maximum: catalog.HomeRowMaxLimit, Clamped: true, EmptyIsDefault: true}
 
 // communityActivity is the owner's stored community-activity policy, which
 // Viewers also watched follows as Home's Popular on this server does. Only the

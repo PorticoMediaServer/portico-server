@@ -317,7 +317,7 @@ type AdminTerminateRequest struct {
 func registerPlaybackV1Admin(r *apikit.Registry, d Dependencies) {
 	registerRouteFailureMemory(r, d)
 	v1Route(r, apikit.Metadata{Audience: apikit.Integrations, Admission: laneAdmin, ID: "list_admin_sessions", Method: "GET", Path: "/v1/admin/sessions", Summary: "Active playback sessions: who, what, how it's delivered and from where",
-		Access: apikit.Admin, Requires: apikit.ScopeAdmin, AdminScope: "playback", Lane: apikit.Default, Cost: apikit.PageSized, Query: []string{"limit", "cursor"}, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted"}},
+		Access: apikit.Admin, Requires: apikit.ScopeAdmin, AdminScope: "playback", Lane: apikit.Default, Cost: apikit.PageSized, Query: []string{"limit", "cursor"}, QueryIntegers: []apikit.QueryInteger{{Name: "limit", Minimum: 0, Default: 10, Maximum: 200, EmptyIsDefault: true, Description: "Zero selects the default page size."}}, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted"}},
 		func(ctx context.Context, q *http.Request, _ noBody) (playbackv1.AdminSessionPage, error) {
 			limit := 0
 			if text := q.URL.Query().Get("limit"); text != "" {
@@ -791,7 +791,7 @@ func registerPlaybackV1Queues(r *apikit.Registry, d Dependencies) {
 			return d.playbackV1().Window(ctx, caller(ctx, q), q.PathValue("id"), before, after)
 		})
 	v1Route(r, apikit.Metadata{Audience: apikit.Clients, Admission: laneBrowsing, ID: "list_queue_entries", Method: "GET", Path: "/v1/queues/{id}/entries", Summary: "Read a page of entries from a position (at most 200)",
-		Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Query: []string{"from", "limit", "cursor"}, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_found", "revision_mismatch"}},
+		Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Query: []string{"from", "limit", "cursor"}, QueryIntegers: emptyLimitQuery(50, 200), Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_found", "revision_mismatch"}},
 		func(ctx context.Context, q *http.Request, _ noBody) (playbackv1.EntryPage, error) {
 			from, err := number(q, "from", 0)
 			if err != nil {

@@ -22,6 +22,7 @@ const recForYouExact = 2000
 func (s *Service) recForYouValued(p pageShape) ([]personalRow, error) {
 	r := HomeRequest{Viewer: Viewer{Profile: p.request.Profile, Fence: p.request.ViewerFence, Libraries: []string{p.request.Library}, Restrictions: p.request.Restrictions},
 		Profile: p.request.Profile, ViewerFence: p.request.ViewerFence, Libraries: []string{p.request.Library}, Restrictions: p.request.Restrictions}
+	r.Now = s.recommendationNow(s.browseInstant)
 	x, err := s.recSession(r)
 	if err != nil {
 		return nil, err

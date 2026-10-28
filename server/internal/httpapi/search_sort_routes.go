@@ -9,7 +9,7 @@ func registerSearchSortRoutes(registry *apikit.Registry, d Dependencies) error {
 	failures := []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}
 	libraryFailures := append(append([]string{}, failures...), "revision_mismatch")
 	if err := apikit.RegisterRaw(registry, apikit.RawRoute[noBody, catalog.SearchEnvelope]{Metadata: apikit.Metadata{Audience: apikit.Integrations, Admission: laneExpensive, ID: "search", Method: "GET", Path: "/v1/search", Summary: "Search titles, people, years and collections", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200,
-		Query: []string{"q", "group", "groups", "cursor", "limit", "sort", "direction", "libraryIds", "record"}, Errors: failures,
+		Query: []string{"q", "group", "groups", "cursor", "limit", "sort", "direction", "libraryIds", "record"}, QueryIntegers: []apikit.QueryInteger{{Name: "limit", Minimum: 1, Default: 40, Maximum: 40, Clamped: true}}, Errors: failures,
 	}, Serve: d.searchHandler}); err != nil {
 		return err
 	}
@@ -25,13 +25,13 @@ func registerSearchSortRoutes(registry *apikit.Registry, d Dependencies) error {
 		return err
 	}
 	if err := apikit.RegisterRaw(registry, apikit.RawRoute[noBody, catalog.FacetPage]{Metadata: apikit.Metadata{Audience: apikit.Clients, Admission: laneBrowsing, ID: "get_browse_facets", Method: "GET", Path: "/v1/browse/facets", Summary: "Read counted facet choices across the viewer's libraries, or within one list's titles", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200,
-		Query: []string{"field", "q", "limit", "group", "value", "query", "pivot"}, Errors: failures,
+		Query: []string{"field", "q", "limit", "group", "value", "query", "pivot"}, QueryIntegers: []apikit.QueryInteger{{Name: "limit", Minimum: 1, Default: 200, Maximum: 200, Clamped: true}}, Errors: failures,
 	}, Serve: d.browseAcrossFacetsHandler}); err != nil {
 		return err
 	}
 	facetFailures := append(append([]string{}, libraryFailures...), "stale_continuation", "search_busy", "metadata_unavailable")
 	if err := apikit.RegisterRaw(registry, apikit.RawRoute[noBody, facetReadResponse]{Metadata: apikit.Metadata{Audience: apikit.Clients, Admission: laneBrowsing, ID: "get_library_facets", Method: "GET", Path: "/v1/libraries/{id}/facets", Summary: "Read counted facet choices", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, SuccessStatuses: []int{202}, ResponseHeaders: facetPreparingHeaders(),
-		Query: []string{"field", "q", "limit", "offset", "query", "pivot", "after", "before", "at"}, Errors: facetFailures,
+		Query: []string{"field", "q", "limit", "offset", "query", "pivot", "after", "before", "at"}, QueryIntegers: []apikit.QueryInteger{{Name: "limit", Minimum: 1, Default: 200, Maximum: 200, Clamped: true}}, Errors: facetFailures,
 	}, Serve: d.facetsHandler}); err != nil {
 		return err
 	}

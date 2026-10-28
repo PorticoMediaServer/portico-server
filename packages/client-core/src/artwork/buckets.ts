@@ -1,29 +1,24 @@
 /**
- * Size-aware artwork keys: request exactly one server variant per card size,
- * so the HTTP/browser cache hits across screens.
+ * Stable width hints for callers of this helper. The server maps requested
+ * widths onto its small and large artwork slots; encoded dimensions follow
+ * metadata/artwork_encoding.go and can depend on the owner's image policy.
  *
- * The server encodes display artwork by its LONG edge (server/
- * internal/metadata/artwork_encoding.go: 400, 800, 1920 and 2560).
- * A 2:3 poster 180 px wide at 2× needs a 540 px long edge, so the 800 variant.
- *
- * URL contract: `?w=400|800|1920|2560` is the maximum long
- * edge (never enlarged; default 1920), plus `v=<digest>` on versioned URLs,
- * which are immutable and cacheable forever. While a variant is being made the
- * server answers 404 with `Retry-After: 5`, which the scheduler retries.
+ * Mounted surfaces use artworkRenditionFor in renditions.ts with their measured
+ * pixel box. These legacy buckets preserve their request and cache keys.
  */
 export const artworkSizeBuckets: readonly number[] = [400, 800, 1920, 2560];
 
 export type ArtworkBucketOptions = Readonly<{
   /** Rendered width ÷ height (poster 2/3, landscape 16/9, square 1). Default 1. */
   aspect?: number;
-  /** The server's variants, ascending. Default `artworkSizeBuckets`. */
+  /** Request width hints, ascending. Default `artworkSizeBuckets`. */
   buckets?: readonly number[];
-  /** A variant may be up to this much smaller than the rendered pixels (default 1.1 = 10%). */
+  /** A width hint may be up to this much smaller than the rendered pixels (default 1.1 = 10%). */
   tolerance?: number;
 }>;
 
 /**
- * The variant to request for artwork rendered `devicePixelWidth` wide
+ * The width hint to request for artwork rendered `devicePixelWidth` wide
  * (CSS width × devicePixelRatio, or points × screen scale).
  */
 export function artworkWidthBucket(devicePixelWidth: number, options: ArtworkBucketOptions = {}): number {

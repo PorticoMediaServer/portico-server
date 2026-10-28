@@ -1419,6 +1419,24 @@ func run() (runErr error) {
 		}
 		return readingService.OnFamilyRevokedTx(ctx, tx, family)
 	}
+	apiDependencies.SelectionActions = httpapi.NewSelectionActions(apiDependencies)
+	defer apiDependencies.SelectionActions.Close()
+	supervise.Go("cmd.selection-actions", func() {
+		for ctx.Err() == nil {
+			if err := apiDependencies.SelectionActions.Run(ctx); err != nil && ctx.Err() == nil {
+				log.Printf("Selection action worker paused: %v", err)
+			} else {
+				return
+			}
+			timer := time.NewTimer(time.Second)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return
+			case <-timer.C:
+			}
+		}
+	})
 	handler := httpapi.New(apiDependencies)
 	backupService.SetBeforeSnapshot(func(ctx context.Context) error {
 		flush, cancel := context.WithTimeout(ctx, 10*time.Second)

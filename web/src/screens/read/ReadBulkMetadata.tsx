@@ -29,7 +29,7 @@ export function ReadBulkMetadata({context, items, kind, anchor, onClose}: {conte
     setOrder(Object.freeze(items.map(item => item.id))); setOpen(undefined); setBusy(false); setFailed(false); setUncertain(false); setReceipts([]); setDraft(emptyDraft); operation.current = undefined; pending.current = undefined;
     const owner = context.identity?.viewer;
     if (owner?.authority !== 'local' || owner.role !== 'owner' || !items.length || items.length > bulkTargetLimit || new Set(items.map(item => item.id)).size !== items.length) {life.dispose(); setFailed(true); return;}
-    void fetchBulkMetadataPreview(life.api, {targets: previewTargets(items, kind)}, context.scope.serverId, life.signal()).then(preview => {
+    void fetchBulkMetadataPreview(life.api, {targets: previewTargets(items, kind)}, context.scope.serverId, life.signal(), {isCurrent: life.current}).then(preview => {
       if (active && life.current()) setOpen({life, preview});
     }).catch(error => {if (active && life.current()) {setFailed(true); context.effects.reportError(error);}});
     return () => {active = false; life.dispose();};
@@ -54,7 +54,7 @@ export function ReadBulkMetadata({context, items, kind, anchor, onClose}: {conte
     if (!held || pending.current || !held.life.current() || operation.current) return;
     pending.current = held.life; setBusy(true); setFailed(false);
     try {
-      const preview = await fetchBulkMetadataPreview(held.life.api, {targets: previewTargets(selected, kind)}, context.scope.serverId, held.life.signal());
+      const preview = await fetchBulkMetadataPreview(held.life.api, {targets: previewTargets(selected, kind)}, context.scope.serverId, held.life.signal(), {isCurrent: held.life.current});
       if (!held.life.current()) return;
       const core = editorCoreDraft(applied);
       const numbered = items.length > 1 && !!applied.fields.series?.trim() && preview.schema.some(field => field.field === 'seriesNumber' && field.bulk);

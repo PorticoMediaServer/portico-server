@@ -30,8 +30,6 @@ var allowed = map[string]bool{
 	// The programme spool writes its own private single-connection temporary
 	// database file, never the server's; no gate applies to it.
 	"internal/livechannels/programme_spool.go": true,
-	// Exact bulk-preview counts use their own private disposable database too.
-	"internal/metadata/bulk_preview_spool.go": true,
 	// OperationScope.Begin is a goroutine lease, not a transaction.
 	"internal/storage/observed_playback.go":         true,
 	"internal/storage/inventory_page_stream.go":     true,
@@ -74,10 +72,12 @@ func TestNoRawWriteTransactionsOutsideDBWork(t *testing.T) {
 			return readErr
 		}
 		for index, line := range strings.Split(string(data), "\n") {
-			if readOnlyBegin.MatchString(line) {
+			// This production listing has moved to the lifetime-capped helper;
+			// do not let a raw read transaction bypass it again.
+			if readOnlyBegin.MatchString(line) && relative != "internal/playbackv1/controls.go" {
 				continue
 			}
-			if rawWriteBegin.MatchString(line) {
+			if rawWriteBegin.MatchString(line) || relative == "internal/playbackv1/controls.go" && readOnlyBegin.MatchString(line) {
 				offenders = append(offenders, relative+":"+itoa(index+1)+": "+strings.TrimSpace(line))
 			}
 		}

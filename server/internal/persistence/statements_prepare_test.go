@@ -183,13 +183,13 @@ func TestProductionStatementsPrepareAgainstTheBaseline(t *testing.T) {
 	if _, err = dataset.Exec(`ATTACH DATABASE ? AS delta`, deltaPath); err != nil {
 		t.Fatal(err)
 	}
-	// Guide ingestion and bulk preview use separate SQLite spools. Extract their actual
+	// Guide ingestion uses a separate SQLite spool. Extract its actual
 	// literal DDL and prepare that file's queries against that schema, rather
 	// than excluding a table name from the baseline guard globally.
 
 	spools := map[string]*sql.DB{}
 	spoolDDL := regexp.MustCompile(`(?i)^CREATE\s+(?:TABLE|INDEX)\s`)
-	for _, relative := range []string{"livechannels/programme_spool.go", "metadata/bulk_preview_spool.go"} {
+	for _, relative := range []string{"livechannels/programme_spool.go"} {
 		spoolFile := filepath.Join("..", relative)
 		spool, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "spool.sqlite"))
 		if err != nil {

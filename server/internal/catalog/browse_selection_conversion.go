@@ -19,6 +19,7 @@ type BrowseSelectionConversion struct {
 	IDs      []int64
 	Revision string
 	Basis    string
+	Ordered  bool
 	lease    readprep.Result
 }
 
@@ -112,6 +113,12 @@ func (s *Service) resolvePreparedBrowseSelection(viewer Viewer, query JobQuery, 
 	if err = json.Unmarshal(result.Payload, &content); err != nil {
 		return out, err
 	}
+	if content.Ordered && len(content.Sorts) == 1 && content.Sorts[0].Field == "forYou" && content.Profile != viewer.Profile {
+		return out, ErrStaleContinuation
+	}
+	if err = s.checkSmallForYouActivityContent(content, func(n int64) error { return result.ResizeDelivery(int64(8*len(result.Payload)+65536) + n) }); err != nil {
+		return out, err
+	}
 	total := 0
 	for _, counts := range content.Counts {
 		if counts[0] < 0 || counts[1] < 0 || counts[1] > counts[0] {
@@ -133,7 +140,7 @@ func (s *Service) resolvePreparedBrowseSelection(viewer Viewer, query JobQuery, 
 		seen[id] = true
 	}
 	keep = true
-	return BrowseSelectionConversion{IDs: content.IDs, Revision: revision, Basis: query.SelectionBasis, lease: result}, nil
+	return BrowseSelectionConversion{IDs: content.IDs, Revision: revision, Basis: query.SelectionBasis, Ordered: content.Ordered, lease: result}, nil
 }
 
 func (s *Service) browsePreparedSelection(viewer Viewer, request BrowseRequest) (BrowseResult, error) {
@@ -178,12 +185,21 @@ func (s *Service) browsePreparedSelection(viewer Viewer, request BrowseRequest) 
 	if liveRevision != request.Range.Revision {
 		return out, ErrStaleContinuation
 	}
-	if !LocalSearchQueueSupported(request.Query, sorts) {
+	if !localSearchConversionOrderSupported(request.Query, sorts) {
 		return out, ErrSelectionBatchUnsupported
 	}
-	order, orderArgs, sizeExpr, sizeArgs, err := preparedSelectionOrder(viewer.Profile, sorts[0])
-	if err != nil {
-		return out, err
+	var order, sizeExpr string
+	var orderArgs, sizeArgs []any
+	if sorts[0].Field == "groupOrder" || sorts[0].Field == "forYou" {
+		if !converted.Ordered {
+			return out, ErrStaleContinuation
+		}
+		order, sizeExpr = "picked.key ASC", "''"
+	} else {
+		order, orderArgs, sizeExpr, sizeArgs, err = preparedSelectionOrder(viewer.Profile, sorts[0])
+		if err != nil {
+			return out, err
+		}
 	}
 	// This endpoint is a complete bounded action conversion. Its consumer needs
 	// canonical identities/titles, not media details, asset lists or artwork.

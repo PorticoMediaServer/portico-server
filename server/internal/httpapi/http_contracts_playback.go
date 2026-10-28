@@ -29,7 +29,7 @@ func (AnalysisControlResponse) JSONSchema() map[string]any {
 
 func registerPlaybackHTTPContracts(registry *apikit.Registry) error {
 	// internal/httpapi/activity.go:36
-	if err := apikit.RegisterHTTP[struct{}, playback.ActivityPage](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_admin_playback_sessions", Method: "GET", Path: "/v1/admin/playback-sessions", Summary: "Read server playback sessions", Access: apikit.Owner, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "limit", "status"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, playback.ActivityPage](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_admin_playback_sessions", Method: "GET", Path: "/v1/admin/playback-sessions", Summary: "Read server playback sessions", Access: apikit.Owner, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "limit", "status"}, QueryIntegers: limitQuery(40, 40), Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/activity.go:36
@@ -143,7 +143,7 @@ func registerPlaybackHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/playback_chapters.go:12
-	if err := apikit.RegisterHTTP[struct{}, playback.ChapterProjection](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_playback_sessions_id_chapters", Method: "GET", Path: "/v1/playback/sessions/{id}/chapters", Summary: "Read playback sessions chapters", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Security, Admission: laneSecurityFence, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "limit", "revision"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, playback.ChapterProjection](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_playback_sessions_id_chapters", Method: "GET", Path: "/v1/playback/sessions/{id}/chapters", Summary: "Read playback sessions chapters", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Security, Admission: laneSecurityFence, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "limit", "revision"}, QueryIntegers: limitQuery(100, 100), Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/playback_diagnostics.go:15

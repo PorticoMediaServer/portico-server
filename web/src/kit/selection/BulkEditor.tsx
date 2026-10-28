@@ -6,7 +6,7 @@ import {BottomSheet, Dialog} from '../overlays';
 import {usePhone} from '../overlays/shared';
 import {Icon} from '../Icon';
 import {selectionText as text} from './copy';
-import {addListValue, bulkDraftValid, bulkEditorSchema, bulkFieldDisplayValue, bulkSummary, retryLabel, selectionCountText, toggleListRemoval} from './presentation';
+import {addListValue, bulkDraftValid, bulkEditorSchema, bulkFieldDisplayValue, bulkFieldHint, bulkFieldStateLabel, bulkSummary, retryLabel, selectionCountText, toggleListRemoval} from './presentation';
 import type {BulkEditorDraft, BulkEditorProps, BulkFieldValues} from './types';
 import styles from './selection.module.css';
 
@@ -14,10 +14,10 @@ type FieldProps = Readonly<{spec: RepairFieldSpec; aggregate: BulkFieldValues; c
 function BulkField({spec, aggregate, count, draft, onChange, busy, phone, showListHelp, initial}: FieldProps) {
   const id = useId(), [adding, setAdding] = useState(''), [editing, setEditing] = useState(false);
   const edited = Object.hasOwn(draft.fields, spec.field), list = draft.lists[spec.field];
-  const mixed = aggregate.state === 'mixed', known = aggregate.state === 'shared' && aggregate.value !== undefined;
+  const mixed = aggregate.state !== 'shared', known = aggregate.state === 'shared' && aggregate.value !== undefined;
   const value = edited ? draft.fields[spec.field]! : known ? aggregate.value! : '';
   const changed = edited || !!(list?.add.length || list?.remove.length);
-  const hint = <span className={styles.valueHint}>{edited ? mixed ? text('next.selection.wasMixed') : undefined : mixed ? text('next.selection.valueCount', {count: aggregate.distinctCount}) : known ? text(phone ? 'next.selection.allCount' : 'next.selection.sameForAll', {count}) : undefined}</span>;
+  const hint = <span className={styles.valueHint}>{bulkFieldHint(aggregate, count, edited, phone)}</span>;
   const addLabel = text(spec.field === 'genres' ? 'next.selection.addGenre' : spec.field === 'tags' ? 'next.selection.addTag' : spec.field === 'labels' ? 'next.selection.addLabel' : 'next.selection.addValue', {field: spec.label});
   const emptyList = spec.type === 'list' && aggregate.state === 'shared' && aggregate.value !== undefined && !aggregate.truncated && aggregate.entries.length === 0 && !list?.add.length;
   const scalarChange = (next: string) => {
@@ -39,11 +39,12 @@ function BulkField({spec, aggregate, count, draft, onChange, busy, phone, showLi
           onClick={() => onChange({...draft, lists: {...draft.lists, [spec.field]: toggleListRemoval(list, entry)}})}>{entry}<i>{text('next.selection.newValue')}</i><Icon name="i-x" size={12} /></Button>)}
         <TextField id={id} variant="compact" value={adding} disabled={busy} aria-label={addLabel} placeholder={emptyList && (spec.field === 'tags' || spec.field === 'labels') ? text(spec.field === 'tags' ? 'next.selection.emptyTag' : 'next.selection.emptyLabel') : addLabel} containerClassName={styles.addListValue} onChange={event => setAdding(event.currentTarget.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); append(); } }} onBlur={append} />
       </div>
+      {aggregate.state === 'many' && <p className={styles.fieldHelp}>{bulkFieldStateLabel(aggregate)}</p>}
       {spec.field === 'genres' && showListHelp && <p className={styles.fieldHelp}>{text('next.selection.listHelp', {count})}</p>}
     </> : <div className={styles.scalarShell} data-changed={edited} data-mixed={mixed && !edited}>
-      {spec.type === 'enum' && spec.allowed?.length ? <Select id={id} options={spec.allowed.filter(Boolean).map(option => ({value: option, label: bulkFieldDisplayValue(spec.field, option)}))} value={value || undefined} onValueChange={scalarChange} disabled={busy} aria-label={spec.label} placeholder={mixed && !edited ? text('next.selection.mixed') : known || edited ? text('next.selection.notSet') : undefined} containerClassName={styles.scalarControl} /> : <TextField id={id} value={editing ? value : bulkFieldDisplayValue(spec.field, value)} autoFocus={initial} onFocus={() => setEditing(true)} onBlur={() => setEditing(false)} onChange={event => scalarChange(event.currentTarget.value)} disabled={busy} aria-label={spec.label} trailing={hint}
+      {spec.type === 'enum' && spec.allowed?.length ? <Select id={id} options={spec.allowed.filter(Boolean).map(option => ({value: option, label: bulkFieldDisplayValue(spec.field, option)}))} value={value || undefined} onValueChange={scalarChange} disabled={busy} aria-label={spec.label} placeholder={mixed && !edited ? bulkFieldStateLabel(aggregate) : known || edited ? text('next.selection.notSet') : undefined} containerClassName={styles.scalarControl} /> : <TextField id={id} value={editing ? value : bulkFieldDisplayValue(spec.field, value)} autoFocus={initial} onFocus={() => setEditing(true)} onBlur={() => setEditing(false)} onChange={event => scalarChange(event.currentTarget.value)} disabled={busy} aria-label={spec.label} trailing={hint}
         type={spec.type === 'integer' || spec.type === 'number' ? 'number' : spec.type === 'date' ? 'date' : 'text'} min={spec.min} max={spec.max} maxLength={spec.maxLength} step={spec.type === 'integer' ? 1 : spec.type === 'number' ? 'any' : undefined} containerClassName={styles.scalarControl} placeholder={known || edited ? text('next.selection.notSet') : undefined} />}
-      {mixed && !edited && spec.type !== 'enum' && <span className={styles.mixedValue}>{text('next.selection.mixed')}</span>}
+      {mixed && !edited && spec.type !== 'enum' && <span className={styles.mixedValue}>{bulkFieldStateLabel(aggregate)}</span>}
       {spec.type === 'enum' && hint}
     </div>}
   </div>;

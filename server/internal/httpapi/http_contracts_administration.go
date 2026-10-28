@@ -38,7 +38,7 @@ func registerAdministrationHTTPContracts(registry *apikit.Registry) error {
 	}
 
 	// internal/httpapi/admin_access.go:27
-	if err := apikit.RegisterHTTP[struct{}, access.MemberPage](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_admin_access_members", Method: "GET", Path: "/v1/admin/access/members", Summary: "Read server access members", Access: apikit.Admin, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "limit", "q", "role", "status", "sort", "direction"}, AdminScope: "access", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, access.MemberPage](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_admin_access_members", Method: "GET", Path: "/v1/admin/access/members", Summary: "Read server access members", Access: apikit.Admin, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "limit", "q", "role", "status", "sort", "direction"}, QueryIntegers: emptyLimitQuery(25, 100), AdminScope: "access", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/admin_access.go: one member
@@ -85,7 +85,7 @@ func registerAdministrationHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/admin_access.go:89
-	if err := apikit.RegisterHTTP[struct{}, access.InvitationTablePage](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_admin_access_invitations", Method: "GET", Path: "/v1/admin/access/invitations", Summary: "Read server access invitations", Access: apikit.Admin, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "limit", "state", "q", "sort", "direction"}, AdminScope: "access", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, access.InvitationTablePage](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_admin_access_invitations", Method: "GET", Path: "/v1/admin/access/invitations", Summary: "Read server access invitations", Access: apikit.Admin, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "limit", "state", "q", "sort", "direction"}, QueryIntegers: emptyLimitQuery(25, 100), AdminScope: "access", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/admin_access.go:103
@@ -135,7 +135,7 @@ func registerAdministrationHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/admin_diagnostics.go:44
-	if err := apikit.RegisterHTTP[struct{}, servicelog.Result](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_admin_logs", Method: "GET", Path: "/v1/admin/logs", Summary: "Read server logs", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdminHeavy, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"category", "cursor", "level", "limit"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, servicelog.Result](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_admin_logs", Method: "GET", Path: "/v1/admin/logs", Summary: "Read server logs", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdminHeavy, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"category", "cursor", "level", "limit"}, QueryIntegers: []apikit.QueryInteger{{Name: "limit", Minimum: 1, Default: 100, Maximum: 500, DefaultBelowMinimum: true, EmptyIsDefault: true}}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/admin_diagnostics.go:66
@@ -190,11 +190,11 @@ func registerAdministrationHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/administration.go:218
-	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[administration.FilesystemPage]](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_admin_filesystem", Method: "GET", Path: "/v1/admin/filesystem", Summary: "Read server filesystem", Query: []string{"path", "cursor", "limit", "includeFiles", "showHidden", "prefix", "checkWritable"}, Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[administration.FilesystemPage]](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_admin_filesystem", Method: "GET", Path: "/v1/admin/filesystem", Summary: "Read server filesystem", Query: []string{"path", "cursor", "limit", "includeFiles", "showHidden", "prefix", "checkWritable"}, QueryIntegers: emptyLimitQuery(40, 200), Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/administration.go:232
-	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[administration.LibrarySettingsIndex]](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_admin_library_settings", Method: "GET", Path: "/v1/admin/library-settings", Summary: "Read server library settings", Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[administration.LibrarySettingsIndex]](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_admin_library_settings", Method: "GET", Path: "/v1/admin/library-settings", Summary: "Read server library settings", Query: []string{"cursor", "limit"}, QueryIntegers: emptyLimitQuery(40, 200), Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/administration.go:243
@@ -208,7 +208,7 @@ func registerAdministrationHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/administration.go:262
-	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[administration.ChannelMapPage]](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_admin_live_sources_id_channel_map", Method: "GET", Path: "/v1/admin/live-sources/{id}/channel-map", Summary: "Read server live sources channel map", Query: []string{"channelId", "cursor", "limit"}, Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[administration.ChannelMapPage]](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_admin_live_sources_id_channel_map", Method: "GET", Path: "/v1/admin/live-sources/{id}/channel-map", Summary: "Read server live sources channel map", Query: []string{"channelId", "cursor", "limit"}, QueryIntegers: emptyLimitQuery(40, 200), Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/administration.go:273
@@ -236,7 +236,7 @@ func registerAdministrationHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/administration.go:322
-	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[administration.RecordingGroupPage]](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_admin_dvr_recording_groups", Method: "GET", Path: "/v1/admin/dvr/recording-groups", Summary: "Read server dvr recording groups", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[administration.RecordingGroupPage]](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_admin_dvr_recording_groups", Method: "GET", Path: "/v1/admin/dvr/recording-groups", Summary: "Read server dvr recording groups", Query: []string{"cursor", "limit"}, QueryIntegers: emptyLimitQuery(40, 200), Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/administration.go:333
@@ -255,11 +255,11 @@ func registerAdministrationHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/administration.go:369
-	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[administration.CriteriaPage]](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_admin_library_channels_criteria", Method: "GET", Path: "/v1/admin/library-channels/criteria", Summary: "Read server library channels criteria", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[administration.CriteriaPage]](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_admin_library_channels_criteria", Method: "GET", Path: "/v1/admin/library-channels/criteria", Summary: "Read server library channels criteria", Query: []string{"libraryId", "field", "cursor", "limit"}, QueryIntegers: emptyLimitQuery(40, 200), Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/administration.go:380
-	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[administration.BlockPresetPage]](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_admin_library_channels_block_presets", Method: "GET", Path: "/v1/admin/library-channels/block-presets", Summary: "Read server library channels block presets", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[administration.BlockPresetPage]](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_admin_library_channels_block_presets", Method: "GET", Path: "/v1/admin/library-channels/block-presets", Summary: "Read server library channels block presets", Query: []string{"cursor", "limit"}, QueryIntegers: emptyLimitQuery(40, 200), Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/administration.go:391
@@ -401,7 +401,7 @@ func registerAdministrationHTTPContracts(registry *apikit.Registry) error {
 		{"get_admin_play_history_dashboard", "/v1/admin/play-history/dashboard", false},
 		{"get_admin_play_history_people", "/v1/admin/play-history/people", true},
 	} {
-		meta := apikit.Metadata{Audience: apikit.Clients, ID: spec.id, Method: "GET", Path: spec.path, Summary: "Read owner Dashboard analytics", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, Status: 200, Query: []string{"period", "accountId", "libraryId", "media", "q", "cursor", "limit", "topKind", "timeZone", "until"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "internal"}}
+		meta := apikit.Metadata{Audience: apikit.Clients, ID: spec.id, Method: "GET", Path: spec.path, Summary: "Read owner Dashboard analytics", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, Status: 200, Query: []string{"period", "accountId", "libraryId", "media", "q", "cursor", "limit", "topKind", "timeZone", "until"}, QueryIntegers: emptyLimitQuery(12, 100), Errors: []string{"invalid_request", "unauthorized", "not_permitted", "internal"}}
 		if spec.people {
 			if err := apikit.RegisterHTTP[struct{}, catalog.DashboardPeople](registry, meta); err != nil {
 				return err

@@ -12,7 +12,7 @@ import (
 
 func registerLiveChoices(registry *apikit.Registry, d Dependencies) {
 	for _, kind := range []string{"groups", "channels"} {
-		v1Route(registry, apikit.Metadata{Audience: apikit.Clients, Admission: laneAdmin, ID: "list_live_source_" + kind, Method: "GET", Path: "/v1/admin/live/sources/{id}/" + kind, Summary: "List source choices, including groups and channels excluded from the line-up", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Query: []string{"cursor", "limit", "q"}, Errors: []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "invalid_cursor", "revision_mismatch", "administration_unavailable", "internal"}}, func(ctx context.Context, r *http.Request, _ noBody) (administration.LiveSourceChoicePage, error) {
+		v1Route(registry, apikit.Metadata{Audience: apikit.Clients, Admission: laneAdmin, ID: "list_live_source_" + kind, Method: "GET", Path: "/v1/admin/live/sources/{id}/" + kind, Summary: "List source choices, including groups and channels excluded from the line-up", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Query: []string{"cursor", "limit", "q"}, QueryIntegers: []apikit.QueryInteger{{Name: "limit", Minimum: 0, Default: 50, Maximum: 200, EmptyIsDefault: true, Description: "Zero selects the service default of 40."}}, Errors: []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "invalid_cursor", "revision_mismatch", "administration_unavailable", "internal"}}, func(ctx context.Context, r *http.Request, _ noBody) (administration.LiveSourceChoicePage, error) {
 			p, e := d.owner(r)
 			if e != nil {
 				return administration.LiveSourceChoicePage{}, e

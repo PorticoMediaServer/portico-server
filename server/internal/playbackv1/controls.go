@@ -2,7 +2,6 @@ package playbackv1
 
 import (
 	"context"
-	"database/sql"
 	"strconv"
 
 	"portico.local/server/internal/dbwork"
@@ -156,7 +155,7 @@ func (s *Service) RemoteControls(ctx context.Context, c Caller, cursor string, l
 		}
 		remote := RemotePlayback{SessionControls: controls, Device: device, Item: item, Kind: r.kind}
 		if r.queueID != "" {
-			tx, e := s.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+			tx, done, e := dbwork.BeginRead(ctx, s.DB)
 			if e != nil {
 				return out, e
 			}
@@ -177,7 +176,7 @@ func (s *Service) RemoteControls(ctx context.Context, c Caller, cursor string, l
 					}
 				}
 			}
-			tx.Rollback()
+			done()
 		}
 		out.Items = append(out.Items, remote)
 	}

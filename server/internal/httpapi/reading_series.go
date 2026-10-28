@@ -124,6 +124,6 @@ func (d Dependencies) readingSeries(w http.ResponseWriter, r *http.Request) {
 }
 
 func registerReadingSeriesHTTPContract(registry *apikit.Registry) error {
-	m := apikit.Metadata{Audience: apikit.Clients, ID: "get_reading_series_items", Method: "GET", Path: "/v1/libraries/{libraryId}/reading/series/{seriesId}", Summary: "Read one complete authorized Reading series", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "request_in_progress", "internal"}, Query: []string{"cursor", "limit"}}
+	m := apikit.Metadata{Audience: apikit.Clients, ID: "get_reading_series_items", Method: "GET", Path: "/v1/libraries/{libraryId}/reading/series/{seriesId}", Summary: "Read one complete authorized Reading series", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "request_in_progress", "internal"}, Query: []string{"cursor", "limit"}, QueryIntegers: emptyLimitQuery(50, 100)}
 	return apikit.RegisterHTTP[struct{}, ReadingSeriesItemsResponse](registry, m)
 }

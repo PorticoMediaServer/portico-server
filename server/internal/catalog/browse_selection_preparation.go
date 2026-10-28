@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"time"
 	"unsafe"
 
 	"portico.local/server/internal/dbwork"
@@ -79,12 +80,16 @@ type selectionPreparationSpec struct {
 // Only content counters and bounded query intent are shared. Full reducer work,
 // the authority callback and all SQL handles disappear at completion.
 type selectionPreparationContent struct {
-	Library string
-	Pivot   string
-	Query   json.RawMessage
-	Sorts   []BrowseSortSelection
-	Counts  [14][2]int
-	IDs     []int64
+	Library       string
+	Pivot         string
+	Query         json.RawMessage
+	Sorts         []BrowseSortSelection
+	Counts        [14][2]int
+	IDs           []int64
+	Ordered       bool
+	OrderInstant  time.Time
+	Profile       string
+	ActivityFence string
 }
 
 type selectionPreparationComputation struct {
@@ -95,10 +100,13 @@ type selectionPreparationComputation struct {
 	payloadBytes int64
 	smallIDs     [201]int64
 	smallCount   int
+	order        *SmallSelectionOrder
+	instant      time.Time
+	memoScope    SmallForYouMemoScope
 }
 
 func (c *selectionPreparationComputation) AccountedBytes() int64 {
-	return c.factoryBytes + int64(unsafe.Sizeof(*c)) + int64(c.state.Bytes()) + c.payloadBytes
+	return c.factoryBytes + int64(unsafe.Sizeof(*c)) + int64(c.state.Bytes()+c.order.Bytes()+c.memoScope.Bytes()) + c.payloadBytes
 }
 
 func (c *selectionPreparationComputation) Step(ctx context.Context, budget *readprep.Budget) (readprep.StepResult, error) {
@@ -132,10 +140,17 @@ func (c *selectionPreparationComputation) Step(ctx context.Context, budget *read
 	if !next.Complete() {
 		return readprep.StepResult{}, nil
 	}
+	pendingOrder, err := c.prepareSmallOrder(ctx, budget, witness)
+	if err != nil {
+		return readprep.StepResult{}, err
+	}
+	if pendingOrder {
+		return readprep.StepResult{}, nil
+	}
 	// json.Marshal can overlap its encoder and returned buffer. The bound covers
 	// escaping, the small fixed counter vector, both buffers and decode scratch.
 	p := next.plan
-	encodedBound := int64(6*(len(p.library)+len(p.pivot)+len(p.revision)+len(p.query)+len(p.sorts)) + 8192)
+	encodedBound := int64(6*(len(p.library)+len(p.pivot)+len(p.revision)+len(p.query)+len(p.sorts)+len(p.policy)) + 8192)
 	if err = budget.Resize(c.AccountedBytes() + 4*encodedBound); err != nil {
 		return readprep.StepResult{}, err
 	}
@@ -143,13 +158,18 @@ func (c *selectionPreparationComputation) Step(ctx context.Context, budget *read
 	if err = json.Unmarshal(p.sorts, &sorts); err != nil {
 		return readprep.StepResult{}, err
 	}
-	content := selectionPreparationContent{Library: p.library, Pivot: p.pivot, Query: p.query, Sorts: sorts, Counts: next.counts, IDs: c.smallIDs[:c.smallCount]}
+	content := selectionPreparationContent{Library: p.library, Pivot: p.pivot, Query: p.query, Sorts: sorts, Counts: next.counts, IDs: c.smallIDs[:c.smallCount], Ordered: c.order != nil && c.order.Complete(), OrderInstant: c.instant}
+	if c.order != nil && c.order.forYou != nil {
+		content.Profile = c.order.forYou.profile
+		content.ActivityFence = c.order.forYou.activityFence
+	}
 	encoded, err := json.Marshal(content)
 	if err != nil {
 		return readprep.StepResult{}, err
 	}
 	c.payloadBytes = int64(cap(encoded))
 	c.state = nil
+	c.order = nil
 	return readprep.StepResult{Done: true, Payload: encoded}, nil
 }
 
@@ -220,6 +240,18 @@ func (s *Service) SubmitBrowseSelectionPreparation(request BrowseRequest, viewer
 	root := Service{db: s.db, storage: s.storage, state: s.state, Clock: s.Clock}
 	factoryBytes := int64(cap(spec)) + access.CapturedBytes + int64(unsafe.Sizeof(root)) + 2048
 	check := access.Check
+	instant := s.recommendationNow(s.browseInstant)
+	if !bound.orderInstant.IsZero() {
+		instant = bound.orderInstant
+	}
+	var memoScope SmallForYouMemoScope
+	if len(bound.Sorts) == 1 && bound.Sorts[0].Field == "forYou" {
+		memoScope, err = NewSmallForYouMemoScope(bound, viewer)
+		if err != nil {
+			return BrowseSelectionPreparing{}, err
+		}
+	}
+	factoryBytes += int64(memoScope.Bytes())
 	localSearch := selectionBatchHasLocalSearch(bound.Query)
 	class := dbwork.ClassBackgroundMedia
 	if localSearch {
@@ -257,7 +289,7 @@ func (s *Service) SubmitBrowseSelectionPreparation(request BrowseRequest, viewer
 		if err != nil {
 			return nil, selectionPreparationError(err)
 		}
-		return &selectionPreparationComputation{service: &root, state: state, check: check, factoryBytes: factoryBytes}, nil
+		return &selectionPreparationComputation{service: &root, state: state, check: check, factoryBytes: factoryBytes, instant: instant, memoScope: memoScope}, nil
 	}}
 	handle, err := store.Submit(s.Context(), access.Caller, key, plan)
 	if err != nil {
@@ -329,6 +361,12 @@ func (s *Service) PollBrowseSelectionPreparation(library string, viewer Viewer, 
 		var content selectionPreparationContent
 		if err = json.Unmarshal(result.Payload, &content); err != nil {
 			return BrowseSelectionPreparationResult{}, err
+		}
+		if content.Ordered && len(content.Sorts) == 1 && content.Sorts[0].Field == "forYou" && content.Profile != viewer.Profile {
+			return BrowseSelectionPreparationResult{}, readprep.ErrStale
+		}
+		if err = s.checkSmallForYouActivityContent(content, func(n int64) error { return result.ResizeDelivery(int64(8*len(result.Payload)+65536) + n) }); err != nil {
+			return BrowseSelectionPreparationResult{}, selectionPreparationError(err)
 		}
 		if content.Library != library || content.Pivot == "" {
 			return BrowseSelectionPreparationResult{}, readprep.ErrStale

@@ -184,6 +184,16 @@ type BulkMetadataSelectionPage struct {
 }
 
 func (s *Service) BulkMetadataSelectionPageTx(ctx context.Context, tx *sql.Tx, v Viewer, in BulkMetadataPreviewRequest, after int64) (BulkMetadataSelectionPage, error) {
+	return s.bulkMetadataSelectionPageTx(ctx, tx, v, in, after, BulkMetadataPageSize)
+}
+
+// BulkMetadataSelectionUnitTx advances one raw candidate before predicates.
+// General metadata preparation yields after this unit, including empty matches.
+func (s *Service) BulkMetadataSelectionUnitTx(ctx context.Context, tx *sql.Tx, v Viewer, in BulkMetadataPreviewRequest, after int64) (BulkMetadataSelectionPage, error) {
+	return s.bulkMetadataSelectionPageTx(ctx, tx, v, in, after, 1)
+}
+
+func (s *Service) bulkMetadataSelectionPageTx(ctx context.Context, tx *sql.Tx, v Viewer, in BulkMetadataPreviewRequest, after int64, size int) (BulkMetadataSelectionPage, error) {
 	out := BulkMetadataSelectionPage{After: after}
 	if err := in.ValidateSelection(); err != nil {
 		return out, err
@@ -253,12 +263,39 @@ func (s *Service) BulkMetadataSelectionPageTx(ctx context.Context, tx *sql.Tx, v
 		return out, err
 	}
 	out.Fence = string(raw)
+	if size == 1 {
+		// Preparation outlives a request/page revision. Availability, policy
+		// predicates, serving slots and Saved/group inputs can change without
+		// changing the ordinary metadata revision. Bind their complete existing
+		// witness too; explicit editor targets need no browse-readiness gate.
+		var predicates, selection int64
+		if err = tx.QueryRowContext(ctx, `SELECT p.revision,s.revision FROM catalog_browse_predicate_epoch p CROSS JOIN catalog_selection_predicate_epoch s WHERE p.singleton=1 AND s.singleton=1`).Scan(&predicates, &selection); err != nil {
+			return out, err
+		}
+		if predicates <= 0 || selection <= 0 {
+			return out, ErrStaleContinuation
+		}
+		var exact string
+		if in.Selector != nil && in.Selector.Query != nil {
+			read := *s.WithContext(ctx)
+			read.readTx = tx
+			exact, err = read.browseSelectionWitness(in.Selector.Query.LibraryID, v.Profile, v.EffectiveRestrictions())
+			if err != nil {
+				return out, err
+			}
+		}
+		bound, e := json.Marshal([]any{out.Fence, predicates, selection, exact})
+		if e != nil {
+			return out, e
+		}
+		out.Fence = string(bound)
+	}
 	if len(in.Targets) > 0 {
 		if after > int64(len(in.Targets)) {
 			return out, ErrStaleContinuation
 		}
 		// Per-target CAS reads are heavier than the grouped query vector.
-		end := min(after+16, int64(len(in.Targets)))
+		end := min(after+int64(min(size, 16)), int64(len(in.Targets)))
 		out.After = end
 		out.Done = end == int64(len(in.Targets))
 		if end == after {
@@ -271,11 +308,11 @@ func (s *Service) BulkMetadataSelectionPageTx(ctx context.Context, tx *sql.Tx, v
 	// Read the library's entity-ID index without a match predicate. In particular,
 	// the final page of a sparse filter cannot read millions of excluded rows in
 	// one snapshot. Retired rows also advance this source cursor.
-	rows, err := tx.QueryContext(ctx, `SELECT id FROM catalog_entities INDEXED BY catalog_entities_library_id WHERE library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND id>? ORDER BY id LIMIT ?`, libraries[0], after, BulkMetadataPageSize)
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM catalog_entities INDEXED BY catalog_entities_library_id WHERE library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND id>? ORDER BY id LIMIT ?`, libraries[0], after, size)
 	if err != nil {
 		return out, err
 	}
-	ids := make([]int64, 0, BulkMetadataPageSize)
+	ids := make([]int64, 0, size)
 	for rows.Next() {
 		var id int64
 		if err = rows.Scan(&id); err != nil {
@@ -294,7 +331,7 @@ func (s *Service) BulkMetadataSelectionPageTx(ctx context.Context, tx *sql.Tx, v
 	if err != nil {
 		return out, err
 	}
-	out.Done = len(ids) < BulkMetadataPageSize
+	out.Done = len(ids) < size
 	out.Selection, err = s.bulkMetadataSelectionTx(ctx, tx, v, in, ids)
 	return out, err
 }

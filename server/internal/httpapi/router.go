@@ -54,6 +54,7 @@ import (
 	"portico.local/server/internal/recordingaccess"
 	"portico.local/server/internal/remotemedia"
 	"portico.local/server/internal/remotesources"
+	"portico.local/server/internal/selectionactions"
 	"portico.local/server/internal/social"
 	"portico.local/server/internal/storage"
 	"portico.local/server/internal/subtitles"
@@ -91,19 +92,20 @@ type Dependencies struct {
 	Administration *administration.Service
 	// Backups is the Plex-model backup service; nil answers backups as
 	// unavailable, which is the right default for tests that do not run one.
-	Backups      *backup.Service
-	Prepared     *preparedmedia.Service
-	Console      *operations.Store
-	Downloads    *downloads.Service
-	Scheduler    *operations.Scheduler
-	Measurements *operations.Measurements
-	Events       *eventfeed.Hub
-	Subtitles    *subtitles.Service
-	Lyrics       *lyrics.Service
-	LyricsBulk   *lyrics.Bulk
-	Analysis     *mediaanalysis.Service
-	LyricsProbe  string
-	Networking   *networking.ClaimHandler
+	Backups          *backup.Service
+	Prepared         *preparedmedia.Service
+	Console          *operations.Store
+	Downloads        *downloads.Service
+	SelectionActions *selectionactions.Service
+	Scheduler        *operations.Scheduler
+	Measurements     *operations.Measurements
+	Events           *eventfeed.Hub
+	Subtitles        *subtitles.Service
+	Lyrics           *lyrics.Service
+	LyricsBulk       *lyrics.Bulk
+	Analysis         *mediaanalysis.Service
+	LyricsProbe      string
+	Networking       *networking.ClaimHandler
 	// CustomCertificate serves the owner's certificate for a custom domain. Nil
 	// omits it from the connectivity report, which is the right default for a
 	// test that does not run one.

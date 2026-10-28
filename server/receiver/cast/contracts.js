@@ -7423,6 +7423,88 @@ var PorticoCastContracts = (function(exports) {
 			"required": [],
 			"type": "object"
 		},
+		"CancelSelectionActionRequest": {
+			"properties": {},
+			"required": [],
+			"type": "object"
+		},
+		"CancelSelectionActionResponse": {
+			"additionalProperties": false,
+			"properties": {
+				"action": {
+					"enum": ["delete", "download"],
+					"type": "string"
+				},
+				"admitted": {
+					"maximum": 9007199254740991,
+					"minimum": 0,
+					"type": "integer"
+				},
+				"bytesDeleted": {
+					"maximum": 9007199254740991,
+					"minimum": 0,
+					"type": "integer"
+				},
+				"done": {
+					"maximum": 9007199254740991,
+					"minimum": 0,
+					"type": "integer"
+				},
+				"errorCode": { "type": "string" },
+				"failed": {
+					"maximum": 9007199254740991,
+					"minimum": 0,
+					"type": "integer"
+				},
+				"filesDeleted": {
+					"maximum": 9007199254740991,
+					"minimum": 0,
+					"type": "integer"
+				},
+				"operationId": {
+					"maxLength": 160,
+					"minLength": 1,
+					"pattern": "^[A-Za-z0-9_-]+$",
+					"type": "string"
+				},
+				"retryAfterMs": {
+					"maximum": 6e4,
+					"minimum": 0,
+					"type": "integer"
+				},
+				"state": {
+					"enum": [
+						"capturing",
+						"sealed",
+						"running",
+						"cancelling",
+						"complete",
+						"partial",
+						"failed",
+						"cancelled"
+					],
+					"type": "string"
+				},
+				"total": {
+					"maximum": 9007199254740991,
+					"minimum": 1,
+					"type": "integer"
+				}
+			},
+			"required": [
+				"operationId",
+				"action",
+				"state",
+				"total",
+				"admitted",
+				"done",
+				"failed",
+				"bytesDeleted",
+				"filesDeleted",
+				"retryAfterMs"
+			],
+			"type": "object"
+		},
 		"ChangeConnectivityPolicyRequest": {
 			"properties": {
 				"accessUrls": {
@@ -13978,6 +14060,294 @@ var PorticoCastContracts = (function(exports) {
 			"required": ["queue"],
 			"type": "object"
 		},
+		"CreateSelectionActionPreparationRequest": { "oneOf": [{
+			"additionalProperties": false,
+			"properties": {
+				"action": {
+					"enum": ["delete"],
+					"type": "string"
+				},
+				"expected": {
+					"additionalProperties": false,
+					"properties": { "catalogRevision": {
+						"pattern": "^browse_[a-f0-9]{64}$",
+						"type": "string"
+					} },
+					"required": ["catalogRevision"],
+					"type": "object"
+				},
+				"options": {
+					"additionalProperties": false,
+					"properties": { "deleteFiles": { "type": "boolean" } },
+					"required": ["deleteFiles"],
+					"type": "object"
+				},
+				"selector": {
+					"additionalProperties": false,
+					"properties": { "query": {
+						"additionalProperties": false,
+						"properties": {
+							"filter": {},
+							"libraryId": { "type": "string" },
+							"pivot": { "type": "string" },
+							"selectionBasis": {
+								"pattern": "^[a-f0-9]{64}$",
+								"type": "string"
+							},
+							"sort": {
+								"items": {
+									"properties": {
+										"direction": { "type": "string" },
+										"field": { "type": "string" },
+										"seed": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										}
+									},
+									"required": ["field", "direction"],
+									"type": "object"
+								},
+								"type": "array"
+							}
+						},
+						"required": [
+							"libraryId",
+							"pivot",
+							"selectionBasis"
+						],
+						"type": "object"
+					} },
+					"required": ["query"],
+					"type": "object"
+				}
+			},
+			"required": [
+				"action",
+				"selector",
+				"expected",
+				"options"
+			],
+			"type": "object"
+		}, {
+			"additionalProperties": false,
+			"properties": {
+				"action": {
+					"enum": ["download"],
+					"type": "string"
+				},
+				"expected": {
+					"additionalProperties": false,
+					"properties": { "catalogRevision": {
+						"pattern": "^browse_[a-f0-9]{64}$",
+						"type": "string"
+					} },
+					"required": ["catalogRevision"],
+					"type": "object"
+				},
+				"options": {
+					"additionalProperties": false,
+					"properties": {
+						"deviceId": {
+							"pattern": "^[A-Za-z0-9_-]{1,160}$",
+							"type": "string"
+						},
+						"quality": {
+							"enum": [
+								"original",
+								"automatic",
+								"2160p",
+								"1080p-high",
+								"1080p-low",
+								"720p-high",
+								"720p-low",
+								"480p",
+								"240p",
+								"cd-quality",
+								"320",
+								"96"
+							],
+							"type": "string"
+						}
+					},
+					"required": ["deviceId", "quality"],
+					"type": "object"
+				},
+				"selector": {
+					"additionalProperties": false,
+					"properties": { "query": {
+						"additionalProperties": false,
+						"properties": {
+							"filter": {},
+							"libraryId": { "type": "string" },
+							"pivot": { "type": "string" },
+							"selectionBasis": {
+								"pattern": "^[a-f0-9]{64}$",
+								"type": "string"
+							},
+							"sort": {
+								"items": {
+									"properties": {
+										"direction": { "type": "string" },
+										"field": { "type": "string" },
+										"seed": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										}
+									},
+									"required": ["field", "direction"],
+									"type": "object"
+								},
+								"type": "array"
+							}
+						},
+						"required": [
+							"libraryId",
+							"pivot",
+							"selectionBasis"
+						],
+						"type": "object"
+					} },
+					"required": ["query"],
+					"type": "object"
+				}
+			},
+			"required": [
+				"action",
+				"selector",
+				"expected",
+				"options"
+			],
+			"type": "object"
+		}] },
+		"CreateSelectionActionPreparationResponse": {
+			"additionalProperties": false,
+			"properties": {
+				"kind": {
+					"enum": ["selection-action-preparing"],
+					"type": "string"
+				},
+				"preparationId": {
+					"maxLength": 128,
+					"minLength": 1,
+					"pattern": "^[A-Za-z0-9_-]+$",
+					"type": "string"
+				},
+				"retryAfterMs": {
+					"maximum": 6e4,
+					"minimum": 1,
+					"type": "integer"
+				}
+			},
+			"required": [
+				"kind",
+				"preparationId",
+				"retryAfterMs"
+			],
+			"type": "object"
+		},
+		"CreateSelectionActionRequest": {
+			"additionalProperties": false,
+			"properties": {
+				"confirmation": { "type": "string" },
+				"operationId": {
+					"maxLength": 160,
+					"minLength": 1,
+					"pattern": "^[A-Za-z0-9_-]+$",
+					"type": "string"
+				},
+				"preparationId": {
+					"maxLength": 128,
+					"minLength": 1,
+					"pattern": "^[A-Za-z0-9_-]+$",
+					"type": "string"
+				}
+			},
+			"required": [
+				"operationId",
+				"preparationId",
+				"confirmation"
+			],
+			"type": "object"
+		},
+		"CreateSelectionActionResponse": {
+			"additionalProperties": false,
+			"properties": {
+				"action": {
+					"enum": ["delete", "download"],
+					"type": "string"
+				},
+				"admitted": {
+					"maximum": 9007199254740991,
+					"minimum": 0,
+					"type": "integer"
+				},
+				"bytesDeleted": {
+					"maximum": 9007199254740991,
+					"minimum": 0,
+					"type": "integer"
+				},
+				"done": {
+					"maximum": 9007199254740991,
+					"minimum": 0,
+					"type": "integer"
+				},
+				"errorCode": { "type": "string" },
+				"failed": {
+					"maximum": 9007199254740991,
+					"minimum": 0,
+					"type": "integer"
+				},
+				"filesDeleted": {
+					"maximum": 9007199254740991,
+					"minimum": 0,
+					"type": "integer"
+				},
+				"operationId": {
+					"maxLength": 160,
+					"minLength": 1,
+					"pattern": "^[A-Za-z0-9_-]+$",
+					"type": "string"
+				},
+				"retryAfterMs": {
+					"maximum": 6e4,
+					"minimum": 0,
+					"type": "integer"
+				},
+				"state": {
+					"enum": [
+						"capturing",
+						"sealed",
+						"running",
+						"cancelling",
+						"complete",
+						"partial",
+						"failed",
+						"cancelled"
+					],
+					"type": "string"
+				},
+				"total": {
+					"maximum": 9007199254740991,
+					"minimum": 1,
+					"type": "integer"
+				}
+			},
+			"required": [
+				"operationId",
+				"action",
+				"state",
+				"total",
+				"admitted",
+				"done",
+				"failed",
+				"bytesDeleted",
+				"filesDeleted",
+				"retryAfterMs"
+			],
+			"type": "object"
+		},
 		"CreateStorageSourceRcloneConfigRequest": {
 			"properties": {
 				"name": { "type": "string" },
@@ -15041,6 +15411,16 @@ var PorticoCastContracts = (function(exports) {
 		"DeleteMeRemovedTitlesIdResponse": {
 			"properties": { "removed": { "type": "boolean" } },
 			"required": ["removed"],
+			"type": "object"
+		},
+		"DeleteMetadataBulkPreviewQueryRequest": {
+			"properties": {},
+			"required": [],
+			"type": "object"
+		},
+		"DeleteMetadataBulkPreviewQueryResponse": {
+			"properties": {},
+			"required": [],
 			"type": "object"
 		},
 		"DeleteMetadataKindIdArtRoleUploadCandidateIdRequest": {
@@ -16185,6 +16565,16 @@ var PorticoCastContracts = (function(exports) {
 				"remembered": { "type": "boolean" }
 			},
 			"required": ["remembered", "entries"],
+			"type": "object"
+		},
+		"DeleteSelectionActionPreparationRequest": {
+			"properties": {},
+			"required": [],
+			"type": "object"
+		},
+		"DeleteSelectionActionPreparationResponse": {
+			"properties": {},
+			"required": [],
 			"type": "object"
 		},
 		"DeleteSessionsCurrentRequest": {
@@ -97336,6 +97726,397 @@ var PorticoCastContracts = (function(exports) {
 			],
 			"type": "object"
 		},
+		"GetMetadataBulkPreviewQueryRequest": {
+			"properties": {},
+			"required": [],
+			"type": "object"
+		},
+		"GetMetadataBulkPreviewQueryResponse": { "oneOf": [{
+			"properties": {
+				"contentKind": { "type": "string" },
+				"excludedFields": {
+					"items": {
+						"properties": {
+							"allowed": {
+								"items": { "type": "string" },
+								"type": "array"
+							},
+							"bulk": { "type": "boolean" },
+							"field": { "type": "string" },
+							"group": { "type": "string" },
+							"label": { "type": "string" },
+							"max": {
+								"maximum": 9007199254740991,
+								"minimum": -9007199254740991,
+								"type": "integer"
+							},
+							"maxLength": {
+								"maximum": 9007199254740991,
+								"minimum": -9007199254740991,
+								"type": "integer"
+							},
+							"min": {
+								"maximum": 9007199254740991,
+								"minimum": -9007199254740991,
+								"type": "integer"
+							},
+							"type": { "type": "string" }
+						},
+						"required": [
+							"field",
+							"label",
+							"group",
+							"type",
+							"bulk"
+						],
+						"type": "object"
+					},
+					"type": "array"
+				},
+				"fields": {
+					"additionalProperties": { "oneOf": [
+						{
+							"additionalProperties": false,
+							"properties": {
+								"distinctCount": {
+									"maximum": 1,
+									"minimum": 1,
+									"type": "integer"
+								},
+								"entries": {
+									"items": {
+										"additionalProperties": false,
+										"properties": {
+											"count": {
+												"minimum": 1,
+												"type": "integer"
+											},
+											"value": { "type": "string" }
+										},
+										"required": ["value", "count"],
+										"type": "object"
+									},
+									"maxItems": 64,
+									"type": "array"
+								},
+								"locked": {
+									"minimum": 0,
+									"type": "integer"
+								},
+								"state": {
+									"enum": ["shared"],
+									"type": "string"
+								},
+								"truncated": { "type": "boolean" },
+								"value": { "type": "string" },
+								"values": {
+									"items": {
+										"additionalProperties": false,
+										"properties": {
+											"count": {
+												"minimum": 1,
+												"type": "integer"
+											},
+											"value": { "type": "string" }
+										},
+										"required": ["value", "count"],
+										"type": "object"
+									},
+									"maxItems": 1,
+									"minItems": 1,
+									"type": "array"
+								}
+							},
+							"required": [
+								"state",
+								"values",
+								"entries",
+								"locked",
+								"truncated",
+								"value",
+								"distinctCount"
+							],
+							"type": "object"
+						},
+						{
+							"additionalProperties": false,
+							"properties": {
+								"distinctCount": {
+									"maximum": 64,
+									"minimum": 2,
+									"type": "integer"
+								},
+								"entries": {
+									"items": {
+										"additionalProperties": false,
+										"properties": {
+											"count": {
+												"minimum": 1,
+												"type": "integer"
+											},
+											"value": { "type": "string" }
+										},
+										"required": ["value", "count"],
+										"type": "object"
+									},
+									"maxItems": 64,
+									"type": "array"
+								},
+								"locked": {
+									"minimum": 0,
+									"type": "integer"
+								},
+								"state": {
+									"enum": ["mixed"],
+									"type": "string"
+								},
+								"truncated": { "type": "boolean" },
+								"values": {
+									"items": {
+										"additionalProperties": false,
+										"properties": {
+											"count": {
+												"minimum": 1,
+												"type": "integer"
+											},
+											"value": { "type": "string" }
+										},
+										"required": ["value", "count"],
+										"type": "object"
+									},
+									"maxItems": 64,
+									"minItems": 2,
+									"type": "array"
+								}
+							},
+							"required": [
+								"state",
+								"values",
+								"entries",
+								"locked",
+								"truncated",
+								"distinctCount"
+							],
+							"type": "object"
+						},
+						{
+							"additionalProperties": false,
+							"properties": {
+								"atLeast": {
+									"enum": [65],
+									"type": "integer"
+								},
+								"entries": {
+									"items": {
+										"additionalProperties": false,
+										"properties": {
+											"count": {
+												"minimum": 1,
+												"type": "integer"
+											},
+											"value": { "type": "string" }
+										},
+										"required": ["value", "count"],
+										"type": "object"
+									},
+									"maxItems": 64,
+									"type": "array"
+								},
+								"locked": {
+									"minimum": 0,
+									"type": "integer"
+								},
+								"state": {
+									"enum": ["many"],
+									"type": "string"
+								},
+								"truncated": {
+									"enum": [true],
+									"type": "boolean"
+								},
+								"values": {
+									"items": {
+										"additionalProperties": false,
+										"properties": {
+											"count": {
+												"minimum": 1,
+												"type": "integer"
+											},
+											"value": { "type": "string" }
+										},
+										"required": ["value", "count"],
+										"type": "object"
+									},
+									"maxItems": 0,
+									"type": "array"
+								}
+							},
+							"required": [
+								"state",
+								"values",
+								"entries",
+								"locked",
+								"truncated",
+								"atLeast"
+							],
+							"type": "object"
+						}
+					] },
+					"type": "object"
+				},
+				"kind": { "type": "string" },
+				"schema": {
+					"items": {
+						"properties": {
+							"allowed": {
+								"items": { "type": "string" },
+								"type": "array"
+							},
+							"bulk": { "type": "boolean" },
+							"field": { "type": "string" },
+							"group": { "type": "string" },
+							"label": { "type": "string" },
+							"max": {
+								"maximum": 9007199254740991,
+								"minimum": -9007199254740991,
+								"type": "integer"
+							},
+							"maxLength": {
+								"maximum": 9007199254740991,
+								"minimum": -9007199254740991,
+								"type": "integer"
+							},
+							"min": {
+								"maximum": 9007199254740991,
+								"minimum": -9007199254740991,
+								"type": "integer"
+							},
+							"type": { "type": "string" }
+						},
+						"required": [
+							"field",
+							"label",
+							"group",
+							"type",
+							"bulk"
+						],
+						"type": "object"
+					},
+					"type": "array"
+				},
+				"selectionRevision": { "type": "string" },
+				"serverId": { "type": "string" },
+				"singleItemFields": {
+					"items": {
+						"properties": {
+							"allowed": {
+								"items": { "type": "string" },
+								"type": "array"
+							},
+							"bulk": { "type": "boolean" },
+							"field": { "type": "string" },
+							"group": { "type": "string" },
+							"label": { "type": "string" },
+							"max": {
+								"maximum": 9007199254740991,
+								"minimum": -9007199254740991,
+								"type": "integer"
+							},
+							"maxLength": {
+								"maximum": 9007199254740991,
+								"minimum": -9007199254740991,
+								"type": "integer"
+							},
+							"min": {
+								"maximum": 9007199254740991,
+								"minimum": -9007199254740991,
+								"type": "integer"
+							},
+							"type": { "type": "string" }
+						},
+						"required": [
+							"field",
+							"label",
+							"group",
+							"type",
+							"bulk"
+						],
+						"type": "object"
+					},
+					"type": "array"
+				},
+				"tabs": {
+					"items": { "type": "string" },
+					"type": "array"
+				},
+				"targets": {
+					"items": {
+						"properties": {
+							"expectedRevision": { "type": "string" },
+							"id": { "type": "string" },
+							"kind": { "type": "string" },
+							"libraryId": { "type": "string" }
+						},
+						"required": [
+							"kind",
+							"id",
+							"libraryId",
+							"expectedRevision"
+						],
+						"type": "object"
+					},
+					"type": "array"
+				},
+				"total": {
+					"maximum": 9007199254740991,
+					"minimum": -9007199254740991,
+					"type": "integer"
+				},
+				"viewerFence": { "type": "string" }
+			},
+			"required": [
+				"tabs",
+				"serverId",
+				"viewerFence",
+				"contentKind",
+				"kind",
+				"total",
+				"schema",
+				"singleItemFields",
+				"excludedFields",
+				"fields",
+				"targets"
+			],
+			"type": "object"
+		}, {
+			"additionalProperties": false,
+			"properties": {
+				"kind": {
+					"enum": ["metadata-preview-preparing"],
+					"type": "string"
+				},
+				"queryId": {
+					"maxLength": 128,
+					"minLength": 1,
+					"type": "string"
+				},
+				"retryAfterMs": {
+					"enum": [1e3],
+					"type": "integer"
+				},
+				"state": {
+					"enum": ["preparing"],
+					"type": "string"
+				}
+			},
+			"required": [
+				"kind",
+				"state",
+				"queryId",
+				"retryAfterMs"
+			],
+			"type": "object"
+		}] },
 		"GetMetadataKindIdArtRoleRequest": {
 			"properties": {},
 			"required": [],
@@ -118288,6 +119069,198 @@ var PorticoCastContracts = (function(exports) {
 				"nextCursor": { "type": "string" }
 			},
 			"required": ["episodes", "nextCursor"],
+			"type": "object"
+		},
+		"GetSelectionActionPreparationRequest": {
+			"properties": {},
+			"required": [],
+			"type": "object"
+		},
+		"GetSelectionActionPreparationResponse": { "oneOf": [{
+			"additionalProperties": false,
+			"properties": {
+				"action": {
+					"enum": ["delete", "download"],
+					"type": "string"
+				},
+				"basis": {
+					"pattern": "^[a-f0-9]{64}$",
+					"type": "string"
+				},
+				"bytes": {
+					"maximum": 9007199254740991,
+					"minimum": 0,
+					"type": "integer"
+				},
+				"bytesKnown": { "type": "boolean" },
+				"confirmation": { "type": "string" },
+				"confirmationKind": {
+					"enum": ["title", "count"],
+					"type": "string"
+				},
+				"expiresAt": {
+					"format": "date-time",
+					"type": "string"
+				},
+				"files": {
+					"maximum": 9007199254740991,
+					"minimum": 0,
+					"type": "integer"
+				},
+				"kind": {
+					"enum": ["selection-action-preview"],
+					"type": "string"
+				},
+				"preparationId": {
+					"maxLength": 128,
+					"minLength": 1,
+					"pattern": "^[A-Za-z0-9_-]+$",
+					"type": "string"
+				},
+				"sample": {
+					"items": {
+						"properties": {
+							"itemId": { "type": "string" },
+							"kind": { "type": "string" },
+							"title": { "type": "string" }
+						},
+						"required": [
+							"itemId",
+							"title",
+							"kind"
+						],
+						"type": "object"
+					},
+					"maxItems": 20,
+					"type": "array"
+				},
+				"total": {
+					"maximum": 9007199254740991,
+					"minimum": 1,
+					"type": "integer"
+				}
+			},
+			"required": [
+				"kind",
+				"preparationId",
+				"action",
+				"basis",
+				"total",
+				"files",
+				"bytes",
+				"bytesKnown",
+				"confirmation",
+				"confirmationKind",
+				"expiresAt",
+				"sample"
+			],
+			"type": "object"
+		}, {
+			"additionalProperties": false,
+			"properties": {
+				"kind": {
+					"enum": ["selection-action-preparing"],
+					"type": "string"
+				},
+				"preparationId": {
+					"maxLength": 128,
+					"minLength": 1,
+					"pattern": "^[A-Za-z0-9_-]+$",
+					"type": "string"
+				},
+				"retryAfterMs": {
+					"maximum": 6e4,
+					"minimum": 1,
+					"type": "integer"
+				}
+			},
+			"required": [
+				"kind",
+				"preparationId",
+				"retryAfterMs"
+			],
+			"type": "object"
+		}] },
+		"GetSelectionActionRequest": {
+			"properties": {},
+			"required": [],
+			"type": "object"
+		},
+		"GetSelectionActionResponse": {
+			"additionalProperties": false,
+			"properties": {
+				"action": {
+					"enum": ["delete", "download"],
+					"type": "string"
+				},
+				"admitted": {
+					"maximum": 9007199254740991,
+					"minimum": 0,
+					"type": "integer"
+				},
+				"bytesDeleted": {
+					"maximum": 9007199254740991,
+					"minimum": 0,
+					"type": "integer"
+				},
+				"done": {
+					"maximum": 9007199254740991,
+					"minimum": 0,
+					"type": "integer"
+				},
+				"errorCode": { "type": "string" },
+				"failed": {
+					"maximum": 9007199254740991,
+					"minimum": 0,
+					"type": "integer"
+				},
+				"filesDeleted": {
+					"maximum": 9007199254740991,
+					"minimum": 0,
+					"type": "integer"
+				},
+				"operationId": {
+					"maxLength": 160,
+					"minLength": 1,
+					"pattern": "^[A-Za-z0-9_-]+$",
+					"type": "string"
+				},
+				"retryAfterMs": {
+					"maximum": 6e4,
+					"minimum": 0,
+					"type": "integer"
+				},
+				"state": {
+					"enum": [
+						"capturing",
+						"sealed",
+						"running",
+						"cancelling",
+						"complete",
+						"partial",
+						"failed",
+						"cancelled"
+					],
+					"type": "string"
+				},
+				"total": {
+					"maximum": 9007199254740991,
+					"minimum": 1,
+					"type": "integer"
+				}
+			},
+			"required": [
+				"operationId",
+				"action",
+				"state",
+				"total",
+				"admitted",
+				"done",
+				"failed",
+				"bytesDeleted",
+				"filesDeleted",
+				"retryAfterMs"
+			],
 			"type": "object"
 		},
 		"GetServerMetadataAttentionRequest": {
@@ -143071,6 +144044,7 @@ var PorticoCastContracts = (function(exports) {
 		},
 		"ListDownloadPreparationsResponse": {
 			"properties": {
+				"closed": { "type": "boolean" },
 				"items": {
 					"items": {
 						"properties": {
@@ -161874,7 +162848,7 @@ var PorticoCastContracts = (function(exports) {
 			"required": [],
 			"type": "object"
 		},
-		"PostMetadataBulkPreviewResponse": {
+		"PostMetadataBulkPreviewResponse": { "oneOf": [{
 			"properties": {
 				"contentKind": { "type": "string" },
 				"excludedFields": {
@@ -161917,62 +162891,194 @@ var PorticoCastContracts = (function(exports) {
 					"type": "array"
 				},
 				"fields": {
-					"additionalProperties": {
-						"properties": {
-							"distinctCount": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							},
-							"entries": {
-								"items": {
-									"properties": {
-										"count": {
-											"maximum": 9007199254740991,
-											"minimum": -9007199254740991,
-											"type": "integer"
-										},
-										"value": { "type": "string" }
-									},
-									"required": ["value", "count"],
-									"type": "object"
+					"additionalProperties": { "oneOf": [
+						{
+							"additionalProperties": false,
+							"properties": {
+								"distinctCount": {
+									"maximum": 1,
+									"minimum": 1,
+									"type": "integer"
 								},
-								"type": "array"
-							},
-							"locked": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							},
-							"state": { "type": "string" },
-							"truncated": { "type": "boolean" },
-							"value": { "type": "string" },
-							"values": {
-								"items": {
-									"properties": {
-										"count": {
-											"maximum": 9007199254740991,
-											"minimum": -9007199254740991,
-											"type": "integer"
+								"entries": {
+									"items": {
+										"additionalProperties": false,
+										"properties": {
+											"count": {
+												"minimum": 1,
+												"type": "integer"
+											},
+											"value": { "type": "string" }
 										},
-										"value": { "type": "string" }
+										"required": ["value", "count"],
+										"type": "object"
 									},
-									"required": ["value", "count"],
-									"type": "object"
+									"maxItems": 64,
+									"type": "array"
 								},
-								"type": "array"
-							}
+								"locked": {
+									"minimum": 0,
+									"type": "integer"
+								},
+								"state": {
+									"enum": ["shared"],
+									"type": "string"
+								},
+								"truncated": { "type": "boolean" },
+								"value": { "type": "string" },
+								"values": {
+									"items": {
+										"additionalProperties": false,
+										"properties": {
+											"count": {
+												"minimum": 1,
+												"type": "integer"
+											},
+											"value": { "type": "string" }
+										},
+										"required": ["value", "count"],
+										"type": "object"
+									},
+									"maxItems": 1,
+									"minItems": 1,
+									"type": "array"
+								}
+							},
+							"required": [
+								"state",
+								"values",
+								"entries",
+								"locked",
+								"truncated",
+								"value",
+								"distinctCount"
+							],
+							"type": "object"
 						},
-						"required": [
-							"state",
-							"distinctCount",
-							"values",
-							"entries",
-							"locked",
-							"truncated"
-						],
-						"type": "object"
-					},
+						{
+							"additionalProperties": false,
+							"properties": {
+								"distinctCount": {
+									"maximum": 64,
+									"minimum": 2,
+									"type": "integer"
+								},
+								"entries": {
+									"items": {
+										"additionalProperties": false,
+										"properties": {
+											"count": {
+												"minimum": 1,
+												"type": "integer"
+											},
+											"value": { "type": "string" }
+										},
+										"required": ["value", "count"],
+										"type": "object"
+									},
+									"maxItems": 64,
+									"type": "array"
+								},
+								"locked": {
+									"minimum": 0,
+									"type": "integer"
+								},
+								"state": {
+									"enum": ["mixed"],
+									"type": "string"
+								},
+								"truncated": { "type": "boolean" },
+								"values": {
+									"items": {
+										"additionalProperties": false,
+										"properties": {
+											"count": {
+												"minimum": 1,
+												"type": "integer"
+											},
+											"value": { "type": "string" }
+										},
+										"required": ["value", "count"],
+										"type": "object"
+									},
+									"maxItems": 64,
+									"minItems": 2,
+									"type": "array"
+								}
+							},
+							"required": [
+								"state",
+								"values",
+								"entries",
+								"locked",
+								"truncated",
+								"distinctCount"
+							],
+							"type": "object"
+						},
+						{
+							"additionalProperties": false,
+							"properties": {
+								"atLeast": {
+									"enum": [65],
+									"type": "integer"
+								},
+								"entries": {
+									"items": {
+										"additionalProperties": false,
+										"properties": {
+											"count": {
+												"minimum": 1,
+												"type": "integer"
+											},
+											"value": { "type": "string" }
+										},
+										"required": ["value", "count"],
+										"type": "object"
+									},
+									"maxItems": 64,
+									"type": "array"
+								},
+								"locked": {
+									"minimum": 0,
+									"type": "integer"
+								},
+								"state": {
+									"enum": ["many"],
+									"type": "string"
+								},
+								"truncated": {
+									"enum": [true],
+									"type": "boolean"
+								},
+								"values": {
+									"items": {
+										"additionalProperties": false,
+										"properties": {
+											"count": {
+												"minimum": 1,
+												"type": "integer"
+											},
+											"value": { "type": "string" }
+										},
+										"required": ["value", "count"],
+										"type": "object"
+									},
+									"maxItems": 0,
+									"type": "array"
+								}
+							},
+							"required": [
+								"state",
+								"values",
+								"entries",
+								"locked",
+								"truncated",
+								"atLeast"
+							],
+							"type": "object"
+						}
+					] },
 					"type": "object"
 				},
 				"kind": { "type": "string" },
@@ -162099,7 +163205,35 @@ var PorticoCastContracts = (function(exports) {
 				"targets"
 			],
 			"type": "object"
-		},
+		}, {
+			"additionalProperties": false,
+			"properties": {
+				"kind": {
+					"enum": ["metadata-preview-preparing"],
+					"type": "string"
+				},
+				"queryId": {
+					"maxLength": 128,
+					"minLength": 1,
+					"type": "string"
+				},
+				"retryAfterMs": {
+					"enum": [1e3],
+					"type": "integer"
+				},
+				"state": {
+					"enum": ["preparing"],
+					"type": "string"
+				}
+			},
+			"required": [
+				"kind",
+				"state",
+				"queryId",
+				"retryAfterMs"
+			],
+			"type": "object"
+		}] },
 		"PostMetadataBulkRequest": {
 			"properties": {
 				"fields": {
@@ -200169,6 +201303,7 @@ var PorticoCastContracts = (function(exports) {
 		"browse_library_counts": "/v1/libraries/{id}/browse/counts",
 		"cancel_facet_query": "/v1/facet-queries/{id}",
 		"cancel_genre_query": "/v1/genre-queries/{id}",
+		"cancel_selection_action": "/v1/selection-actions/{operationId}",
 		"change_connectivity_policy": "/v1/admin/connectivity/policy",
 		"change_console_settings": "/v1/admin/console/settings",
 		"change_playback_session": "/v1/playback/sessions/{id}",
@@ -200305,6 +201440,8 @@ var PorticoCastContracts = (function(exports) {
 		"create_integration_app_password": "/v1/integrations/app-passwords",
 		"create_job": "/v1/jobs",
 		"create_queue": "/v1/queues",
+		"create_selection_action": "/v1/libraries/{id}/selection-actions",
+		"create_selection_action_preparation": "/v1/libraries/{id}/selection-actions/preparations",
 		"create_storage_source_rclone": "/v1/storage/sources/rclone",
 		"create_storage_source_rclone_config": "/v1/storage/sources/rclone/config",
 		"create_webhook": "/v1/admin/webhooks",
@@ -200334,6 +201471,7 @@ var PorticoCastContracts = (function(exports) {
 		"delete_library_reading_browse_query": "/v1/libraries/{id}/reading-browse-queries/{queryId}",
 		"delete_library_reading_facet_query": "/v1/libraries/{id}/reading-facet-queries/{queryId}",
 		"delete_me_removed_titles_id": "/v1/me/removed-titles/{id}",
+		"delete_metadata_bulk_preview_query": "/v1/metadata/bulk/preview-queries/{queryId}",
 		"delete_metadata_kind_id_art_role_upload_candidateId": "/v1/metadata/{kind}/{id}/art/{role}/upload/{candidateId}",
 		"delete_playlists_id": "/v1/playlists/{id}",
 		"delete_playlists_id_entries_entryId": "/v1/playlists/{id}/entries/{entryId}",
@@ -200344,6 +201482,7 @@ var PorticoCastContracts = (function(exports) {
 		"delete_saved_resources_id": "/v1/saved-resources/{id}",
 		"delete_saved_resources_id_shares": "/v1/saved-resources/{id}/shares",
 		"delete_search_history": "/v1/search/history",
+		"delete_selection_action_preparation": "/v1/libraries/{id}/selection-actions/preparations/{preparationId}",
 		"delete_sessions_current": "/v1/sessions/current",
 		"delete_storage_mounts_id": "/v1/storage/mounts/{id}",
 		"delete_storage_sources_webdav_id": "/v1/storage/sources/webdav/{id}",
@@ -200587,6 +201726,7 @@ var PorticoCastContracts = (function(exports) {
 		"get_media_linear_playbackId_generation_token_name": "/v1/media/linear/{playbackId}/{generation}/{token}/{name}",
 		"get_metadata_attention": "/v1/libraries/{id}/metadata/attention",
 		"get_metadata_attention_counts": "/v1/admin/metadata/attention/counts",
+		"get_metadata_bulk_preview_query": "/v1/metadata/bulk/preview-queries/{queryId}",
 		"get_metadata_kind_id": "/v1/metadata/{kind}/{id}",
 		"get_metadata_kind_id_art_role": "/v1/metadata/{kind}/{id}/art/{role}",
 		"get_metadata_kind_id_preview": "/v1/metadata/{kind}/{id}/preview",
@@ -200643,6 +201783,8 @@ var PorticoCastContracts = (function(exports) {
 		"get_search_genres": "/v1/search/genres",
 		"get_search_history": "/v1/search/history",
 		"get_seasons_id_episodes": "/v1/seasons/{id}/episodes",
+		"get_selection_action": "/v1/selection-actions/{operationId}",
+		"get_selection_action_preparation": "/v1/libraries/{id}/selection-actions/preparations/{preparationId}",
 		"get_server": "/v1/server",
 		"get_server_metadata_attention": "/v1/admin/metadata/attention",
 		"get_settings_configuration": "/v1/admin/settings/configuration",

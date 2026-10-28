@@ -292,6 +292,33 @@ export const routes = [
   },
   {
     "audience": "Clients",
+    "id": "cancel_selection_action",
+    "method": "DELETE",
+    "path": "/v1/selection-actions/{operationId}",
+    "summary": "Stop further command effects while preserving completed outcomes",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "stale_continuation",
+      "rate_limited",
+      "idempotency_key_reused",
+      "internal",
+      "timeout",
+      "database_busy",
+      "writer_capacity"
+    ],
+    "status": 200,
+    "admission": "default"
+  },
+  {
+    "audience": "Clients",
     "id": "change_connectivity_policy",
     "method": "PATCH",
     "path": "/v1/admin/connectivity/policy",
@@ -2098,6 +2125,26 @@ export const routes = [
       "itemIds",
       "ItemIds"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 0,
+        "default": 0,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "noDefault": true,
+        "description": "Absent or empty means no overall row limit; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      },
+      {
+        "name": "Limit",
+        "minimum": 0,
+        "default": 0,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "noDefault": true,
+        "description": "Absent or empty means no overall row limit; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      }
+    ],
     "errors": [
       "unauthorized",
       "not_permitted",
@@ -2224,6 +2271,26 @@ export const routes = [
       "PlayCommand",
       "itemIds",
       "ItemIds"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 0,
+        "default": 0,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "noDefault": true,
+        "description": "Absent or empty means no overall row limit; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      },
+      {
+        "name": "Limit",
+        "minimum": 0,
+        "default": 0,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "noDefault": true,
+        "description": "Absent or empty means no overall row limit; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      }
     ],
     "errors": [
       "unauthorized",
@@ -2352,6 +2419,26 @@ export const routes = [
       "itemIds",
       "ItemIds"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 0,
+        "default": 0,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "noDefault": true,
+        "description": "Absent or empty means no overall row limit; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      },
+      {
+        "name": "Limit",
+        "minimum": 0,
+        "default": 0,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "noDefault": true,
+        "description": "Absent or empty means no overall row limit; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      }
+    ],
     "errors": [
       "unauthorized",
       "not_permitted",
@@ -2478,6 +2565,26 @@ export const routes = [
       "PlayCommand",
       "itemIds",
       "ItemIds"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 0,
+        "default": 0,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "noDefault": true,
+        "description": "Absent or empty means no overall row limit; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      },
+      {
+        "name": "Limit",
+        "minimum": 0,
+        "default": 0,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "noDefault": true,
+        "description": "Absent or empty means no overall row limit; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      }
     ],
     "errors": [
       "unauthorized",
@@ -4130,6 +4237,26 @@ export const routes = [
       "itemIds",
       "ItemIds"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 0,
+        "default": 0,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "noDefault": true,
+        "description": "Absent or empty means no overall row limit; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      },
+      {
+        "name": "Limit",
+        "minimum": 0,
+        "default": 0,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "noDefault": true,
+        "description": "Absent or empty means no overall row limit; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      }
+    ],
     "errors": [
       "unauthorized",
       "not_permitted",
@@ -4256,6 +4383,26 @@ export const routes = [
       "PlayCommand",
       "itemIds",
       "ItemIds"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 0,
+        "default": 0,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "noDefault": true,
+        "description": "Absent or empty means no overall row limit; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      },
+      {
+        "name": "Limit",
+        "minimum": 0,
+        "default": 0,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "noDefault": true,
+        "description": "Absent or empty means no overall row limit; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      }
     ],
     "errors": [
       "unauthorized",
@@ -4384,6 +4531,26 @@ export const routes = [
       "itemIds",
       "ItemIds"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 0,
+        "default": 0,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "noDefault": true,
+        "description": "Absent or empty means no overall row limit; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      },
+      {
+        "name": "Limit",
+        "minimum": 0,
+        "default": 0,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "noDefault": true,
+        "description": "Absent or empty means no overall row limit; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      }
+    ],
     "errors": [
       "unauthorized",
       "not_permitted",
@@ -4510,6 +4677,26 @@ export const routes = [
       "PlayCommand",
       "itemIds",
       "ItemIds"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 0,
+        "default": 0,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "noDefault": true,
+        "description": "Absent or empty means no overall row limit; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      },
+      {
+        "name": "Limit",
+        "minimum": 0,
+        "default": 0,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "noDefault": true,
+        "description": "Absent or empty means no overall row limit; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      }
     ],
     "errors": [
       "unauthorized",
@@ -5146,6 +5333,24 @@ export const routes = [
       "itemIds",
       "ItemIds"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 0,
+        "default": 20,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "description": "Absent or empty means 20 rows; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      },
+      {
+        "name": "Limit",
+        "minimum": 0,
+        "default": 20,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "description": "Absent or empty means 20 rows; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      }
+    ],
     "errors": [
       "unauthorized",
       "not_permitted",
@@ -5272,6 +5477,24 @@ export const routes = [
       "PlayCommand",
       "itemIds",
       "ItemIds"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 0,
+        "default": 20,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "description": "Absent or empty means 20 rows; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      },
+      {
+        "name": "Limit",
+        "minimum": 0,
+        "default": 20,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "description": "Absent or empty means 20 rows; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      }
     ],
     "errors": [
       "unauthorized",
@@ -5400,6 +5623,24 @@ export const routes = [
       "itemIds",
       "ItemIds"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 0,
+        "default": 20,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "description": "Absent or empty means 20 rows; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      },
+      {
+        "name": "Limit",
+        "minimum": 0,
+        "default": 20,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "description": "Absent or empty means 20 rows; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      }
+    ],
     "errors": [
       "unauthorized",
       "not_permitted",
@@ -5526,6 +5767,24 @@ export const routes = [
       "PlayCommand",
       "itemIds",
       "ItemIds"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 0,
+        "default": 20,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "description": "Absent or empty means 20 rows; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      },
+      {
+        "name": "Limit",
+        "minimum": 0,
+        "default": 20,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "description": "Absent or empty means 20 rows; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      }
     ],
     "errors": [
       "unauthorized",
@@ -9734,6 +9993,26 @@ export const routes = [
       "itemIds",
       "ItemIds"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 0,
+        "default": 0,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "noDefault": true,
+        "description": "Absent or empty means no overall row limit; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      },
+      {
+        "name": "Limit",
+        "minimum": 0,
+        "default": 0,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "noDefault": true,
+        "description": "Absent or empty means no overall row limit; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      }
+    ],
     "errors": [
       "unauthorized",
       "not_permitted",
@@ -9860,6 +10139,26 @@ export const routes = [
       "PlayCommand",
       "itemIds",
       "ItemIds"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 0,
+        "default": 0,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "noDefault": true,
+        "description": "Absent or empty means no overall row limit; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      },
+      {
+        "name": "Limit",
+        "minimum": 0,
+        "default": 0,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "noDefault": true,
+        "description": "Absent or empty means no overall row limit; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      }
     ],
     "errors": [
       "unauthorized",
@@ -9988,6 +10287,26 @@ export const routes = [
       "itemIds",
       "ItemIds"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 0,
+        "default": 0,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "noDefault": true,
+        "description": "Absent or empty means no overall row limit; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      },
+      {
+        "name": "Limit",
+        "minimum": 0,
+        "default": 0,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "noDefault": true,
+        "description": "Absent or empty means no overall row limit; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      }
+    ],
     "errors": [
       "unauthorized",
       "not_permitted",
@@ -10114,6 +10433,26 @@ export const routes = [
       "PlayCommand",
       "itemIds",
       "ItemIds"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 0,
+        "default": 0,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "noDefault": true,
+        "description": "Absent or empty means no overall row limit; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      },
+      {
+        "name": "Limit",
+        "minimum": 0,
+        "default": 0,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "noDefault": true,
+        "description": "Absent or empty means no overall row limit; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      }
     ],
     "errors": [
       "unauthorized",
@@ -12917,6 +13256,26 @@ export const routes = [
       "itemIds",
       "ItemIds"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 0,
+        "default": 0,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "noDefault": true,
+        "description": "Absent or empty means no overall row limit; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      },
+      {
+        "name": "Limit",
+        "minimum": 0,
+        "default": 0,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "noDefault": true,
+        "description": "Absent or empty means no overall row limit; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      }
+    ],
     "errors": [
       "unauthorized",
       "not_permitted",
@@ -13043,6 +13402,26 @@ export const routes = [
       "PlayCommand",
       "itemIds",
       "ItemIds"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 0,
+        "default": 0,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "noDefault": true,
+        "description": "Absent or empty means no overall row limit; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      },
+      {
+        "name": "Limit",
+        "minimum": 0,
+        "default": 0,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "noDefault": true,
+        "description": "Absent or empty means no overall row limit; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      }
     ],
     "errors": [
       "unauthorized",
@@ -13171,6 +13550,26 @@ export const routes = [
       "itemIds",
       "ItemIds"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 0,
+        "default": 0,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "noDefault": true,
+        "description": "Absent or empty means no overall row limit; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      },
+      {
+        "name": "Limit",
+        "minimum": 0,
+        "default": 0,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "noDefault": true,
+        "description": "Absent or empty means no overall row limit; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      }
+    ],
     "errors": [
       "unauthorized",
       "not_permitted",
@@ -13297,6 +13696,26 @@ export const routes = [
       "PlayCommand",
       "itemIds",
       "ItemIds"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 0,
+        "default": 0,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "noDefault": true,
+        "description": "Absent or empty means no overall row limit; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      },
+      {
+        "name": "Limit",
+        "minimum": 0,
+        "default": 0,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "noDefault": true,
+        "description": "Absent or empty means no overall row limit; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      }
     ],
     "errors": [
       "unauthorized",
@@ -13425,6 +13844,24 @@ export const routes = [
       "itemIds",
       "ItemIds"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 0,
+        "default": 20,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "description": "Absent or empty means 20 rows; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      },
+      {
+        "name": "Limit",
+        "minimum": 0,
+        "default": 20,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "description": "Absent or empty means 20 rows; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      }
+    ],
     "errors": [
       "unauthorized",
       "not_permitted",
@@ -13551,6 +13988,24 @@ export const routes = [
       "PlayCommand",
       "itemIds",
       "ItemIds"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 0,
+        "default": 20,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "description": "Absent or empty means 20 rows; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      },
+      {
+        "name": "Limit",
+        "minimum": 0,
+        "default": 20,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "description": "Absent or empty means 20 rows; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      }
     ],
     "errors": [
       "unauthorized",
@@ -13679,6 +14134,24 @@ export const routes = [
       "itemIds",
       "ItemIds"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 0,
+        "default": 20,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "description": "Absent or empty means 20 rows; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      },
+      {
+        "name": "Limit",
+        "minimum": 0,
+        "default": 20,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "description": "Absent or empty means 20 rows; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      }
+    ],
     "errors": [
       "unauthorized",
       "not_permitted",
@@ -13805,6 +14278,24 @@ export const routes = [
       "PlayCommand",
       "itemIds",
       "ItemIds"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 0,
+        "default": 20,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "description": "Absent or empty means 20 rows; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      },
+      {
+        "name": "Limit",
+        "minimum": 0,
+        "default": 20,
+        "maximum": 5000000,
+        "emptyIsDefault": true,
+        "description": "Absent or empty means 20 rows; explicit zero emits no rows. Native reads remain bounded pages. Limit is a case-insensitive alias."
+      }
     ],
     "errors": [
       "unauthorized",
@@ -16011,6 +16502,79 @@ export const routes = [
   },
   {
     "audience": "Clients",
+    "id": "create_selection_action",
+    "method": "POST",
+    "path": "/v1/libraries/{id}/selection-actions",
+    "summary": "Confirm the exact preview and admit durable immutable target commands",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "selection_sized_async",
+    "bodyLimit": 131072,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "stale_continuation",
+      "rate_limited",
+      "idempotency_key_reused",
+      "internal",
+      "timeout",
+      "database_busy",
+      "writer_capacity"
+    ],
+    "status": 202,
+    "admission": "default"
+  },
+  {
+    "audience": "Clients",
+    "id": "create_selection_action_preparation",
+    "method": "POST",
+    "path": "/v1/libraries/{id}/selection-actions/preparations",
+    "summary": "Prepare an exact whole-view delete or download confirmation",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "selection_sized_async",
+    "bodyLimit": 131072,
+    "responseHeaders": [
+      {
+        "status": 202,
+        "name": "Cache-Control",
+        "description": "Private volatile preparation.",
+        "required": true
+      },
+      {
+        "status": 202,
+        "name": "Retry-After",
+        "description": "Minimum poll delay.",
+        "required": true
+      },
+      {
+        "status": 202,
+        "name": "Location",
+        "description": "Private preparation resource.",
+        "required": true
+      }
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "stale_continuation",
+      "rate_limited",
+      "idempotency_key_reused",
+      "internal",
+      "database_busy",
+      "writer_capacity"
+    ],
+    "status": 202,
+    "admission": "browsing"
+  },
+  {
+    "audience": "Clients",
     "id": "create_storage_source_rclone",
     "method": "POST",
     "path": "/v1/storage/sources/rclone",
@@ -16726,6 +17290,37 @@ export const routes = [
   },
   {
     "audience": "Clients",
+    "id": "delete_metadata_bulk_preview_query",
+    "method": "DELETE",
+    "path": "/v1/metadata/bulk/preview-queries/{queryId}",
+    "summary": "Release this caller's metadata preview demand",
+    "access": "admin_scope",
+    "adminScope": "metadata",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "noResponseBody": true,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_mismatch",
+      "stale_continuation",
+      "rate_limited",
+      "internal",
+      "timeout",
+      "unsupported_media_type",
+      "body_too_large",
+      "database_busy",
+      "writer_capacity"
+    ],
+    "status": 204,
+    "admission": "browsing"
+  },
+  {
+    "audience": "Clients",
     "id": "delete_metadata_kind_id_art_role_upload_candidateId",
     "method": "DELETE",
     "path": "/v1/metadata/{kind}/{id}/art/{role}/upload/{candidateId}",
@@ -17031,6 +17626,33 @@ export const routes = [
   },
   {
     "audience": "Clients",
+    "id": "delete_selection_action_preparation",
+    "method": "DELETE",
+    "path": "/v1/libraries/{id}/selection-actions/preparations/{preparationId}",
+    "summary": "Release this caller's unconfirmed action preparation",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "noResponseBody": true,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "stale_continuation",
+      "rate_limited",
+      "idempotency_key_reused",
+      "internal",
+      "database_busy",
+      "writer_capacity"
+    ],
+    "status": 204,
+    "admission": "browsing"
+  },
+  {
+    "audience": "Clients",
     "id": "delete_sessions_current",
     "method": "DELETE",
     "path": "/v1/sessions/current",
@@ -17307,6 +17929,15 @@ export const routes = [
       "account",
       "sort"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 25,
+        "maximum": 100,
+        "emptyIsDefault": true
+      }
+    ],
     "errors": [
       "unauthorized",
       "not_permitted",
@@ -17383,6 +18014,15 @@ export const routes = [
       "sort",
       "direction"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 25,
+        "maximum": 100,
+        "emptyIsDefault": true
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -17439,6 +18079,15 @@ export const routes = [
       "status",
       "sort",
       "direction"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 25,
+        "maximum": 100,
+        "emptyIsDefault": true
+      }
     ],
     "errors": [
       "invalid_request",
@@ -17992,6 +18641,19 @@ export const routes = [
     "lane": "default",
     "cost": "page_sized",
     "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 200,
+        "emptyIsDefault": true
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -18121,6 +18783,15 @@ export const routes = [
       "itemId",
       "reporter"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 100,
+        "emptyIsDefault": true
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -18175,6 +18846,15 @@ export const routes = [
       "prefix",
       "checkWritable"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 200,
+        "emptyIsDefault": true
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -18223,6 +18903,20 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 0,
+    "query": [
+      "libraryId",
+      "status",
+      "cursor",
+      "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 40
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -18247,6 +18941,18 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 40
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -18369,6 +19075,19 @@ export const routes = [
     "lane": "default",
     "cost": "page_sized",
     "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 200,
+        "emptyIsDefault": true
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -18392,6 +19111,21 @@ export const routes = [
     "lane": "default",
     "cost": "page_sized",
     "bodyLimit": 0,
+    "query": [
+      "libraryId",
+      "field",
+      "cursor",
+      "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 200,
+        "emptyIsDefault": true
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -18462,6 +19196,19 @@ export const routes = [
     "lane": "default",
     "cost": "page_sized",
     "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 200,
+        "emptyIsDefault": true
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -18489,6 +19236,15 @@ export const routes = [
       "channelId",
       "cursor",
       "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 200,
+        "emptyIsDefault": true
+      }
     ],
     "errors": [
       "invalid_request",
@@ -18518,6 +19274,16 @@ export const routes = [
       "cursor",
       "level",
       "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 100,
+        "maximum": 500,
+        "defaultBelowMinimum": true,
+        "emptyIsDefault": true
+      }
     ],
     "errors": [
       "invalid_request",
@@ -18695,6 +19461,15 @@ export const routes = [
       "timeZone",
       "until"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 50,
+        "maximum": 200,
+        "emptyIsDefault": true
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -18729,6 +19504,15 @@ export const routes = [
       "timeZone",
       "until"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 12,
+        "maximum": 100,
+        "emptyIsDefault": true
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -18762,6 +19546,15 @@ export const routes = [
       "topKind",
       "timeZone",
       "until"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 12,
+        "maximum": 100,
+        "emptyIsDefault": true
+      }
     ],
     "errors": [
       "invalid_request",
@@ -18844,6 +19637,15 @@ export const routes = [
       "limit",
       "cursor"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 50,
+        "maximum": 200,
+        "emptyIsDefault": true
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -18918,6 +19720,14 @@ export const routes = [
       "limit",
       "status"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 40
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -18988,6 +19798,14 @@ export const routes = [
       "libraryId",
       "cursor",
       "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 50,
+        "maximum": 100
+      }
     ],
     "errors": [
       "invalid_request",
@@ -19228,6 +20046,19 @@ export const routes = [
       "cursor",
       "limit"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 100,
+        "clamped": true,
+        "defaultBelowMinimum": true,
+        "defaultOnInvalid": true,
+        "emptyIsDefault": true,
+        "description": "Absent, empty, non-integer syntax and values below 1 use the default. Integer overflow saturates to the host integer bound before applying the default or upper clamp."
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -19321,6 +20152,19 @@ export const routes = [
       "cursor",
       "limit"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 100,
+        "clamped": true,
+        "defaultBelowMinimum": true,
+        "defaultOnInvalid": true,
+        "emptyIsDefault": true,
+        "description": "Absent, empty, non-integer syntax and values below 1 use the default. Integer overflow saturates to the host integer bound before applying the default or upper clamp."
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -19408,6 +20252,19 @@ export const routes = [
       "cursor",
       "limit"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 100,
+        "clamped": true,
+        "defaultBelowMinimum": true,
+        "defaultOnInvalid": true,
+        "emptyIsDefault": true,
+        "description": "Absent, empty, non-integer syntax and values below 1 use the default. Integer overflow saturates to the host integer bound before applying the default or upper clamp."
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -19434,6 +20291,19 @@ export const routes = [
     "query": [
       "cursor",
       "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 100,
+        "clamped": true,
+        "defaultBelowMinimum": true,
+        "defaultOnInvalid": true,
+        "emptyIsDefault": true,
+        "description": "Absent, empty, non-integer syntax and values below 1 use the default. Integer overflow saturates to the host integer bound before applying the default or upper clamp."
+      }
     ],
     "errors": [
       "invalid_request",
@@ -19462,6 +20332,19 @@ export const routes = [
       "cursor",
       "limit",
       "positionMs"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 100,
+        "clamped": true,
+        "defaultBelowMinimum": true,
+        "defaultOnInvalid": true,
+        "emptyIsDefault": true,
+        "description": "Absent, empty, non-integer syntax and values below 1 use the default. Integer overflow saturates to the host integer bound before applying the default or upper clamp."
+      }
     ],
     "errors": [
       "invalid_request",
@@ -19543,6 +20426,15 @@ export const routes = [
       "value",
       "query",
       "pivot"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 200,
+        "maximum": 200,
+        "clamped": true
+      }
     ],
     "errors": [
       "invalid_request",
@@ -19650,6 +20542,16 @@ export const routes = [
       "cursor",
       "limit"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 25,
+        "maximum": 100,
+        "defaultBelowMinimum": true,
+        "emptyIsDefault": true
+      }
+    ],
     "errors": [
       "unauthorized",
       "invalid_request",
@@ -19700,6 +20602,19 @@ export const routes = [
       "q",
       "cursor",
       "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 100,
+        "clamped": true,
+        "defaultBelowMinimum": true,
+        "defaultOnInvalid": true,
+        "emptyIsDefault": true,
+        "description": "Absent, empty, non-integer syntax and values below 1 use the default. Integer overflow saturates to the host integer bound before applying the default or upper clamp."
+      }
     ],
     "errors": [
       "invalid_request",
@@ -20355,6 +21270,16 @@ export const routes = [
       "cursor",
       "limit"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 0,
+        "default": 100,
+        "maximum": 100,
+        "emptyIsDefault": true,
+        "description": "Zero returns counts alone and requires an empty cursor."
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -20519,6 +21444,15 @@ export const routes = [
       "cursor",
       "limit"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 256,
+        "maximum": 256,
+        "emptyIsDefault": true
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -20551,6 +21485,15 @@ export const routes = [
       "state",
       "sort",
       "group"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 50,
+        "maximum": 50,
+        "emptyIsDefault": true
+      }
     ],
     "errors": [
       "invalid_request",
@@ -20607,6 +21550,14 @@ export const routes = [
       "sort",
       "cursor",
       "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 30,
+        "maximum": 50
+      }
     ],
     "errors": [
       "invalid_request",
@@ -20867,6 +21818,15 @@ export const routes = [
       "itemId",
       "reporter"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 100,
+        "emptyIsDefault": true
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -20980,6 +21940,15 @@ export const routes = [
       "start",
       "timezone"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 0,
+        "maximum": 50,
+        "required": true
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -21014,6 +21983,14 @@ export const routes = [
       "end",
       "cursor",
       "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 30,
+        "maximum": 50
+      }
     ],
     "errors": [
       "invalid_request",
@@ -21055,6 +22032,15 @@ export const routes = [
       "sourceId",
       "timezone"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 50,
+        "maximum": 50,
+        "description": "With direction, the default is 1 and an explicit limit must be 1."
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -21085,6 +22071,14 @@ export const routes = [
       "cursor",
       "limit"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 37,
+        "maximum": 50
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -21113,6 +22107,14 @@ export const routes = [
       "group",
       "cursor",
       "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 37,
+        "maximum": 50
+      }
     ],
     "errors": [
       "invalid_request",
@@ -21169,6 +22171,14 @@ export const routes = [
     "query": [
       "cursor",
       "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 30,
+        "maximum": 50
+      }
     ],
     "errors": [
       "invalid_request",
@@ -21292,6 +22302,16 @@ export const routes = [
     "query": [
       "limit"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 12,
+        "maximum": 60,
+        "clamped": true,
+        "emptyIsDefault": true
+      }
+    ],
     "errors": [
       "invalid_request",
       "invalid_cursor",
@@ -21348,6 +22368,16 @@ export const routes = [
       "anchorId",
       "group",
       "sourceId"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 12,
+        "maximum": 60,
+        "clamped": true,
+        "emptyIsDefault": true
+      }
     ],
     "errors": [
       "invalid_request",
@@ -21432,6 +22462,19 @@ export const routes = [
       "libraryId",
       "cursor",
       "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 100,
+        "clamped": true,
+        "defaultBelowMinimum": true,
+        "defaultOnInvalid": true,
+        "emptyIsDefault": true,
+        "description": "Absent, empty, non-integer syntax and values below 1 use the default. Integer overflow saturates to the host integer bound before applying the default or upper clamp."
+      }
     ],
     "errors": [
       "invalid_request",
@@ -21576,6 +22619,19 @@ export const routes = [
       "group",
       "limit"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 200,
+        "maximum": 200,
+        "defaultBelowMinimum": true,
+        "defaultAboveMaximum": true,
+        "defaultOnInvalid": true,
+        "emptyIsDefault": true,
+        "description": "Absent, empty, invalid syntax and out-of-range values use the 200-credit page; integer overflow saturates before normalization."
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -21627,6 +22683,15 @@ export const routes = [
     "query": [
       "cursor",
       "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 100,
+        "maximum": 200,
+        "emptyIsDefault": true
+      }
     ],
     "errors": [
       "invalid_request",
@@ -21837,7 +22902,8 @@ export const routes = [
         "minimum": 1,
         "default": 12,
         "maximum": 60,
-        "clamped": true
+        "clamped": true,
+        "emptyIsDefault": true
       }
     ],
     "errors": [
@@ -21867,6 +22933,15 @@ export const routes = [
       "cursor",
       "limit"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 37,
+        "maximum": 200,
+        "emptyIsDefault": true
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -21895,6 +22970,16 @@ export const routes = [
       "limit",
       "by",
       "cursor"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 24,
+        "maximum": 100,
+        "emptyIsDefault": true,
+        "clampMaximum": 24
+      }
     ],
     "errors": [
       "invalid_request",
@@ -22191,6 +23276,19 @@ export const routes = [
       "cursor",
       "limit"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 100,
+        "clamped": true,
+        "defaultBelowMinimum": true,
+        "defaultOnInvalid": true,
+        "emptyIsDefault": true,
+        "description": "Absent, empty, non-integer syntax and values below 1 use the default. Integer overflow saturates to the host integer bound before applying the default or upper clamp."
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -22217,6 +23315,19 @@ export const routes = [
     "query": [
       "cursor",
       "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 100,
+        "clamped": true,
+        "defaultBelowMinimum": true,
+        "defaultOnInvalid": true,
+        "emptyIsDefault": true,
+        "description": "Absent, empty, non-integer syntax and values below 1 use the default. Integer overflow saturates to the host integer bound before applying the default or upper clamp."
+      }
     ],
     "errors": [
       "invalid_request",
@@ -22248,6 +23359,19 @@ export const routes = [
       "q",
       "cursor",
       "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 100,
+        "clamped": true,
+        "defaultBelowMinimum": true,
+        "defaultOnInvalid": true,
+        "emptyIsDefault": true,
+        "description": "Absent, empty, non-integer syntax and values below 1 use the default. Integer overflow saturates to the host integer bound before applying the default or upper clamp."
+      }
     ],
     "errors": [
       "invalid_request",
@@ -22325,6 +23449,19 @@ export const routes = [
       "cursor",
       "limit"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 100,
+        "clamped": true,
+        "defaultBelowMinimum": true,
+        "defaultOnInvalid": true,
+        "emptyIsDefault": true,
+        "description": "Absent, empty, non-integer syntax and values below 1 use the default. Integer overflow saturates to the host integer bound before applying the default or upper clamp."
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -22359,6 +23496,19 @@ export const routes = [
       "limit",
       "start",
       "section"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 100,
+        "clamped": true,
+        "defaultBelowMinimum": true,
+        "defaultOnInvalid": true,
+        "emptyIsDefault": true,
+        "description": "Absent, empty, non-integer syntax and values below 1 use the default. Integer overflow saturates to the host integer bound before applying the default or upper clamp."
+      }
     ],
     "errors": [
       "invalid_request",
@@ -22407,6 +23557,19 @@ export const routes = [
     "query": [
       "cursor",
       "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 100,
+        "clamped": true,
+        "defaultBelowMinimum": true,
+        "defaultOnInvalid": true,
+        "emptyIsDefault": true,
+        "description": "Absent, empty, non-integer syntax and values below 1 use the default. Integer overflow saturates to the host integer bound before applying the default or upper clamp."
+      }
     ],
     "errors": [
       "invalid_request",
@@ -22463,6 +23626,19 @@ export const routes = [
       "seed",
       "resume",
       "startItem"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 100,
+        "clamped": true,
+        "defaultBelowMinimum": true,
+        "defaultOnInvalid": true,
+        "emptyIsDefault": true,
+        "description": "Absent, empty, non-integer syntax and values below 1 use the default. Integer overflow saturates to the host integer bound before applying the default or upper clamp."
+      }
     ],
     "errors": [
       "invalid_request",
@@ -22594,6 +23770,19 @@ export const routes = [
     "query": [
       "cursor",
       "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 100,
+        "clamped": true,
+        "defaultBelowMinimum": true,
+        "defaultOnInvalid": true,
+        "emptyIsDefault": true,
+        "description": "Absent, empty, non-integer syntax and values below 1 use the default. Integer overflow saturates to the host integer bound before applying the default or upper clamp."
+      }
     ],
     "errors": [
       "invalid_request",
@@ -22754,6 +23943,15 @@ export const routes = [
       "before",
       "at"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 200,
+        "maximum": 200,
+        "clamped": true
+      }
+    ],
     "responseHeaders": [
       {
         "status": 202,
@@ -22814,6 +24012,16 @@ export const routes = [
       "state",
       "cursor",
       "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 0,
+        "default": 40,
+        "maximum": 40,
+        "emptyIsDefault": true,
+        "description": "Zero selects the default page size."
+      }
     ],
     "errors": [
       "unauthorized",
@@ -23326,6 +24534,15 @@ export const routes = [
       "limit",
       "includeInProgress"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 25,
+        "maximum": 50,
+        "emptyIsDefault": true
+      }
+    ],
     "errors": [
       "unauthorized",
       "not_permitted",
@@ -23364,6 +24581,64 @@ export const routes = [
       "database_busy"
     ],
     "status": 200,
+    "admission": "browsing"
+  },
+  {
+    "audience": "Clients",
+    "id": "get_metadata_bulk_preview_query",
+    "method": "GET",
+    "path": "/v1/metadata/bulk/preview-queries/{queryId}",
+    "summary": "Read a metadata preview preparation",
+    "access": "admin_scope",
+    "adminScope": "metadata",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "responseHeaders": [
+      {
+        "status": 200,
+        "name": "Cache-Control",
+        "description": "Metadata previews are private and never cached by HTTP.",
+        "required": true
+      },
+      {
+        "status": 202,
+        "name": "Cache-Control",
+        "description": "Private preparing handles are never cached.",
+        "required": true
+      },
+      {
+        "status": 202,
+        "name": "Retry-After",
+        "description": "Minimum delay before polling again.",
+        "required": true
+      },
+      {
+        "status": 202,
+        "name": "Location",
+        "description": "This caller's metadata preview preparation.",
+        "required": true
+      }
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_mismatch",
+      "stale_continuation",
+      "rate_limited",
+      "internal",
+      "timeout",
+      "unsupported_media_type",
+      "body_too_large",
+      "database_busy"
+    ],
+    "status": 200,
+    "successStatuses": [
+      202
+    ],
     "admission": "browsing"
   },
   {
@@ -23583,6 +24858,15 @@ export const routes = [
       "cursor",
       "limit"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 40,
+        "emptyIsDefault": true
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -23633,6 +24917,15 @@ export const routes = [
       "state",
       "cursor",
       "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 100,
+        "emptyIsDefault": true
+      }
     ],
     "errors": [
       "invalid_request",
@@ -23685,6 +24978,14 @@ export const routes = [
       "limit",
       "q"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 25,
+        "maximum": 100
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -23712,6 +25013,14 @@ export const routes = [
       "role",
       "cursor",
       "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 100
+      }
     ],
     "errors": [
       "invalid_request",
@@ -23767,6 +25076,14 @@ export const routes = [
       "period",
       "libraryId",
       "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 100
+      }
     ],
     "errors": [
       "invalid_request",
@@ -23876,6 +25193,14 @@ export const routes = [
       "limit",
       "revision"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 100,
+        "maximum": 100
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -23902,6 +25227,15 @@ export const routes = [
     "query": [
       "cursor",
       "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 100,
+        "maximum": 100,
+        "emptyIsDefault": true
+      }
     ],
     "errors": [
       "invalid_request",
@@ -23960,6 +25294,14 @@ export const routes = [
       "direction",
       "filter"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 100
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -23988,6 +25330,14 @@ export const routes = [
     "query": [
       "cursor",
       "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 100
+      }
     ],
     "errors": [
       "invalid_request",
@@ -24191,6 +25541,15 @@ export const routes = [
       "cursor",
       "limit"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 50,
+        "maximum": 100,
+        "emptyIsDefault": true
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -24227,6 +25586,15 @@ export const routes = [
       "newspaperLimit",
       "row",
       "cursor"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 20,
+        "maximum": 100,
+        "description": "With row other than recent, the maximum is 20; otherwise the maximum is 100."
+      }
     ],
     "errors": [
       "invalid_request",
@@ -24285,6 +25653,15 @@ export const routes = [
       "cursor",
       "limit"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 50,
+        "maximum": 100,
+        "emptyIsDefault": true
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -24316,6 +25693,15 @@ export const routes = [
       "publicationType",
       "cursor",
       "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 24,
+        "maximum": 100,
+        "emptyIsDefault": true
+      }
     ],
     "errors": [
       "invalid_request",
@@ -24351,6 +25737,15 @@ export const routes = [
       "cursor",
       "limit"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 50,
+        "maximum": 100,
+        "emptyIsDefault": true
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -24381,6 +25776,15 @@ export const routes = [
       "cursor",
       "limit",
       "libraryId"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 20,
+        "maximum": 50,
+        "emptyIsDefault": true
+      }
     ],
     "errors": [
       "invalid_request",
@@ -24413,6 +25817,15 @@ export const routes = [
     "query": [
       "cursor",
       "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 50,
+        "maximum": 100,
+        "emptyIsDefault": true
+      }
     ],
     "errors": [
       "invalid_request",
@@ -24584,6 +25997,15 @@ export const routes = [
       "cursor",
       "limit"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 20,
+        "maximum": 50,
+        "emptyIsDefault": true
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -24652,6 +26074,16 @@ export const routes = [
       "cursor",
       "limit"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 0,
+        "default": 50,
+        "maximum": 100,
+        "emptyIsDefault": true,
+        "description": "Zero selects the default page size."
+      }
+    ],
     "errors": [
       "unauthorized",
       "not_permitted",
@@ -24686,6 +26118,14 @@ export const routes = [
       "shape",
       "limit",
       "cursor"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 100
+      }
     ],
     "errors": [
       "invalid_request",
@@ -24742,6 +26182,14 @@ export const routes = [
       "shape",
       "limit"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 100
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -24795,6 +26243,14 @@ export const routes = [
       "direction",
       "filter"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 100
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -24818,7 +26274,16 @@ export const routes = [
     "cost": "page_sized",
     "bodyLimit": 0,
     "query": [
-      "cursor"
+      "cursor",
+      "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 100
+      }
     ],
     "errors": [
       "invalid_request",
@@ -24847,6 +26312,15 @@ export const routes = [
     "query": [
       "after",
       "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 64,
+        "maximum": 128,
+        "emptyIsDefault": true
+      }
     ],
     "errors": [
       "unauthorized",
@@ -24877,6 +26351,14 @@ export const routes = [
       "limit",
       "cursor",
       "preview"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 50,
+        "maximum": 50
+      }
     ],
     "responseHeaders": [
       {
@@ -24959,6 +26441,19 @@ export const routes = [
       "limit",
       "playState"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 100,
+        "clamped": true,
+        "defaultBelowMinimum": true,
+        "defaultOnInvalid": true,
+        "emptyIsDefault": true,
+        "description": "Absent, empty, non-integer syntax and values below 1 use the default. Integer overflow saturates to the host integer bound before applying the default or upper clamp."
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -24969,6 +26464,86 @@ export const routes = [
     ],
     "status": 200,
     "http": true,
+    "admission": "browsing"
+  },
+  {
+    "audience": "Clients",
+    "id": "get_selection_action",
+    "method": "GET",
+    "path": "/v1/selection-actions/{operationId}",
+    "summary": "Read confirmed command progress",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "stale_continuation",
+      "rate_limited",
+      "idempotency_key_reused",
+      "internal",
+      "timeout",
+      "database_busy"
+    ],
+    "status": 200,
+    "admission": "browsing"
+  },
+  {
+    "audience": "Clients",
+    "id": "get_selection_action_preparation",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/selection-actions/preparations/{preparationId}",
+    "summary": "Read an exact volatile action preview",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "responseHeaders": [
+      {
+        "status": 202,
+        "name": "Cache-Control",
+        "description": "Private volatile preparation.",
+        "required": true
+      },
+      {
+        "status": 202,
+        "name": "Retry-After",
+        "description": "Minimum poll delay.",
+        "required": true
+      },
+      {
+        "status": 202,
+        "name": "Location",
+        "description": "Private preparation resource.",
+        "required": true
+      },
+      {
+        "status": 200,
+        "name": "Cache-Control",
+        "description": "Private action preview.",
+        "required": true
+      }
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "stale_continuation",
+      "rate_limited",
+      "idempotency_key_reused",
+      "internal",
+      "database_busy"
+    ],
+    "status": 200,
+    "successStatuses": [
+      202
+    ],
     "admission": "browsing"
   },
   {
@@ -25005,6 +26580,15 @@ export const routes = [
       "cursor",
       "limit",
       "includeInProgress"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 25,
+        "maximum": 50,
+        "emptyIsDefault": true
+      }
     ],
     "errors": [
       "unauthorized",
@@ -25083,6 +26667,19 @@ export const routes = [
       "limit",
       "playState"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 100,
+        "clamped": true,
+        "defaultBelowMinimum": true,
+        "defaultOnInvalid": true,
+        "emptyIsDefault": true,
+        "description": "Absent, empty, non-integer syntax and values below 1 use the default. Integer overflow saturates to the host integer bound before applying the default or upper clamp."
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -25129,6 +26726,19 @@ export const routes = [
     "lane": "default",
     "cost": "page_sized",
     "bodyLimit": 0,
+    "query": [
+      "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 12,
+        "maximum": 60,
+        "clamped": true,
+        "emptyIsDefault": true
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -25155,6 +26765,15 @@ export const routes = [
     "query": [
       "cursor",
       "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 37,
+        "maximum": 200,
+        "emptyIsDefault": true
+      }
     ],
     "errors": [
       "invalid_request",
@@ -25436,6 +27055,15 @@ export const routes = [
       "limit",
       "showHidden"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 200,
+        "maximum": 500,
+        "emptyIsDefault": true
+      }
+    ],
     "errors": [
       "unauthorized",
       "not_permitted",
@@ -25691,7 +27319,8 @@ export const routes = [
         "minimum": 1,
         "default": 12,
         "maximum": 60,
-        "clamped": true
+        "clamped": true,
+        "emptyIsDefault": true
       }
     ],
     "errors": [
@@ -26860,6 +28489,15 @@ export const routes = [
       "cursor",
       "limit"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 50,
+        "maximum": 100,
+        "emptyIsDefault": true
+      }
+    ],
     "errors": [
       "unauthorized",
       "not_permitted",
@@ -26890,6 +28528,15 @@ export const routes = [
     "query": [
       "cursor",
       "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 100,
+        "maximum": 100,
+        "emptyIsDefault": true
+      }
     ],
     "errors": [
       "unauthorized",
@@ -26922,6 +28569,15 @@ export const routes = [
       "cursor",
       "limit"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 16,
+        "maximum": 100,
+        "emptyIsDefault": true
+      }
+    ],
     "errors": [
       "unauthorized",
       "not_permitted",
@@ -26952,6 +28608,15 @@ export const routes = [
     "query": [
       "cursor",
       "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 50,
+        "maximum": 100,
+        "emptyIsDefault": true
+      }
     ],
     "errors": [
       "unauthorized",
@@ -26995,6 +28660,15 @@ export const routes = [
       "cursor",
       "limit"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 50,
+        "maximum": 100,
+        "emptyIsDefault": true
+      }
+    ],
     "errors": [
       "unauthorized",
       "not_permitted",
@@ -27028,6 +28702,15 @@ export const routes = [
       "cursor",
       "limit"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 50,
+        "maximum": 100,
+        "emptyIsDefault": true
+      }
+    ],
     "errors": [
       "unauthorized",
       "not_permitted",
@@ -27058,6 +28741,15 @@ export const routes = [
     "query": [
       "cursor",
       "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 100,
+        "maximum": 100,
+        "emptyIsDefault": true
+      }
     ],
     "errors": [
       "unauthorized",
@@ -27122,6 +28814,15 @@ export const routes = [
       "cursor",
       "limit"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 25,
+        "maximum": 100,
+        "emptyIsDefault": true
+      }
+    ],
     "errors": [
       "unauthorized",
       "not_permitted",
@@ -27150,6 +28851,16 @@ export const routes = [
       "limit",
       "cursor"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 0,
+        "default": 10,
+        "maximum": 200,
+        "emptyIsDefault": true,
+        "description": "Zero selects the default page size."
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -27174,6 +28885,15 @@ export const routes = [
     "query": [
       "cursor",
       "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 25,
+        "maximum": 100,
+        "emptyIsDefault": true
+      }
     ],
     "errors": [
       "unauthorized",
@@ -27203,7 +28923,22 @@ export const routes = [
       "profileId",
       "cursor",
       "limit",
-      "ids"
+      "ids",
+      "operationId",
+      "deviceId"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 50,
+        "maximum": 200,
+        "defaultBelowMinimum": true,
+        "defaultAboveMaximum": true,
+        "defaultOnInvalid": true,
+        "emptyIsDefault": true,
+        "description": "Invalid integer syntax and out-of-range values use the default; integer overflow saturates before normalization."
+      }
     ],
     "errors": [
       "invalid_request",
@@ -27262,6 +28997,15 @@ export const routes = [
       "cursor",
       "limit"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 20,
+        "maximum": 50,
+        "emptyIsDefault": true
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -27292,6 +29036,19 @@ export const routes = [
       "cursor",
       "limit",
       "scope"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 200,
+        "maximum": 500,
+        "defaultBelowMinimum": true,
+        "defaultAboveMaximum": true,
+        "defaultOnInvalid": true,
+        "emptyIsDefault": true,
+        "description": "Invalid integer syntax and out-of-range values use the default; integer overflow saturates before normalization."
+      }
     ],
     "errors": [
       "invalid_request",
@@ -27377,6 +29134,16 @@ export const routes = [
       "limit",
       "q"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 0,
+        "default": 50,
+        "maximum": 200,
+        "emptyIsDefault": true,
+        "description": "Zero selects the service default of 40."
+      }
+    ],
     "errors": [
       "unauthorized",
       "not_permitted",
@@ -27407,6 +29174,16 @@ export const routes = [
       "cursor",
       "limit",
       "q"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 0,
+        "default": 50,
+        "maximum": 200,
+        "emptyIsDefault": true,
+        "description": "Zero selects the service default of 40."
+      }
     ],
     "errors": [
       "unauthorized",
@@ -27470,6 +29247,15 @@ export const routes = [
       "cursor",
       "limit"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 50,
+        "maximum": 200,
+        "emptyIsDefault": true
+      }
+    ],
     "errors": [
       "unauthorized",
       "not_permitted",
@@ -27519,6 +29305,15 @@ export const routes = [
       "limit",
       "cursor"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 50,
+        "maximum": 200,
+        "emptyIsDefault": true
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -27544,6 +29339,15 @@ export const routes = [
     "query": [
       "cursor",
       "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 50,
+        "maximum": 100,
+        "emptyIsDefault": true
+      }
     ],
     "errors": [
       "not_found",
@@ -31504,13 +33308,39 @@ export const routes = [
     "id": "post_metadata_bulk_preview",
     "method": "POST",
     "path": "/v1/metadata/bulk/preview",
-    "summary": "Read shared and mixed metadata for an authorized selection",
+    "summary": "Prepare shared and mixed metadata for an authorized selection",
     "access": "admin_scope",
     "adminScope": "metadata",
     "requires": "library",
     "lane": "browsing",
     "cost": "page_sized",
     "bodyLimit": 524288,
+    "responseHeaders": [
+      {
+        "status": 200,
+        "name": "Cache-Control",
+        "description": "Metadata previews are private and never cached by HTTP.",
+        "required": true
+      },
+      {
+        "status": 202,
+        "name": "Cache-Control",
+        "description": "Private preparing handles are never cached.",
+        "required": true
+      },
+      {
+        "status": 202,
+        "name": "Retry-After",
+        "description": "Minimum delay before polling again.",
+        "required": true
+      },
+      {
+        "status": 202,
+        "name": "Location",
+        "description": "This caller's metadata preview preparation.",
+        "required": true
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -31521,10 +33351,15 @@ export const routes = [
       "rate_limited",
       "internal",
       "timeout",
+      "unsupported_media_type",
+      "body_too_large",
       "database_busy",
       "writer_capacity"
     ],
     "status": 200,
+    "successStatuses": [
+      202
+    ],
     "admission": "browsing"
   },
   {
@@ -35219,6 +37054,15 @@ export const routes = [
       "cursor",
       "limit"
     ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 50,
+        "maximum": 100,
+        "emptyIsDefault": true
+      }
+    ],
     "errors": [
       "unauthorized",
       "invalid_request",
@@ -35849,6 +37693,15 @@ export const routes = [
       "direction",
       "libraryIds",
       "record"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 40,
+        "clamped": true
+      }
     ],
     "errors": [
       "invalid_request",

@@ -262,6 +262,7 @@ type Command struct {
 type Page struct {
 	Items      []Preparation `json:"items"`
 	NextCursor string        `json:"nextCursor"`
+	Closed     *bool         `json:"closed,omitempty"` // only operation/device-scoped actual transfer inventory
 }
 
 // stamp renders a stored millisecond instant the way every other Portico API

@@ -5,7 +5,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"strconv"
 
 	"portico.local/server/internal/dbwork"
@@ -136,13 +135,6 @@ func (s *Service) bulkSelection(p identity.Principal, v Viewer, in JobRequest) (
 			}
 			if e = selectionBatchSearchQualified(bound.Query); e != nil {
 				return "", nil, e
-			}
-			if in.Command == "playlist-add" {
-				for _, sort := range bound.Sorts {
-					if sort.Field == "groupOrder" {
-						return "", nil, fmt.Errorf("%w: %w", ErrSelectionBatchUnsupported, browseIssue("sort", "playlist group order needs bounded ordering support"))
-					}
-				}
 			}
 			if s.ReadPreparations() == nil {
 				return "", nil, ErrSelectionBatchCapacity

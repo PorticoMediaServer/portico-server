@@ -67,7 +67,7 @@ func registerScanLoop(registry *apikit.Registry, d Dependencies) {
 		_, err = d.libraryAdministrationRead(r, r.PathValue("id"))
 		return out, err
 	})
-	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, Admission: laneBrowsing, ID: "get_scan_issues", Method: "GET", Path: "/v1/admin/libraries/{id}/scans/{job}/issues", Summary: "List files and folders skipped during a scan", Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, Query: []string{"after", "limit"}, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (ingestion.ScanIssues, error) {
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, Admission: laneBrowsing, ID: "get_scan_issues", Method: "GET", Path: "/v1/admin/libraries/{id}/scans/{job}/issues", Summary: "List files and folders skipped during a scan", Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, Query: []string{"after", "limit"}, QueryIntegers: emptyLimitQuery(64, 128), Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (ingestion.ScanIssues, error) {
 		if _, err := d.libraryAdministrationRead(r, r.PathValue("id")); err != nil {
 			return ingestion.ScanIssues{}, err
 		}

@@ -12,8 +12,23 @@ func (d Dependencies) httpHandle(mux *http.ServeMux, pattern string, handler htt
 }
 func (d Dependencies) httpHandler(mux *http.ServeMux, pattern string, handler http.Handler) {
 	handler = d.meteredMedia(pattern, handler)
+	mountPattern := pattern
+	if pattern == "GET /v1/metadata/{kind}/{id}/preview" {
+		// A literal final /preview crosses the bulk preview-query route's fixed
+		// prefix. Dispatch this existing contract through an all-wildcard tail;
+		// the canonical bulk path is then strictly more specific to ServeMux.
+		mountPattern = "GET /v1/metadata/{kind}/{id}/{metadataAction}"
+		preview := handler
+		handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.PathValue("metadataAction") != "preview" {
+				http.NotFound(w, r)
+				return
+			}
+			preview.ServeHTTP(w, r)
+		})
+	}
 	if d.httpContractsPrivate {
-		mux.Handle(pattern, handler)
+		mux.Handle(mountPattern, handler)
 		return
 	}
 	registry := d.registry
@@ -24,7 +39,7 @@ func (d Dependencies) httpHandler(mux *http.ServeMux, pattern string, handler ht
 			panic(err)
 		}
 	}
-	if err := registry.MountHTTP(mux, pattern, handler); err != nil {
+	if err := registry.MountHTTPAt(mux, pattern, mountPattern, handler); err != nil {
 		panic(err)
 	}
 }

@@ -62,7 +62,7 @@ func (s *Service) conversionPolicyReason(ctx context.Context, tx *sql.Tx, qualit
 		return ""
 	}
 	// An existing finished file needs no server conversion permission.
-	if versions, err := preparedmedia.VersionsTx(ctx, tx, found.Item); err == nil && selectableVersionForSource(versions, recipe, found.Asset) != nil {
+	if versions, err := selectionDownloadVersions(ctx, tx, found, recipe); err == nil && selectableVersionForSource(versions, recipe, found.Asset) != nil {
 		return ""
 	}
 	var enabled bool

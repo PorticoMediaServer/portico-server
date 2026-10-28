@@ -74,9 +74,17 @@ type IntegrationSessions struct {
 }
 
 func integrationReadMetadata(id, path, summary string, query ...string) apikit.Metadata {
+	defaultLimit := 50
+	switch id {
+	case "integration_libraries", "integration_users":
+		defaultLimit = 100
+	case "integration_media_info":
+		defaultLimit = 16
+	}
+
 	return apikit.Metadata{ID: id, Method: "GET", Path: path, Summary: summary,
 		Audience: apikit.Integrations, Access: apikit.Device, Requires: apikit.ScopeRead,
-		Admission: laneBrowsing, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, Query: query,
+		Admission: laneBrowsing, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, Query: query, QueryIntegers: emptyLimitQuery(defaultLimit, catalog.IntegrationReadMaximumLimit),
 		Errors: []string{"unauthorized", "not_permitted", "insufficient_scope", "session_required", "invalid_request", "invalid_cursor", "cursor_expired", "stale_continuation", "not_found", "internal"}}
 }
 

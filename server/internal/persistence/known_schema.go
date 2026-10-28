@@ -351,6 +351,7 @@ index direct_profile_pin_attempts_lineage
 index direct_profile_trust_account
 index direct_profiles_account
 index direct_profiles_broadcast
+index download_action_claims_preparation
 index download_grants_expiry
 index download_grants_item
 index download_grants_preparation
@@ -667,6 +668,7 @@ index playlist_receipts_expiry
 index playlist_shares_listen_actor
 index ported_artwork_jobs_entity
 index portico_admitted_signer
+index prepared_media_download_pinned
 index prepared_media_item_jobs
 index prepared_media_item_versions
 index prepared_media_object_refs
@@ -768,6 +770,10 @@ index segment_files_pending_by_library
 index segment_files_show
 index segment_files_work
 index segment_shows_dirty
+index selection_action_files_target
+index selection_action_groups_account
+index selection_action_history_account
+index selection_action_history_expiry
 index show_people_credits_order
 index show_people_credits_person
 index social_cast_controllers_target_id_fk
@@ -1137,6 +1143,8 @@ table direct_memberships
 table direct_profile_pin_attempts
 table direct_profile_trust
 table direct_profiles
+table download_action_claims
+table download_action_transfers
 table download_grants
 table download_preparation_authority
 table download_preparations
@@ -1667,6 +1675,10 @@ table segment_catchup
 table segment_files
 table segment_pending_activity
 table segment_shows
+table selection_action_files
+table selection_action_groups
+table selection_action_history
+table selection_action_targets
 table server_configuration_pending
 table server_configuration_state
 table server_log_retention

@@ -120,7 +120,7 @@ func registerCredentialRoutes(registry *apikit.Registry, d Dependencies) error {
 
 	// ---- the owner's API keys
 	err = apikit.Register(registry, apikit.Route[struct{}, access.CredentialPage]{Metadata: apikit.Metadata{Audience: apikit.Integrations, Admission: laneAdmin, ID: "list_api_keys", Method: "GET", Path: "/v1/admin/api-keys", Summary: "List this server's API keys",
-		Access: apikit.Owner, Requires: apikit.ScopeSession, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Query: []string{"cursor", "limit"}, Errors: listErrors,
+		Access: apikit.Owner, Requires: apikit.ScopeSession, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Query: []string{"cursor", "limit"}, QueryIntegers: emptyLimitQuery(25, 100), Errors: listErrors,
 	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (access.CredentialPage, error) {
 		s, err := store()
 		if err != nil {
@@ -173,7 +173,7 @@ func registerCredentialRoutes(registry *apikit.Registry, d Dependencies) error {
 
 	// ---- a member's own tokens
 	err = apikit.Register(registry, apikit.Route[struct{}, access.CredentialPage]{Metadata: apikit.Metadata{Audience: apikit.Integrations, Admission: laneDefault, ID: "list_access_tokens", Method: "GET", Path: "/v1/me/access-tokens", Summary: "List your personal access tokens",
-		Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Query: []string{"cursor", "limit"}, Errors: listErrors,
+		Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Query: []string{"cursor", "limit"}, QueryIntegers: emptyLimitQuery(25, 100), Errors: listErrors,
 	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (access.CredentialPage, error) {
 		s, err := store()
 		if err != nil {

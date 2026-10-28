@@ -46,6 +46,8 @@ type readerScope struct {
 	pressure                 chan struct{} // owner survives reopening readers for out-of-gate copying
 	drained                  chan struct{}
 	waiting                  int
+	waitingForeground        int
+	waitingBackground        int
 	waits                    uint64
 	waitNanos                int64
 	maxSnapshot, maxImplicit int64
@@ -58,6 +60,9 @@ type readerScope struct {
 // pause before it is refused with ErrReadPressure. A pause normally ends within
 // CheckpointReaderDrainDeadline.
 const ReaderPressureWait = time.Second
+
+const readerForegroundWaiterLimit = 24
+const readerBackgroundWaiterLimit = 2
 
 // ErrReadPressure is a new read refused while a WAL reset paused reader
 // admission for longer than ReaderPressureWait. Nothing was read; the same
@@ -140,6 +145,10 @@ func (s *readerScope) admit(ctx context.Context, snapshot bool) (*readerLease, e
 	s.mu.Lock()
 	var waited time.Time
 	class := ClassFrom(ctx, ClassInteractive)
+	waitingClass, waitingLimit := &s.waitingForeground, readerForegroundWaiterLimit
+	if class.Background() {
+		waitingClass, waitingLimit = &s.waitingBackground, readerBackgroundWaiterLimit
+	}
 	priority := class.Priority() < ClassMaintenance.Priority()
 	if priority {
 		coldReadDemand.Add(1)
@@ -156,9 +165,15 @@ func (s *readerScope) admit(ctx context.Context, snapshot bool) (*readerLease, e
 	var refuse <-chan time.Time
 	for s.resume != nil && class != ClassSecurityFence {
 		if waited.IsZero() {
+			if *waitingClass >= waitingLimit {
+				s.refused++
+				s.mu.Unlock()
+				return nil, ErrReadPressure
+			}
 			waited = time.Now()
 			s.waits++
 			s.waiting++
+			(*waitingClass)++
 			timer := time.NewTimer(ReaderPressureWait)
 			defer timer.Stop()
 			refuse = timer.C
@@ -169,6 +184,7 @@ func (s *readerScope) admit(ctx context.Context, snapshot bool) (*readerLease, e
 		case <-ctx.Done():
 			s.mu.Lock()
 			s.waiting--
+			(*waitingClass)--
 			s.waitNanos += int64(time.Since(waited))
 			s.mu.Unlock()
 			return nil, ctx.Err()
@@ -177,6 +193,7 @@ func (s *readerScope) admit(ctx context.Context, snapshot bool) (*readerLease, e
 			// gap; answer with retry guidance rather than hold the request.
 			s.mu.Lock()
 			s.waiting--
+			(*waitingClass)--
 			s.waitNanos += int64(time.Since(waited))
 			s.refused++
 			s.mu.Unlock()
@@ -187,6 +204,7 @@ func (s *readerScope) admit(ctx context.Context, snapshot bool) (*readerLease, e
 	}
 	if !waited.IsZero() {
 		s.waiting--
+		(*waitingClass)--
 		s.waitNanos += int64(time.Since(waited))
 	}
 	if err := ctx.Err(); err != nil {

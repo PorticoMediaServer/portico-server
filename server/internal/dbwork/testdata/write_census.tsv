@@ -55,6 +55,7 @@ internal/catalog/entity_adoption_mutations.go	(*Service).MutationAdapter	WithWri
 internal/catalog/episode_repository.go	(*Service).AssignEpisodes	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/catalog/episodic_reparse.go	(*Service).ReparseEpisodicIssues	ExecWrite	ClassMaintenance	-
 internal/catalog/episodic_reparse.go	(*Service).ReparseEpisodicIssues	WithWriteTx	ClassMaintenance	-
+internal/catalog/facet_runtime.go	(*FacetRuntime).writeBase	WithWriteTxContext	ClassBackgroundMedia	-
 internal/catalog/inventory.go	(*Service).CommitInventoryAnalysis	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	audioFilePublicationPlan
 internal/catalog/inventory.go	(*Service).CommitInventoryDiscRoot	Begin	ClassBackgroundMedia	-
 internal/catalog/inventory.go	(*Service).CommitInventoryNaming	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
@@ -141,6 +142,8 @@ internal/downloads/receipts.go	(*Service).Revalidate	Begin	ClassForegroundTransf
 internal/downloads/receipts.go	(*Service).Revoke	Begin	ClassForegroundTransfer	-
 internal/downloads/requests.go	(*Service).SubmitContainer	WithWriteTx	ClassForegroundTransfer	-
 internal/downloads/requests.go	(*Service).advanceRequest	WithWriteTx	ClassBackgroundMedia	-
+internal/downloads/selection_action_transfers.go	(*Service).cleanupSelectionActionTransfers	WithWriteTx	ClassMaintenance	-
+internal/downloads/selection_actions.go	(*Service).ApplySelectionDownload	Begin	ClassBackgroundMedia	-
 internal/downloads/service.go	(*Service).ApplySettings	Begin	ClassForegroundTransfer	-
 internal/downloads/worker.go	(*Service).fail	Begin	ClassBackgroundMedia	-
 internal/downloads/worker.go	(*Service).prepare	Begin	ClassForegroundTransfer	-
@@ -625,6 +628,7 @@ internal/remotesources/source_cache.go	(*Service).reconcileSourceCachePage	ExecW
 internal/remotesources/source_cache.go	(*rangeCache).commit	ExecWrite	ClassBackgroundMedia	-
 internal/scanevents/activity_progress.go	(*Publisher).tickTaskProgress	WithWriteTx	ClassBackgroundMedia	-
 internal/scanevents/scanevents.go	(*Publisher).writeEvents	WithWriteTx	ClassBackgroundMedia	-
+internal/selectionactions/journal.go	(*Service).write	WithWriteTx	ClassBackgroundMedia	-
 internal/servicelog/clientlogs.go	(*ClientLogStore).Delete	ExecWrite	ClassInteractive	-
 internal/servicelog/clientlogs.go	(*ClientLogStore).Prune	WithWriteTx	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/servicelog/clientlogs.go	(*ClientLogStore).Store	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
@@ -646,6 +650,7 @@ plan	internal/access/invitations.go	(*Store).Accept	invitationAcceptPlan
 plan	internal/access/invitations.go	(*Store).AcceptPortico	invitationAcceptPlan
 plan	internal/access/members.go	(*Store).SetMemberProfilePicture	dbwork.WritePlan{Name: "member-profile-picture", Rows: 64, Pages: 1024, VMOps: 100000, Why: "The fixed renditions, profile revision and removal of superseded personal images publish atomically."}
 plan	internal/administration/library_settings.go	(*Service).SaveLibrarySettings	librarySettingsPlan
+plan	internal/administration/selection_action_delete.go	(*Service).ApplySelectionDelete	plan
 plan	internal/backup/holds.go	(*Service).advanceHold	dbwork.WritePlan{Name: dbwork.BackupHoldPhasePlanName, Rows: 1, Pages: 4, VMOps: 250_000, Why: "one singleton state update; no indexed state column, foreign-key action or trigger"}
 plan	internal/catalog/admin.go	(*Service).OrderLibraries	libraryOrderPlan
 plan	internal/catalog/entity_merge_mutations.go	MergeTitlesStepTx	entityPinDrainPlan
