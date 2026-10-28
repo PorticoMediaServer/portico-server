@@ -4,7 +4,6 @@ import {PlaybackService, type PageVisibility, type PlaybackSnapshot} from '../sr
 import {toPlaybackSession} from '../src/playback-v1/legacy-bridge.ts';
 import {parseSession} from '../src/playback-v1/types.ts';
 
-const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
 const api = {createPlayback: async () => ({id: 's1', generation: 1, streamUrl: '/v1/media/g', mode: 'direct' as const, duration: 120, resumeSeconds: 0}), stopPlayback: async () => {}, progressPlayback: async () => {}};
 function page(hidden: boolean) {
   const listeners = new Set<() => void>();
@@ -18,33 +17,37 @@ function page(hidden: boolean) {
 }
 
 // O4, 24 Sep: browsers defer loading media in a hidden page, so a start there can't become ready.
-test('a start in a hidden page waits for the page instead of failing, then gets a full window', async () => {
+test('a start in a hidden page waits for the page instead of failing, then gets a full window', async t => {
+  t.mock.timers.enable({apis: ['setTimeout', 'Date']});
   const visibility = page(true);
   const s = new PlaybackService(api, () => 'k', {startupTimeoutMs: 15, pageVisibility: visibility});
   await s.play('movie', 0);
-  await wait(40);
+  t.mock.timers.tick(40);
   assert.notEqual(s.getSnapshot().phase, 'error', 'no failure while hidden');
   visibility.show();
-  await wait(5);
+  t.mock.timers.tick(14);
   assert.notEqual(s.getSnapshot().phase, 'error', 'shown: a fresh window starts, not an immediate failure');
-  await wait(30);
+  t.mock.timers.tick(1);
   assert.equal(s.getSnapshot().phase, 'error', 'still not ready a full window after being shown');
   s.leave();
 });
 
-test('a visible page keeps the startup window as before; becoming ready clears a pending wait', async () => {
+test('a visible page keeps the startup window as before; becoming ready clears a pending wait', async t => {
+  t.mock.timers.enable({apis: ['setTimeout', 'Date']});
   const visible = new PlaybackService(api, () => 'k', {startupTimeoutMs: 15, pageVisibility: page(false)});
   await visible.play('movie', 0);
-  await wait(30);
+  t.mock.timers.tick(14);
+  assert.equal(visible.getSnapshot().phase, 'starting');
+  t.mock.timers.tick(1);
   assert.equal(visible.getSnapshot().phase, 'error');
   visible.leave();
   const visibility = page(true);
   const s = new PlaybackService(api, () => 'k', {startupTimeoutMs: 15, pageVisibility: visibility});
   await s.play('movie', 0);
-  await wait(25);
+  t.mock.timers.tick(25);
   s.ready(s.getSnapshot().intentId);
   visibility.show();
-  await wait(30);
+  t.mock.timers.tick(30);
   assert.notEqual(s.getSnapshot().phase, 'error');
   s.leave();
 });

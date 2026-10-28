@@ -5,7 +5,7 @@ import {spawnSync} from 'node:child_process';
 function tests(directory) {
   return readdirSync(directory, {withFileTypes: true}).sort((a, b) => a.name.localeCompare(b.name)).flatMap(entry => {
     const path = join(directory, entry.name);
-    return entry.isDirectory() ? tests(path) : /\.test\.tsx?$/.test(entry.name) ? [path] : [];
+    return entry.isDirectory() ? tests(path) : /\.test\.(?:tsx?|[cm]?js)$/.test(entry.name) ? [path] : [];
   });
 }
 

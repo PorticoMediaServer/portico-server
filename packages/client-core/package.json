@@ -11,7 +11,7 @@
     "./home-selection": "./src/home-selection/index.ts"
   },
   "scripts": {
-    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "test": "node scripts/run-tests.mjs",
     "lint:routes": "node scripts/check-generated-routes.mjs"
   }
 }

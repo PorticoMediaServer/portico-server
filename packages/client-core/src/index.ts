@@ -1,6 +1,7 @@
 import {linkAbortSignals, throwIfAborted} from './abort-lifetime.ts';
 export {linkAbortSignals, throwIfAborted} from './abort-lifetime.ts';
 export * from './reading-mark-all.ts';
+export {contentEntrySubject} from './presentation/content-entry-subject.ts';
 export * from './reading-reread.ts';
 export * from './reading-indexed-search.ts';
 import type {MusicTechnicalFacts} from './music-facts.ts';
