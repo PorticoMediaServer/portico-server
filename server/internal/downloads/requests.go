@@ -5,6 +5,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"math"
+	"regexp"
+	"strconv"
+
 	"portico.local/server/internal/playback"
 
 	"portico.local/server/internal/dbwork"
@@ -582,31 +586,67 @@ type RequestSummary struct {
 	CreatedAt string          `json:"createdAt"`
 }
 
+// activeRequestIDs selects the requests with a member still queued, running or
+// paused. It starts from the work actually outstanding (an index on the
+// preparation's own state), so its cost follows that work, never the size of
+// the containers a profile has asked for over time.
+const activeRequestIDs = `SELECT m.request_id FROM download_preparations d JOIN download_request_items m ON m.item_id=d.item_id AND m.preparation_id=d.id WHERE d.state IN('queued','running','paused')`
+
+// RequestPage is one page of a device's whole-container requests.
+type RequestPage struct {
+	Requests   []RequestSummary `json:"requests"`
+	NextCursor string           `json:"nextCursor,omitempty"`
+}
+
+// MaxRequestPage bounds one page of a device's requests.
+const MaxRequestPage = 50
+
+var requestCursor = regexp.MustCompile(`^([0-9]{1,19})\.([A-Za-z0-9_-]{1,160})$`)
+
 // Requests lists the viewer's whole-container requests made from one device,
-// newest first: every one still at work, and those that finished in the last
-// day (their last members may not have reached the device yet).
-func (s *Service) Requests(ctx context.Context, p identity.Principal, device string) ([]RequestSummary, error) {
-	out := []RequestSummary{}
-	if !validID.MatchString(device) {
-		return out, ErrInput
+// newest first, a page at a time: every one still at work (capturing, admitting,
+// or with a member not yet prepared, however old), and those that finished in
+// the last day (their last members may not have reached the device yet). The
+// cursor is the last request read, so a page that hides a request whose target
+// has gone still continues after it.
+func (s *Service) Requests(ctx context.Context, p identity.Principal, device, cursor string, limit int) (RequestPage, error) {
+	page := RequestPage{Requests: []RequestSummary{}}
+	out := page.Requests
+	if !validID.MatchString(device) || limit < 1 || limit > MaxRequestPage {
+		return page, ErrInput
+	}
+	afterCreated, afterID := int64(math.MaxInt64), ""
+	if cursor != "" {
+		m := requestCursor.FindStringSubmatch(cursor)
+		if m == nil {
+			return page, ErrInput
+		}
+		n, e := strconv.ParseInt(m[1], 10, 64)
+		if e != nil {
+			return page, ErrInput
+		}
+		afterCreated, afterID = n, m[2]
 	}
 	snap, e := dbwork.BeginSnapshot(ctx, s.db)
 	if e != nil {
-		return out, e
+		return page, e
 	}
 	defer snap.Rollback()
 	tx := snap.Tx()
 	// The same check a new request passes: the device is one of this session's.
 	visible, bound, e := s.requestAccess(ctx, tx, p, device)
 	if e != nil {
-		return out, e
+		return page, e
 	}
 	recent := s.millis() - int64(24*60*60*1000)
-	rows, e := tx.QueryContext(ctx, `SELECT r.id,r.state,r.target_kind,r.target_id,r.quality,r.created_ms,
- (r.state='complete' AND EXISTS(SELECT 1 FROM download_request_items m JOIN download_preparations d ON d.id=m.preparation_id WHERE m.request_id=r.id AND d.state IN('queued','running','paused')))
- FROM download_requests r WHERE r.profile_key=? AND r.device_id=? AND (r.state IN('capturing','admitting') OR r.updated_ms>?) ORDER BY r.created_ms DESC,r.id DESC LIMIT 20`, operations.ViewerKey(p), device, recent)
+	key := operations.ViewerKey(p)
+	rows, e := tx.QueryContext(ctx, `WITH active(id) AS MATERIALIZED (`+activeRequestIDs+` AND d.profile_key=?)
+ SELECT r.id,r.state,r.target_kind,r.target_id,r.quality,r.created_ms,(r.state='complete' AND r.id IN(SELECT id FROM active))
+ FROM download_requests r INDEXED BY download_requests_viewer WHERE r.profile_key=? AND r.device_id=? AND (r.created_ms<? OR (r.created_ms=? AND r.id<?))
+ AND (r.state IN('capturing','admitting') OR r.updated_ms>? OR r.id IN(SELECT id FROM active))
+ ORDER BY r.created_ms DESC,r.id DESC LIMIT ?`, key, key, device, afterCreated, afterCreated, afterID, recent, limit+1)
 	if e != nil {
-		return out, e
+		return page, e
 	}
 	type found struct {
 		RequestSummary
@@ -619,14 +659,19 @@ func (s *Service) Requests(ctx context.Context, p identity.Principal, device str
 		var f found
 		if e = rows.Scan(&f.RequestID, &f.State, &f.Target.Kind, &f.target, &f.Quality, &f.created, &f.preparing); e != nil {
 			rows.Close()
-			return out, e
+			return page, e
 		}
 		list = append(list, f)
 	}
 	e = rows.Err()
 	rows.Close()
 	if e != nil {
-		return out, e
+		return page, e
+	}
+	if len(list) > limit {
+		list = list[:limit]
+		last := list[limit-1]
+		page.NextCursor = strconv.FormatInt(last.created, 10) + "." + last.RequestID
 	}
 	for _, f := range list {
 		// A container that has since been removed is not listed: there is
@@ -636,7 +681,7 @@ func (s *Service) Requests(ctx context.Context, p identity.Principal, device str
 			continue
 		}
 		if err != nil {
-			return out, err
+			return page, err
 		}
 		f.Target.ID, f.CreatedAt = public, stamp(f.created)
 		// A container none of whose members this viewer may see today is not
@@ -645,7 +690,7 @@ func (s *Service) Requests(ctx context.Context, p identity.Principal, device str
 		members, values := requestSelection(f.Target)
 		var anyVisible bool
 		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(`+members+` AND (`+visible+`))`, append(values, bound...)...).Scan(&anyVisible); err != nil {
-			return out, err
+			return page, err
 		}
 		if !anyVisible {
 			continue
@@ -658,17 +703,20 @@ func (s *Service) Requests(ctx context.Context, p identity.Principal, device str
 			query = `SELECT name FROM catalog_playlists WHERE id=?`
 		}
 		if err = tx.QueryRowContext(ctx, query, f.target).Scan(&f.Title); err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return out, err
+			return page, err
 		}
 		out = append(out, f.RequestSummary)
 	}
-	return out, snap.Commit()
+	page.Requests = out
+	return page, snap.Commit()
 }
 
 // Counts and members are filtered by today's visibility, not a stored unrestricted total.
 func (s *Service) ContainerRequest(ctx context.Context, p identity.Principal, id, cursor string, limit int) (RequestView, error) {
 	out := RequestView{RequestID: id, Items: []RequestMember{}}
-	if !validID.MatchString(id) || limit < 1 || limit > 100 {
+	// A limit of 0 reads the counts alone: a poll that only follows progress
+	// reads no member page and looks up no preparation.
+	if !validID.MatchString(id) || limit < 0 || limit > 100 || limit == 0 && cursor != "" {
 		return out, ErrInput
 	}
 	after := 0
@@ -745,6 +793,12 @@ func (s *Service) ContainerRequest(ctx context.Context, p identity.Principal, id
 	if e != nil {
 		return out, e
 	}
+	if limit == 0 {
+		if out.State == "complete" && out.Queued+out.Preparing+out.Paused > 0 {
+			out.State = "preparing"
+		}
+		return out, snap.Commit()
+	}
 	rows, e = tx.QueryContext(ctx, `SELECT m.ordinal,pid(i.public_id),m.preparation_id,m.reason`+from+` AND m.ordinal>? ORDER BY m.ordinal LIMIT ?`, append(bound, after, limit+1)...)
 	if e != nil {
 		return out, e
@@ -775,18 +829,41 @@ func (s *Service) ContainerRequest(ctx context.Context, p identity.Principal, id
 	if e != nil {
 		return out, e
 	}
+	// One read for the page's preparations, not one per member.
+	ids := []string{}
+	for _, m := range members {
+		if m.prep != "" {
+			ids = append(ids, m.prep)
+		}
+	}
+	prepared := map[string]Preparation{}
+	if len(ids) > 0 {
+		raw, _ := json.Marshal(ids)
+		found, e := tx.QueryContext(ctx, `SELECT `+preparationColumns+` FROM download_preparations WHERE id IN(SELECT value FROM json_each(?)) AND profile_key=?`, string(raw), operations.ViewerKey(p))
+		if e != nil {
+			return out, e
+		}
+		for found.Next() {
+			r, e := readPreparation(found)
+			if e != nil {
+				found.Close()
+				return out, e
+			}
+			prepared[r.ID] = s.publish(r, settings.RetentionDays)
+		}
+		e = found.Err()
+		found.Close()
+		if e != nil {
+			return out, e
+		}
+	}
 	for _, m := range members {
 		entry := RequestMember{ItemID: m.item, Reason: m.reason}
 		if m.prep == "" && out.State == "failed" {
 			entry.Reason = out.ErrorCode
 		}
 		if m.prep != "" {
-			r, e := readPreparation(tx.QueryRowContext(ctx, `SELECT `+preparationColumns+` FROM download_preparations WHERE id=? AND profile_key=?`, m.prep, operations.ViewerKey(p)))
-			if e != nil && !errors.Is(e, sql.ErrNoRows) {
-				return out, e
-			}
-			if e == nil {
-				prep := s.publish(r, settings.RetentionDays)
+			if prep, ok := prepared[m.prep]; ok {
 				entry.Preparation = &prep
 			} else {
 				entry.Reason = ReasonRemoved

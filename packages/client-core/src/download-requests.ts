@@ -27,6 +27,10 @@ export type DownloadRequestState='capturing'|'admitting'|'preparing'|'complete'|
 export type DownloadRequestErrorCode='authority_revoked'|'target_not_found';
 /** One request as a device lists it to find the ones it started. */
 export type DownloadRequestSummary=Readonly<{requestId:string;state:DownloadRequestState;target:Readonly<{kind:DownloadRequestKind;id:string}>;title:string;quality:string;createdAt:string}>;
+/** One page of a device's requests, newest first; follow `nextCursor` until it is empty. */
+export type DownloadRequestPage=Readonly<{requests:readonly DownloadRequestSummary[];nextCursor:string}>;
+/** The most requests one discovery page holds. */
+export const DOWNLOAD_REQUEST_PAGE=50;
 export type DownloadRequestItem=Readonly<{itemId:string;reason?:string;preparation?:DownloadPreparation}>;
 export type DownloadRequest=Readonly<{
  requestId:string;total:number;totalKnown:boolean;state:DownloadRequestState;
@@ -122,8 +126,8 @@ export async function createDownloadRequest(api:DownloadRequestsApi,input:Downlo
  }
 }
 
-export function parseDownloadRequestList(raw:unknown):readonly DownloadRequestSummary[]{
- if(!object(raw)||!Array.isArray(raw.requests)||raw.requests.length>20)invalid();
+export function parseDownloadRequestList(raw:unknown):DownloadRequestPage{
+ if(!object(raw)||!Array.isArray(raw.requests)||raw.requests.length>DOWNLOAD_REQUEST_PAGE||raw.nextCursor!==undefined&&(typeof raw.nextCursor!=='string'||raw.nextCursor.length>256))invalid();
  const out=raw.requests.map(entry=>{
   if(!object(entry)||!id(entry.requestId)||!downloadRequestStates.includes(String(entry.state) as DownloadRequestState))invalid();
   const target=entry.target;
@@ -132,21 +136,25 @@ export function parseDownloadRequestList(raw:unknown):readonly DownloadRequestSu
   return Object.freeze({requestId:entry.requestId as string,state:entry.state as DownloadRequestState,target:Object.freeze({kind:target.kind as DownloadRequestKind,id:target.id as string}),title:entry.title as string,quality:entry.quality as string,createdAt:entry.createdAt as string});
  });
  if(new Set(out.map(r=>r.requestId)).size!==out.length)invalid();
- return Object.freeze(out);
+ return Object.freeze({requests:Object.freeze(out),nextCursor:(raw.nextCursor as string|undefined)??''});
 }
 
-/** The whole-container requests this device started that are still at work, or finished in the
- * last day. The server keeps them, so a device finds them again after the app was closed. */
-export async function listDownloadRequests(api:DownloadRequestsApi,deviceId:string,signal?:AbortSignal):Promise<readonly DownloadRequestSummary[]>{
+/** One page of the whole-container requests this device started that are still at work (however
+ * old), or finished in the last day. The server keeps them, so a device finds them again after the
+ * app was closed. */
+export async function listDownloadRequests(api:DownloadRequestsApi,deviceId:string,options:Readonly<{cursor?:string;signal?:AbortSignal}>={}):Promise<DownloadRequestPage>{
  if(!id(deviceId))throw new Error('A download request needs the authenticated device id.');
- return parseDownloadRequestList(await api.request<unknown>(DOWNLOAD_REQUESTS_PATH+'?'+new URLSearchParams({deviceId}),'GET',undefined,signal));
+ const query=new URLSearchParams({deviceId,limit:String(DOWNLOAD_REQUEST_PAGE)});
+ if(options.cursor)query.set('cursor',options.cursor);
+ return parseDownloadRequestList(await api.request<unknown>(DOWNLOAD_REQUESTS_PATH+'?'+query,'GET',undefined,options.signal));
 }
 
-/** Reads live visible-member counts plus one keyset page of preparations. */
+/** Reads live visible-member counts plus one keyset page of preparations. `limit: 0` reads the
+ * counts alone (no members), for a poll that only follows progress. */
 export async function getDownloadRequest(api:DownloadRequestsApi,requestId:string,options:Readonly<{cursor?:string;limit?:number;signal?:AbortSignal}>={}):Promise<DownloadRequest>{
  if(!id(requestId))throw new Error('A download request id is required.');
  const limit=options.limit??100;
- if(!Number.isInteger(limit)||limit<1||limit>100)throw new Error('Download request pages read 1 to 100 members.');
+ if(!Number.isInteger(limit)||limit<0||limit>100||limit===0&&options.cursor)throw new Error('Download request pages read 1 to 100 members, or 0 for counts alone.');
  const query=new URLSearchParams({limit:String(limit)});
  if(options.cursor)query.set('cursor',options.cursor);
  const raw=await api.request<unknown>(DOWNLOAD_REQUESTS_PATH+'/'+encodeURIComponent(requestId)+'?'+query,'GET',undefined,options.signal);

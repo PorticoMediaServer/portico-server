@@ -557,3 +557,89 @@ func TestContainerDownloadOptionsAggregateAllBatchesAndRefuseForeignDevice(t *te
 		t.Fatalf("missing %v", err)
 	}
 }
+
+// A device finds every request still at work, however old and however many,
+// a page at a time; a finished one stays only for a day. A poll can read the
+// counts alone, and pruning keeps a finished request whose members are still
+// being prepared.
+func TestRequestDiscoveryPagesActiveRequestsAndStatusOnlyReads(t *testing.T) {
+	h := requestHarness(t, 2)
+	ctx := context.Background()
+	ids := []string{}
+	for i := 0; i < 5; i++ {
+		h.now = h.now.Add(time.Second)
+		r, e := h.service.SubmitContainer(ctx, h.viewer, newContainerRequest(fmt.Sprintf("discover-%d", i), h.show))
+		if e != nil {
+			t.Fatal(e)
+		}
+		drainRequestAdmission(t, h, ctx, r.RequestID)
+		ids = append(ids, r.RequestID)
+	}
+	list := func() []RequestSummary {
+		t.Helper()
+		out, cursor := []RequestSummary{}, ""
+		for pages := 0; ; pages++ {
+			page, e := h.service.Requests(ctx, h.viewer, "device", cursor, 2)
+			if e != nil || len(page.Requests) > 2 || pages > 5 {
+				t.Fatal(page, e)
+			}
+			out = append(out, page.Requests...)
+			if cursor = page.NextCursor; cursor == "" {
+				return out
+			}
+		}
+	}
+	got := list()
+	if len(got) != 5 || got[0].RequestID != ids[4] || got[4].RequestID != ids[0] {
+		t.Fatal("newest first across pages", got)
+	}
+	// Two days on, only the request with a member still queued is at work. The
+	// requests share their preparations here, so the others let go of theirs.
+	keep := ids[1]
+	if _, e := h.db.Exec(`UPDATE download_request_items SET preparation_id='' WHERE request_id<>?`, keep); e != nil {
+		t.Fatal(e)
+	}
+	h.now = h.now.Add(48 * time.Hour)
+	got = list()
+	if len(got) != 1 || got[0].RequestID != keep || got[0].State != "preparing" {
+		t.Fatal("old active request", got)
+	}
+	for _, bad := range []struct {
+		cursor string
+		limit  int
+	}{{"x", 2}, {"1.", 2}, {"", 0}, {"", MaxRequestPage + 1}} {
+		if _, e := h.service.Requests(ctx, h.viewer, "device", bad.cursor, bad.limit); !errors.Is(e, ErrInput) {
+			t.Fatal("admitted", bad, e)
+		}
+	}
+	status, e := h.service.ContainerRequest(ctx, h.viewer, keep, "", 0)
+	if e != nil || len(status.Items) != 0 || status.NextCursor != "" || status.Total != 2 || status.Queued != 2 || status.State != "preparing" {
+		t.Fatal("status only", status, e)
+	}
+	if _, e = h.service.ContainerRequest(ctx, h.viewer, keep, h.itemIDs["ep-0001"], 0); !errors.Is(e, ErrInput) {
+		t.Fatal("status read with a cursor", e)
+	}
+	full, e := h.service.ContainerRequest(ctx, h.viewer, keep, "", 100)
+	if e != nil || len(full.Items) != 2 || full.Items[0].Preparation == nil || full.Items[1].Preparation == nil {
+		t.Fatal("batched preparations", full, e)
+	}
+	// A month on, pruning removes the finished requests but not the one at work.
+	h.now = h.now.Add(31 * 24 * time.Hour)
+	if e = h.service.prune(ctx); e != nil {
+		t.Fatal(e)
+	}
+	var left []string
+	rows, e := h.db.Query(`SELECT id FROM download_requests`)
+	if e != nil {
+		t.Fatal(e)
+	}
+	for rows.Next() {
+		var id string
+		rows.Scan(&id)
+		left = append(left, id)
+	}
+	rows.Close()
+	if len(left) != 1 || left[0] != keep {
+		t.Fatal("prune", left)
+	}
+}

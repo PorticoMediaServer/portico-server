@@ -10158,7 +10158,9 @@ export const routes = [
     "cost": "page_sized",
     "bodyLimit": 0,
     "query": [
-      "deviceId"
+      "deviceId",
+      "cursor",
+      "limit"
     ],
     "errors": [
       "invalid_request",

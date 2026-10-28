@@ -28,6 +28,9 @@ export type DownloadsSnapshot=Readonly<{phase:'idle'|'loading'|'ready'|'error';i
 const ACTIVE=new Set(['queued','running']);
 /** One full-list page (the server allows up to 200; 100 keeps a poll page small). */
 const PAGE_LIMIT=100;
+/** Discovery reads at most this many pages of a device's requests per pass. */
+const DISCOVERY_PAGES=10;
+const progressMark=(r:DownloadRequest)=>`${r.state}/${r.totalKnown}/${r.total}/${r.ready}/${r.preparing}/${r.queued}/${r.failed}/${r.paused}`;
 // X-04: the words come from the catalogue; `failure` keeps the error for screens that present it themselves.
 const say=(e:unknown,fallback:'downloads.error.load'|'downloads.error.action')=>serviceProblem(e,'downloads',fallback,fallback==='downloads.error.load'?'load':'action');
 
@@ -49,6 +52,8 @@ export class DownloadsService{
  private lifetime=new AbortController();
  /** Whole-container requests followed on this device, by request id. */
  private tracked=new Map<string,TrackedDownloadRequest>();
+ /** Each followed request's progress when its first member page was last read. */
+ private memberMarks=new Map<string,string>();
  /** The device whose whole-container requests are found again on the server (`followDevice`). */
  private deviceId='';
  constructor(api:DownloadsApi,operationId:()=>string=()=>randomId(),pollMs=5000){this.api=api;this.operationId=operationId;this.pollMs=pollMs;}
@@ -249,12 +254,19 @@ export class DownloadsService{
     deviceId=this.deviceId;
     if(deviceId){
      try{
-      const listed=await listDownloadRequests(this.api,deviceId,this.lifetime.signal);
+      // Every page, up to a bound: a device can have more requests at work than one page holds.
+      let cursor='';
+      for(let pages=0;pages<DISCOVERY_PAGES;pages++){
+       const listed=await listDownloadRequests(this.api,deviceId,{cursor,signal:this.lifetime.signal});
+       if(this.disposed||deviceId!==this.deviceId)break;
+       for(const summary of listed.requests)if(!this.tracked.has(summary.requestId)){
+        this.tracked.set(summary.requestId,Object.freeze({title:summary.title,request:Object.freeze({requestId:summary.requestId,total:0,totalKnown:false,state:summary.state,ready:0,preparing:0,queued:0,failed:0,paused:0,items:Object.freeze([]),nextCursor:''})}));
+       }
+       if(!listed.nextCursor||listed.nextCursor===cursor)break;
+       cursor=listed.nextCursor;
+      }
       if(this.disposed)return;
       if(deviceId!==this.deviceId)continue;
-      for(const summary of listed)if(!this.tracked.has(summary.requestId)){
-       this.tracked.set(summary.requestId,Object.freeze({title:summary.title,request:Object.freeze({requestId:summary.requestId,total:0,totalKnown:false,state:summary.state,ready:0,preparing:0,queued:0,failed:0,paused:0,items:Object.freeze([]),nextCursor:''})}));
-      }
      }catch{
       // Requests already followed are still read below; discovery is tried again later.
       if(this.disposed)return;
@@ -287,8 +299,14 @@ export class DownloadsService{
     const id=ids[next++],prior=this.tracked.get(id);
     if(!prior)continue;
     try{
-     const request=await getDownloadRequest(this.api,id,{signal:this.lifetime.signal});
+     // Counts alone while nothing has moved; the first member page only when progress changed
+     // since it was last read (it carries the preparations a device enrols).
+     const status=await getDownloadRequest(this.api,id,{limit:0,signal:this.lifetime.signal});
      if(this.disposed)return;
+     const mark=progressMark(status),unchanged=this.memberMarks.get(id)===mark;
+     const request=unchanged?Object.freeze({...status,items:prior.request.items,nextCursor:prior.request.nextCursor}):await getDownloadRequest(this.api,id,{signal:this.lifetime.signal});
+     if(this.disposed)return;
+     if(!unchanged)this.memberMarks.set(id,progressMark(request));
      const current=this.tracked.get(id);
      if(!current)continue;
      this.tracked.set(id,Object.freeze({...current,request,error:undefined}));
@@ -296,7 +314,7 @@ export class DownloadsService{
      else completed=completed||!isDownloadRequestTerminal(prior.request.state);
     }catch(e){
      if(this.disposed)return;
-     if((e as {status?:number}|null)?.status===404)this.tracked.delete(id);
+     if((e as {status?:number}|null)?.status===404){this.tracked.delete(id);this.memberMarks.delete(id);}
      else{const current=this.tracked.get(id);if(current){this.tracked.set(id,Object.freeze({...current,error:say(e,'downloads.error.load')}));this.pendingRequests.add(id);}}
     }
    }

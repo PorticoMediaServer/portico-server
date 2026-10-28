@@ -270,7 +270,9 @@ func (s *Service) prune(ctx context.Context) error {
 		// Expiring a transfer claim must not discard those facts underneath a
 		// device that is keeping its offline authorization current.
 		{`DELETE FROM download_preparations WHERE id IN(SELECT id FROM download_preparations WHERE state IN('cancelled','expired','unavailable') AND updated_ms<? AND NOT EXISTS(SELECT 1 FROM download_receipts r WHERE r.preparation_id=download_preparations.id AND r.revoked_ms=0 AND r.expires_ms>?) LIMIT 256)`, []any{old, now}},
-		{`DELETE FROM download_requests WHERE id IN(SELECT id FROM download_requests WHERE state IN('complete','failed') AND updated_ms<? LIMIT 64)`, []any{old}},
+		// A finished request whose members are still being prepared is still
+		// how its device finds them, however long ago it finished admitting.
+		{`DELETE FROM download_requests WHERE id IN(SELECT id FROM download_requests WHERE state IN('complete','failed') AND updated_ms<? AND id NOT IN(` + activeRequestIDs + `) LIMIT 64)`, []any{old}},
 		// A withdrawn receipt is kept until the copy it covered could not have
 		// been played anyway, so a device that comes back is still told plainly
 		// that it was withdrawn. A receipt nobody renewed for a year is gone

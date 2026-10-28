@@ -34,11 +34,13 @@ test('starting before the device is supplied still discovers that device through
 
 test('container recovery fairly polls more than twenty followed requests with bounded concurrency',async()=>{
  let created=0,active=0,peak=0;
- const reads:string[]=[];
+ const reads:string[]=[],members:string[]=[];
  const service=new DownloadsService({async request<T>(path:string,method='GET'):Promise<T>{
   if(method==='POST')return request('request-'+created++) as T;
   const id=path.split('?')[0].split('/').at(-1)!;
-  reads.push(id);active++;peak=Math.max(peak,active);
+  // A poll reads the counts alone; the member page only when a request's progress moved.
+  if(path.includes('limit=0'))reads.push(id);else members.push(id);
+  active++;peak=Math.max(peak,active);
   await new Promise<void>(resolve=>setImmediate(resolve));
   active--;return request(id) as T;
  }},()=>'operation',10000);
@@ -51,6 +53,7 @@ test('container recovery fairly polls more than twenty followed requests with bo
   assert.equal(reads.length,40);
   assert.equal(new Set(reads).size,25,'requests beyond the first twenty get a turn');
   assert.deepEqual(reads.slice(20,25),Array.from({length:5},(_,i)=>'request-'+(20+i)));
+  assert.deepEqual([...members].sort(),[...new Set(reads)].sort(),'each member page is read once while nothing moves');
  }finally{service.dispose();}
 });
 

@@ -83,10 +83,14 @@ test('polling ends complete and reports a failed capture without effects', async
 
 test('a device lists only its own requests, and duplicate rows are a contract break', () => {
   const summary = {requestId: 'req-1', state: 'preparing', target: {kind: 'season', id: 's-1'}, title: 'Season 1', quality: 'original', createdAt: '2026-09-16T10:00:00Z'};
-  const listed = parseDownloadRequestList({requests: [summary]});
-  assert.equal(listed[0].requestId, 'req-1');
-  assert.equal(listed[0].target.kind, 'season');
-  assert.equal(listed[0].title, 'Season 1');
+  const listed = parseDownloadRequestList({requests: [summary], nextCursor: '1758016800000.req-1'});
+  assert.equal(listed.requests[0].requestId, 'req-1');
+  assert.equal(listed.requests[0].target.kind, 'season');
+  assert.equal(listed.requests[0].title, 'Season 1');
+  assert.equal(listed.nextCursor, '1758016800000.req-1');
+  assert.equal(parseDownloadRequestList({requests: []}).nextCursor, '');
+  // A page holds at most fifty; more is a contract break, not a silent truncation.
+  assert.throws(() => parseDownloadRequestList({requests: Array.from({length: 51}, (_, i) => ({...summary, requestId: 'req-' + i}))}));
   // The same request cannot appear twice in the list a device reconciles against.
   assert.throws(() => parseDownloadRequestList({requests: [summary, {...summary}]}));
   assert.throws(() => parseDownloadRequestList({requests: [{...summary, state: 'lost'}]}));

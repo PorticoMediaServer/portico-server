@@ -137,7 +137,7 @@ test('followDevice finds the requests this device started',async()=>{
  const calls:{path:string;method:string;body?:any}[]=[];
  const api={request:async<T,>(path:string,method='GET',body?:any):Promise<T>=>{
   calls.push({path,method,body});
-  if(path==='/v1/downloads/requests?'+new URLSearchParams({deviceId:'dev-1'}))return {requests:[summary]} as T;
+  if(path==='/v1/downloads/requests?'+new URLSearchParams({deviceId:'dev-1',limit:'50'}))return {requests:[summary]} as T;
   if(path.startsWith('/v1/downloads/requests/req-1'))return view as T;
   if(path.startsWith('/v1/downloads/preparations?'))return {items:[],nextCursor:''} as T;
   if(path==='/v1/downloads/usage')return usageDoc as T;
@@ -147,7 +147,7 @@ test('followDevice finds the requests this device started',async()=>{
   service.followDevice('dev-1');
   service.start();
   await new Promise(r=>setTimeout(r,40));
-  assert.ok(calls.some(c=>c.path==='/v1/downloads/requests?deviceId=dev-1'),'the device asks for its own requests');
+  assert.ok(calls.some(c=>c.path==='/v1/downloads/requests?deviceId=dev-1&limit=50'),'the device asks for its own requests');
   const tracked=service.getSnapshot().requests.find(r=>r.request.requestId==='req-1');
   assert.ok(tracked,'the listed request is tracked');
   assert.equal(tracked!.title,'Season 1');
@@ -417,5 +417,25 @@ test('a started service retries an empty generic 503 through its bounded schedul
   await new Promise(r=>setTimeout(r,120));
   assert.equal(service.getSnapshot().phase,'ready');
   assert.equal(service.getSnapshot().items.length,1,'the scheduled retry reached the recovered page');
+ }finally{service.dispose();}
+});
+
+test('discovery follows every page of a device\'s requests, within its bound',async()=>{
+ const summary=(id:string)=>({requestId:id,state:'preparing',target:{kind:'season',id:'s-'+id},title:id,quality:'original',createdAt:'2026-09-16T10:00:00Z'});
+ const view=(id:string)=>({requestId:id,total:1,totalKnown:true,state:'preparing',ready:0,preparing:1,queued:0,failed:0,paused:0,items:[],nextCursor:''});
+ const lists:string[]=[];
+ const api={request:async<T,>(path:string):Promise<T>=>{
+  if(path.startsWith('/v1/downloads/requests?')){
+   lists.push(path);const cursor=new URL('http://x'+path).searchParams.get('cursor');
+   return (cursor===null?{requests:[summary('a')],nextCursor:'2.a'}:cursor==='2.a'?{requests:[summary('b')],nextCursor:'1.b'}:{requests:[summary('c')]}) as T;
+  }
+  if(path.startsWith('/v1/downloads/requests/'))return view(path.split('?')[0].split('/').at(-1)!) as T;
+  throw new Error('unexpected '+path);}};
+ const service=new DownloadsService(api,()=>'op',10000);
+ try{
+  service.followDevice('dev-1');
+  await service.refreshRequests();
+  assert.equal(lists.length,3);
+  assert.deepEqual(service.getSnapshot().requests.map(r=>r.request.requestId).sort(),['a','b','c']);
  }finally{service.dispose();}
 });

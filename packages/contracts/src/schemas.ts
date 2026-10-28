@@ -181615,6 +181615,9 @@ export const schemas = {
   },
   "ListDownloadRequestsResponse": {
     "properties": {
+      "nextCursor": {
+        "type": "string"
+      },
       "requests": {
         "items": {
           "properties": {

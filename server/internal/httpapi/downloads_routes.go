@@ -125,9 +125,6 @@ type downloadReceiptResults struct {
 type downloadReceiptKeys struct {
 	Keys []downloads.ReceiptKey `json:"keys"`
 }
-type downloadRequestList struct {
-	Requests []downloads.RequestSummary `json:"requests"`
-}
 
 func registerDownloads(r *apikit.Registry, d Dependencies) {
 	read := []string{"invalid_request", "unauthorized", "not_permitted", "feature_restricted", "not_found", "downloads_not_allowed", "downloads_unavailable", "internal"}
@@ -606,13 +603,19 @@ func registerDownloads(r *apikit.Registry, d Dependencies) {
 		}
 		return out, downloadError(e)
 	})
-	v1Route(r, route("list_download_requests", "GET", "/v1/downloads/requests", "List the whole-show, season, album, book and playlist downloads a device started", apikit.Device, apikit.Browsing, apikit.PageSized, 200, 0, []string{"deviceId"}), func(ctx context.Context, q *http.Request, _ noBody) (downloadRequestList, error) {
+	v1Route(r, route("list_download_requests", "GET", "/v1/downloads/requests", "List the whole-show, season, album, book and playlist downloads a device started", apikit.Device, apikit.Browsing, apikit.PageSized, 200, 0, []string{"deviceId", "cursor", "limit"}), func(ctx context.Context, q *http.Request, _ noBody) (downloads.RequestPage, error) {
 		p, _, e := d.downloadViewer(q)
 		if e != nil {
-			return downloadRequestList{}, e
+			return downloads.RequestPage{}, e
 		}
-		out, e := d.Downloads.Requests(ctx, p, q.URL.Query().Get("deviceId"))
-		return downloadRequestList{Requests: out}, downloadRequestError(e)
+		limit := 20
+		if v := q.URL.Query().Get("limit"); v != "" {
+			if limit, e = strconv.Atoi(v); e != nil {
+				return downloads.RequestPage{}, downloadRequestError(downloads.ErrInput)
+			}
+		}
+		out, e := d.Downloads.Requests(ctx, p, q.URL.Query().Get("deviceId"), q.URL.Query().Get("cursor"), limit)
+		return out, downloadRequestError(e)
 	})
 }
 

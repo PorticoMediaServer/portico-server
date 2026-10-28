@@ -202997,6 +202997,9 @@
       },
       "ListDownloadRequestsResponse": {
         "properties": {
+          "nextCursor": {
+            "type": "string"
+          },
           "requests": {
             "items": {
               "properties": {
@@ -361443,6 +361446,22 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -361451,6 +361470,9 @@
               "application/json": {
                 "schema": {
                   "properties": {
+                    "nextCursor": {
+                      "type": "string"
+                    },
                     "requests": {
                       "items": {
                         "properties": {
