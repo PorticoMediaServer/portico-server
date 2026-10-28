@@ -625,13 +625,13 @@ func TestAnalysisEnqueueSidecarFenceAndFileListOnlyPaths(t *testing.T) {
 
 // explainIssued asks SQLite for the plan of a statement the page actually
 // issued. The statement text comes from the run's own trace, so the plan cannot
-// drift away from production SQL. SQLite chooses a plan at prepare time from the
-// schema and statistics, before any parameter is bound, so placeholder binds are
-// the same plan the page got; the real values are exercised by the behavioural
-// regressions above.
-func explainIssued(t *testing.T, db *sql.DB, query string) string {
+// drift away from production SQL. Use the fixture's actual bindings as well:
+// SQLite can reprepare statements based on bound values.
+func explainIssued(t *testing.T, db *sql.DB, query string, args ...any) string {
 	t.Helper()
-	args := make([]any, strings.Count(query, "?"))
+	if len(args) != strings.Count(query, "?") {
+		t.Fatalf("plan received %d bindings for %d placeholders", len(args), strings.Count(query, "?"))
+	}
 	rows, err := db.QueryContext(context.Background(), "EXPLAIN QUERY PLAN "+query, args...)
 	if err != nil {
 		t.Fatalf("explain issued statement: %v\n%s", err, query)
@@ -686,7 +686,7 @@ func TestAnalysisEnqueueWindowStatementsAreBounded(t *testing.T) {
 
 	// The window is one ordered range on (source_id, retired, id): the index
 	// supplies both the bound and the order.
-	rawPlan := explainIssued(t, f.db, raw)
+	rawPlan := explainIssued(t, f.db, raw, f.source, "", analysisEnqueueRawPageSize+1)
 	if !strings.Contains(rawPlan, "SEARCH o USING INDEX inventory_objects_source (source_id=? AND retired=? AND id>?)") {
 		t.Fatalf("raw window is not an index range seek: %s", rawPlan)
 	}
@@ -699,7 +699,25 @@ func TestAnalysisEnqueueWindowStatementsAreBounded(t *testing.T) {
 	if !strings.Contains(needs, "o.id IN (SELECT value FROM json_each(?))") || strings.Contains(needs, "o.id>r.reconcile_cursor") {
 		t.Fatalf("needs statement is not restricted to the window id set: %s", needs)
 	}
-	needsPlan := explainIssued(t, f.db, needs)
+	policy, err := f.s.catalog.ScanPolicy(context.Background(), f.library)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !policy.Allows("probe") {
+		t.Fatal("fixture must exercise the probe policy")
+	}
+	required := append(append([]string(nil), policy.Operations...), assets.PlaybackAnalysisRevision)
+	requiredJSON, err := json.Marshal(required)
+	if err != nil {
+		t.Fatal(err)
+	}
+	idsJSON, err := json.Marshal(objectIDs(t, f.db, f.source)[:analysisEnqueueRawPageSize])
+	if err != nil {
+		t.Fatal(err)
+	}
+	needsPlan := explainIssued(t, f.db, needs, job.ID, string(idsJSON), false, policy.Revision,
+		mediaanalysis.Algorithm, f.library, string(requiredJSON), string(requiredJSON),
+		mediaanalysis.Algorithm, "strm_target:0", job.ID)
 	pointSet := "SEARCH o USING INDEX inventory_objects_source (source_id=? AND retired=? AND id=?)"
 	if !strings.Contains(needsPlan, pointSet) {
 		t.Fatalf("needs statement does not reach the source by id: %s", needsPlan)
