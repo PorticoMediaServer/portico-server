@@ -1,7 +1,7 @@
 import {useState} from 'react';
 import {defaultI18n} from '@i18n';
 import {Artwork} from '../../kit/artwork';
-import {Button} from '../../kit/controls';
+import {Button, RadioGroup, RadioItem} from '../../kit/controls';
 import {Icon} from '../../kit/Icon';
 import type {WatchEndCard} from './end-card';
 import type {ArtworkSource} from '../../kit/artwork/types';
@@ -30,11 +30,11 @@ export function WatchEndCardView({card, canReplay, onReplay, onClose, reportErro
       {layout === 'phone' && (card.year !== undefined || card.genres?.length) && <div className={styles.meta}>{card.year !== undefined && <strong>{card.year}</strong>}{card.year !== undefined && card.genres?.length ? ' · ' : null}{card.genres?.length ? card.genres.join(', ') : null}</div>}
       {card.rating && <div className={styles.rate}>
         <span>{stored == null ? t('player.rateThis') : t('player.rated', {stars: t('title.stars', {count: stored})})}</span>
-        <div className={styles.stars} role="radiogroup" aria-label={t('player.rateThis')} onMouseLeave={() => setHover(null)}>
-          {[1, 2, 3, 4, 5].map(star => <button key={star} type="button" role="radio" aria-checked={stored === star} aria-label={t('title.stars', {count: star})}
+        <RadioGroup className={styles.stars} value={stored == null ? '' : String(stored)} onValueChange={value => rate(Number(value))} orientation="horizontal" aria-label={t('player.rateThis')} onMouseLeave={() => setHover(null)}>
+          {[1, 2, 3, 4, 5].map(star => <RadioItem key={star} value={String(star)} aria-label={t('title.stars', {count: star})}
             disabled={pending} data-lit={shown >= star || undefined} onMouseEnter={() => setHover(star)} onFocus={() => setHover(star)} onBlur={() => setHover(null)}
-            onClick={() => rate(star)}><Icon name={shown >= star ? 'i-star-f' : 'i-star'} size={layout === 'phone' ? 22 : 28} /></button>)}
-        </div>
+            ><Icon name={shown >= star ? 'i-star-f' : 'i-star'} size={layout === 'phone' ? 22 : 28} /></RadioItem>)}
+        </RadioGroup>
       </div>}
       <div className={styles.actions}>
         {canReplay && <Button variant={layout === 'phone' ? 'primary' : 'glass'} size="small" icon={layout === 'phone' ? 'i-restart' : 'i-back'} onClick={onReplay}>{t('player.post.replay')}</Button>}

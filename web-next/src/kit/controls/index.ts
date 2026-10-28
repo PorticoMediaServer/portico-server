@@ -10,3 +10,4 @@ export {Select, RichSelect} from './Select';
 export type {SelectProps, SelectOption} from './Select';
 export {Slider} from './Slider';
 export type {SliderProps} from './Slider';
+export {RadioGroup, RadioItem} from './RadioGroup';

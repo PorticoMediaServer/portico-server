@@ -26,7 +26,7 @@ export const Chip = forwardRef<HTMLButtonElement, ChipProps>(function Chip({vari
   const checked = selected ?? localSelected;
   const leading = retry && variant === 'download' ? 'i-retry' : icon;
   const trailing = retry && variant !== 'download' ? 'i-retry' : trailingIcon;
-  return <button {...props} ref={ref} type={type} role={checkbox ? 'checkbox' : props.role} aria-checked={checkbox ? checked : props['aria-checked']} aria-pressed={checkbox ? undefined : toggle ? checked : props['aria-pressed']}
+  return <button {...props} ref={ref} type={type} role={checkbox ? 'checkbox' : props.role} aria-checked={checkbox ? checked : props['aria-checked']} aria-pressed={checkbox || props.role === 'radio' ? undefined : toggle ? checked : props['aria-pressed']}
     data-variant={variant} data-selected={(toggle && checked) || undefined} data-dim={dim || undefined} data-phone={phone || undefined} data-retry={retry || undefined}
     onClick={event => {onClick?.(event); if (toggle && !event.defaultPrevented) {if (selected === undefined) setLocalSelected(!checked); onSelectedChange?.(!checked);}}}
     className={[styles.chip, className].filter(Boolean).join(' ')}>

@@ -5,6 +5,7 @@ import {audioStreamIndex} from '@core/playback-v1/choices.ts';
 import {channelsLabel, codecLabel} from '@core/presentation/title-files.ts';
 import {peekPendingTrackChoice, preplaySubtitles, setPendingTrackChoice, type PendingTrackChoice} from '@core/pending-track-choice.ts';
 import {BottomSheet} from '../../kit/overlays';
+import {RadioGroup, RadioItem} from '../../kit/controls';
 import {Icon} from '../../kit/Icon';
 import type {DetailBindings} from './bindings';
 import {locale, t} from './text';
@@ -66,7 +67,7 @@ export function PreplayChoices({binding, data}: {binding: DetailBindings; data: 
   }, [isCurrent, itemId, version, chosenAudio, chosenSubtitle]);
   if (!version || !current || (audios.length < 2 && subtitles.length === 0)) return null;
   const live = () => { if (isCurrent()) return true; setOpen(false); return false; };
-  const pick = (next: Chosen) => () => { if (live()) setChosen(next); };
+  const pick = (next: Chosen) => { if (live()) setChosen(next); };
   return <>
     <button ref={trigger} type="button" className={styles.preplay} aria-haspopup="dialog" aria-label={`${t('title.audio')}: ${audioName(current, audios.indexOf(current))}, ${t('title.subtitles')}: ${subtitleValue}`} onClick={() => { if (live()) setOpen(true); }}>
       <span><Icon name="i-audio" size={16} />{audioName(current, audios.indexOf(current))}</span>
@@ -75,18 +76,18 @@ export function PreplayChoices({binding, data}: {binding: DetailBindings; data: 
     </button>
     <BottomSheet open={open} onOpenChange={value => { if (!value) setOpen(false); }} title={t('title.playbackChoices')} returnFocusRef={trigger} fitContent>
       <div className={styles.preplaySheet}>
-        {audios.length > 1 && <section className={styles.preplayGroup} role="radiogroup" aria-label={t('title.audio')}>
+        {audios.length > 1 && <RadioGroup asChild value={current.id} onValueChange={id => pick({audio: audioStreamIndex(id), subtitle: chosen.subtitle})} aria-label={t('title.audio')}><section className={styles.preplayGroup}>
           <h3>{t('title.audio')}</h3>
-          {audios.map((track, index) => <button key={track.id} type="button" role="radio" aria-checked={track.id === current.id} className={styles.preplayRow} onClick={pick({audio: audioStreamIndex(track.id), subtitle: chosen.subtitle})}>
+          {audios.map((track, index) => <RadioItem key={track.id} value={track.id} className={styles.preplayRow}>
             <span>{audioDetail(track, index)}{track.commentary && !/\bcommentary\b/i.test(track.title ?? '') && <small>{t('next.kit.commentary')}</small>}</span><Icon name="i-check" size={20} />
-          </button>)}
-        </section>}
-        {subtitles.length > 0 && <section className={styles.preplayGroup} role="radiogroup" aria-label={t('title.subtitles')}>
+          </RadioItem>)}
+        </section></RadioGroup>}
+        {subtitles.length > 0 && <RadioGroup asChild value={chosenSubtitle ?? ''} onValueChange={subtitle => pick({audio: chosen.audio, subtitle})} aria-label={t('title.subtitles')}><section className={styles.preplayGroup}>
           <h3>{t('title.subtitles')}</h3>
-          <button type="button" role="radio" aria-checked={chosenSubtitle === undefined} className={styles.preplayRow} onClick={pick({audio: chosen.audio, subtitle: ''})}><span>{t('title.subtitlesAutomatic')}</span><Icon name="i-check" size={20} /></button>
-          <button type="button" role="radio" aria-checked={chosenSubtitle === 'off'} className={styles.preplayRow} onClick={pick({audio: chosen.audio, subtitle: 'off'})}><span>{t('title.subtitlesOff')}</span><Icon name="i-check" size={20} /></button>
-          {names.map(name => <button key={name.id} type="button" role="radio" aria-checked={chosenSubtitle === name.id} className={styles.preplayRow} onClick={pick({audio: chosen.audio, subtitle: name.id})}><span>{name.label}</span><Icon name="i-check" size={20} /></button>)}
-        </section>}
+          <RadioItem value="" className={styles.preplayRow}><span>{t('title.subtitlesAutomatic')}</span><Icon name="i-check" size={20} /></RadioItem>
+          <RadioItem value="off" className={styles.preplayRow}><span>{t('title.subtitlesOff')}</span><Icon name="i-check" size={20} /></RadioItem>
+          {names.map(name => <RadioItem key={name.id} value={name.id} className={styles.preplayRow}><span>{name.label}</span><Icon name="i-check" size={20} /></RadioItem>)}
+        </section></RadioGroup>}
       </div>
     </BottomSheet>
   </>;
