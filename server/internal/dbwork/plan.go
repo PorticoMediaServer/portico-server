@@ -132,6 +132,9 @@ type writeMeter struct {
 	vmStart, pagesStart int64
 	vmEnd, pagesEnd     int64
 	started, ended      bool
+	walStart            uint64
+	walKnown            bool
+	wal                 *walRequest
 }
 
 type meterKey struct{}
@@ -160,6 +163,12 @@ func (m *writeMeter) begin(inner any) {
 		return
 	}
 	m.vmStart, m.pagesStart, m.started = connCounters(inner)
+	if c, ok := inner.(*observedConn); ok {
+		inner = c.inner
+	}
+	if counter, ok := inner.(interface{ WALWriteBytes() (uint64, bool) }); ok {
+		m.walStart, m.walKnown = counter.WALWriteBytes()
+	}
 }
 
 func (m *writeMeter) end(inner any) {
@@ -167,6 +176,19 @@ func (m *writeMeter) end(inner any) {
 		return
 	}
 	m.vmEnd, m.pagesEnd, m.ended = connCounters(inner)
+	if c, ok := inner.(*observedConn); ok {
+		inner = c.inner
+	}
+	var attempted uint64
+	var known bool
+	if counter, ok := inner.(interface{ WALWriteBytes() (uint64, bool) }); ok {
+		attempted, known = counter.WALWriteBytes()
+	}
+	known = known && m.walKnown && attempted >= m.walStart
+	if known {
+		attempted -= m.walStart
+	}
+	m.wal.measured(attempted, known)
 }
 
 // WriteCost is what one gated write transaction did.

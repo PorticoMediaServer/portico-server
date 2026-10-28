@@ -425,9 +425,18 @@ func (c *observedConn) BeginTx(ctx context.Context, opts driver.TxOptions) (driv
 			return nil, err
 		}
 	}
+	// Only the write transaction itself is metered: a read snapshot a helper
+	// opens with the write's context is another connection's work.
+	if meter, _ := ctx.Value(meterKey{}).(*writeMeter); meter != nil && !opts.ReadOnly && c.role != roleReader && !meter.started {
+		meter.wal, _ = ctx.Value(walRequestKey{}).(*walRequest)
+		c.meter = meter
+		c.meter.begin(c.inner)
+	}
 	inner, err := beginner.BeginTx(ctx, opts)
 	if err != nil {
 		lease.close()
+		c.meter.end(c.inner)
+		c.meter = nil
 		return nil, err
 	}
 	c.readerTx = lease
@@ -435,12 +444,6 @@ func (c *observedConn) BeginTx(ctx context.Context, opts driver.TxOptions) (driv
 	c.inTx = true
 	c.authorityDirty = false
 	c.changes, _ = ctx.Value(changeKey{}).(*changeSet)
-	// Only the write transaction itself is metered: a read snapshot a helper
-	// opens with the write's context is another connection's work.
-	if meter, _ := ctx.Value(meterKey{}).(*writeMeter); meter != nil && !opts.ReadOnly && c.role != roleReader && !meter.started {
-		c.meter = meter
-		c.meter.begin(c.inner)
-	}
 	return &observedTx{inner: inner, conn: c}, nil
 }
 
@@ -528,9 +531,7 @@ type observedTx struct {
 func (t *observedTx) Commit() error {
 	err := t.inner.Commit()
 	if t.conn.meter != nil {
-		if err == nil {
-			t.conn.meter.end(t.conn.inner)
-		}
+		t.conn.meter.end(t.conn.inner)
 		t.conn.meter = nil
 	}
 	if err == nil && t.conn.authorityDirty {
@@ -547,9 +548,10 @@ func (t *observedTx) Commit() error {
 
 func (t *observedTx) Rollback() error {
 	t.conn.inTx = false
-	t.conn.meter = nil
 	t.conn.testTx = false
 	err := t.inner.Rollback()
+	t.conn.meter.end(t.conn.inner)
+	t.conn.meter = nil
 	t.conn.authorityDirty = false
 	t.conn.finishReadTransaction()
 	return err

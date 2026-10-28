@@ -43,20 +43,39 @@ type WALStats struct {
 // an hour ago, and the soak tier's pass criterion is about the peak.
 var walPeak atomic.Int64
 
-// WAL reports the write-ahead log's state, running the same PASSIVE checkpoint
-// the autocheckpoint would run. PASSIVE does not invoke the busy handler and
-// normally reports busy=0 even when readers prevent a complete checkpoint.
-// Compare LogFrames with CheckpointedFrames to observe that incomplete work;
-// copying available pages can still take time on slow storage.
+// WAL reports the checkpoint owner's last result and the current retained file
+// allocation. It never initiates copying or competes with the checkpoint owner.
+// The logical counters can therefore be older than FileBytes.
 func WAL(ctx context.Context, db *sql.DB) WALStats {
 	out := WALStats{}
 	if db == nil {
 		return out
 	}
-	if err := db.QueryRowContext(ctx, `PRAGMA wal_checkpoint(PASSIVE)`).Scan(&out.Busy, &out.LogFrames, &out.CheckpointedFrames); err != nil {
-		out.LastError = err.Error()
+	// Diagnostics read the owner's last result; they never initiate copying.
+	if l := ledgerFor(db); l != nil {
+		l.mu.Lock()
+		last, observed := l.lastCheckpoint, l.checkpointKnown
+		l.mu.Unlock()
+		if observed {
+			out.Busy, out.LogFrames, out.CheckpointedFrames = last.Busy, last.LogFrames, last.Checkpoint
+			if last.Err != nil {
+				out.LastError = last.Err.Error()
+			}
+		} else {
+			out.LastError = "checkpoint owner has not sampled the WAL"
+		}
+	} else {
+		out.LastError = "checkpoint owner unavailable"
 	}
-	out.FileBytes = walFileBytes(ctx, db)
+	if l := ledgerFor(db); l != nil {
+		var known bool
+		out.FileBytes, known = checkpointFileBytes(l.path + "-wal")
+		if !known {
+			out.LastError = "WAL allocation unavailable"
+		}
+	} else {
+		out.FileBytes = walFileBytes(ctx, db)
+	}
 	out.BacklogFrames = max(0, out.LogFrames-out.CheckpointedFrames)
 	for {
 		peak := walPeak.Load()
@@ -260,6 +279,11 @@ func checkpoint(ctx context.Context, db *sql.DB, knownWALPath string) (out Check
 			}
 		}
 		observeCheckpoint(out)
+		if l := ledgerFor(db); l != nil {
+			l.mu.Lock()
+			l.lastCheckpoint, l.checkpointKnown = out, true
+			l.mu.Unlock()
+		}
 	}()
 	ctx, cancel := context.WithTimeout(ctx, CheckpointDeadline)
 	defer cancel()
@@ -314,18 +338,25 @@ func checkpoint(ctx context.Context, db *sql.DB, knownWALPath string) (out Check
 			return out
 		}
 	}
-	hardPressure := out.LogFrames >= CheckpointHardFrames || out.BeforeFileBytes >= CheckpointHardFileBytes
+	ledgerSoft, ledgerHard := ledgerFor(db).pressure()
+	var pageSize int64
+	if err = conn.QueryRowContext(ctx, `PRAGMA page_size`).Scan(&pageSize); err != nil {
+		out.Err = err
+		return out
+	}
+	frameBytes := pageSize + 24
+	hardPressure := int64(out.LogFrames)*frameBytes+32 >= CheckpointHardFileBytes || out.BeforeFileBytes >= CheckpointHardFileBytes || ledgerHard
 	scope := checkpointReaderScope(conn)
 	if scope != nil {
 		out.Readers = scope.stats()
 	} else {
 		out.Readers = ReaderLifetimes()
 	}
-	if out.LogFrames < CheckpointTruncateFrames && !hardPressure {
+	if int64(out.LogFrames)*frameBytes+32 < 64<<20 && !hardPressure && !ledgerSoft {
 		return out
 	}
 	if hardPressure {
-		return recoverWAL(ctx, conn, scope, out)
+		return recoverWAL(ctx, conn, scope, ledgerFor(db), out)
 	}
 	// TRUNCATE blocks until every reader has drained, so below the hard
 	// threshold it only runs when nothing is writing or waiting to write and no
@@ -361,6 +392,9 @@ func checkpoint(ctx context.Context, db *sql.DB, knownWALPath string) (out Check
 	if err = conn.QueryRowContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`).Scan(&out.Busy, &out.LogFrames, &out.Checkpoint); err != nil {
 		out.Err = err
 	}
+	if out.Err == nil && out.Busy == 0 {
+		ledgerFor(db).reset()
+	}
 	return out
 }
 
@@ -377,7 +411,7 @@ const RecoveryHolderWait = 250 * time.Millisecond
 // else can begin, a reset no longer queues behind users. Failure ends the
 // attempt, reopens everything and backs off; it never copies a tail under the
 // gate.
-func recoverWAL(ctx context.Context, conn *sql.Conn, scope *readerScope, in CheckpointResult) (out CheckpointResult) {
+func recoverWAL(ctx context.Context, conn *sql.Conn, scope *readerScope, ledger *walLedger, in CheckpointResult) (out CheckpointResult) {
 	out = in
 	if scope != nil {
 		if backoff := scope.pressureBackoff(); backoff > 0 {
@@ -507,6 +541,9 @@ func recoverWAL(ctx context.Context, conn *sql.Conn, scope *readerScope, in Chec
 		return out
 	}
 	reset = out.Busy == 0
+	if reset {
+		ledger.reset()
+	}
 	return out
 }
 

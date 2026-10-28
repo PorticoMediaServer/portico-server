@@ -72,14 +72,14 @@ func TestCheckpointHardPhysicalAllocationWithReusedSmallLogicalLog(t *testing.T)
 					t.Fatal(err)
 				}
 			}
-			copied := WAL(ctx, db)
+			copied := copyWALForTest(t, ctx, db)
 			if copied.LastError != "" || copied.FileBytes < CheckpointHardFileBytes || copied.BacklogFrames != 0 {
 				t.Fatalf("large fixture was not fully copied: %+v", copied)
 			}
 			if _, err := ExecWrite(ctx, db, ClassInteractive, `INSERT INTO sample VALUES(?)`, 3+index); err != nil {
 				t.Fatal(err)
 			}
-			reused := WAL(ctx, db)
+			reused := copyWALForTest(t, ctx, db)
 			if reused.LastError != "" || reused.LogFrames >= CheckpointTruncateFrames || reused.FileBytes < CheckpointHardFileBytes || reused.BacklogFrames != 0 {
 				t.Fatalf("fixture did not retain allocation behind small reused log: %+v", reused)
 			}
