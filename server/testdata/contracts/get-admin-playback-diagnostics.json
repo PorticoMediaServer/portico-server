@@ -48,11 +48,11 @@
         "detail": "The delivery service does not yet publish converted media progress, so no rate can be reported."
       }
     },
-    "freshUntil": "2026-10-26T23:50:52.290287608Z",
-    "observedAt": "2026-10-26T23:50:22.290287608Z",
+    "freshUntil": "2026-10-28T14:49:33.927753369Z",
+    "observedAt": "2026-10-28T14:49:03.927753369Z",
     "scope": {
-      "serverId": "DdwK09Zv1p8IMI46gltQ7yiQnoFRXjp2Ry-1FNxqbs8",
-      "viewerFence": "074cde11142f447e4e3f46cc24ad903391d71fe589d845e8c41576e64435cf88"
+      "serverId": "_F2n9wYCdDuoSEgKnsyQLIkjdc5Rm4BdnCxlMnRNWFE",
+      "viewerFence": "57804610da10e4d4b3be2db6ad36d4a369d1ed43c05f039473a4228519f66b1a"
     }
   }
 }
