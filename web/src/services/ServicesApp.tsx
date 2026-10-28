@@ -61,7 +61,8 @@ function MountedServicesRouter({value}: {value: {bootstrap: ServicesBootstrap; r
   return <RouterProvider router={value.router} />;
 }
 function ServicesRoot() {
-  const {account, bootstrap, invalidContinuation} = root.useRouteContext<ServicesRouter>();
+  const {account, bootstrap, invalidContinuation, providerFailure} = root.useRouteContext<ServicesRouter>();
+  const session = useSyncExternalStore(account.service.subscribe, account.service.getSnapshot).session;
   const state = useSyncExternalStore(bootstrap.subscribe, bootstrap.getSnapshot);
   const {t} = servicesI18n();
   if (state.phase === 'restoring') return <ServicesAuthStage><></></ServicesAuthStage>;
@@ -70,8 +71,9 @@ function ServicesRoot() {
   return <DocumentBootReady>{state.phase === 'error'
     ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
       primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => { void bootstrap.start(); }}} />
+    : providerFailure && session ? <ServicesAuthStage variant="state"><ServicesHeading>{t('auth.welcomeHome')}</ServicesHeading><ServicesNotice tone="error">{providerFailure === 'unknown' ? t('web.link.invalid') : t('services.provider.stopped', {provider: t(providerFailure === 'apple' ? 'accounts.provider.apple' : 'accounts.provider.google')})}</ServicesNotice><ServicesActions><Button variant="primary" onClick={() => location.assign(location.pathname === '/account' ? '/account?tab=security' : '/')}>{t('action.continue')}</Button></ServicesActions></ServicesAuthStage>
     : invalidContinuation || state.invalidSignIn || state.invalidOwner ? <InvalidLink />
-    : state.signIn && location.pathname === '/' ? <RegisteredSignInPage account={account} pending={state.signIn} />
+    : state.signIn && location.pathname === '/' ? <RegisteredSignInPage account={account} pending={state.signIn} providerFailure={providerFailure} />
     : <Outlet />}</DocumentBootReady>;
 }
 function useAccount() {
@@ -91,7 +93,7 @@ function HomeRoute() {
   return <ServicesHomePage account={account} session={session} />;
 }
 function AccountRoute() {
-  const {identityTransaction} = root.useRouteContext<ServicesRouter>();
+  const {identityTransaction, providerFailure} = root.useRouteContext<ServicesRouter>();
   const {account, session} = useAccount(), {tab} = workspace.useSearch<ServicesRouter>();
   const [authenticating, setAuthenticating] = useState(() => !session), [deleted, setDeleted] = useState(false);
   const {t} = servicesI18n();
@@ -101,7 +103,7 @@ function AccountRoute() {
   if (securityEnded?.codes?.length && !session) return <SignedOutRecoveryCodes codes={securityEnded.codes} onDone={() => setSecurityEnded({})}/>;
   if (deleted && !session) return <ServicesAuthStage><ServicesStateIcon/><ServicesHeading>{t('web.deleteAccount.doneTitle')}</ServicesHeading>
     <ServicesLead>{t('web.deleteAccount.doneBody')}</ServicesLead><ServicesActions><Button variant="glass" onClick={() => {setDeleted(false);location.assign('/');}}>{t('web.link.backToPortico')}</Button></ServicesActions></ServicesAuthStage>;
-  if (!session || authenticating) return <ServicesAuthForm account={account} before={securityEnded ? <ServicesNotice>{t('services.signin.ended')}</ServicesNotice> : undefined} onSignedIn={() => {setSecurityEnded(undefined);setAuthenticating(false);}} />;
+  if (!session || authenticating) return <ServicesAuthForm account={account} providerFailure={providerFailure} before={securityEnded ? <ServicesNotice>{t('services.signin.ended')}</ServicesNotice> : undefined} onSignedIn={() => {setSecurityEnded(undefined);setAuthenticating(false);}} />;
   return <AccountPage identityTransaction={identityTransaction} account={account} session={session} section={tab as 'devices' | 'security' | 'servers' | 'notifications'} onDeleted={() => setDeleted(true)} onSecurityEnded={codes => setSecurityEnded({...(codes ? {codes: Object.freeze([...codes])} : {})})} />;
 }
 function DeviceRoute() {

@@ -71,7 +71,10 @@ test('account coordination storage recovers malformed metadata without retaining
   assert.deepEqual(await storage.load(), {version:1,revocations:[]});
   assert.equal(raw,'{broken'); // Initial restoration never writes outside the lock.
   storage.repair(); assert.deepEqual(JSON.parse(raw),{version:1,revocations:[]});
-  raw = 'x'.repeat(128 * 1024 + 1); assert.deepEqual(await storage.load(), {version:1,revocations:[]});
+  raw = JSON.stringify({version:1,revocations:[{familyId:'oversized-pending'}],oldPayload:'x'.repeat(128*1024)});
+  assert.deepEqual(await storage.load(), {version:1,revocations:[{familyId:'oversized-pending'}]});
+  storage.repair(); assert.deepEqual(JSON.parse(raw),{version:1,revocations:[{familyId:'oversized-pending'}]});
+  raw='x'.repeat(4*1024*1024+1);await assert.rejects(storage.load(),/too large/);
   raw=JSON.stringify({version:1,revocations:[{familyId:'old-family'},'native-secret'],active:{session:{accessToken:'obsolete-secret'}}});
   assert.deepEqual(await storage.load(),{version:1,revocations:[{familyId:'old-family'}]});
   storage.repair(); assert.equal(raw.includes('obsolete-secret'),false); assert.equal(raw.includes('native-secret'),false);

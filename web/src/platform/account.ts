@@ -29,17 +29,20 @@ export class BrowserCredentialStorage implements CredentialStorage<BrowserAuthor
 
   private recover(raw:string|null):BrowserRecord|undefined {
     if(raw===null)return;
+    // Do not erase a record we cannot inspect within the recovery budget.
+    if(raw.length>4*1024*1024)throw new Error('Saved account state is too large.');
     let value:unknown;
     try {
-      if(raw.length>maximumBytes)return {version:1,revocations:[]};
       value=JSON.parse(raw);
+      if(raw.length>maximumBytes)throw new Error('Oversized account metadata.');
       return parseBrowserCredentialRecord(value);
     } catch {
       // Browser records contain coordination metadata, never credentials. Retire
       // an obsolete/damaged active record, keeping every valid sign-out tombstone.
       const revocations:BrowserAuthority[]=[];
       const pending=(value as {revocations?:unknown})?.revocations;
-      if(Array.isArray(pending))for(const item of pending.slice(0,16)) {
+      if(Array.isArray(pending)&&pending.length>16)throw new Error('Saved account sign-outs exceeded their limit.');
+      if(Array.isArray(pending))for(const item of pending) {
         try {revocations.push(...parseBrowserCredentialRecord({version:1,revocations:[item]}).revocations);} catch { /* Not a usable browser-family tombstone. */ }
       }
       return {version:1,revocations};

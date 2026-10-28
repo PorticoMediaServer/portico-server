@@ -57,3 +57,27 @@ test('the login root keeps a pending server return, and otherwise opens the serv
     }
   } finally {if (previous) Object.defineProperty(globalThis, 'location', previous); else Reflect.deleteProperty(globalThis, 'location');}
 });
+
+test('provider failures stay visible with an active family or an original server sign-in', async () => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'location');
+  Object.defineProperty(globalThis, 'location', {configurable:true,value:{pathname:'/',search:''}});
+  try {for(const active of [true,false]){
+    const h=createRenderer();let Root!:()=>unknown;
+    const session=active?{account:{id:'original'},familyId:'original-family'}:undefined;
+    const pending={serverName:'Original server'};
+    const context={providerFailure:'google',invalidContinuation:false,account:{service:{getSnapshot:()=>({phase:active?'ready':'signedOut',session}),subscribe:()=>()=>{}}},bootstrap:{subscribe:()=>()=>{},getSnapshot:()=>({phase:'ready',signIn:pending})}};
+    const root={useRouteContext:()=>context};
+    await componentModule(new URL('../src/services/ServicesApp.tsx',import.meta.url),{
+      react:h.react,'./i18n':{servicesI18n:()=>({t:(key:string)=>key})},
+      '../shell/DocumentBootReady':{DocumentBootReady:({children}:{children:unknown})=>children},
+      '../kit/accounts/ServicesAuth':Object.fromEntries(['ServicesAuthStage','ServicesHeading','ServicesNotice','ServicesActions'].map(k=>[k,k])),
+      '../kit/controls':{Button:'Button'},'./SignInPage':{RegisteredSignInPage:'OriginalServerReturn'},
+      '@tanstack/react-router':{createRootRouteWithContext:()=>(options:{component:()=>unknown})=>{Root=options.component;return root;},createRoute:(r:unknown)=>r},
+    });
+    try{
+      const shown=tree(h.render(Root));
+      if(active){assert.ok(shown.some(n=>n.type==='ServicesNotice'));assert.equal(context.account.service.getSnapshot().session,session);}
+      else{const form=shown.find(n=>n.type==='OriginalServerReturn');assert.equal(form?.props.providerFailure,'google');assert.equal(form?.props.pending,pending);}
+    }finally{h.dispose();}
+  }}finally{if(previous)Object.defineProperty(globalThis,'location',previous);else Reflect.deleteProperty(globalThis,'location');}
+});

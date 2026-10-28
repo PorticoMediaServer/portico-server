@@ -12,7 +12,7 @@ export function captureServicesEntry(page: Pick<Location, 'href' | 'replace' | '
   const url = new URL(page.href);
   if (['/', '/account'].includes(url.pathname) && !url.hash && [...url.searchParams.keys()].length === 1 && url.searchParams.has('identityError')) {
     const value = url.searchParams.get('identityError');
-    history.replaceState(null, '', '/');
+    history.replaceState(null, '', url.pathname === '/account' ? '/account?tab=security' : '/');
     return {providerFailure: value === 'google' || value === 'apple' ? value : 'unknown'} as const;
   }
   const signIn = captureHostedSignIn(page, history, expectedHostedOrigin);

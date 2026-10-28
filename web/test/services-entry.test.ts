@@ -73,7 +73,7 @@ test('provider failures are scrubbed into a bounded display hint before any save
     const page={href:origin+path+'?identityError='+value,pathname:path,search:'?identityError='+value,hash:'',replace(){throw new Error('unexpected redirect');}};
     let target:unknown;
     const result=captureServicesEntry(page,{state:null,replaceState:(_s,_u,url)=>{target=url;}},origin);
-    assert.equal(result.providerFailure,expected);assert.equal(target,'/');
+    assert.equal(result.providerFailure,expected);assert.equal(target,path === '/account' ? '/account?tab=security' : '/');
     assert.equal(result.signIn,undefined);assert.equal(result.capture,undefined);
   }
 });
