@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {dismissToast, releaseSheet, resistedHeight, sheetDetents, springFrames} from '../../src/kit/overlays/model.ts';
+import {dismissToast, releaseSheet, resistedHeight, sheetDetents, springFrames, sheetViewport} from '../../src/kit/overlays/model.ts';
 
 test('sheet detents stay inside the visual viewport and preserve caller indices', () => {
   assert.deepEqual(sheetDetents([700, 420, 1000, -1, NaN, 420], 744), [{height: 420, index: 1}, {height: 700, index: 0}, {height: 744, index: 2}]);
@@ -35,4 +35,13 @@ test('spring trajectories start at the release point and retain the direction of
   assert.ok(up.every(Number.isFinite));
   const still = springFrames(744, 744, 0);
   assert.ok(still.every(value => value === 744));
+});
+
+test('phone sheets follow keyboard shrink and visual-viewport panning without changing the ordinary frame', () => {
+  assert.deepEqual(sheetViewport(714), {height: 714, bottom: 0});
+  const keyboard = sheetViewport(714, {height: 378, offsetTop: 0});
+  assert.equal(714 - keyboard.bottom, 378, 'footer clears the keyboard');
+  const panned = sheetViewport(714, {height: 378, offsetTop: 110});
+  assert.equal(714 - panned.bottom, 488, 'scrolling visual viewport moves the visible bottom too');
+  assert.deepEqual(sheetViewport(378, {height: 378, offsetTop: 0}), {height: 378, bottom: 0}, 'layout-resizing browsers do not get a second offset');
 });

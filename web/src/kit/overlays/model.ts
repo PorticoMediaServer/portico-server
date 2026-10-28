@@ -40,3 +40,10 @@ export function springFrames(from: number, to: number, velocity: number, spring:
     return to + Math.exp(-decay * time) * (displacement * Math.cos(wd * time) + b * Math.sin(wd * time));
   });
 }
+
+/** A keyboard can shrink/pan Safari's visual viewport while fixed positioning
+ * still uses the layout viewport. Keep the sheet within the visible rectangle. */
+export function sheetViewport(layoutHeight: number, visual?: Readonly<{height: number; offsetTop: number}> | null) {
+  const height = visual?.height ?? layoutHeight;
+  return {height, bottom: Math.max(0, layoutHeight - height - (visual?.offsetTop ?? 0))};
+}
