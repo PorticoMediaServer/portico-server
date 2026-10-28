@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {decodeBrowseLibraryResponse} from '../../contracts/src/decoders.ts';
 import {schemas} from '../../contracts/src/schemas.ts';
+import type {BrowseLibraryResponse} from '../../contracts/src/types.ts';
+import {parseBrowsePreparing} from '../src/browse-preparation.ts';
 import {defaultI18n} from '../../i18n/src/index.ts';
 import {BrowseQueryBuilder, BrowseQueryError, browseContextFacetsPath, browseCountsRequest, parseBrowseCapabilities, parseBrowseNode, parseBrowseResult, validateBrowseQuery, type BrowseCapabilities, type BrowseFieldCapability, type BrowseNode} from '../src/browse.ts';
 import {validateHomeSeeAll} from '../src/home.ts';
@@ -40,10 +42,14 @@ import {savedViewSummary} from '../src/presentation/saved-view-summary.ts';
 const OPERATOR = 'within-last-days';
 const DATE_FIELDS = ['dateAdded', 'releaseDate', 'lastPlayedAt'] as const;
 
-// The published node shape, taken from the generated schema the client decodes.
-const nodeSchema: any = (schemas as any).BrowseLibraryResponse.properties.applied.properties.query;
-const relative = nodeSchema.oneOf.find((shape: any) => shape.properties?.operator?.enum?.includes(OPERATOR));
-const general = nodeSchema.oneOf.find((shape: any) => shape !== relative);
+// Relative predicates belong to a ready page, not the separate preparing reply.
+const readySchemas = schemas.BrowseLibraryResponse.anyOf.filter((shape): shape is Extract<typeof shape, {properties: {applied: unknown}}> => 'applied' in shape.properties);
+assert.equal(readySchemas.length, 1, 'the contract has exactly one ready page branch');
+const nodeSchema = readySchemas[0].properties.applied.properties.query;
+const relative = nodeSchema.oneOf.find((shape): shape is Extract<typeof shape, {properties: {field: {enum: unknown}}}> => 'enum' in shape.properties.field);
+const general = nodeSchema.oneOf.find((shape): shape is Exclude<typeof shape, {properties: {field: {enum: unknown}}}> => !('enum' in shape.properties.field));
+assert.ok(relative, 'the ready query has a relative date predicate');
+assert.ok(general, 'the ready query has a general predicate/group branch');
 
 function dateField(id: string): BrowseFieldCapability {
   return {id, type: 'date', labelKey: `browse.field.${id}`, controlHint: 'date-range', complexity: 'standard', cost: 'indexed', operators: ['within-last-days', 'equals', 'at-most', 'at-least', 'between', 'is-present', 'is-missing'], applicableKinds: ['movie']};
@@ -65,8 +71,9 @@ function capabilities(maximumDepth = 5): BrowseCapabilities {
 }
 
 /** A page the generated contract accepts, carrying the applied query under test. */
-function page(query: BrowseNode | null): any {
-  return {pivot: 'movies', applied: {query, sort: [{field: 'title', direction: 'asc'}]}, entries: [], pageInfo: {start: 0, total: 0, totalIsLowerBound: false, revision: 'revision-1', hasMore: false, nextCursor: '', durationMs: 0, durationIsLowerBound: false}, positionIndex: []};
+type ReadyBrowsePage = Extract<BrowseLibraryResponse, {applied: unknown}>;
+function page(query: BrowseNode | null): ReadyBrowsePage {
+  return {pivot: 'movies', applied: {query: query as ReadyBrowsePage['applied']['query'], sort: [{field: 'title', direction: 'asc'}]}, entries: [], pageInfo: {start: 0, total: 0, totalIsLowerBound: false, revision: 'revision-1', hasMore: false, nextCursor: '', durationMs: 0, durationIsLowerBound: false}, positionIndex: []};
 }
 
 const queryError = (path: string) => (error: unknown) => error instanceof BrowseQueryError && error.code === 'invalid_query' && error.field === path;
@@ -88,12 +95,29 @@ const vocabulary = {
   queryLimits: {maximumDepth: 5, maximumClauses: 40, maximumBytes: 65536, maximumSorts: 3, defaultLimit: 40, maximumLimit: 100, cursorTtlMs: 10000},
 };
 
+test('ready pages carry applied queries and preparing replies stay in their typed protocol branch', () => {
+  const ready = decodeBrowseLibraryResponse(page({field: 'dateAdded', operator: OPERATOR, value: 30}));
+  assert.ok('applied' in ready, 'a ready response exposes the applied query');
+  assert.deepEqual(parseBrowseResult(ready).applied.query, {field: 'dateAdded', operator: OPERATOR, value: 30});
+  const pending = {state: 'preparing', kind: 'reading-browse-preparing', queryId: 'query-1', retryAfterMs: 25} satisfies Exclude<BrowseLibraryResponse, ReadyBrowsePage>;
+  const preparing = decodeBrowseLibraryResponse(pending);
+  assert.ok('state' in preparing, 'a preparing response exposes its poll state');
+  assert.deepEqual({...preparing}, pending);
+  assert.equal('applied' in preparing, false);
+  assert.deepEqual(parseBrowsePreparing(preparing, 'reading-browse'), {queryId: 'query-1', retryAfterMs: 25});
+  assert.throws(() => parseBrowseResult(preparing), {code: 'invalid_browse'});
+  for (const malformed of [{...pending, kind: 'reading-facet-preparing'}, {...pending, queryId: ''}, {...pending, retryAfterMs: 0}]) {
+    assert.throws(() => decodeBrowseLibraryResponse(malformed), /Invalid contract value/);
+  }
+});
+
 test('the published relative window is exactly the three date fields, in whole days from 1 to 36500', () => {
   assert.deepEqual([...relative.properties.field.enum].sort(), [...DATE_FIELDS].sort());
   assert.deepEqual(relative.properties.value, {type: 'integer', minimum: 1, maximum: 36500});
   // The general predicate shape does not carry the relative operator: it is only a date
   // window on one of those fields, never a scalar value.
-  assert.equal([...general.properties.operator.enum].includes(OPERATOR), false);
+  const generalOperators: readonly string[] = general.properties.operator.enum;
+  assert.equal(generalOperators.includes(OPERATOR), false);
   for (const field of DATE_FIELDS) for (const value of [1, 7, 30, 90, 365, 36500]) {
     const node = {field, operator: OPERATOR, value};
     assert.deepEqual(parseBrowseNode(node), node, `${field} ${value} is read exactly`);
@@ -113,7 +137,7 @@ test('a day count outside 1–36500 is refused by the contract, the structural p
 });
 
 test('a relative window on a non-date field is refused by the contract and the capability check, and admitted structurally', () => {
-  const node = {field: 'year', operator: OPERATOR, value: 30};
+  const node: BrowseNode = {field: 'year', operator: OPERATOR, value: 30};
   // 1. The generated contract cannot express it at all: the relative shape enumerates
   //    date fields and the general shape's operator list leaves the relative one out.
   assert.throws(() => decodeBrowseLibraryResponse(page(node as never)), /Invalid contract value/);
@@ -132,7 +156,7 @@ test('a relative window on a non-date field is refused by the contract and the c
 });
 
 test('nested groups keep relative windows exact, refuse a non-date field at its own path, and stay within the published depth', () => {
-  const node = {all: [
+  const node: BrowseNode = {all: [
     {field: 'dateAdded', operator: OPERATOR, value: 30},
     {any: [{field: 'releaseDate', operator: OPERATOR, value: 7}, {not: {field: 'lastPlayedAt', operator: OPERATOR, value: 90}}]},
   ]};
@@ -151,8 +175,8 @@ test('nested groups keep relative windows exact, refuse a non-date field at its 
 });
 
 test('the applied query is echoed exactly, and no relative operator beyond the published one exists', () => {
-  const absolute = {field: 'dateAdded', operator: 'at-least', value: '2026-09-23'};
-  const relative30 = {field: 'dateAdded', operator: OPERATOR, value: 30};
+  const absolute: BrowseNode = {field: 'dateAdded', operator: 'at-least', value: '2026-09-23'};
+  const relative30: BrowseNode = {field: 'dateAdded', operator: OPERATOR, value: 30};
   const result = parseBrowseResult(page({all: [relative30, absolute]}));
   assert.deepEqual(result.applied.query, {all: [relative30, absolute]});
   assert.equal(Object.isFrozen(result.applied.query), true);
@@ -180,7 +204,7 @@ test('absolute date predicates are unchanged by the relative window work', () =>
 test('every operator the published predicate shape can express is structurally readable', () => {
   const list = new Set(['in', 'not-in', 'between', 'contains-any', 'contains-all']);
   const presence = new Set(['is-present', 'is-missing']);
-  for (const operator of general.properties.operator.enum as string[]) {
+  for (const operator of general.properties.operator.enum) {
     const value = presence.has(operator) ? null : list.has(operator) ? (operator === 'between' ? ['a', 'b'] : ['a']) : 'a';
     assert.doesNotThrow(() => parseBrowseNode({field: 'title', operator, value}), `${operator} is not read`);
   }
@@ -212,7 +236,7 @@ test('a See all destination keeps the relative window, and one that cannot be re
 });
 
 test('a counts or facets request carries the relative window unchanged, never a date computed from the clock', t => {
-  const node = {field: 'dateAdded', operator: OPERATOR, value: 30};
+  const node: BrowseNode = {field: 'dateAdded', operator: OPERATOR, value: 30};
   assert.deepEqual(browseCountsRequest('movies', [{id: 'recent', query: node}]).queries[0]?.query, node);
   const facets = browseContextFacetsPath('library', 'genre', 'movies', node);
   assert.deepEqual(JSON.parse(new URLSearchParams(facets.slice(facets.indexOf('?') + 1)).get('query') as string), node);
@@ -234,10 +258,10 @@ test('a saved view is transport for the query it stores, and rendering withholds
   const writes: any[] = [];
   const directory = () => ({serverId: 'server', viewerFence: 'fence', revision: 1, nextCursor: '', resources: [{serverId: 'server', viewerFence: 'fence', id: 'year-window', kind: 'view', name: 'Year', summary: '', visibility: 'private', revision: 1, role: 'owner', entryCount: 0, actions: ['pin', 'update', 'delete'], status: 'ready', invalidComponents: [], pinned: false, pinRevision: 0, shares: [], definition}]});
   const service = new PersonalSavedService(
-    {request: async (_path: string, method?: string, body?: any) => {
-      if (method === 'GET') return directory();
+    {request: async <T>(_path: string, method?: string, body?: any): Promise<T> => {
+      if (method === 'GET') return directory() as unknown as T;
       writes.push(body);
-      return {serverId: 'server', viewerFence: 'fence', receipt: {operationId: body.operationId, resourceId: 'year-window', revision: 2, deleted: false}};
+      return {serverId: 'server', viewerFence: 'fence', receipt: {operationId: body.operationId, resourceId: 'year-window', revision: 2, deleted: false}} as unknown as T;
     }},
     {serverId: 'server', viewerId: 'viewer'},
     async () => '00000000-0000-4000-8000-000000000001',
