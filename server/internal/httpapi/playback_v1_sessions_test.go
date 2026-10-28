@@ -20,7 +20,7 @@ func startBody(item string, extra map[string]any) map[string]any {
 	return body
 }
 
-// Slice 2: idempotent start, If-Match changes with generations, timeline
+// Slice 2: idempotent start, If-Match changes with generations, observation
 // fencing, stop fencing the grant, replacement and lease expiry (spec §16.1–4).
 func TestPlaybackV1SessionLifecycle(t *testing.T) {
 	f := newV1Fixture(t, 3)
@@ -112,23 +112,33 @@ func TestPlaybackV1SessionLifecycle(t *testing.T) {
 	}
 
 	// Invariant 3: stale generation or seq never changes state.
-	timeline := path + "/timeline"
+	h := newHTTPObserver(t, f.db, func(method, path string, body any) *httptest.ResponseRecorder {
+		return f.raw(method, path, f.owner.AccessToken, nil, body)
+	})
+	epoch := h.claim(s.ID, 2)
 	report := func(seq int64, generation int, state string, position int64) *httptest.ResponseRecorder {
-		return f.raw("POST", timeline, f.owner.AccessToken, nil, map[string]any{"seq": seq, "generation": generation, "state": state, "positionMs": position, "rate": 1})
+		return f.raw("PUT", path+"/observation", f.owner.AccessToken, nil, map[string]any{"epoch": epoch, "seq": seq, "generation": generation, "state": state, "positionMs": position, "rate": 1, "monotonicMs": seq * 1000})
 	}
-	if w = report(1, 2, "playing", 5_000); w.Code != 204 || w.Header().Get("Report-Every-Ms") != "10000" {
-		t.Fatalf("timeline %d %v %s", w.Code, w.Header(), w.Body.String())
+	if w = report(1, 2, "playing", 5_000); w.Code != 200 {
+		t.Fatalf("observation %d %s", w.Code, w.Body.String())
 	}
-	report(1, 2, "paused", 9_000) // same seq: ignored
-	report(2, 1, "paused", 9_000) // old generation: ignored
+	h.waitWritten(s.ID, "0/0") // First sample is an edge.
+	if w = report(1, 2, "paused", 9_000); w.Code != 200 {
+		t.Fatalf("duplicate: %d %s", w.Code, w.Body.String())
+	}
+	if w = report(2, 1, "paused", 9_000); w.Code != 200 {
+		t.Fatalf("old generation: %d %s", w.Code, w.Body.String())
+	}
 	var got playbackv1.SessionView
 	f.call("GET", path, nil, nil, 200, &got)
 	if got.State != "playing" {
 		t.Fatalf("stale report changed state: %+v", got)
 	}
-	if w = report(3, 2, "paused", 12_000); w.Header().Get("Report-Every-Ms") != "30000" {
-		t.Fatalf("paused cadence %v", w.Header())
+	beforePause := h.written(s.ID)
+	if w = report(3, 2, "paused", 12_000); w.Code != 200 {
+		t.Fatalf("pause observation %d %s", w.Code, w.Body.String())
 	}
+	h.waitWritten(s.ID, beforePause) // Pause is an edge.
 	f.call("GET", path, nil, nil, 200, &got)
 	if got.State != "paused" {
 		t.Fatalf("state %s", got.State)
@@ -222,7 +232,7 @@ func TestPlaybackV1EndedSessionsArePrunedPastTheHistory(t *testing.T) {
 	}
 }
 
-// B8b: a timeline's skip report is marker evidence (spec §4.2): recorded once
+// B8b: an observation's skip report is marker evidence (spec §4.2): recorded once
 // per session and marker, never for an automatic skip of a marker the server did
 // not authorize for unattended skipping, and never for another item's marker.
 func TestPlaybackV1SkipReportsAreMarkerEvidence(t *testing.T) {
@@ -241,15 +251,21 @@ func TestPlaybackV1SkipReportsAreMarkerEvidence(t *testing.T) {
 		}
 	}
 	drainPlaybackCatalogue(t, f.db)
-	var evidence []string
-	f.v1.SkipEvidence = func(_ context.Context, code string, _ map[string]int64) { evidence = append(evidence, code) }
+	evidence := make(chan string, 8)
+	f.v1.SkipEvidence = func(_ context.Context, code string, _ map[string]int64) { evidence <- code }
 	f.call("PUT", "/v1/me/devices/current/capabilities", nil, webCapabilities(), 204, nil)
 	var s playbackv1.SessionView
 	f.call("POST", "/v1/playback/sessions", map[string]string{"Idempotency-Key": "skip-start-000000001"}, startBody(f.items[0], nil), 201, &s)
-	seq := int64(0)
+	h := newHTTPObserver(t, f.db, func(method, path string, body any) *httptest.ResponseRecorder {
+		return f.raw(method, path, f.owner.AccessToken, nil, body)
+	})
 	report := func(skipped map[string]any) int {
-		seq++
-		return f.raw("POST", "/v1/playback/sessions/"+s.ID+"/timeline", f.owner.AccessToken, nil, map[string]any{"seq": seq, "generation": s.Presentation.Generation, "state": "playing", "positionMs": 35_000, "skipped": skipped}).Code
+		before := h.written(s.ID)
+		w := h.observe(s.ID, s.Presentation.Generation, map[string]any{"state": "playing", "positionMs": 35_000, "skipped": skipped, "seekSerial": h.seq[s.ID] + 1})
+		if w.Code == 200 {
+			h.waitWritten(s.ID, before)
+		} // Each synthetic skip also jumps position; duplicate marker evidence is still deduplicated.
+		return w.Code
 	}
 	for _, k := range []map[string]any{
 		{"markerId": "safe-intro", "mode": "automatic", "positionMs": 5_000},
@@ -257,14 +273,14 @@ func TestPlaybackV1SkipReportsAreMarkerEvidence(t *testing.T) {
 		{"markerId": "unsafe-recap", "mode": "automatic", "positionMs": 0},
 		{"markerId": "elsewhere", "mode": "manual", "positionMs": 0},
 	} {
-		if code := report(k); code != 204 {
+		if code := report(k); code != 200 {
 			t.Fatalf("report %v: %d", k, code)
 		}
 	}
 	if code := report(map[string]any{"markerId": "safe-intro", "mode": "sometimes", "positionMs": 0}); code != 400 {
 		t.Fatalf("an invalid skip report was accepted: %d", code)
 	}
-	if code := report(map[string]any{"markerId": "unsafe-recap", "mode": "manual", "positionMs": 1_000}); code != 204 {
+	if code := report(map[string]any{"markerId": "unsafe-recap", "mode": "manual", "positionMs": 1_000}); code != 200 {
 		t.Fatalf("manual skip: %d", code)
 	}
 	rows, err := f.db.Query(`SELECT marker_id,mode,position_us FROM playback_marker_skips WHERE playback_id=? ORDER BY marker_id`, s.ID)
@@ -282,8 +298,24 @@ func TestPlaybackV1SkipReportsAreMarkerEvidence(t *testing.T) {
 	if strings.Join(got, ",") != "safe-intro/automatic/5000000,unsafe-recap/manual/1000000" {
 		t.Fatalf("recorded skips %v", got)
 	}
-	if strings.Join(evidence, ",") != "marker_skip_automatic_intro,marker_skip_manual_recap" {
-		t.Fatalf("diagnostics evidence %v", evidence)
+	// Diagnostics run after the batch commits, so wait for both callbacks rather
+	// than reading a slice concurrently with the observation worker.
+	var diagnostics []string
+	deadline := time.NewTimer(10 * time.Second)
+	defer deadline.Stop()
+	for len(diagnostics) < 2 {
+		select {
+		case code := <-evidence:
+			diagnostics = append(diagnostics, code)
+		case <-deadline.C:
+			t.Fatalf("diagnostics evidence %v", diagnostics)
+		}
+	}
+	for len(evidence) > 0 {
+		diagnostics = append(diagnostics, <-evidence)
+	}
+	if strings.Join(diagnostics, ",") != "marker_skip_automatic_intro,marker_skip_manual_recap" {
+		t.Fatalf("diagnostics evidence %v", diagnostics)
 	}
 }
 
@@ -316,8 +348,13 @@ func TestPlaybackV1RestoreEndsSessionsAndRevokesMedia(t *testing.T) {
 	if got.State != "ended" || got.End == nil || got.End.Reason != playbackv1.EndReasonRestored {
 		t.Fatalf("the session did not end as restored: %+v", got)
 	}
-	w := f.raw("POST", "/v1/playback/sessions/"+s.ID+"/timeline", f.owner.AccessToken, nil, map[string]any{"seq": 1, "generation": s.Presentation.Generation, "state": "playing", "positionMs": 1000, "rate": 1})
+	// A restored server is a new process: no observer survives it, and the
+	// device can neither claim the session again nor report under an epoch.
+	if w := f.raw("POST", "/v1/playback/sessions/"+s.ID+"/observer", f.owner.AccessToken, nil, map[string]any{"generation": s.Presentation.Generation}); w.Code < 400 {
+		t.Fatalf("a restored session accepted a claim: %d", w.Code)
+	}
+	w := f.raw("PUT", "/v1/playback/sessions/"+s.ID+"/observation", f.owner.AccessToken, nil, map[string]any{"epoch": strings.Repeat("e", 22), "seq": 1, "generation": s.Presentation.Generation, "state": "playing", "positionMs": 1000, "rate": 1})
 	if w.Code < 400 {
-		t.Fatalf("a restored session accepted a timeline report: %d", w.Code)
+		t.Fatalf("a restored session accepted an observation: %d", w.Code)
 	}
 }

@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -50,9 +49,6 @@ func newPlaybackV1(d Dependencies) *playbackv1.Service {
 	if s == nil {
 		return nil
 	}
-	// Every client reports with observations (P2-21), and a client that doesn't is refused at
-	// start. PORTICO_PLAYBACK_OBSERVATIONS=0 is the off switch the older HTTP tests still use.
-	s.ObservationsEnabled = os.Getenv("PORTICO_PLAYBACK_OBSERVATIONS") != "0"
 	s.StopAuthorityTx = func(ctx context.Context, tx *sql.Tx, c playbackv1.Caller) error {
 		if d.Identity == nil || tx == nil || dbwork.Snapshot(ctx) != tx || c.DeviceID == "" {
 			return identity.ErrForbidden
@@ -319,11 +315,21 @@ func registerPlaybackV1Admin(r *apikit.Registry, d Dependencies) {
 		})
 }
 
+// assumedPlaybackProtocol is the Portico-Playback version taken for a request
+// that names none. It is zero in the server, so such a client is refused at
+// start. This package's tests set it to the current version (see
+// playback_protocol_test.go), so their direct requests act as current clients;
+// the refusal itself is tested with an explicit older version.
+var assumedPlaybackProtocol int
+
 // v1Caller turns the admitted caller into the service's caller, with media
 // admission for new presentations and channel admission for channel starts.
 func (d Dependencies) v1ServiceCaller(q *http.Request, c v1Caller) playbackv1.Caller {
 	uploadLimited := false
-	protocol, _ := strconv.Atoi(q.Header.Get("Portico-Playback"))
+	protocol := assumedPlaybackProtocol
+	if declared := q.Header.Get("Portico-Playback"); declared != "" {
+		protocol, _ = strconv.Atoi(declared)
+	}
 	return playbackv1.Caller{PlaybackProtocol: protocol, UploadLimited: &uploadLimited, Principal: c.Principal, DeviceID: c.DeviceID, Remote: d.v1Remote(q), TransportClass: d.deliveryContext(q).TransportClass, AuthorizeItem: func(ctx context.Context, item string) error {
 		return itemAdmission(d.itemAccess(ctx, c.Principal, item))
 	}, Admit: func(ctx context.Context, item string) (int, error) {
@@ -471,7 +477,7 @@ func setSessionHeaders(ctx context.Context, v playbackv1.SessionView) {
 }
 
 func registerPlaybackV1Sessions(r *apikit.Registry, d Dependencies) {
-	timelineRate := newTimelineLimiter()
+	observationRate := newObservationLimiter()
 	sessionErrors := []string{"invalid_request", "unauthorized", "not_found", "session_ended", "revision_required", "revision_mismatch"}
 	v1Route(r, apikit.Metadata{Admission: lanePlayback, ID: "start_playback_session", Method: "POST", Path: "/v1/playback/sessions", Summary: "Start playback (201), or report that it is being prepared (202)",
 		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 8 << 10, Status: 201, SuccessStatuses: []int{202},
@@ -535,7 +541,7 @@ func registerPlaybackV1Sessions(r *apikit.Registry, d Dependencies) {
 		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 4 << 10, Status: 200, Errors: append(sessionErrors, "observation_epoch_changed", "rate_limited")},
 		func(ctx context.Context, q *http.Request, in playbackv1.Observation) (playbackv1.ObservationAck, error) {
 			caller := callerFrom(ctx)
-			if !timelineRate.allow(caller, time.Now()) {
+			if !observationRate.allow(caller, time.Now()) {
 				return playbackv1.ObservationAck{}, &apierror.Error{Code: "rate_limited", RetryAfterSeconds: 1}
 			}
 			apikit.SetHeader(ctx, "Cache-Control", "no-store")
@@ -561,19 +567,6 @@ func registerPlaybackV1Sessions(r *apikit.Registry, d Dependencies) {
 				ack.Session = &view
 			}
 			return ack, nil
-		})
-	v1Route(r, apikit.Metadata{Admission: lanePlayback, ID: "report_playback_timeline", Method: "POST", Path: "/v1/playback/sessions/{id}/timeline", Summary: "Report progress; renews the lease",
-		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 4 << 10, Status: 204, Errors: append(sessionErrors, "rate_limited")},
-		func(ctx context.Context, q *http.Request, in playbackv1.Report) (noBody, error) {
-			caller := callerFrom(ctx)
-			if !timelineRate.allow(caller, time.Now()) {
-				return noBody{}, &apierror.Error{Code: "rate_limited", RetryAfterSeconds: 1}
-			}
-			every, err := d.playbackV1().Timeline(ctx, d.v1ServiceCaller(q, caller), q.PathValue("id"), in)
-			if err == nil {
-				apikit.SetHeader(ctx, "Report-Every-Ms", strconv.FormatInt(every.Milliseconds(), 10))
-			}
-			return noBody{}, err
 		})
 }
 

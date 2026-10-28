@@ -728,7 +728,14 @@ func (f *loadFixture) runViewer(tier performanceTier, index int) viewerResult {
 		if json.Unmarshal([]byte(body), &session) != nil || session.ID == "" {
 			continue
 		}
-		call("playback-progress", "POST", "/v1/playback/sessions/"+session.ID+"/timeline", map[string]any{"seq": 1, "generation": session.Presentation.Generation, "state": "playing", "positionMs": (10 + iteration) * 1000})
+		label = "playback-observer"
+		code, elapsed, body = f.callTimed(token, "POST", "/v1/playback/sessions/"+session.ID+"/observer", map[string]any{"generation": session.Presentation.Generation})
+		record(code, elapsed)
+		var grant playbackv1.ObserverGrant
+		if code == 200 && json.Unmarshal([]byte(body), &grant) == nil {
+			call("playback-progress", "PUT", "/v1/playback/sessions/"+session.ID+"/observation", playbackv1.Observation{Epoch: grant.Epoch, Seq: 1, Generation: session.Presentation.Generation, State: "playing", PositionMs: int64((10 + iteration) * 1000), Rate: 1})
+		}
+		// The Stop below drains the sample before ending the session.
 		call("playback-read", "GET", "/v1/playback/sessions/"+session.ID, nil)
 		call("playback-stop", "DELETE", "/v1/playback/sessions/"+session.ID, nil)
 	}

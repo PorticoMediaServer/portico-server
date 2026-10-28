@@ -73,8 +73,6 @@ func newObservationFixture(t *testing.T) *observationFixture {
 	proved := &provedLog{}
 	f.service.Playback.PersonalProgress = proved.record
 	f.service.Now = clock.now
-	f.service.ObservationsEnabled = true
-	f.caller.PlaybackProtocol = PlaybackProtocol
 	q := f.queue()
 	t.Cleanup(func() {
 		// Let the worker exit with the test.
@@ -520,11 +518,11 @@ func TestControlRevisionMovesOnlyOnCommands(t *testing.T) {
 	}
 }
 
-// Once the protocol is on, a client that does not declare it is refused
-// before any session exists.
+// A client that does not declare the protocol is refused before any session
+// exists.
 func TestStartRefusesAClientWithoutTheObservationProtocol(t *testing.T) {
 	f := newCarryFixture(t, false)
-	f.service.ObservationsEnabled = true
+	f.caller.PlaybackProtocol = 0
 	_, err := f.service.CreateQueue(context.Background(), f.caller, "carry-create-queue-0001", CreateQueueRequest{Segments: []SegmentInput{{Source: Selector{Items: &ItemList{IDs: []string{f.items[0].Public}}}}}, StartPlayback: &StartPlayback{State: "playing"}})
 	if !errors.Is(err, ErrClientUpdateRequired) {
 		t.Fatalf("old client start: %v, want ErrClientUpdateRequired", err)

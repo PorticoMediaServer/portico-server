@@ -7,16 +7,15 @@ import (
 	"portico.local/server/internal/playbackv1"
 )
 
-// The observation protocol over HTTP (P2-20/21): a client that does not declare it cannot start
-// playback; one that does claims an epoch, reports, is told to claim again under a wrong epoch,
+// The observation protocol over HTTP (P2-20/21): a client that declares an older one cannot start
+// playback; a current one claims an epoch, reports, is told to claim again under a wrong epoch,
 // and its Stop writes the latest reported position.
 func TestPlaybackObservationsOverHTTP(t *testing.T) {
-	t.Setenv("PORTICO_PLAYBACK_OBSERVATIONS", "1")
 	f := newV1Fixture(t, 1)
 	f.call("PUT", "/v1/me/devices/current/capabilities", nil, webCapabilities(), 204, nil)
-	w := f.raw("POST", "/v1/playback/sessions", f.owner.AccessToken, map[string]string{"Idempotency-Key": "observe-start-key-0001"}, startBody(f.items[0], nil))
+	w := f.raw("POST", "/v1/playback/sessions", f.owner.AccessToken, map[string]string{"Idempotency-Key": "observe-start-key-0001", "Portico-Playback": "1"}, startBody(f.items[0], nil))
 	if w.Code != 400 || v1Code(w) != "client_update_required" {
-		t.Fatalf("start without the protocol: %d %s", w.Code, w.Body.String())
+		t.Fatalf("start with an older protocol: %d %s", w.Code, w.Body.String())
 	}
 	var sessions int
 	if err := f.db.QueryRow(`SELECT count(*) FROM playback_v1_sessions`).Scan(&sessions); err != nil || sessions != 0 {

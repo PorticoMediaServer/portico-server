@@ -1095,7 +1095,7 @@ func soakCall(ctx context.Context, client *http.Client, base, token, label, meth
 func soakCallHeaders(ctx context.Context, client *http.Client, base, token, label, method, path string, body any, headers map[string]string, o *soakObservations, quiet bool) (int, []byte) {
 	// Ordinary clients replay retryable refusals after Retry-After, with jitter.
 	// Hostile/cancellation/reconnect faults retain their raw aggressive shape.
-	normal := label == "home" || label == "browse" || label == "search" || label == "detail" || label == "personal-state" || label == "playback-create" || label == "playback-stop" || label == "playback-timeline" || label == "recovery-home"
+	normal := label == "home" || label == "browse" || label == "search" || label == "detail" || label == "personal-state" || label == "playback-create" || label == "playback-stop" || label == "playback-observer" || label == "playback-observation" || label == "recovery-home"
 	start := time.Now()
 	code, raw, retryAfter := soakCallAttempt(ctx, client, base, token, label, method, path, body, headers, o, quiet)
 	if normal && (code == 429 || code == 503) {
@@ -1215,13 +1215,18 @@ func soakStream(ctx context.Context, client *http.Client, base, token string, f 
 		soakCall(ctx, client, base, token, "playback-stop", "DELETE", "/v1/playback/sessions/"+session.ID, nil, o, isClean())
 	}()
 	if protocol == "v1" {
+		code, body := soakCall(ctx, client, base, token, "playback-observer", "POST", "/v1/playback/sessions/"+session.ID+"/observer", map[string]any{"generation": view.Presentation.Generation}, o, isClean())
+		var grant playbackv1.ObserverGrant
+		if code != 200 || json.Unmarshal(body, &grant) != nil || grant.EveryMs <= 0 {
+			return
+		}
 		reportCtx, cancel := context.WithCancel(ctx)
 		var reports sync.WaitGroup
 		reports.Add(1)
 		reportStart := time.Now()
 		go func() {
 			defer reports.Done()
-			interval := max(time.Second, time.Duration(view.Lease.ReportEveryMs)*time.Millisecond)
+			interval := max(time.Second, time.Duration(grant.EveryMs)*time.Millisecond)
 			ticker := time.NewTicker(interval)
 			defer ticker.Stop()
 			for seq := int64(1); ; seq++ {
@@ -1230,7 +1235,8 @@ func soakStream(ctx context.Context, client *http.Client, base, token string, f 
 					return
 				case <-ticker.C:
 				}
-				soakCall(reportCtx, client, base, token, "playback-timeline", "POST", "/v1/playback/sessions/"+session.ID+"/timeline", playbackv1.Report{Generation: view.Presentation.Generation, Seq: seq, State: "playing", PositionMs: time.Since(reportStart).Milliseconds()}, o, isClean())
+				elapsed := time.Since(reportStart).Milliseconds()
+				soakCall(reportCtx, client, base, token, "playback-observation", "PUT", "/v1/playback/sessions/"+session.ID+"/observation", playbackv1.Observation{Epoch: grant.Epoch, Generation: view.Presentation.Generation, Seq: seq, State: "playing", PositionMs: elapsed, MonotonicMs: elapsed, PlayClockMs: elapsed, Rate: 1}, o, isClean())
 			}
 		}()
 		defer func() { cancel(); reports.Wait() }()

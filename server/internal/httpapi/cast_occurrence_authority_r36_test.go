@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"net/http/httptest"
 	"testing"
 
 	"portico.local/server/internal/identity"
@@ -61,7 +62,10 @@ func TestCastOccurrenceAllowsOnlyAdoptedItemAndQueueCompletion(t *testing.T) {
 	// The receiver reports the genuine end before asking for automatic next.
 	// Metadata ends with that occurrence; its adopted queue can still complete
 	// while the original lease remains current.
-	f.callAs(bearer, "POST", "/v1/playback/sessions/"+session.ID+"/timeline", nil, map[string]any{"seq": 1, "generation": session.Presentation.Generation, "state": "ended", "positionMs": 600_000}, 204, nil)
+	h := newHTTPObserver(t, f.db, func(method, path string, body any) *httptest.ResponseRecorder {
+		return f.raw(method, path, bearer, nil, body)
+	})
+	h.report(session.ID, session.Presentation.Generation, map[string]any{"state": "ended", "positionMs": 600_000})
 	if w := f.as(bearer, "GET", "/v1/items/"+session.ItemID, nil); w.Code != 403 {
 		t.Fatal("ended item metadata remained readable", w.Code)
 	}

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net/http/httptest"
 	"path/filepath"
 	"portico.local/server/internal/testtier"
 	"strings"
@@ -410,7 +411,10 @@ func TestPlaybackV1AdvanceAfterEndedInheritsAndSaysWhatsNext(t *testing.T) {
 	if q.Queue.Next == nil || !q.Queue.Next.Available || q.Queue.Next.Reason != "ready" || q.Queue.Next.EntryID == nil || *q.Queue.Next.EntryID != q.Window[1].EntryID || q.Queue.PostPlay == nil {
 		t.Fatalf("what's next %+v %+v", q.Queue.Next, q.Queue.PostPlay)
 	}
-	f.call("POST", "/v1/playback/sessions/"+q.Session.ID+"/timeline", nil, map[string]any{"seq": 1, "generation": q.Session.Presentation.Generation, "state": "ended", "positionMs": 600_000}, 0, nil)
+	h := newHTTPObserver(t, f.db, func(method, path string, body any) *httptest.ResponseRecorder {
+		return f.raw(method, path, f.owner.AccessToken, nil, body)
+	})
+	h.report(q.Session.ID, q.Session.Presentation.Generation, map[string]any{"state": "ended", "positionMs": 600_000})
 	var ended playbackv1.SessionView
 	f.call("GET", "/v1/playback/sessions/"+q.Session.ID, nil, nil, 200, &ended)
 	if ended.State != "ended" {

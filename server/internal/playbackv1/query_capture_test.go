@@ -111,7 +111,7 @@ func TestGrowingQueryShuffleKeepsTheSameSeededOrder(t *testing.T) {
 	s, c, snap := queryBuildFixture(t)
 	s.releaseCapture(snap.id)
 	s.HoldQueueBuilds()
-	who := Caller{DeviceID: "shuffle_device", Principal: identity.Principal{Viewer: identity.Viewer{Authority: "local", AccountID: "account", ProfileID: "profile"}}}
+	who := Caller{DeviceID: "shuffle_device", PlaybackProtocol: PlaybackProtocol, Principal: identity.Principal{Viewer: identity.Viewer{Authority: "local", AccountID: "account", ProfileID: "profile"}}}
 	// The queue belongs to a device that exists: the sweep a create starts in
 	// the background removes the queues of devices that are gone, and once
 	// raced the reply (an empty queue under load).

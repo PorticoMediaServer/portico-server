@@ -172,9 +172,9 @@ func TestCastReceiverCallsRegisteredRoutes(t *testing.T) {
 		// A pairing the television took and then could not use: it undoes its own.
 		"/v1/cast/devices/": {"DELETE"},
 	}
-	suffixed := map[string]string{"/v1/playback/sessions/": "/timeline", "/v1/queues/": ":advance"}
+	suffixed := map[string][][2]string{"/v1/playback/sessions/": {{"POST", "/observer"}, {"PUT", "/observation"}}, "/v1/queues/": {{"POST", ":advance"}}}
 	for _, m := range regexp.MustCompile(`'(/v\d+/[^'?]*)`).FindAllStringSubmatch(source, -1) {
-		if _, ok := calls[m[1]]; !ok && m[1] != "/timeline" {
+		if _, ok := calls[m[1]]; !ok && m[1] != "/observer" && m[1] != "/observation" {
 			t.Errorf("receiver.js calls %s, which this test doesn't inventory", m[1])
 		}
 	}
@@ -204,14 +204,16 @@ func TestCastReceiverCallsRegisteredRoutes(t *testing.T) {
 				if !castTargetRoute(method, target) {
 					t.Errorf("receiver.js sends %s %s, which a paired screen's session may not", method, target)
 				}
-				if suffix := suffixed[path]; suffix != "" && !castTargetRoute("POST", target+suffix) {
-					t.Errorf("receiver.js sends POST %s, which a paired screen's session may not", target+suffix)
+				for _, route := range suffixed[path] {
+					if !castTargetRoute(route[0], target+route[1]) {
+						t.Errorf("receiver.js sends %s %s, which a paired screen's session may not", route[0], target+route[1])
+					}
 				}
 			}
 			if strings.HasSuffix(path, "/") {
 				probe(method, path+"ps_probe")
-				if suffix := suffixed[path]; suffix != "" {
-					probe("POST", path+"ps_probe"+suffix)
+				for _, route := range suffixed[path] {
+					probe(route[0], path+"ps_probe"+route[1])
 				}
 				continue
 			}

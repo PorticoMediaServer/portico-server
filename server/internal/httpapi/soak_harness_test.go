@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -78,28 +79,36 @@ func TestFixtureMediaCopiesCompleteBytes(t *testing.T) {
 }
 
 func TestSoakNormalClientHonorsRetryAfterWithoutHidingRefusal(t *testing.T) {
-	var attempts atomic.Int32
-	var firstAt atomic.Int64
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if attempts.Add(1) == 1 {
-			firstAt.Store(time.Now().UnixNano())
-			w.Header().Set("Retry-After", "1")
-			w.WriteHeader(http.StatusServiceUnavailable)
-			return
-		}
-		if elapsed := time.Since(time.Unix(0, firstAt.Load())); elapsed < time.Second {
-			t.Errorf("retried before Retry-After: %s", elapsed)
-		}
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
-	o := &soakObservations{codes: map[string]int{}, byLabel: map[string]int{}, caps: map[string]int{}}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	code, _ := soakCall(ctx, server.Client(), server.URL, "fixture-token", "home", "GET", "/v1/home", nil, o, true)
-	r := o.snapshot()
-	if code != 200 || attempts.Load() != 2 || r.quietRefusals != 1 || r.clientRetries != 1 || r.logicalCleanRequests != 1 || r.logicalCleanFailures != 0 || r.logicalCleanP95 < time.Second {
-		t.Fatalf("retry erased admission or wait evidence: status=%d attempts=%d report=%+v", code, attempts.Load(), r)
+	for _, route := range []struct{ label, method, path string }{
+		{"home", "GET", "/v1/home"},
+		{"playback-observer", "POST", "/v1/playback/sessions/s/observer"},
+		{"playback-observation", "PUT", "/v1/playback/sessions/s/observation"},
+	} {
+		t.Run(route.label, func(t *testing.T) {
+			var attempts atomic.Int32
+			var firstAt atomic.Int64
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if attempts.Add(1) == 1 {
+					firstAt.Store(time.Now().UnixNano())
+					w.Header().Set("Retry-After", "1")
+					w.WriteHeader(http.StatusServiceUnavailable)
+					return
+				}
+				if elapsed := time.Since(time.Unix(0, firstAt.Load())); elapsed < time.Second {
+					t.Errorf("retried before Retry-After: %s", elapsed)
+				}
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer server.Close()
+			o := &soakObservations{codes: map[string]int{}, byLabel: map[string]int{}, caps: map[string]int{}}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			code, _ := soakCall(ctx, server.Client(), server.URL, "fixture-token", route.label, route.method, route.path, nil, o, true)
+			r := o.snapshot()
+			if code != 200 || attempts.Load() != 2 || r.quietRefusals != 1 || r.clientRetries != 1 || r.logicalCleanRequests != 1 || r.logicalCleanFailures != 0 || r.logicalCleanP95 < time.Second {
+				t.Fatalf("retry erased admission or wait evidence: status=%d attempts=%d report=%+v", code, attempts.Load(), r)
+			}
+		})
 	}
 }
 
@@ -117,11 +126,25 @@ func TestSoakCurrentPlaybackStopWithoutBody(t *testing.T) {
 	server := httptest.NewServer(f.handler)
 	defer server.Close()
 	o := &soakObservations{codes: map[string]int{}, byLabel: map[string]int{}, caps: map[string]int{}}
+	code, raw := soakCall(context.Background(), server.Client(), server.URL, f.owner.AccessToken, "playback-observer", "POST", path+"/observer", map[string]any{"generation": session.Presentation.Generation}, o, true)
+	var grant playbackv1.ObserverGrant
+	if code != 200 || json.Unmarshal(raw, &grant) != nil {
+		t.Fatalf("claim: %d %s", code, raw)
+	}
+	code, raw = soakCall(context.Background(), server.Client(), server.URL, f.owner.AccessToken, "playback-observation", "PUT", path+"/observation", playbackv1.Observation{Epoch: grant.Epoch, Seq: 1, Generation: session.Presentation.Generation, State: "playing", PositionMs: 4200, Rate: 1}, o, true)
+	if code != 200 {
+		t.Fatalf("sample: %d %s", code, raw)
+	}
+	// The bodyless Stop must drain the latest sample, independent of batch timing.
 	for repeat := 0; repeat < 2; repeat++ {
 		code, body := soakCall(context.Background(), server.Client(), server.URL, f.owner.AccessToken, "playback-stop", "DELETE", path, nil, o, true)
 		if code != 204 {
 			t.Fatalf("bodyless current-protocol stop: %d %s", code, body)
 		}
+	}
+	var seq, position int64
+	if err := f.db.QueryRow(`SELECT last_seq,position_ms FROM playback_v1_sessions WHERE id=?`, session.ID).Scan(&seq, &position); err != nil || seq != 1 || position != 4200 {
+		t.Fatalf("stopped seq=%d position=%d (%v)", seq, position, err)
 	}
 	if report := o.snapshot(); report.failures != 0 || report.logicalCleanFailures != 0 {
 		t.Fatalf("valid optional-body stop was counted as a failure: %+v", report)

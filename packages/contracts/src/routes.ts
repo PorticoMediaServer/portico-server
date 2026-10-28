@@ -18203,31 +18203,6 @@ export const routes = [
     "admission": "default"
   },
   {
-    "id": "report_playback_timeline",
-    "method": "POST",
-    "path": "/v1/playback/sessions/{id}/timeline",
-    "summary": "Report progress; renews the lease",
-    "access": "device",
-    "requires": "playback",
-    "lane": "media",
-    "cost": "constant",
-    "bodyLimit": 4096,
-    "errors": [
-      "invalid_request",
-      "unauthorized",
-      "not_found",
-      "session_ended",
-      "revision_required",
-      "revision_mismatch",
-      "rate_limited",
-      "timeout",
-      "database_busy",
-      "writer_capacity"
-    ],
-    "status": 204,
-    "admission": "playback"
-  },
-  {
     "id": "revalidate_download_receipts",
     "method": "POST",
     "path": "/v1/downloads/receipts/revalidate",

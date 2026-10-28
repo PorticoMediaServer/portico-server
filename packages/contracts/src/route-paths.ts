@@ -718,7 +718,6 @@ export const routePaths = {
   "reorder_playlist_window": "/v1/playlists/{id}/order",
   "reorder_saved_collection": "/v1/saved-resources/{id}/order",
   "report_changed_paths": "/v1/libraries/paths-changed",
-  "report_playback_timeline": "/v1/playback/sessions/{id}/timeline",
   "revalidate_download_receipts": "/v1/downloads/receipts/revalidate",
   "revoke_access_token": "/v1/me/access-tokens/{id}",
   "revoke_api_key": "/v1/admin/api-keys/{id}",

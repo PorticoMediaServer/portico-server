@@ -1576,10 +1576,8 @@ func (s *Service) endTxRaw(ctx context.Context, tx *sql.Tx, r row, now time.Time
 		return nil
 	}
 	r.ended, r.endReason, r.message, r.revision = now.UnixMilli(), reason, message, r.revision+1
-	if o := s.observations(); o != nil {
-		if err = dbwork.AfterCommit(tx, func() { o.retire(r.id) }); err != nil {
-			return err
-		}
+	if err = dbwork.AfterCommit(tx, func() { s.observations().retire(r.id) }); err != nil {
+		return err
 	}
 	if err = s.sessionEventsTx(ctx, tx, r, now, true); err != nil {
 		return err
