@@ -60,3 +60,15 @@ test('library provider controls use canonical show and book media kinds',()=>{
   assert.equal(patchLibrarySettingsBinding('libraries.titlesFrom',provider,doc).providers[0].provider,provider);
  }
 });
+
+test('MOB-111: a folder can be attached without its automatic scan; omission keeps the server default',async()=>{
+ const bodies:unknown[]=[];
+ const api={async request<T>(_path:string,_method?:string,body?:unknown):Promise<T>{bodies.push(body);
+  return {id:'source',libraryId:'library',kind:'local',name:'media',path:'/media',resolvedPath:'/media',classification:'local',enabled:true,followSymlinks:false,identityConfirmed:true,intervalMs:900000,generation:1,health:'ready',nextScanAt:'',lastCompleteAt:'',lastProgressAt:''} as T;}};
+ const input={name:'',path:'/media',classification:'local' as const,followSymlinks:false,intervalSeconds:900,expectedRevision:7,acceptReplacement:false};
+ await saveLibraryFolder(api,'library',undefined,{...input,scanAfter:false});
+ await saveLibraryFolder(api,'library',undefined,input);
+ assert.equal((bodies[0] as {scanAfter?:boolean}).scanAfter,false);
+ assert.equal('scanAfter' in (bodies[1] as object),false);
+ await assert.rejects(saveLibraryFolder(api,'library',undefined,{...input,scanAfter:'no' as never}));
+});

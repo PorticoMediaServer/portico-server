@@ -133,3 +133,7 @@ test('retry eligibility refuses never, false and authorization failures and pres
  let calls=0;const s=new LibraryManagementService({scope,retryBaseMs:4000,api:{request:async<T>()=>{calls++;throw retryFailure();}}});
  try{const read=s.loadLibraries();await settleRetries();for(const expected of [4000,8000,8000]){assert.deepEqual([...clock.pending.values()].map(t=>t.ms),[expected]);clock.fire();await settleRetries();}await read;assert.equal(calls,4);assert.equal(s.getSnapshot().directory.phase,'error');assert.equal(clock.pending.size,0);}finally{s.dispose();}
 });
+test('MOB-111: a library can be created without its first scan; omission keeps the server default',async()=>{const bodies:any[]=[];const s=service(async(p,m,b)=>{if(m==='POST'){bodies.push(b);return {id:'created',name:(b as any).name,kind:'movie',defaultView:'discover'};}return data(p);});await s.loadLibraries();
+ await s.createLibrary({name:'Quiet',kind:'movie',path:'/server/quiet',scanAfter:false});await s.createLibrary({name:'Normal',kind:'movie',path:'/server/normal'});
+ assert.equal(bodies[0].scanAfter,false);assert.equal('scanAfter' in bodies[1],false);
+ assert.throws(()=>s.createLibrary({name:'Bad',kind:'movie',path:'/server/bad',scanAfter:1 as never}));s.dispose?.();});
