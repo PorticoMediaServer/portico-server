@@ -1,3 +1,4 @@
+import {useGuardedLibraryContext, useLibraryRouteGuard} from './library-route-guard';
 import {useRouteLibrary} from './route-library';
 import {useShellFacts} from '../../shell/fact-hooks';
 import {LibraryMetadataMenu} from '../metadata/LibraryMetadataMenu';
@@ -176,14 +177,14 @@ function LiveReadingLibrary({captured, library, search, onMarked, context, life}
   if (periodicalPivot) {
     if (!capabilities) return <>{header}{snapshot?.phase === 'error' ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: retryCapabilities}}/> : <Skeleton height={320}/>}</>;
     if (selected.shows !== 'periodicals' || selected.id !== periodicalPivot || search.query || search.sort?.length || search.q) return <>{header}<StateView title={t('title.nothingHere')}/></>;
-    return <>{header}<ReadPeriodicalEntry libraryId={library.id} kind={selected.publicationType} seriesId={search.entityId}/></>;
+    return <>{header}<ReadPeriodicalEntry captured={captured} libraryId={library.id} kind={selected.publicationType} seriesId={search.entityId}/></>;
   }
-  if (search.view === 'series' && search.entityId) return <>{header}<ReadSeriesEntry libraryId={library.id} seriesId={search.entityId}/></>;
+  if (search.view === 'series' && search.entityId) return <>{header}<ReadSeriesEntry captured={captured} libraryId={library.id} seriesId={search.entityId}/></>;
   if (selected.shows === 'facet') return <>{header}<FacetPage libraryId={library.id} field={selected.facetSource?.field === 'series' ? 'series' : 'author'}
     pivot={gridPivot ?? (library.kind === 'comic' ? 'comics' : 'books')} request={request}
     onSelect={value => {if (selected.facetSource?.field === 'author') navigate({view: 'browse', ...(gridPivot ? {pivot: gridPivot} : {}), query: authorPredicate(value.value)}); else if (value.seriesId) navigate({view: 'series', entityId: value.seriesId});}}/></>;
   if (search.view === 'browse' || search.query) return <BoundLibrary captured={captured} library={library} search={search} tabs={tabs} readingMarkAll={markAll}/>;
-  return <ReadLibraryEntry libraryId={library.id} header={header} view="discover"/>;
+  return <ReadLibraryEntry captured={captured} libraryId={library.id} header={header} view="discover"/>;
 }
 function LibraryShow({captured, libraryId, search}: {captured: ProtectedLibraryScreen; libraryId: string; search: LibraryScreenSearch}) {
   const href = useLocation({select: location => location.href});
@@ -483,7 +484,11 @@ function CommittedLibrary({captured, library, search, readingMarkAll, frame, res
 }
 function LibraryRouteScreen() {
   const [readingGeneration, setReadingGeneration] = useState(0);
-  const captured = useProtectedWebScreenContext(), {libraryId} = useParams({from: '/library/$libraryId'});
+  const protectedContext = useProtectedWebScreenContext(), {libraryId} = useParams({from: '/library/$libraryId'});
+  const opening = useLocation({select: value => value});
+  const guard = useLibraryRouteGuard(protectedContext?.context, opening, () => router.state.location === opening, {libraryId}, error => protectedContext?.binding.home.effects.reportError(error));
+  const context = useGuardedLibraryContext(protectedContext?.context, guard);
+  const captured = protectedContext && context ? {...protectedContext, context} : undefined;
   useShellFacts(captured?.context);
   const search = parseLibraryScreenSearch(useSearch({from: '/library/$libraryId'}));
   const destination = useMusicLibrarySummary(captured, libraryId, search.section === 'mixes');
@@ -492,7 +497,7 @@ function LibraryRouteScreen() {
   if (captured && search.section === 'mixes' && destination.phase === 'loading') return <Skeleton height={320}/>;
   if (captured && search.section === 'mixes' && destination.phase === 'error') return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
     primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: destination.retry}}/>;
-  return !captured ? null : library ? isReadingLibrary(library.kind) ? <ReadingLibrary key={`${libraryId}:${readingGeneration}`} captured={captured} library={library} search={search} onMarked={() => setReadingGeneration(value => value + 1)}/>
+  return !captured?.context.isCurrent() ? null : library ? isReadingLibrary(library.kind) ? <ReadingLibrary key={`${libraryId}:${readingGeneration}`} captured={captured} library={library} search={search} onMarked={() => setReadingGeneration(value => value + 1)}/>
     : <BoundLibrary key={libraryId} captured={captured} library={library} search={search} musicLookup={search.section === 'mixes' ? destination : undefined}/>
     : <StateView title={t('next.states.notFound')} body={t('next.states.notFoundBody')}/>;
 }

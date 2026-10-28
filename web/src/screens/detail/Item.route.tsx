@@ -1,3 +1,4 @@
+import {useGuardedLibraryContext, useLibraryRouteGuard} from '../browse/library-route-guard';
 import {forwardFacts} from '../../shell/fact-source';
 import {useLayoutEffect, useRef, useState} from 'react';
 import {useLocation, useParams} from '@tanstack/react-router';
@@ -30,12 +31,15 @@ type ReadResolution = {phase: 'loading'} | {phase: 'ready'; eligibility: ReadIte
 type ResolutionLease = {context: ScreenContext; itemId: string; retry: number; live: boolean};
 function BoundItem({captured, itemId}: {captured: ProtectedLibraryScreen; itemId: string}) {
   const entry = useLocation({select: location => ({key: location.state.__TSR_key ?? '', href: location.href, pathname: location.pathname})});
-  const href = entry.href;
-  const artworkClaim = useAdmittedTitleArtwork(captured.binding.scopeKey, itemId, entry, () => captured.context.isCurrent() && router.state.location.state.__TSR_key === entry.key);
-  const context = useCommittedLibraryScreenContext(captured, href, () => router.state.location.href === href);
-  return context ? <ResolveItem captured={captured} context={context} itemId={itemId} artworkClaim={artworkClaim}/> : <DetailLoading/>;
+  const href = entry.href, opening = useLocation({select: location => location});
+  const guard = useLibraryRouteGuard(captured.context, opening, () => router.state.location === opening, {itemId}, captured.binding.home.effects.reportError);
+  const guardedContext = useGuardedLibraryContext(captured.context, guard)!;
+  const guarded = {...captured, context: guardedContext};
+  const artworkClaim = useAdmittedTitleArtwork(captured.binding.scopeKey, itemId, entry, () => guardedContext.isCurrent() && router.state.location.state.__TSR_key === entry.key);
+  const context = useCommittedLibraryScreenContext(guarded, href, () => router.state.location.href === href);
+  return context ? <ResolveItem captured={guarded} handoff={captured.context} context={context} itemId={itemId} artworkClaim={artworkClaim}/> : <DetailLoading/>;
 }
-function ResolveItem({captured, context, itemId, artworkClaim}: {captured: ProtectedLibraryScreen; context: ScreenContext; itemId: string; artworkClaim?: import('../../kit/cards/source-art-transition').SourceArtClaim}) {
+function ResolveItem({captured, handoff, context, itemId, artworkClaim}: {captured: ProtectedLibraryScreen; handoff: ProtectedLibraryScreen['context']; context: ScreenContext; itemId: string; artworkClaim?: import('../../kit/cards/source-art-transition').SourceArtClaim}) {
   const [retry, setRetry] = useState(0);
   const active = useRef<ResolutionLease | undefined>(undefined);
   const [published, publish] = useState<Readonly<{lease: ResolutionLease; resolution: ReadResolution}>>();
@@ -65,7 +69,7 @@ function ResolveItem({captured, context, itemId, artworkClaim}: {captured: Prote
   if (resolution.phase === 'error') return <ScreenProblem context={context} error={resolution.error} retry={() => {
     if (held.live && active.current === held && context.isCurrent()) {held.live = false;setRetry(value => value + 1);}
   }}/>;
-  return resolution.eligibility ? <ReadItemEntry itemId={itemId} eligibility={resolution.eligibility}/>
+  return resolution.eligibility ? <ReadItemEntry captured={captured} handoff={handoff} itemId={itemId} eligibility={resolution.eligibility}/>
     : <OrdinaryItem context={context} itemId={itemId} artworkClaim={artworkClaim}/>;
 }
 function ItemRouteScreen() {
