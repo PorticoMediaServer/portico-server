@@ -129,6 +129,23 @@ func (s *Service) BulkPreview(ctx context.Context, source BulkPreviewSource, aut
 			err = errors.Join(err, closeErr)
 		}
 	}()
+	return s.bulkPreview(ctx, source, authorize, s.bulkPreviewPageTx, func(ctx context.Context, out *BulkMetadataPreview, page bulkPreviewPage) error {
+		if err := spool.add(ctx, page.observations); err != nil {
+			return err
+		}
+		out.Total += page.preview.Total
+		out.Targets = append(out.Targets, page.preview.Targets...)
+		return nil
+	}, spool.fields)
+}
+
+// bulkPreview shares bounded snapshot, authority and final-fence validation
+// between the legacy reducer and the small explicit memory reducer.
+func (s *Service) bulkPreview(ctx context.Context, source BulkPreviewSource, authorize func(context.Context, *sql.Tx) error,
+	readPage func(context.Context, *sql.Tx, catalog.BulkMetadataSelection) (bulkPreviewPage, error),
+	accumulate func(context.Context, *BulkMetadataPreview, bulkPreviewPage) error,
+	fields func(context.Context, []RepairFieldSpec) (map[string]BulkPreviewField, error),
+) (out BulkMetadataPreview, err error) {
 	authority := dbwork.AuthorityGeneration()
 	var fence, revision string
 	initialized := false
@@ -158,7 +175,7 @@ func (s *Service) BulkPreview(ctx context.Context, source BulkPreviewSource, aut
 			return
 		}
 		if !final && strings.TrimSpace(next.Selection.SQL) != "" {
-			page, err = s.bulkPreviewPageTx(snapshot, tx, next.Selection)
+			page, err = readPage(snapshot, tx, next.Selection)
 			if err != nil {
 				return
 			}
@@ -201,11 +218,9 @@ func (s *Service) BulkPreview(ctx context.Context, source BulkPreviewSource, aut
 			if out.ContentKind != page.preview.ContentKind {
 				return BulkMetadataPreview{}, ErrRepairInput
 			}
-			if err = spool.add(ctx, page.observations); err != nil {
+			if err = accumulate(ctx, &out, page); err != nil {
 				return BulkMetadataPreview{}, err
 			}
-			out.Total += page.preview.Total
-			out.Targets = append(out.Targets, page.preview.Targets...)
 		}
 		if next.Done {
 			break
@@ -219,11 +234,11 @@ func (s *Service) BulkPreview(ctx context.Context, source BulkPreviewSource, aut
 		return BulkMetadataPreview{}, ErrRepairInput
 	}
 	out.SelectionRevision = revision
-	if out.Fields, err = spool.fields(ctx, out.Schema); err != nil {
+	if out.Fields, err = fields(ctx, out.Schema); err != nil {
 		return BulkMetadataPreview{}, err
 	}
-	// Finalize the disk aggregate BEFORE the last fresh catalogue snapshot: even
-	// a slow spill/count cannot hide a late metadata mutation or revocation.
+	// Finalize the aggregate BEFORE the last fresh catalogue snapshot: reduction
+	// cannot hide a late metadata mutation or revocation.
 	err = dbwork.WithReadSnapshot(ctx, s.db, func(snapshot context.Context) error { _, _, e := read(snapshot, true); return e })
 	if err != nil {
 		return BulkMetadataPreview{}, err
@@ -303,43 +318,14 @@ func (s *Service) bulkPreviewPageTx(ctx context.Context, tx *sql.Tx, selection c
 	}
 	if len(targets) > 0 {
 		for _, target := range targets {
-			repair := RepairTarget{Kind: target.Kind, ID: target.ID}
-			snapshot, entity, e := readRepairSnapshot(ctx, tx, repair)
+			observations, result, e := bulkPreviewTargetTx(ctx, tx, target, out.ContentKind, out.Schema, explicit, nil)
 			if e != nil {
 				return page, e
 			}
-
-			if entity.library != target.LibraryID || entity.itemKind != out.ContentKind {
-				return page, ErrRepairInput
+			if result != nil {
+				out.Targets = append(out.Targets, *result)
 			}
-			if explicit {
-				revision, e := repairRevision(ctx, tx, repair, snapshot, entity)
-				if e != nil {
-					return page, e
-				}
-				out.Targets = append(out.Targets, BulkPreviewTarget{target.Kind, target.ID, target.LibraryID, revision})
-			}
-			for _, spec := range out.Schema {
-				observation := bulkPreviewObservation{field: spec.Field, count: 1}
-				if spec.Field == "genres" {
-					genres := []string{}
-					for _, relationship := range snapshot.Relationships {
-						if relationship.Kind == "genre" {
-							genres = append(genres, relationship.Label)
-						}
-					}
-					observation.entries = bulkPreviewGenres(genres)
-					observation.value = encodeList(observation.entries)
-					observation.locked = snapshot.RelationshipLocks["genre"]
-				} else {
-					field, ok := snapshot.Fields[spec.Field]
-					if !ok {
-						return page, ErrRepairInput
-					}
-					observation.value, observation.entries, observation.locked = field.Value, field.Values, field.Locked
-				}
-				page.observations = append(page.observations, observation)
-			}
+			page.observations = append(page.observations, observations...)
 		}
 	} else {
 		vector := `json_object('backbone',json_object('metadata_language',i.metadata_language,'year',CAST(i.year AS TEXT)),
@@ -396,4 +382,52 @@ func (s *Service) bulkPreviewPageTx(ctx context.Context, tx *sql.Tx, selection c
 	}
 	page.preview = out
 	return page, nil
+}
+
+// bulkPreviewTargetTx shares the editor snapshot/observation reader. An optional
+// revision reader can preflight the snapshot and CAS inputs before serialization.
+func bulkPreviewTargetTx(ctx context.Context, tx *sql.Tx, target catalog.BulkMetadataTarget, contentKind string, schema []RepairFieldSpec, explicit bool,
+	revisionReader func(context.Context, *sql.Tx, RepairTarget, RepairSnapshot, repairEntity) (string, error),
+) (observations []bulkPreviewObservation, result *BulkPreviewTarget, err error) {
+	repair := RepairTarget{Kind: target.Kind, ID: target.ID}
+	snapshot, entity, e := readRepairSnapshot(ctx, tx, repair)
+	if e != nil {
+		return nil, nil, e
+	}
+
+	if entity.library != target.LibraryID || entity.itemKind != contentKind {
+		return nil, nil, ErrRepairInput
+	}
+	if explicit {
+		if revisionReader == nil {
+			revisionReader = repairRevision
+		}
+		revision, e := revisionReader(ctx, tx, repair, snapshot, entity)
+		if e != nil {
+			return nil, nil, e
+		}
+		result = &BulkPreviewTarget{target.Kind, target.ID, target.LibraryID, revision}
+	}
+	for _, spec := range schema {
+		observation := bulkPreviewObservation{field: spec.Field, count: 1}
+		if spec.Field == "genres" {
+			genres := []string{}
+			for _, relationship := range snapshot.Relationships {
+				if relationship.Kind == "genre" {
+					genres = append(genres, relationship.Label)
+				}
+			}
+			observation.entries = bulkPreviewGenres(genres)
+			observation.value = encodeList(observation.entries)
+			observation.locked = snapshot.RelationshipLocks["genre"]
+		} else {
+			field, ok := snapshot.Fields[spec.Field]
+			if !ok {
+				return nil, nil, ErrRepairInput
+			}
+			observation.value, observation.entries, observation.locked = field.Value, field.Values, field.Locked
+		}
+		observations = append(observations, observation)
+	}
+	return observations, result, nil
 }
