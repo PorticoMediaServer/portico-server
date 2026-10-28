@@ -1,3 +1,4 @@
+import {apiRoot} from '../../contracts/src/route-paths.ts';
 /** Durable custody for the reviewed user-mutation cohort. Authentication always
  * comes from the live original family; credentials never enter this store. */
 export type UserMutationScope = Readonly<{serverId:string;origin:string;authority:string;accountId:string;profileId:string;familyId:string;deviceId?:string}>;
@@ -250,7 +251,7 @@ export class UserMutationCoordinator {
    if(!safeRequest(input.body)||!safeRequest(input.headers??{}))throw new Error();
    input=clone(input);
    const path=new URL(input.path,'http://mutation.invalid');
-   if(!input.path.startsWith('/v1/')||path.pathname+path.search!==input.path||path.hash||input.path.includes('\\')||!['POST','PUT','PATCH','DELETE'].includes(input.method)||!input.operation||!input.target)throw new Error();
+   if(!input.path.startsWith(apiRoot)||path.pathname+path.search!==input.path||path.hash||input.path.includes('\\')||!['POST','PUT','PATCH','DELETE'].includes(input.method)||!input.operation||!input.target)throw new Error();
    const origin=new URL(scope.origin);if(origin.origin!==scope.origin||origin.username||origin.password)throw new Error();
    // Mounted transports supply only these semantic headers; credentials stay live.
    if(Object.keys(input.headers??{}).some(k=>!['content-type','if-match','if-unmodified-since'].includes(k.toLowerCase())))throw new Error();
