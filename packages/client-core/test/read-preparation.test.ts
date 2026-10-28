@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {getEventListeners} from 'node:events';
 import {
   readPreparation, PreparationProtocolError,
-  type PreparationResponse, type PreparationRuntime, type ReadPreparationOptions,
+  type PreparationResponse, type PreparationRuntime, type ReadPreparationOptions, type PreparationIntermediateReady,
 } from '../src/read-preparation.ts';
 
 const MAX_TIMER = 2_147_483_647;
@@ -620,4 +620,167 @@ test('abort during direct-200 extraction/ready parsing and malformed/mismatched 
   await assert.rejects(readPreparation({...g.options, readyQueryId}), error => error instanceof PreparationProtocolError && error.code === 'invalid_ready_handle');
   assert.equal(g.deletes().length, 0);
   assert.equal(g.readyParses(), 0);
+});
+
+type Intermediate = Readonly<{kind: 'intermediate'; queryId: string; retryAfterMs: number; values: readonly string[]}>;
+const intermediateReply = (retryAfterMs = 1000, headers: Record<string, string> = {}, queryId = 'q-1') =>
+  response(200, {kind: 'intermediate', queryId, retryAfterMs, values: ['honest lower bound']}, headers);
+function parseIntermediate(body: unknown): PreparationIntermediateReady<Intermediate> | undefined {
+  const b = body as Intermediate | undefined;
+  if (b?.kind !== 'intermediate') return undefined;
+  if (!Array.isArray(b.values) || b.values.some(v => typeof v !== 'string')) throw new Error('domain intermediate envelope');
+  return {pending: {queryId: b.queryId, retryAfterMs: b.retryAfterMs}, value: b};
+}
+
+test('optional intermediate 200 publishes transient metadata and keeps polling to final ready', async () => {
+  const first = intermediateReply(60_000), second = intermediateReply(90_000);
+  const f = fixture([first, second, response(200, READY)]), seen: PreparationResponse[] = [];
+  let finished = false;
+  const done = readPreparation({...f.options, parseIntermediateReady: parseIntermediate,
+    onIntermediateReady(value, raw) { assert.equal(value.kind, 'intermediate'); seen.push(raw); }});
+  void done.then(() => { finished = true; });
+  await flush();
+  assert.deepEqual(seen, [first]); assert.equal(finished, false); assert.equal(f.readyParses(), 0);
+  assert.equal(f.events.length, 0, 'an intermediate is not a bare preparing event');
+  assert.deepEqual(f.clock.delays, [60_001]);
+  f.clock.fire(); await flush();
+  assert.deepEqual(seen, [first, second]); assert.equal(finished, false);
+  assert.deepEqual(f.clock.delays, [60_001, 90_001]);
+  f.clock.fire(); const result = await done;
+  assert.equal(result.value, READY); assert.equal(f.readyParses(), 1);
+  assert.equal(f.reads().length, 3); assert.equal(f.deletes().length, 1); assert.equal(f.clock.timers.size, 0);
+});
+
+test('200 remains ordinary ready without an intermediate adapter and when adapter declines it', async () => {
+  const f = fixture([response(200, READY)]);
+  const result = await readPreparation({...f.options, parseIntermediateReady: parseIntermediate});
+  assert.equal(result.value, READY); assert.equal(f.calls.length, 1);
+  const g = fixture([intermediateReply()]);
+  await assert.rejects(readPreparation(g.options), /domain ready envelope/);
+  assert.equal(g.calls.length, 1, 'default 200 semantics are unchanged');
+});
+
+test('202, intermediate 200, and final 200 preserve one stable handle and retained ready lifetime', async () => {
+  const f = fixture([pending(1), intermediateReply(1), response(200, {...READY, queryId: 'q-1'})]);
+  let intermediates = 0;
+  const done = readPreparation({...f.options, retainOnReady: true, parseIntermediateReady: parseIntermediate,
+    readyQueryId: body => (body as {queryId?: string}).queryId, onIntermediateReady: () => { intermediates++; }});
+  await flush(); f.clock.fire(); await flush();
+  assert.equal(intermediates, 1); assert.equal(f.events.length, 1); assert.equal(f.deletes().length, 0);
+  assert.deepEqual(f.clock.delays, [251, 501]);
+  f.clock.fire(); const result = await done;
+  assert.equal(f.deletes().length, 0);
+  f.controller.abort(); result.release();
+  assert.equal(f.deletes().length, 1);
+});
+
+test('intermediate Retry-After numeric/date/body floors and long chunks are validated before publication', async t => {
+  for (const example of [
+    {body: 1, headers: {'Retry-After': '120'}, delay: 120_001},
+    {body: 1, headers: {'Retry-After': 'Wed, 28 Oct 2026 12:02:00 GMT'}, delay: 120_001},
+    {body: 180_000, headers: {'Retry-After': '1'}, delay: 180_001},
+    {body: MAX_TIMER + 10, headers: {}, delay: MAX_TIMER},
+  ]) await t.test(JSON.stringify(example), async () => {
+    const f = fixture([intermediateReply(example.body, example.headers), response(200, READY)]);
+    let callbacks = 0;
+    const done = readPreparation({...f.options, parseIntermediateReady: parseIntermediate, onIntermediateReady: () => { callbacks++; }});
+    await flush(); assert.equal(callbacks, 1); assert.equal(f.clock.delays[0], example.delay);
+    f.clock.fire(); await flush();
+    if (example.body > MAX_TIMER) { assert.equal(f.reads().length, 1); assert.equal(f.clock.delays[1], 11); f.clock.fire(); }
+    await done; assert.equal(f.clock.peak, 1);
+  });
+});
+
+test('invalid intermediate pending/Location/server floor never publishes or parses as ready', async t => {
+  for (const [name, raw] of [
+    ['foreign Location', intermediateReply(1, {Location: 'https://foreign.example/q-1'})],
+    ['wrong generated Location', intermediateReply(1, {Location: '/v1/facet-queries/other'})],
+    ['unrepresentable floor', intermediateReply(1, {'Retry-After': '999999999999999999999999999'})],
+    ['invalid ID', intermediateReply(1, {}, '../escape')],
+    ['invalid delay', intermediateReply(-1)],
+  ] as const) await t.test(name, async () => {
+    const f = fixture([raw]); let callbacks = 0;
+    await assert.rejects(readPreparation({...f.options, parseIntermediateReady: parseIntermediate, onIntermediateReady: () => { callbacks++; }}), PreparationProtocolError);
+    assert.equal(callbacks, 0); assert.equal(f.readyParses(), 0); assert.equal(f.reads().length, 1); assert.equal(f.clock.timers.size, 0);
+  });
+});
+
+test('intermediate cannot swap an existing pending handle, or final ready replace its handle', async t => {
+  for (const final of [false, true]) await t.test(String(final), async () => {
+    const f = fixture([final ? intermediateReply(1) : pending(1), final ? response(200, {...READY, queryId: 'q-2'}) : intermediateReply(1, {}, 'q-2')]);
+    let callbacks = 0;
+    const done = readPreparation({...f.options, parseIntermediateReady: parseIntermediate,
+      readyQueryId: body => (body as {queryId?: string}).queryId, onIntermediateReady: () => { callbacks++; }});
+    const rejected = assert.rejects(done, PreparationProtocolError);
+    await flush(); f.clock.fire(); await rejected;
+    assert.equal(callbacks, final ? 1 : 0);
+    assert.deepEqual(f.deletes().map(c => c.path), ['/v1/facet-queries/q-1']);
+    assert.equal(f.clock.timers.size, 0);
+  });
+});
+
+test('abort/supersession at intermediate parser/callback/wait seams clears timer and cancels once', async t => {
+  for (const seam of ['parse-abort', 'parse-supersede', 'callback-abort', 'wait-abort']) await t.test(seam, async () => {
+    const f = fixture([intermediateReply(60_000)]); let callbacks = 0;
+    const done = readPreparation({...f.options,
+      parseIntermediateReady: body => {
+        const intermediate = parseIntermediate(body);
+        if (seam === 'parse-abort') f.controller.abort();
+        if (seam === 'parse-supersede') f.retire();
+        return intermediate;
+      }, onIntermediateReady: () => { callbacks++; if (seam === 'callback-abort') f.controller.abort(); },
+    });
+    const rejected = assert.rejects(done, {name: 'AbortError'});
+    await flush(); if (seam === 'wait-abort') f.controller.abort(); await rejected;
+    assert.equal(callbacks, seam.startsWith('parse') ? 0 : 1);
+    assert.equal(f.deletes().length, 1); assert.equal(f.reads().length, 1); assert.equal(f.clock.timers.size, 0);
+  });
+});
+
+test('intermediate callback failure retains error identity and releases the private handle', async () => {
+  const f = fixture([intermediateReply()]), sentinel = new Error('publication failed');
+  await assert.rejects(readPreparation({...f.options, parseIntermediateReady: parseIntermediate, onIntermediateReady: () => { throw sentinel; }}), error => error === sentinel);
+  assert.equal(f.deletes().length, 1); assert.equal(f.clock.timers.size, 0);
+});
+
+test('late intermediate 200 after abort safely cancels without publication, with or without a minimal extractor', async t => {
+  for (const extractor of [false, true]) await t.test(String(extractor), async () => {
+    const late = deferred<PreparationResponse>(), f = fixture([late.promise]);
+    let parses = 0, callbacks = 0;
+    const done = readPreparation({...f.options,
+      parseIntermediateReady: body => { parses++; return parseIntermediate(body); },
+      ...(extractor ? {readyQueryId: (body: unknown) => (body as Intermediate).queryId} : {}),
+      onIntermediateReady: () => { callbacks++; },
+    });
+    const rejected = assert.rejects(done, {name: 'AbortError'});
+    f.controller.abort(); await rejected;
+    late.resolve(intermediateReply(1, {Location: 'https://foreign.example/q-1'})); await flush();
+    assert.equal(callbacks, 0); assert.equal(f.readyParses(), 0); assert.equal(parses, extractor ? 0 : 1);
+    assert.equal(f.deletes().length, 1); assert.equal(f.deletes()[0].path, '/v1/facet-queries/q-1');
+  });
+});
+
+test('stale intermediate refreshes once and refusal remains a typed terminal error', async () => {
+  const refused = response(503, {error: {code: 'capacity'}});
+  const f = fixture([intermediateReply(1), response(409), intermediateReply(1, {}, 'q-2'), refused]);
+  let callbacks = 0;
+  const done = readPreparation({...f.options, parseIntermediateReady: parseIntermediate, onIntermediateReady: () => { callbacks++; }});
+  const rejected = assert.rejects(done, error => error === f.errors[0] && (error as DomainApiError).raw === refused);
+  await flush(); f.clock.fire(); await flush();
+  assert.equal(callbacks, 2); assert.deepEqual(f.clock.delays, [251, 251]);
+  f.clock.fire(); await rejected;
+  assert.equal(f.reads().length, 4);
+  assert.deepEqual(f.deletes().map(c => c.path), ['/v1/facet-queries/q-1', '/v1/facet-queries/q-2']);
+});
+
+test('minimal 200-union handle extraction precedes intermediate row validation and cleans parser failure', async () => {
+  const raw = intermediateReply(), f = fixture([raw]), sentinel = new Error('malformed intermediate rows');
+  let callbacks = 0;
+  await assert.rejects(readPreparation({...f.options,
+    readyQueryId: body => (body as Intermediate).queryId,
+    parseIntermediateReady: (): PreparationIntermediateReady<Intermediate> => { throw sentinel; },
+    onIntermediateReady: () => { callbacks++; },
+  }), error => error === sentinel);
+  assert.equal(callbacks, 0); assert.equal(f.readyParses(), 0); assert.equal(f.reads().length, 1);
+  assert.deepEqual(f.deletes().map(c => c.path), ['/v1/facet-queries/q-1']);
 });

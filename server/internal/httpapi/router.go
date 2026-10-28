@@ -119,6 +119,8 @@ type Dependencies struct {
 	DB                *sql.DB
 	Identity          *identity.Service
 	Catalog           *catalog.Service
+	FacetReads        FacetReadRuntime
+	GenreReads        GenreReadRuntime
 	// PrepareBrowseSelections is a startup composition/cohort gate. Default false
 	// retains the current foreground path until all clients support preparation.
 	PrepareBrowseSelections bool
