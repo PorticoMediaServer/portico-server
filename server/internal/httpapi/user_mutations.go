@@ -348,7 +348,7 @@ type retireUserMutations struct {
 
 func registerUserMutationRoutes(registry *apikit.Registry, d Dependencies) error {
 	d.registry = registry
-	if err := apikit.Register(registry, apikit.Route[struct{}, usermutation.Receipt]{Metadata: apikit.Metadata{Audience: apikit.Clients, ID: "get_user_mutation", Method: "GET", Path: "/v1/user-mutations/{key}", Summary: "Read the original sign-in's compact mutation receipt", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_permitted", "not_found", "receipt_unknown", "receipt_expired", "invalid_mutation_key", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (usermutation.Receipt, error) {
+	if err := apikit.Register(registry, apikit.Route[struct{}, usermutation.Receipt]{Metadata: apikit.Metadata{Audience: apikit.Clients, ID: "get_user_mutation", Headers: []string{"Portico-Mutation-Root"}, Method: "GET", Path: "/v1/user-mutations/{key}", Summary: "Read the original sign-in's compact mutation receipt", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_permitted", "not_found", "receipt_unknown", "receipt_expired", "invalid_mutation_key", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (usermutation.Receipt, error) {
 		p, err := d.principal(r)
 		if err != nil {
 			return usermutation.Receipt{}, mutationRouteError(err)
@@ -358,6 +358,12 @@ func registerUserMutationRoutes(registry *apikit.Registry, d Dependencies) error
 			binding, err := d.userMutationBinding(ctx, p)
 			if err != nil {
 				return err
+			}
+			if root := strings.TrimSpace(r.Header.Get("Portico-Mutation-Root")); root != "" {
+				if !usermutation.ValidRootID(root) {
+					return usermutation.ErrInvalidKey
+				}
+				binding.RootID = root
 			}
 			receipt, err = usermutation.Lookup(ctx, d.DB, binding, r.PathValue("key"), time.Now().UnixMilli())
 			if err != nil {

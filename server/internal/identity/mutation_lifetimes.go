@@ -39,6 +39,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"portico.local/server/internal/requestinput"
 )
@@ -47,9 +48,9 @@ import (
 // registration nonce are both 128 bits written as 22 characters, and an
 // incarnation is 128 bits written as 32 lowercase hex characters.
 const (
-	MutationRootIDLength          = 22
-	MutationIncarnationLength     = 32
-	MutationRegistrationMax int64 = 9007199254740991
+	MutationRootIDLength            = 22
+	MutationIncarnationLength       = 32
+	MutationRegistrationMax   int64 = 9007199254740991
 )
 
 var (
@@ -163,7 +164,7 @@ func validMutationID(v string) bool {
 		return false
 	}
 	b, e := base64.RawURLEncoding.DecodeString(v)
-	return e == nil && len(b) == 16
+	return e == nil && len(b) == 16 && base64.RawURLEncoding.EncodeToString(b) == v
 }
 
 func validMutationIncarnation(v string) bool {
@@ -267,9 +268,9 @@ func (s *Service) mutationRootScopeTx(ctx context.Context, tx *sql.Tx, id string
 // live. It returns the current membership incarnation and profile lifetime, which
 // the root and the receipts are bound to.
 func (s *Service) mutationScopeTx(ctx context.Context, tx *sql.Tx, scope MutationScope) (string, string, error) {
-	var familyAccount, familyProfile string
-	var revoked int
-	err := tx.QueryRowContext(ctx, `SELECT account_id,profile_id,revoked FROM authorization_session_families WHERE id=? AND authority='local'`, scope.FamilyID).Scan(&familyAccount, &familyProfile, &revoked)
+	var familyAccount, familyProfile, serverID, role, horizon string
+	var revoked, epoch int
+	err := tx.QueryRowContext(ctx, `SELECT account_id,profile_id,revoked,server_id,role,epoch,authorization_horizon FROM authorization_session_families WHERE id=? AND authority='local'`, scope.FamilyID).Scan(&familyAccount, &familyProfile, &revoked, &serverID, &role, &epoch, &horizon)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", "", ErrMutationRootScope
 	}
@@ -279,6 +280,14 @@ func (s *Service) mutationScopeTx(ctx context.Context, tx *sql.Tx, scope Mutatio
 	if revoked != 0 || familyAccount != scope.AccountID || familyProfile != scope.ProfileID {
 		return "", "", ErrMutationRootScope
 	}
+	expires, err := familyTime(horizon)
+	if err != nil || !expires.After(time.Now()) {
+		return "", "", ErrMutationRootScope
+	}
+	if err = s.checkFamilyPrincipalTx(ctx, tx, Principal{Viewer: Viewer{Authority: "local", AccountID: familyAccount, ProfileID: familyProfile, ServerID: serverID, Role: role}, Epoch: epoch}); err != nil {
+		return "", "", ErrMutationRootScope
+	}
+
 	var bound string
 	err = tx.QueryRowContext(ctx, `SELECT d.installation_id FROM identity_device_families f JOIN identity_devices d ON d.id=f.device_id WHERE f.family_id=? AND d.authority='local' AND d.account_id=?`, scope.FamilyID, scope.AccountID).Scan(&bound)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -371,6 +380,9 @@ func (s *Service) RegisterMutationRootTx(ctx context.Context, tx *sql.Tx, scope 
 	if retired != 0 {
 		return none, false, ErrInstallationRetired
 	}
+	if incarnation != q.Incarnation {
+		return none, false, ErrInstallationIncarnation
+	}
 	storedIncarnation := incarnation
 	membership, lifetime, err := s.mutationScopeTx(ctx, tx, scope)
 	if err != nil {
@@ -383,15 +395,7 @@ func (s *Service) RegisterMutationRootTx(ctx context.Context, tx *sql.Tx, scope 
 			root, e := s.mutationRootScopeTx(ctx, tx, storedRoot, scope, incarnation, membership, lifetime)
 			return root, true, e
 		}
-		if incarnation != q.Incarnation {
-			// A lifetime that never granted a root may adopt the client's
-			// incarnation once. After that the incarnation is immutable; a
-			// different one means the client is describing another install.
-			if revision != 0 || nonce != "" || storedRoot != "" {
-				return none, false, ErrInstallationIncarnation
-			}
-			incarnation = q.Incarnation
-		}
+
 	case revision > 0 && q.ExpectedRevision+1 == revision:
 		if q.Nonce != nonce {
 			return none, false, ErrRegistrationNonce

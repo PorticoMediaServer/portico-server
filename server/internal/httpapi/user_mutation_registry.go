@@ -72,6 +72,9 @@ func userMutationMetadata(m apikit.Metadata) apikit.Metadata {
 	if !slices.Contains(m.Headers, "Idempotency-Key") {
 		m.Headers = append(m.Headers, "Idempotency-Key")
 	}
+	if !slices.Contains(m.Headers, "Portico-Mutation-Root") {
+		m.Headers = append(m.Headers, "Portico-Mutation-Root")
+	}
 	for _, code := range []string{"idempotency_conflict", "receipt_expired", "invalid_mutation_key"} {
 		if !slices.Contains(m.Errors, code) {
 			m.Errors = append(m.Errors, code)

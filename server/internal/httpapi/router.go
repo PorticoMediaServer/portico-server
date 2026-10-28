@@ -1454,7 +1454,7 @@ func New(d Dependencies) http.Handler {
 				// still held to the origin rule above and to its own authentication.
 				w.Header().Set("Access-Control-Allow-Private-Network", "true")
 			}
-			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Range, If-Match, If-None-Match, Idempotency-Key, Last-Event-ID, Portico-Client, Portico-Playback, X-Portico-Transport-Class, X-Portico-Device-Class, X-Portico-App-Language, X-Portico-Device-Name, X-Portico-Device-Platform, X-Portico-Installation-Id, X-Portico-App, X-Portico-App-Version")
+			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Range, If-Match, If-None-Match, Idempotency-Key, Portico-Mutation-Root, Last-Event-ID, Portico-Client, Portico-Playback, X-Portico-Transport-Class, X-Portico-Device-Class, X-Portico-App-Language, X-Portico-Device-Name, X-Portico-Device-Platform, X-Portico-Installation-Id, X-Portico-App, X-Portico-App-Version")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS")
 			// Converted audio publishes the decoder's trim so a browser can align
 			// Opus pre-skip and AAC priming; hidden headers read as null and look
