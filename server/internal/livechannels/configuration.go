@@ -85,9 +85,41 @@ type SourceFilters struct {
 	Keywords   FilterRule `json:"keywords"`
 }
 type LogoImport struct {
+	// FollowServer makes this source use the server-wide logo import switch
+	// instead of its own enabled and overwriteExisting values. The stored
+	// values are kept so turning the choice off again restores them.
+	FollowServer      bool `json:"followServer,omitempty"`
 	Enabled           bool `json:"enabled"`
 	OverwriteExisting bool `json:"overwriteExisting"`
 }
+
+// LogoImportEffective is what one source's logo settings work out to: the
+// values the publisher and the logo worker act on.
+type LogoImportEffective struct {
+	Enabled           bool `json:"enabled"`
+	OverwriteExisting bool `json:"overwriteExisting"`
+}
+
+// EffectiveLogoImport resolves one source's logo settings against the
+// server-wide switch. A source that follows the server takes the server-wide
+// switch as its own choice and never replaces logos it already stored; a source
+// that stands alone keeps its own values. The server-wide switch stays a master
+// gate either way.
+func EffectiveLogoImport(cfg LogoImport, serverEnabled bool) LogoImportEffective {
+	enabled := cfg.Enabled
+	if cfg.FollowServer {
+		enabled = true
+	}
+	out := LogoImportEffective{Enabled: serverEnabled && enabled}
+	if !cfg.FollowServer {
+		out.OverwriteExisting = cfg.OverwriteExisting
+	}
+	if !out.Enabled {
+		out.OverwriteExisting = false
+	}
+	return out
+}
+
 type ChannelNumbering struct {
 	Mode    string `json:"mode"`
 	StartAt int    `json:"startAt"`
@@ -215,6 +247,10 @@ func (s *Store) configureInput(ctx context.Context, in *SourceInput) error {
 		in.parseContext = ctx
 		in.guideDays = d.GuideDays
 	}
+	// Publication and preview act on the resolved choice; the stored document
+	// keeps the owner's own values so following the server stays reversible.
+	effectiveLogos := EffectiveLogoImport(v.Logos, d.LogoImport)
+	v.Logos = LogoImport{Enabled: effectiveLogos.Enabled, OverwriteExisting: effectiveLogos.OverwriteExisting}
 	in.configuration = &v
 
 	rows, e := tx.QueryContext(ctx, `SELECT c.provider_key,n.guide_channel_id FROM admin_channel_numbers n JOIN live_sources s ON s.id=n.source_id JOIN live_channel_versions c ON c.generation_id=s.active_generation AND c.channel_id=n.channel_id WHERE n.source_id=? AND n.guide_channel_id!=''`, in.ID)

@@ -89,6 +89,10 @@ type SourceFilters = livechannels.SourceFilters
 // LogoImport controls pulling channel logos out of the source.
 type LogoImport = livechannels.LogoImport
 
+// LogoImportEffective is a source's logo settings once the server-wide switch
+// and any following choice are applied.
+type LogoImportEffective = livechannels.LogoImportEffective
+
 // ChannelNumbering renumbers a source's channels. "source" keeps what the
 // source published; "sequential" assigns startAt, startAt+step, and so on in
 // the source's own order.
@@ -233,8 +237,12 @@ type LiveSourceDocument struct {
 	Digest     string             `json:"digest"`
 	Settings   LiveSourceSettings `json:"settings"`
 	Effective  LiveDefaults       `json:"effective"`
-	Kinds      []string           `json:"availableKinds"`
-	TunerCount int                `json:"tunerCount"`
+	// EffectiveLogoImport is what the logo worker and the publisher will use
+	// for this source. It differs from Settings.Logos when the source follows
+	// the server-wide switch, so a client never recomputes it.
+	EffectiveLogoImport LogoImportEffective `json:"effectiveLogoImport"`
+	Kinds               []string            `json:"availableKinds"`
+	TunerCount          int                 `json:"tunerCount"`
 	// Acquisition is "upload" for a saved manual import with no refresh loop,
 	// "remote" for a URL/tuner source with a real refresh path.
 	Acquisition string `json:"acquisition"`
@@ -290,9 +298,11 @@ func (s *Service) liveSourceDocument(ctx context.Context, tx *sql.Tx, id string)
 	if settings.UserAgent != "" {
 		effective.UserAgent = settings.UserAgent
 	}
-	effective.LogoImport = defaults.LogoImport && settings.Logos.Enabled
+	effectiveLogos := livechannels.EffectiveLogoImport(settings.Logos, defaults.LogoImport)
+	effective.LogoImport = effectiveLogos.Enabled
 	effective.ImportLimits = livechannels.SourceImportLimits(defaults.ImportLimits, settings.ImportLimits)
 	out.Settings, out.Revision, out.Digest, out.Effective = settings, revision, digestOf(settings), effective
+	out.EffectiveLogoImport = effectiveLogos
 	return out, nil
 }
 

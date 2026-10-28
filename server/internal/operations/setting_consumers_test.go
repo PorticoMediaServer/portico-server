@@ -124,6 +124,7 @@ var settingConsumers = map[string]settingConsumer{
 	"livechannels.LiveSourceSettings.importLimits.programmes":                {"internal/livechannels/configuration.go", "function:SourceImportLimits", "Lower one source's guide or playlist bytes and row counts"},
 	"livechannels.LiveSourceSettings.kind":                                   {"internal/administration/live_sources.go", "Kind", "Set source kind, guide mapping and channel numbers"},
 	"livechannels.LiveSourceSettings.logoImport.enabled":                     {"internal/livechannels/configuration.go", "Enabled", "Filter or override the saved live source"},
+	"livechannels.LiveSourceSettings.logoImport.followServer":                {"internal/livechannels/configuration.go", "function:EffectiveLogoImport", "Follow the server-wide logo import choice instead of this source's own values"},
 	"livechannels.LiveSourceSettings.logoImport.overwriteExisting":           {"internal/livechannels/store.go", "OverwriteExisting", "Preserve or replace imported logos"},
 	"livechannels.LiveSourceSettings.retryWindowMs":                          {"internal/livechannels/configuration.go", "RetryWindowMs", "Filter or override the saved live source"},
 	"livechannels.LiveSourceSettings.streamBufferMs":                         {"internal/livechannels/configuration.go", "StreamBufferMs", "Filter or override the saved live source"},

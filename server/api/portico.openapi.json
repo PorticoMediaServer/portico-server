@@ -134713,6 +134713,21 @@
                 ],
                 "type": "object"
               },
+              "effectiveLogoImport": {
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "overwriteExisting": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "enabled",
+                  "overwriteExisting"
+                ],
+                "type": "object"
+              },
               "revision": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -134862,6 +134877,9 @@
                       "enabled": {
                         "type": "boolean"
                       },
+                      "followServer": {
+                        "type": "boolean"
+                      },
                       "overwriteExisting": {
                         "type": "boolean"
                       }
@@ -134934,6 +134952,7 @@
               "digest",
               "settings",
               "effective",
+              "effectiveLogoImport",
               "availableKinds",
               "tunerCount",
               "acquisition"
@@ -259136,6 +259155,9 @@
                   "enabled": {
                     "type": "boolean"
                   },
+                  "followServer": {
+                    "type": "boolean"
+                  },
                   "overwriteExisting": {
                     "type": "boolean"
                   }
@@ -259281,6 +259303,21 @@
                   "guideDays",
                   "logoImport",
                   "discoveryEnabled"
+                ],
+                "type": "object"
+              },
+              "effectiveLogoImport": {
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "overwriteExisting": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "enabled",
+                  "overwriteExisting"
                 ],
                 "type": "object"
               },
@@ -259433,6 +259470,9 @@
                       "enabled": {
                         "type": "boolean"
                       },
+                      "followServer": {
+                        "type": "boolean"
+                      },
                       "overwriteExisting": {
                         "type": "boolean"
                       }
@@ -259505,6 +259545,7 @@
               "digest",
               "settings",
               "effective",
+              "effectiveLogoImport",
               "availableKinds",
               "tunerCount",
               "acquisition"
@@ -314800,6 +314841,21 @@
                           ],
                           "type": "object"
                         },
+                        "effectiveLogoImport": {
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "overwriteExisting": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "overwriteExisting"
+                          ],
+                          "type": "object"
+                        },
                         "revision": {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
@@ -314949,6 +315005,9 @@
                                 "enabled": {
                                   "type": "boolean"
                                 },
+                                "followServer": {
+                                  "type": "boolean"
+                                },
                                 "overwriteExisting": {
                                   "type": "boolean"
                                 }
@@ -315021,6 +315080,7 @@
                         "digest",
                         "settings",
                         "effective",
+                        "effectiveLogoImport",
                         "availableKinds",
                         "tunerCount",
                         "acquisition"
@@ -315263,6 +315323,9 @@
                           "enabled": {
                             "type": "boolean"
                           },
+                          "followServer": {
+                            "type": "boolean"
+                          },
                           "overwriteExisting": {
                             "type": "boolean"
                           }
@@ -315419,6 +315482,21 @@
                           ],
                           "type": "object"
                         },
+                        "effectiveLogoImport": {
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "overwriteExisting": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "overwriteExisting"
+                          ],
+                          "type": "object"
+                        },
                         "revision": {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
@@ -315568,6 +315646,9 @@
                                 "enabled": {
                                   "type": "boolean"
                                 },
+                                "followServer": {
+                                  "type": "boolean"
+                                },
                                 "overwriteExisting": {
                                   "type": "boolean"
                                 }
@@ -315640,6 +315721,7 @@
                         "digest",
                         "settings",
                         "effective",
+                        "effectiveLogoImport",
                         "availableKinds",
                         "tunerCount",
                         "acquisition"
