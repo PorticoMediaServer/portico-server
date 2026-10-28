@@ -257,6 +257,12 @@ func salvageTables(ctx context.Context, db *dbwork.Candidate) ([]salvageTable, e
 // each leaf and the keys that bound it, so every leaf can then be read on its
 // own by key range, and exactly the leaves that cannot be read are lost.
 // Re-reading rows the first pass already copied is harmless (copies replace).
+//
+// Keys are never compared here, in Go or by byte: every bound is a SQL
+// comparison against damaged.<table>, so a key ordered by a collation other
+// than BINARY (NOCASE, RTRIM) is ordered and bounded the way its b-tree was
+// written. Adding a Go-side comparison of separator keys would silently break
+// those tables; keep the comparisons in SQL.
 func copyTable(ctx context.Context, db *dbwork.Candidate, table salvageTable) (bool, error) {
 	c := newTableCopy(db, table)
 	_, _, faulted, err := c.run(ctx, nil, nil)
