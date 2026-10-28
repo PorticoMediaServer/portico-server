@@ -46,9 +46,11 @@ export type CastSnapshot = Readonly<{
   remoteStopped?:boolean;
   controlPending?:boolean;
   /** Published only after current authority and content checks. */
-  reported?:Readonly<{itemId:string;positionSeconds:number;durationSeconds:number;paused:boolean}>;
+  reported?:Readonly<{itemId:string;versionId?:string;positionSeconds:number;durationSeconds:number;paused:boolean}>;
   deviceName?: string;
   itemId?: string;
+  /** Accepted private-status version, bound to remoteIdentity. */
+  versionId?: string;
   title?: string;
   positionSeconds: number;
   durationSeconds: number;
@@ -116,7 +118,7 @@ export class CastController {
   private acceptedController?:CastControllerStamp;
   private renewal?:{attemptId:string;binding:CastControllerBinding;proof:CastControllerProof;transport:CastTransport;generation:number;controller:CastControllerStamp;timer:unknown};
   private expectedPairId?:string;
-  private stopping?:{requestId:string;target:CastRemoteIdentity;transport:CastTransport;generation:number;timer:unknown};
+  private stopping?:{requestId:string;target:CastRemoteIdentity;transport:CastTransport;generation:number;versionId?:string;timer:unknown};
   private current(){return !this.disposed&&this.callerCurrent();}
   /** External caller/storage ports never get to change the operation being proved. */
   private original(transport=this.transport,generation=this.startGeneration,controller=this.acceptedController){
@@ -297,8 +299,8 @@ export class CastController {
             try{await this.validate(proof.binding,attemptId);}catch{refuse();return;}
             if(!current()||revision!==this.statusRevision)return;
             this.acceptedController=e.controller;
-            this.publish({phase:'casting',disclosureRefused:false,remoteIdentity,remoteStopped:false,controlPending:false,acceptedSource:undefined,deviceName:transport.deviceName,itemId:e.itemId,title,error:undefined,errorId:undefined,takeover:undefined,
-              positionSeconds:e.positionSeconds,durationSeconds:e.durationSeconds,paused:e.paused,audioTracks:e.audioTracks,textTracks:e.textTracks,reported:e.clockKnown?Object.freeze({itemId:e.itemId,positionSeconds:e.positionSeconds,durationSeconds:e.durationSeconds,paused:e.paused}):undefined});
+            this.publish({phase:'casting',disclosureRefused:false,remoteIdentity,remoteStopped:false,controlPending:false,acceptedSource:undefined,deviceName:transport.deviceName,itemId:e.itemId,versionId:remoteIdentity?e.versionId:undefined,title,error:undefined,errorId:undefined,takeover:undefined,
+              positionSeconds:e.positionSeconds,durationSeconds:e.durationSeconds,paused:e.paused,audioTracks:e.audioTracks,textTracks:e.textTracks,reported:e.clockKnown?Object.freeze({itemId:e.itemId,...(e.controller&&e.occurrence&&e.versionId?{versionId:e.versionId}:{}),positionSeconds:e.positionSeconds,durationSeconds:e.durationSeconds,paused:e.paused}):undefined});
             give(true);
           },refuse);
         }else if(['pair-required','replaced','busy'].includes(e.type))refuse();
@@ -501,9 +503,9 @@ export class CastController {
         if(e.type==='control-failed'){this.redacted(pending.transport,pending.generation,this.statusRevision);return;}
         // Only the correlated actual receiver Stop receipt keeps a stopped view.
         // It grants no media, queue, or local engine occurrence.
-        this.publish({phase:'off',remoteStopped:true,controlPending:false,paused:true,remoteIdentity:pending.target,audioTracks:[],textTracks:[],
+        this.publish({phase:'off',remoteStopped:true,controlPending:false,paused:true,remoteIdentity:pending.target,versionId:pending.versionId,audioTracks:[],textTracks:[],
           positionSeconds:e.positionSeconds??this.state.positionSeconds,durationSeconds:e.durationSeconds??this.state.durationSeconds,
-          reported:e.positionSeconds!==undefined&&e.durationSeconds!==undefined?Object.freeze({itemId:pending.target.occurrence.itemId,positionSeconds:e.positionSeconds,durationSeconds:e.durationSeconds,paused:true}):undefined});
+          reported:e.positionSeconds!==undefined&&e.durationSeconds!==undefined?Object.freeze({itemId:pending.target.occurrence.itemId,...(pending.versionId?{versionId:pending.versionId}:{}),positionSeconds:e.positionSeconds,durationSeconds:e.durationSeconds,paused:true}):undefined});
         return;
       }
       case 'status': {
@@ -520,7 +522,7 @@ export class CastController {
         if(this.state.remoteStopped&&(!e.occurrence||sameCastRemote({controller:e.controller!,occurrence:e.occurrence},this.state.remoteIdentity)))return;
         const remoteIdentity=e.controller&&e.occurrence?Object.freeze({controller:e.controller,occurrence:e.occurrence}):undefined;
         const transport=this.transport,generation=this.startGeneration,revision=++this.statusRevision;
-        const publish=(title?:string)=>{if(this.current()&&this.transport===transport&&this.startGeneration===generation&&this.statusRevision===revision&&(this.state.phase==='casting'||this.state.remoteStopped))this.publish({phase:e.itemId?'casting':'off',remoteIdentity,remoteStopped:false,controlPending:false,itemId:e.itemId||undefined,title,positionSeconds:e.positionSeconds,durationSeconds:e.durationSeconds,paused:e.paused,audioTracks:e.audioTracks,textTracks:e.textTracks,reported:e.itemId&&e.clockKnown?Object.freeze({itemId:e.itemId,positionSeconds:e.positionSeconds,durationSeconds:e.durationSeconds,paused:e.paused}):undefined});};
+        const publish=(title?:string)=>{if(this.current()&&this.transport===transport&&this.startGeneration===generation&&this.statusRevision===revision&&(this.state.phase==='casting'||this.state.remoteStopped))this.publish({phase:e.itemId?'casting':'off',remoteIdentity,remoteStopped:false,controlPending:false,itemId:e.itemId||undefined,versionId:remoteIdentity?e.versionId:undefined,title,positionSeconds:e.positionSeconds,durationSeconds:e.durationSeconds,paused:e.paused,audioTracks:e.audioTracks,textTracks:e.textTracks,reported:e.itemId&&e.clockKnown?Object.freeze({itemId:e.itemId,...(e.controller&&e.occurrence&&e.versionId?{versionId:e.versionId}:{}),positionSeconds:e.positionSeconds,durationSeconds:e.durationSeconds,paused:e.paused}):undefined});};
         if(!e.itemId){this.clearStatusRead();publish();return;}
         if(this.describe){
           let read=this.statusRead;
@@ -565,8 +567,8 @@ export class CastController {
   }
   private publishStatusRead(read:CastStatusRead,title?:string){
     const e=read.event,revision=read.revision;
-    this.publish({phase:'casting',remoteIdentity:read.remote,remoteStopped:false,controlPending:false,itemId:e.itemId,title,positionSeconds:e.positionSeconds,durationSeconds:e.durationSeconds,paused:e.paused,audioTracks:e.audioTracks,textTracks:e.textTracks,
-      reported:e.clockKnown?Object.freeze({itemId:e.itemId,positionSeconds:e.positionSeconds,durationSeconds:e.durationSeconds,paused:e.paused}):undefined},()=>this.statusReadCurrent(read)&&read.revision===revision);
+    this.publish({phase:'casting',remoteIdentity:read.remote,remoteStopped:false,controlPending:false,itemId:e.itemId,versionId:read.remote?e.versionId:undefined,title,positionSeconds:e.positionSeconds,durationSeconds:e.durationSeconds,paused:e.paused,audioTracks:e.audioTracks,textTracks:e.textTracks,
+      reported:e.clockKnown?Object.freeze({itemId:e.itemId,...(e.controller&&e.occurrence&&e.versionId?{versionId:e.versionId}:{}),positionSeconds:e.positionSeconds,durationSeconds:e.durationSeconds,paused:e.paused}):undefined},()=>this.statusReadCurrent(read)&&read.revision===revision);
   }
 
   private redacted(transport:CastTransport|undefined,generation:number,revision:number){
@@ -590,6 +592,7 @@ export class CastController {
     const statusRead=this.statusRead;this.statusRead=undefined;
     this.renewal=undefined;this.stopping=undefined;this.acceptedController=undefined;this.expectedPairId=undefined;
     this.adoptTimer=undefined;this.settleAdoption=undefined;this.adopting=false;
+    this.state=Object.freeze({...this.state,versionId:undefined,reported:undefined});
     this.transferFlight=undefined;this.transport=undefined;this.waiting=undefined;this.loads.clear();
     if(flight?.id)this.recoveryTransfer=flight;
     if(renewal)this.clearTimer(renewal.timer);
@@ -667,7 +670,7 @@ export class CastController {
       const generation=this.startGeneration,requestId='stop-'+(++this.requestSequence);
       const refuse=()=>{if(this.stopping?.requestId!==requestId)return;this.redacted(transport,generation,this.statusRevision);};
       this.statusRevision++;
-      this.stopping={requestId,target,transport,generation,timer:this.setTimer(refuse,35_000)};
+      this.stopping={requestId,target,transport,generation,versionId:this.state.versionId,timer:this.setTimer(refuse,35_000)};
       this.publish({controlPending:true});
       void transport.send({type:'stop',requestId,target}).catch(refuse);return;
     }
@@ -681,6 +684,6 @@ export class CastController {
     if(this.release(true)!==this.startGeneration)return;
     this.publish({phase: 'off', transferPending:false,itemId: undefined, title: undefined, deviceName: undefined, error: undefined, errorId: undefined, takeover: undefined});
   }
-  dismiss() { if(this.state.transferPending){this.stop();return;}this.publish({phase:'off',remoteIdentity:undefined,remoteStopped:undefined,controlPending:false,error:undefined,errorId:undefined}); }
+  dismiss() { if(this.state.transferPending){this.stop();return;}this.publish({phase:'off',remoteIdentity:undefined,remoteStopped:undefined,controlPending:false,versionId:undefined,reported:undefined,error:undefined,errorId:undefined}); }
   dispose() { const adopting=this.adopting;this.clearTimer(this.takeoverTimer); this.settleAdoption?.(false); this.release(false,!adopting); this.disposed = true; this.listeners.clear(); }
 }

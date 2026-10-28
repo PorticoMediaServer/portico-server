@@ -276,7 +276,7 @@ export class HomeSelectionController {
     if (action === 'edit') return this.openEditor(); if (action === 'delete') return this.openDelete();
     const ticket = this.begin(); return this.executeTarget(ticket, action);
   }
-  private async executeTarget(ticket: Ticket, action: SelectionAction, fromStart = false) {
+  private async executeTarget(ticket: Ticket, action: SelectionAction, startIntent?: 'resume' | 'start-over' | 'explicit') {
     const members = this.members(ticket.target, action === 'play');
     const execute = async () => {
       this.check(ticket);
@@ -289,7 +289,7 @@ export class HomeSelectionController {
           if (member.collection) return {identity: member.item, collection: member.collection};
           const entry = member.entry, target = member.playbackTarget?.playback;
           if (!entry || !target) throw selectionExecutionError('playback-target-unavailable');
-          return {identity: member.item, entry, target: fromStart ? {...target, startSeconds: 0} : target};
+          return {identity: member.item, entry, target: startIntent === 'start-over' ? {...target, startSeconds: 0} : target, startIntent: startIntent ?? (entry.kind === 'chapter' ? 'explicit' : 'resume')};
         });
         const request = {context: ticket.context, items, signal: ticket.controller.signal};
         const result = action === 'play' ? await this.options.playback.play(request) : await this.options.playback.enqueue({...request, placement: action === 'play-next' ? 'next' : 'end'});
@@ -410,7 +410,7 @@ export class HomeSelectionController {
     const ticket = this.begin(target);
     if (action === 'rate') return this.openRating(ticket, member, value);
     const mapped: Partial<Record<EntryActionId, SelectionAction>> = {play: 'play', resume: 'play', playFromStart: 'play', playNext: 'play-next', addToQueue: 'play-later', download: 'download', refreshMetadata: 'refresh'};
-    if (mapped[action]) return this.executeTarget(ticket, mapped[action]!, action === 'playFromStart');
+    if (mapped[action]) return this.executeTarget(ticket, mapped[action]!, action === 'playFromStart' ? 'start-over' : action === 'resume' ? 'resume' : undefined);
     await this.guarded(ticket, action, async () => {
       if (member.channel && action === 'favorite') {
         const requestId = await channelOperationId(this.options.requestId); this.check(ticket);

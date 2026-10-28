@@ -464,3 +464,97 @@ test('role reconciliation cannot overwrite a newer saved selection',async()=>{
  try{await assert.rejects(restoreNativeSession({...h.env,fetcher}),{code:'cancelled'});assert.deepEqual(await h.store.read(),replacement);assert.equal(replacement?.session.viewer.role,'owner');}
  finally{h.initial.connection.dispose();}
 });
+
+test('BOOT-013: already-cancelled restore reads nothing, including exact Security restores',async()=>{
+ const cancelled=new AbortController();cancelled.abort();let reads=0;
+ const env={storage:{read:async()=>{reads++;return undefined;},change:async()=>{throw new Error('unexpected write');}}};
+ await assert.rejects(restoreNativeSession(env,undefined,undefined,cancelled.signal),{code:'cancelled'});
+ await assert.rejects(restoreExactNativeSession(env,session(),cancelled.signal),{code:'cancelled'});
+ assert.equal(reads,0);
+});
+
+test('BOOT-013: cancelling the earliest saved read wins over a late malformed record',async()=>{
+ const read=deferred<RememberedServer|undefined>(),cancelled=new AbortController();let writes=0,requests=0;
+ const result=restoreNativeSession({storage:{read:()=>read.promise,change:async()=>{writes++;}},fetcher:async()=>{requests++;throw new Error('unexpected fetch');}},undefined,undefined,cancelled.signal);
+ const rejected=assert.rejects(result,{code:'cancelled'});cancelled.abort();read.resolve({version:'bad'} as unknown as RememberedServer);
+ await rejected;assert.equal(writes,0);assert.equal(requests,0);
+});
+
+test('BOOT-013: cancellation reaches proof, me, and exact validation without publishing or writing',async()=>{
+ for(const exact of [false,true])for(const stage of ['proof','me'] as const){
+  const h=await roleRestoreCase('owner','owner'),cancelled=new AbortController(),gate=deferred<void>();let requested=false,requestSignal:AbortSignal|undefined;
+  const before=await h.store.read();
+  const fetcher:typeof fetch=async(input,init)=>{
+   if(String(input).endsWith(stage==='proof'?'/v1/networking/identity-proof':'/v1/me')){
+    requested=true;requestSignal=init?.signal??undefined;await gate.promise;
+   }
+   return h.env.fetcher(input,init);
+  };
+  try{
+   const result=exact?restoreExactNativeSession({...h.env,fetcher},h.saved,cancelled.signal):restoreNativeSession({...h.env,fetcher},undefined,h.saved,cancelled.signal);
+   const rejected=assert.rejects(result,{code:'cancelled'});await until(()=>requested);cancelled.abort();
+   gate.resolve();await rejected;assert.equal(requestSignal?.aborted,true);assert.deepEqual(await h.store.read(),before);assert.equal(h.refreshes(),0);
+  }finally{gate.resolve();h.initial.connection.dispose();}
+ }
+});
+
+test('BOOT-013: cancellation fences queued role reconciliation before the protected store commits',async()=>{
+ const h=await roleRestoreCase('owner','member'),cancelled=new AbortController(),gate=deferred<void>();let changing=false;
+ const before=await h.store.read();
+ const delayed:ServerConnectionStorage={read:h.store.read,change:async(update,beforeCommit)=>{
+  const next=update(await h.store.read());changing=true;await gate.promise;beforeCommit?.();await h.store.change(()=>next);
+ }};
+ try{
+  const result=restoreNativeSession({...h.env,storage:delayed},undefined,h.saved,cancelled.signal);
+  const rejected=assert.rejects(result,{code:'cancelled'});await until(()=>changing);cancelled.abort();gate.resolve();await rejected;
+  assert.deepEqual(await h.store.read(),before);
+ }finally{gate.resolve();h.initial.connection.dispose();}
+});
+
+test('BOOT-013: cancellation of refresh preserves the replay id and never adopts or erases a late receipt',async t=>{
+ const {setInstallationIdentity}=await import('../src/installation.ts');
+ setInstallationIdentity({installationId:'inst_restore_'+'x'.repeat(24),name:'Test',platform:'ios',app:'portico-apple',appVersion:'1.0.0'});t.after(()=>setInstallationIdentity(undefined));
+ for(const response of ['success','refused'] as const){
+  const h=await roleRestoreCase('owner','owner',true),cancelled=new AbortController(),gate=deferred<void>();let requested=false,requestSignal:AbortSignal|undefined;
+  const fetcher:typeof fetch=async(input,init)=>{
+   if(String(input).endsWith('/v1/auth/refresh')){
+    requested=true;requestSignal=init?.signal??undefined;await gate.promise;
+    if(response==='refused')return new Response(JSON.stringify({error:{code:'session_revoked',message:'revoked'}}),{status:401,headers:{'Content-Type':'application/json'}});
+   }
+   return h.env.fetcher(input,init);
+  };
+  try{
+   const result=restoreNativeSession({...h.env,fetcher},undefined,h.saved,cancelled.signal),rejected=assert.rejects(result,{code:'cancelled'});
+   await until(()=>requested);const before=await h.store.read();assert.ok(before?.pendingRefresh);
+   cancelled.abort();assert.equal(requestSignal?.aborted,true);gate.resolve();await rejected;
+   assert.deepEqual(await h.store.read(),before);
+  }finally{gate.resolve();h.initial.connection.dispose();}
+ }
+});
+
+test('BOOT-013: cancellation after final storage read cannot return a restored session',async()=>{
+ const h=await roleRestoreCase('owner','owner'),cancelled=new AbortController();let reads=0;
+ const storage:ServerConnectionStorage={change:h.store.change,read:async()=>{
+  const record=await h.store.read();if(++reads===3)cancelled.abort();return record;
+ }};
+ try{await assert.rejects(restoreNativeSession({...h.env,storage},undefined,h.saved,cancelled.signal),{code:'cancelled'});assert.equal(reads,3);}
+ finally{h.initial.connection.dispose();}
+});
+
+test('BOOT-013: refresh claim and receipt writes recheck cancellation under the storage commit guard',async t=>{
+ const {setInstallationIdentity}=await import('../src/installation.ts');
+ setInstallationIdentity({installationId:'inst_restore_'+'x'.repeat(24),name:'Test',platform:'ios',app:'portico-apple',appVersion:'1.0.0'});t.after(()=>setInstallationIdentity(undefined));
+ for(const write of [1,2]){
+  const h=await roleRestoreCase('owner','owner',true),cancelled=new AbortController(),gate=deferred<void>();let writes=0,waiting=false;
+  const delayed:ServerConnectionStorage={read:h.store.read,change:async(update,beforeCommit)=>{
+   const next=update(await h.store.read());
+   if(++writes===write){waiting=true;await gate.promise;}
+   beforeCommit?.();await h.store.change(()=>next);
+  }};
+  try{
+   const result=restoreNativeSession({...h.env,storage:delayed},undefined,h.saved,cancelled.signal),rejected=assert.rejects(result,{code:'cancelled'});
+   await until(()=>waiting);const before=await h.store.read();cancelled.abort();gate.resolve();await rejected;
+   assert.deepEqual(await h.store.read(),before);assert.equal(h.refreshes(),write===1?0:1);
+  }finally{gate.resolve();h.initial.connection.dispose();}
+ }
+});

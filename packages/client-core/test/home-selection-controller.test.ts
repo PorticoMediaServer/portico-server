@@ -587,3 +587,34 @@ test('reconcile F1: original preserved cleanup cannot unregister a newer shell r
   assert.equal(h.controller.toggle('mounted-a', menuKey(h)).ok, true);
   replacement.unregister(); assert.equal(h.controller.getSnapshot().selection.registeredItemCount, 0); h.controller.dispose();
 });
+
+test('RN-08: Resume retains positions 41 and 72 with resume intent; Start over carries its own intent', async () => {
+  for (const position of [41, 72]) {
+    const a = {...entry('movie'), progressSeconds: position, playback: {itemId: 'movie', startSeconds: position}};
+    const h = harness([a]);
+    try {
+      h.controller.registerWindow({id: 'window', row: h.document.rows[0], sectionOrder: 0});
+      const key = h.controller.key({kind: a.kind, id: a.id, libraryId: a.libraryId});
+      h.controller.openMenu('window', key); await h.controller.executeMenu('resume');
+      const resumed = h.played[0].items[0]; assert.ok('target' in resumed);
+      assert.equal(resumed.startIntent, 'resume'); assert.equal(resumed.target.startSeconds, position);
+      h.controller.openMenu('window', key); await h.controller.executeMenu('playFromStart');
+      const restarted = h.played[1].items[0]; assert.ok('target' in restarted);
+      assert.equal(restarted.startIntent, 'start-over'); assert.equal(restarted.target.startSeconds, 0);
+      assert.equal(a.playback.startSeconds, position);
+      h.controller.toggle('window', key); await h.controller.execute('play-later');
+      const queued = h.queued[0].items[0]; assert.ok('target' in queued);
+      assert.equal(queued.startIntent, 'resume'); assert.equal(queued.target.startSeconds, position);
+    } finally {h.controller.dispose();}
+  }
+});
+
+test('RN-08: deliberately selected chapter retains its explicit position', async () => {
+  const chapter = {...entry('chapter', 'chapter'), playback: {itemId: 'book-file', startSeconds: 72}};
+  const h = harness([chapter]);
+  try {
+    pickAll(h); await h.controller.execute('play');
+    const chosen = h.played[0].items[0]; assert.ok('target' in chosen);
+    assert.equal(chosen.startIntent, 'explicit'); assert.equal(chosen.target.startSeconds, 72);
+  } finally {h.controller.dispose();}
+});
