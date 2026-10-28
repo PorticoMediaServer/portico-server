@@ -81,7 +81,7 @@ func TestAScrubbedBackupCopyHoldsNoSessionsOrLiveSecrets(t *testing.T) {
 			t.Fatalf("the fixture is wrong: an unscrubbed copy does not hold the secret %q...", secret[:6])
 		}
 	}
-	if err := ScrubBackupCopy(ctx, copyPath); err != nil {
+	if err := scrubCopyAt(ctx, copyPath); err != nil {
 		t.Fatal(err)
 	}
 	for _, secret := range secrets {
@@ -130,11 +130,13 @@ func TestAScrubbedBackupCopyHoldsNoSessionsOrLiveSecrets(t *testing.T) {
 	if _, err = s.Authenticate(session.AccessToken); err != nil {
 		t.Fatalf("scrubbing a copy signed someone out of the running server: %v", err)
 	}
-	// Scrubbing a scrubbed copy again is harmless.
-	if err = ScrubBackupCopy(ctx, copyPath); err != nil {
+	// Scrubbing a scrubbed copy again is harmless. A scrub holds the copy
+	// exclusively, so nothing else may have it open.
+	copyDB.Close()
+	if err = scrubCopyAt(ctx, copyPath); err != nil {
 		t.Fatalf("a second scrub: %v", err)
 	}
-	if err = ScrubBackupCopy(ctx, ""); err == nil {
+	if err = ScrubBackupCopy(ctx, nil); err == nil {
 		t.Fatal("a scrub of nothing reported success")
 	}
 }
@@ -186,4 +188,18 @@ func TestARestoreSignsEveryoneOutOnce(t *testing.T) {
 	if _, err = s.Authenticate(again.Session.AccessToken); !errors.Is(err, ErrUnauthorized) {
 		t.Fatalf("a later restore left a session alive: %v", err)
 	}
+}
+
+// scrubCopyAt scrubs the copy at path the way the backup service does: on a
+// private candidate handle, closed afterwards so its log folds into the file.
+func scrubCopyAt(ctx context.Context, path string) error {
+	copy, err := dbwork.OpenCandidate(filepath.Dir(path), filepath.Base(path))
+	if err != nil {
+		return err
+	}
+	if err = ScrubBackupCopy(ctx, copy); err != nil {
+		copy.Close()
+		return err
+	}
+	return copy.Close()
 }

@@ -260,3 +260,47 @@ func TestArtworkRepublicationRetiresCachedDescriptors(t *testing.T) {
 		t.Fatal("republication", m.reused, newSmall == small, newLarge == large, edge, after, revision)
 	}
 }
+
+// While a backup holds artwork (backup_blob_holds), the collector deletes no
+// source and no file, even unnamed old ones; once the hold ends it does.
+func TestArtworkCollectionWaitsForABackupHold(t *testing.T) {
+	s, db, _ := repairFixture(t)
+	ctx := context.Background()
+	old := "2020-01-01T00:00:00Z"
+	digest := fmt.Sprintf("%064x", 4242)
+	integrationExec(t, db, fixtureArtworkBlobSQL, digest)
+	integrationExec(t, db, `UPDATE artwork_blobs SET created_at=? WHERE digest=?`, old, digest)
+	if err := os.WriteFile(filepath.Join(s.cacheRoot, digest+".img"), []byte(digest), 0600); err != nil {
+		t.Fatal(err)
+	}
+	integrationExec(t, db, `INSERT INTO artwork_sources(digest,accepted_mime,accepted_width,accepted_height,small_blob,large_blob,ambient_blob,large_edge,small_outlier,large_outlier,encoder_revision,created_at) VALUES(?,'image/jpeg',1,1,?,?,?,1920,0,0,1,?)`, digest, digest, digest, digest, old)
+	integrationExec(t, db, `INSERT INTO backup_blob_holds(singleton,backup_id,process_epoch,scratch_token,created_ms,state) VALUES(1,'backup','epoch','scratch',0,'copying')`)
+	exists := func(table string) bool {
+		var ok bool
+		if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM `+table+` WHERE digest=?)`, digest).Scan(&ok); err != nil {
+			t.Fatal(err)
+		}
+		return ok
+	}
+	for pass := 0; pass < 3; pass++ {
+		if err := s.CleanupArtwork(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !exists("artwork_sources") || !exists("artwork_blobs") {
+		t.Fatal("the collector deleted artwork while a backup held it")
+	}
+	if _, err := os.Stat(filepath.Join(s.cacheRoot, digest+".img")); err != nil {
+		t.Fatal("a held file left the disk", err)
+	}
+	// The blob pass also refuses a hold taken after its candidate was marked.
+	integrationExec(t, db, `DELETE FROM backup_blob_holds`)
+	for pass := 0; pass < 6 && (exists("artwork_sources") || exists("artwork_blobs")); pass++ {
+		if err := s.CleanupArtwork(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if exists("artwork_sources") || exists("artwork_blobs") {
+		t.Fatal("the collector kept unnamed artwork after the hold ended")
+	}
+}

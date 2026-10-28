@@ -30,7 +30,14 @@ func TestAKeyOutlivesABackupAndARestoreAndSessionsDoNot(t *testing.T) {
 	if _, err := f.deps.DB.Exec(`VACUUM INTO ?`, copyPath); err != nil {
 		t.Fatal(err)
 	}
-	if err := identity.ScrubBackupCopy(ctx, copyPath); err != nil {
+	scrubbed, err := dbwork.OpenCandidate(filepath.Dir(copyPath), filepath.Base(copyPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = identity.ScrubBackupCopy(ctx, scrubbed); err != nil {
+		t.Fatal(err)
+	}
+	if err = scrubbed.Close(); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := os.ReadFile(copyPath)

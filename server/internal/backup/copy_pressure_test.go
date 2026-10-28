@@ -2,68 +2,206 @@ package backup
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"os"
 	"path/filepath"
-	"portico.local/server/internal/dbwork"
-	"portico.local/server/internal/storagepaths"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"portico.local/server/internal/dbwork"
 )
 
-func TestBackupReleasesSnapshotUnderWALPressure(t *testing.T) {
-	_, state, db := testService(t)
-	if _, err := db.Exec(`CREATE TABLE pressure_data(id INTEGER PRIMARY KEY,body BLOB);INSERT INTO pressure_data(body) VALUES(zeroblob(1048576))`); err != nil {
-		t.Fatal(err)
-	}
-	wrote := false
-	err := copyDatabaseLimited(context.Background(), db, storagepaths.Path(state, "pressure-copy.sqlite"), func(done, total int64) {
-		if !wrote {
-			wrote = true
-			if _, err := db.Exec(`INSERT INTO pressure_data(body) VALUES(zeroblob(65536))`); err != nil {
-				t.Fatal(err)
-			}
-		}
-	}, copyLimits{time.Second, 1, 0})
-	if !errors.Is(err, ErrBackupPressure) {
-		t.Fatalf("unbounded snapshot under writes: %v", err)
-	}
-	if !wrote {
-		t.Fatal("fixture did not create WAL pressure")
-	}
-	// An aborted backup releases its reader: SQLite can truncate the WAL immediately.
-	var busy, log, checkpointed int
-	if err := db.QueryRow(`PRAGMA wal_checkpoint(TRUNCATE)`).Scan(&busy, &log, &checkpointed); err != nil || busy != 0 {
-		t.Fatalf("snapshot remained pinned: busy=%d %v", busy, err)
-	}
-	if size, err := walBytes(dbwork.DatabaseFile(context.Background(), db) + "-wal"); err != nil || size != 0 {
-		t.Fatalf("WAL did not truncate: %d %v", size, err)
-	}
-}
-
-func TestBackupSnapshotHasTimeBound(t *testing.T) {
-	_, state, db := testService(t)
-	if _, err := db.Exec(`CREATE TABLE slow_data(body BLOB);INSERT INTO slow_data VALUES(zeroblob(1048576))`); err != nil {
-		t.Fatal(err)
-	}
-	err := copyDatabaseLimited(context.Background(), db, storagepaths.Path(state, "slow-copy.sqlite"), func(done, total int64) { time.Sleep(300 * time.Millisecond) }, copyLimits{250 * time.Millisecond, 128 << 20, 0})
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("snapshot exceeded time limit: %v", err)
-	}
-}
-
-func TestBackupPressureReleasesSnapshot(t *testing.T) {
+// copyFixture is a live handle with a few MiB of rows, so a copy takes many
+// 256 KiB steps.
+func copyFixture(t *testing.T) (*sql.DB, string) {
+	t.Helper()
 	dir := t.TempDir()
-	source := filepath.Join(dir, "state.sqlite")
-	db, err := dbwork.OpenHandle(source, dbwork.DefaultPolicy())
+	db, err := dbwork.OpenHandle(filepath.Join(dir, "state.sqlite"), dbwork.DefaultPolicy())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
-	if _, err = db.Exec(`CREATE TABLE sample(id INTEGER PRIMARY KEY,data BLOB);INSERT INTO sample(data) VALUES(zeroblob(1048576))`); err != nil {
+	t.Cleanup(func() { db.Close() })
+	ctx := context.Background()
+	if _, err = dbwork.ExecWrite(ctx, db, dbwork.ClassInteractive, `CREATE TABLE sample(id INTEGER PRIMARY KEY,body BLOB)`); err != nil {
 		t.Fatal(err)
 	}
+	for i := 0; i < 32; i++ {
+		if _, err = dbwork.ExecWrite(ctx, db, dbwork.ClassInteractive, `INSERT INTO sample(body) SELECT randomblob(8192) FROM json_each('[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]')`); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return db, dir
+}
+
+func testCopyLimits(class dbwork.Class) copyLimits {
+	limits := scheduledCopyLimits()
+	limits.class = class
+	limits.reportEvery = 0
+	return limits
+}
+
+func copiedRows(t *testing.T, path string) int {
+	t.Helper()
+	copy, err := dbwork.OpenCandidate(filepath.Dir(path), filepath.Base(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer copy.Close()
+	if err = quickCheck(context.Background(), copy); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err = copy.QueryRowContext(context.Background(), `SELECT count(*) FROM sample`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+// The copy is taken while the server runs, with committed rows still only in
+// the live WAL file: the writer never checkpoints, and nothing else does here.
+// The copy holds them, and is a standalone database that passes quick_check.
+func TestCopyTakenWhileRunningCarriesTheLiveWAL(t *testing.T) {
+	db, dir := copyFixture(t)
+	walPath := dbwork.DatabaseFile(context.Background(), db) + "-wal"
+	if size, err := walBytes(walPath); err != nil || size == 0 {
+		t.Fatalf("fixture has no live WAL: %d %v", size, err)
+	}
+	dest := filepath.Join(dir, "copy", "server.sqlite")
+	if err := copyDatabase(context.Background(), db, dest, nil, testCopyLimits(dbwork.ClassMaintenance)); err != nil {
+		t.Fatal(err)
+	}
+	if size, _ := walBytes(walPath); size == 0 {
+		t.Fatal("the copy checkpointed the live WAL; it must only read it")
+	}
+	if n := copiedRows(t, dest); n != 32*16 {
+		t.Fatalf("copy holds %d rows, want %d", n, 32*16)
+	}
+}
+
+// Writes made while the copy runs go through the writer connection the copy
+// steps on, so SQLite brings the copy up to date instead of restarting it:
+// progress never moves backwards, and the copy holds every row committed
+// before it finished.
+func TestWritesDuringTheCopyUpdateItWithoutARestart(t *testing.T) {
+	db, dir := copyFixture(t)
+	ctx := context.Background()
+	written := 32 * 16
+	var lastDone int64
+	steps := 0
+	guard := func(done, total int64) error {
+		if done < lastDone {
+			t.Errorf("copy restarted: %d bytes after %d", done, lastDone)
+		}
+		lastDone = done
+		steps++
+		// A user write between steps, through the gate as every write is.
+		if _, err := dbwork.ExecWrite(ctx, db, dbwork.ClassInteractive, `INSERT INTO sample(body) VALUES(randomblob(4096))`); err != nil {
+			return err
+		}
+		written++
+		return nil
+	}
+	dest := filepath.Join(dir, "copy.sqlite")
+	if err := copyDatabaseGuarded(ctx, db, dest, nil, testCopyLimits(dbwork.ClassMaintenance), guard); err != nil {
+		t.Fatal(err)
+	}
+	if steps < 8 {
+		t.Fatalf("copy took %d steps; the fixture should need many", steps)
+	}
+	// The last guard write follows the finishing step, so it is not in the copy.
+	if n := copiedRows(t, dest); n != written-1 {
+		t.Fatalf("copy holds %d rows, want %d", n, written-1)
+	}
+}
+
+// A scheduled backup takes maintenance tickets, so it never runs while a user
+// write waits. Under constant user writes it makes no progress and gives up
+// with ErrBackupPressure; a backup the owner started takes interactive tickets
+// and finishes alongside the same writes.
+func TestScheduledBackupYieldsToConstantWritesAndManualSharesTurns(t *testing.T) {
+	db, dir := copyFixture(t)
+	ctx, stop := context.WithCancel(context.Background())
+	var wg sync.WaitGroup
+	var writes atomic.Int64
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for ctx.Err() == nil {
+				// Each write holds the writer a little, so the queue never empties.
+				err := dbwork.WithWriteTx(ctx, db, dbwork.ClassInteractive, func(tx *sql.Tx) error {
+					_, err := tx.ExecContext(ctx, `INSERT INTO sample(body) VALUES(randomblob(512))`)
+					time.Sleep(2 * time.Millisecond)
+					return err
+				})
+				if err == nil {
+					writes.Add(1)
+				}
+			}
+		}()
+	}
+	defer func() { stop(); wg.Wait() }()
+	time.Sleep(20 * time.Millisecond)
+
+	scheduled := testCopyLimits(dbwork.ClassMaintenance)
+	scheduled.noProgress = 300 * time.Millisecond
+	err := copyDatabase(context.Background(), db, filepath.Join(dir, "scheduled.sqlite"), nil, scheduled)
+	if !errors.Is(err, ErrBackupPressure) {
+		t.Fatalf("scheduled backup under constant writes: %v", err)
+	}
+
+	manual := testCopyLimits(dbwork.ClassInteractive)
+	manual.quiet = 0
+	if err = copyDatabase(context.Background(), db, filepath.Join(dir, "manual.sqlite"), nil, manual); err != nil {
+		t.Fatalf("manual backup under constant writes: %v", err)
+	}
+	if writes.Load() == 0 {
+		t.Fatal("the fixture made no writes")
+	}
+	// The abandoned scheduled attempt released everything: writes still go
+	// through and the live log can be reset.
+	stop()
+	wg.Wait()
+	if _, err = dbwork.ExecWrite(context.Background(), db, dbwork.ClassInteractive, `INSERT INTO sample(body) VALUES(x'00')`); err != nil {
+		t.Fatal(err)
+	}
+	if result := dbwork.Checkpoint(context.Background(), db); result.Err != nil || result.Busy != 0 {
+		t.Fatalf("a backup left the log pinned: %+v", result)
+	}
+}
+
+// An automatic backup may not hold the writer for more than a couple of
+// seconds at a time: a step that is still too slow at the small size ends the
+// attempt, and nothing is left behind.
+func TestScheduledBackupStopsWhenEvenSmallStepsAreSlow(t *testing.T) {
+	db, dir := copyFixture(t)
+	limits := testCopyLimits(dbwork.ClassMaintenance)
+	limits.slowStep, limits.quiet = 0, time.Nanosecond
+	dest := filepath.Join(dir, "slow.sqlite")
+	if err := copyDatabase(context.Background(), db, dest, nil, limits); !errors.Is(err, ErrBackupPressure) {
+		t.Fatalf("slow steps: %v", err)
+	}
+	if _, err := dbwork.ExecWrite(context.Background(), db, dbwork.ClassInteractive, `INSERT INTO sample(body) VALUES(x'00')`); err != nil {
+		t.Fatal("the stopped backup left the writer blocked", err)
+	}
+	// The next attempt starts clean.
+	if err := os.Remove(dest); err != nil {
+		t.Fatal(err)
+	}
+	if err := copyDatabase(context.Background(), db, dest, nil, testCopyLimits(dbwork.ClassMaintenance)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A guard that ends the copy releases the backup on its connection, leaves
+// the source writable and the log resettable.
+func TestAbortedCopyReleasesTheWriter(t *testing.T) {
+	db, dir := copyFixture(t)
 	calls := 0
-	err = copyDatabaseGuarded(context.Background(), db, filepath.Join(dir, "copy.sqlite"), nil, func(done, total int64) error {
+	err := copyDatabaseGuarded(context.Background(), db, filepath.Join(dir, "copy.sqlite"), nil, testCopyLimits(dbwork.ClassMaintenance), func(done, total int64) error {
 		calls++
 		if calls == 2 {
 			return ErrBackupPressure
@@ -73,15 +211,26 @@ func TestBackupPressureReleasesSnapshot(t *testing.T) {
 	if !errors.Is(err, ErrBackupPressure) || calls != 2 {
 		t.Fatal(err, calls)
 	}
-	if _, err = db.Exec(`INSERT INTO sample(data) VALUES(zeroblob(1000))`); err != nil {
+	if _, err = dbwork.ExecWrite(context.Background(), db, dbwork.ClassInteractive, `INSERT INTO sample(body) VALUES(zeroblob(1000))`); err != nil {
 		t.Fatal("backup left source blocked", err)
 	}
-	result := dbwork.Checkpoint(context.Background(), db)
-	if result.Err != nil {
-		t.Fatal("backup left its snapshot pinned", result)
+	var busy, log, checkpointed int
+	t.Logf("readers %+v", dbwork.ReaderLifetimes())
+	if err = db.QueryRow(`PRAGMA wal_checkpoint(PASSIVE)`).Scan(&busy, &log, &checkpointed); err != nil || busy != 0 {
+		t.Fatal("passive", busy, log, checkpointed, err)
 	}
-	var log, checkpointed, busy int
 	if err = db.QueryRow(`PRAGMA wal_checkpoint(TRUNCATE)`).Scan(&busy, &log, &checkpointed); err != nil || busy != 0 {
 		t.Fatal(busy, log, checkpointed, err)
+	}
+}
+
+// Every requested step counts against the attempt's copy allowance, so a copy
+// SQLite keeps restarting cannot run forever.
+func TestCopyAllowance(t *testing.T) {
+	if got := copyAllowance(100 << 20); got != 100<<20+1<<30 {
+		t.Fatalf("small database allowance %d", got)
+	}
+	if got := copyAllowance(1 << 30); got != 4<<30 {
+		t.Fatalf("large database allowance %d", got)
 	}
 }

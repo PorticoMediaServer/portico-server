@@ -15,17 +15,21 @@ func candidateCopy(t *testing.T, name string) string {
 	return freshDatabaseCopy(t, t.TempDir(), name)
 }
 
+func inspectPath(ctx context.Context, path string) (CandidateReport, error) {
+	return InspectCandidate(ctx, filepath.Dir(path), filepath.Base(path))
+}
+
 func TestInspectCandidate(t *testing.T) {
 	ctx := context.Background()
-	version, err := InspectCandidate(ctx, candidateCopy(t, "good.db"))
-	if err != nil || version != SchemaVersion() {
-		t.Fatalf("good candidate: %d %v", version, err)
+	report, err := inspectPath(ctx, candidateCopy(t, "good.db"))
+	if err != nil || report.SchemaVersion != SchemaVersion() || report.Integrity != "ok" || report.Recovery != nil {
+		t.Fatalf("good candidate: %+v %v", report, err)
 	}
 	text := filepath.Join(t.TempDir(), "text.db")
 	if err = os.WriteFile(text, []byte("not a database"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = InspectCandidate(ctx, text); !errors.Is(err, ErrCandidateNotPortico) {
+	if _, err = inspectPath(ctx, text); !errors.Is(err, ErrCandidateNotPortico) {
 		t.Fatalf("text file: %v", err)
 	}
 	raw, err := os.ReadFile(candidateCopy(t, "truncated.db"))
@@ -36,7 +40,7 @@ func TestInspectCandidate(t *testing.T) {
 	if err = os.WriteFile(truncated, raw[:len(raw)/2], 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = InspectCandidate(ctx, truncated); !errors.Is(err, ErrCandidateIntegrity) {
+	if _, err = inspectPath(ctx, truncated); !errors.Is(err, ErrCandidateIntegrity) {
 		t.Fatalf("truncated copy: %v", err)
 	}
 	mangled := append([]byte(nil), raw...)
@@ -47,7 +51,7 @@ func TestInspectCandidate(t *testing.T) {
 	if err = os.WriteFile(flipped, mangled, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = InspectCandidate(ctx, flipped); !errors.Is(err, ErrCandidateIntegrity) {
+	if _, err = inspectPath(ctx, flipped); !errors.Is(err, ErrCandidateIntegrity) {
 		t.Fatalf("flipped copy: %v", err)
 	}
 	newer := candidateCopy(t, "newer.db")
@@ -59,7 +63,7 @@ func TestInspectCandidate(t *testing.T) {
 		t.Fatal(err)
 	}
 	handle.Close()
-	if _, err = InspectCandidate(ctx, newer); !errors.Is(err, ErrCandidatePreRelease) {
+	if _, err = inspectPath(ctx, newer); !errors.Is(err, ErrCandidatePreRelease) {
 		t.Fatalf("newer schema: %v", err)
 	}
 }

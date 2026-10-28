@@ -454,16 +454,6 @@ func TestApplyStagedRollback(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO configuration(key,value) VALUES('rollback_probe','live') ON CONFLICT(key) DO UPDATE SET value='live'`); err != nil {
 		t.Fatal(err)
 	}
-	db.Close()
-	checkpointDB(t, storagepaths.Path(state, "server.sqlite"))
-	beforeDB := fileHashOrEmpty(t, storagepaths.Path(state, "server.sqlite"))
-	beforeWAL := fileHashOrEmpty(t, storagepaths.Path(state, "server.sqlite-wal"))
-	db, err := persistence.Open(storagepaths.Path(state, "server.sqlite"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	svc.db = db
 	id, err := svc.Create(ctx, KindManual)
 	if err != nil {
 		t.Fatal(err)
@@ -471,7 +461,13 @@ func TestApplyStagedRollback(t *testing.T) {
 	if _, err = svc.Stage(ctx, Source{BackupID: id}); err != nil {
 		t.Fatal(err)
 	}
+	// Rollback restores the live files as they were when apply began. (A
+	// backup writes its artwork hold to the live database, so the files are
+	// read after it.)
 	db.Close()
+	checkpointDB(t, storagepaths.Path(state, "server.sqlite"))
+	beforeDB := fileHashOrEmpty(t, storagepaths.Path(state, "server.sqlite"))
+	beforeWAL := fileHashOrEmpty(t, storagepaths.Path(state, "server.sqlite-wal"))
 	injected := errors.New("injected migration failure")
 	if err = ApplyStaged(ctx, state, func(context.Context, string) error { return injected }); !errors.Is(err, injected) {
 		t.Fatalf("apply returned %v", err)
