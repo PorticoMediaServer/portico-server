@@ -22,5 +22,5 @@ func (s *Service) AcceptPlaybackProgressAt(tx *sql.Tx, v identity.Viewer, playba
 	}
 	// A downloaded play carries no player rate, so it cannot prove a played
 	// interval and records no chapter completion.
-	return acceptPlaybackProgress(tx, v, playbackID, item, sequence, position, duration, state, canonical, 0, nil, 0, state == "playing", at.UTC())
+	return acceptPlaybackProgress(tx, v, playbackID, item, sequence, position, duration, state, canonical, 0, nil, 0, state == "playing", at.UTC(), nil)
 }

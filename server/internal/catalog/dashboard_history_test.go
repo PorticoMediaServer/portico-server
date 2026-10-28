@@ -371,3 +371,38 @@ func TestDashboardPeopleAndHistoryRetainAudiobooksAndLiveKinds(t *testing.T) {
 		}
 	}
 }
+
+// Proved played time (playback observations) replaces the inference between
+// reports: a backward seek, a slow rate or a long gap neither zeroes nor
+// halves it, and it splits at the fifteen-minute bucket boundary.
+func TestProvedPlayedTimeIsCreditedExactlyAndBucketed(t *testing.T) {
+	db := homeFixture(t)
+	item := homeNames(t, db)["m1"].ID
+	bucket := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
+	start := bucket.Add(14 * time.Minute)
+	viewer := identity.Viewer{Authority: "local", AccountID: "fixture", ProfileID: "fixture-profile"}
+	tx, e := db.Begin()
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer tx.Rollback()
+	if _, e = tx.Exec(`INSERT INTO play_history(playback_id,authority,account_id,profile_id,user_name,item_id,library_id,kind,title,started_ms,updated_ms,last_position_ms,last_state) VALUES('proved','local','fixture','fixture-profile','fixture',?,'movies',1,'Movie',?,?,600000,'playing')`, item, start.UnixMilli(), start.UnixMilli()); e != nil {
+		t.Fatal(e)
+	}
+	// 90 s of play reported over a 120 s span crossing 12:15, after a seek
+	// back to 5 minutes: the old rule would have credited nothing.
+	to := start.Add(2 * time.Minute)
+	if _, e = recordPlayEvidence(tx, viewer, "proved", item, 1, to, 300000, 1000, true, false, false, &PlayedTime{FromMs: start.UnixMilli(), ToMs: to.UnixMilli(), WatchedMs: 90000}, "playing"); e != nil {
+		t.Fatal(e)
+	}
+	var watched, first, second int64
+	if e = tx.QueryRow(`SELECT watched_ms FROM play_history WHERE playback_id='proved'`).Scan(&watched); e != nil || watched != 90000 {
+		t.Fatal(watched, e)
+	}
+	if e = tx.QueryRow(`SELECT COALESCE(sum(CASE WHEN t.bucket_ms=? THEN t.watched_ms END),0),COALESCE(sum(CASE WHEN t.bucket_ms=? THEN t.watched_ms END),0) FROM play_history_time t JOIN play_history h ON h.id=t.history_id WHERE h.playback_id='proved'`, bucket.UnixMilli(), bucket.Add(15*time.Minute).UnixMilli()).Scan(&first, &second); e != nil {
+		t.Fatal(e)
+	}
+	if first != 45000 || second != 45000 {
+		t.Fatalf("buckets %d and %d, want 45000 each", first, second)
+	}
+}

@@ -287,6 +287,9 @@ func (s *Service) StopGeneration(ctx context.Context, c Caller, id string, expec
 			return ErrRevision
 		}
 	}
+	if err := s.drainObservationTx(writer, tx, current.id); err != nil {
+		return err
+	}
 	result, err := tx.ExecContext(writer, `UPDATE playback_v1_sessions SET ended_ms=?,end_reason='stopped',message='',revision=revision+1,updated_ms=? WHERE id=? AND generation=? AND media_session_id=? AND media_generation=? AND revision=? AND ended_ms=0`, now.UnixMilli(), now.UnixMilli(), current.id, current.generation, current.media, current.mediaGeneration, current.revision)
 	if err != nil {
 		return err
@@ -297,6 +300,11 @@ func (s *Service) StopGeneration(ctx context.Context, c Caller, id string, expec
 	}
 	if n != 1 {
 		return ErrRevision
+	}
+	if o := s.observations(); o != nil {
+		if err = dbwork.AfterCommit(tx, func() { o.retire(current.id) }); err != nil {
+			return err
+		}
 	}
 	current.ended, current.endReason, current.message, current.revision = now.UnixMilli(), "stopped", "", current.revision+1
 	if err = s.sessionEventsTx(writer, tx, current, now, true); err != nil {

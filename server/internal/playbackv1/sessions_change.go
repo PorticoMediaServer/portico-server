@@ -177,6 +177,9 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 	restartConversion := false
 	generation, media, mediaGeneration := r.generation, r.media, r.mediaGeneration
 	position := r.position
+	if latest, ok := s.latestObservedPosition(r.id, r.generation); ok {
+		position = latest
+	}
 	if change.PositionMs != nil {
 		position = *change.PositionMs
 	}
@@ -312,6 +315,11 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 	}
 	part := changedPart(r, change, version)
 	err = dbwork.WithWriteTxContext(ctx, s.DB, dbwork.ClassEstablishedPlayback, func(ctx context.Context, tx *sql.Tx) error {
+		// The renderer's unwritten position and watched time land before the
+		// change, so a pause, seek or re-plan never loses them.
+		if err := s.drainObservationTx(ctx, tx, r.id); err != nil {
+			return err
+		}
 		if bytes {
 			selected, err := s.Playback.PresentationDiscTitleTx(ctx, tx, media, mediaGeneration)
 			if err != nil {
@@ -402,8 +410,12 @@ func (s *Service) subtitleReplans(ctx context.Context, c Caller, r row, current 
 	return subtitleWeight(resourceByID(s.subtitleResources(ctx, c.Principal, r.item, asset, r.stored().selectedDiscTitle()), string(req.TrackID)), req) != ""
 }
 
-// Stop is DELETE /v1/playback/sessions/{id} (spec §5.8): idempotent; a final
-// position is recorded for resume before the grant is fenced.
+// Stop is DELETE /v1/playback/sessions/{id} (spec §5.8): idempotent. One
+// writer transaction writes the renderer's unwritten latest sample, then the
+// final position, then ends the session, so none of them can be lost between
+// the others. A final position counts only from the playing device itself: a
+// remote controller cannot say where the renderer was, and the renderer's own
+// latest sample stands.
 func (s *Service) Stop(ctx context.Context, c Caller, id string, positionMs *int64) error {
 	r, err := s.session(ctx, c, id)
 	if err != nil {
@@ -412,18 +424,30 @@ func (s *Service) Stop(ctx context.Context, c Caller, id string, positionMs *int
 	if r.ended > 0 {
 		return nil
 	}
-	if positionMs != nil && *positionMs >= 0 && r.media != "" {
-		_ = s.Playback.ProgressContext(ctx, c.Principal, r.media, r.mediaGeneration, int64(r.lastSeq)+1, float64(*positionMs)/1000, "paused")
-		// The final position is a user intent, so it takes the writer gate at
-		// the established-playback class rather than committing on the
-		// foreground read pool: a raw write here waits on SQLite's file lock
-		// while a properly gated BEGIN holds the gate behind it, for the whole
-		// busy timeout. The error stays ignored exactly as before, and this is
-		// still its own autocommit statement between the progress transaction
-		// and End — not one transaction with them.
-		_, _ = dbwork.ExecWrite(ctx, s.DB, dbwork.ClassEstablishedPlayback, `UPDATE playback_v1_sessions SET position_ms=?,last_seq=last_seq+1 WHERE id=? AND ended_ms=0`, *positionMs, r.id)
-	}
-	return s.End(ctx, id, "stopped", "")
+	final := positionMs != nil && *positionMs >= 0 && c.DeviceID == r.device
+	return s.endWhen(ctx, id, "stopped", "", func(ctx context.Context, tx *sql.Tx, current row) (bool, error) {
+		if !final || current.media == "" {
+			return true, nil
+		}
+		// The final position and its resume evidence. Their refusal (a stale
+		// media generation, revoked authority, a failed write) rolls back to
+		// here and never blocks the Stop itself.
+		if _, err := tx.ExecContext(ctx, `SAVEPOINT stop_position`); err != nil {
+			return false, err
+		}
+		seq := current.lastSeq + 1
+		err := s.Playback.ObservationEvidenceTx(ctx, tx, c.Principal, current.media, current.mediaGeneration, seq, float64(*positionMs)/1000, "paused", 0, nil, false, s.now(), nil)
+		if err == nil {
+			_, err = tx.ExecContext(ctx, `UPDATE playback_v1_sessions SET position_ms=?,last_seq=? WHERE id=? AND ended_ms=0`, *positionMs, seq, current.id)
+		}
+		if err != nil {
+			if _, err = tx.ExecContext(ctx, `ROLLBACK TO stop_position`); err != nil {
+				return false, err
+			}
+		}
+		_, err = tx.ExecContext(ctx, `RELEASE stop_position`)
+		return err == nil, err
+	})
 }
 
 // Report is one timeline report (spec §6, §17.6).
@@ -617,8 +641,12 @@ var engineFailureCodes = map[string]bool{"decode_error": true, "source_not_suppo
 // within the last fifth of the title. A title whose length is unknown is
 // taken at its word.
 func (s *Service) endedNearEnd(ctx context.Context, media string, positionMs int64) bool {
+	return s.endedNearEndIn(ctx, s.DB, media, positionMs)
+}
+
+func (s *Service) endedNearEndIn(ctx context.Context, q querier, media string, positionMs int64) bool {
 	var duration float64
-	if media == "" || dbwork.QueryRow(ctx, s.DB, `SELECT duration FROM playback_sessions WHERE id=?`, media).Scan(&duration) != nil || duration <= 0 {
+	if media == "" || q.QueryRowContext(ctx, `SELECT duration FROM playback_sessions WHERE id=?`, media).Scan(&duration) != nil || duration <= 0 {
 		return true
 	}
 	return float64(positionMs) >= duration*1000*0.8
@@ -803,7 +831,11 @@ func (s *Service) ExpireLapsed(ctx context.Context) int {
 	}
 	rows.Close()
 	for _, id := range ids {
-		_ = s.End(ctx, id, "lease_expired", "")
+		_ = s.endWhen(ctx, id, "lease_expired", "", func(_ context.Context, _ *sql.Tx, current row) (bool, error) {
+			// The lease is re-read after the renderer's latest sample was
+			// written: a session heard from since it was chosen keeps playing.
+			return current.lease <= s.now().UnixMilli(), nil
+		})
 	}
 	return len(ids)
 }
@@ -835,8 +867,16 @@ func (s *Service) EndPausedTooLong(ctx context.Context) int {
 		}
 	}
 	rows.Close()
+	cutoff := s.now().Add(-limit).UnixMilli()
 	for _, id := range ids {
-		_ = s.End(ctx, id, EndReasonPausedTimeout, PausedTimeoutMessage)
+		_ = s.endWhen(ctx, id, EndReasonPausedTimeout, PausedTimeoutMessage, func(_ context.Context, _ *sql.Tx, current row) (bool, error) {
+			// Still paused since before the cutoff, and the renderer has not
+			// since said it is playing again (a resume not yet written).
+			if state, _, ok := s.latestObservedState(id); ok && state == "playing" {
+				return false, nil
+			}
+			return current.state == "paused" && current.pausedSince > 0 && current.pausedSince <= cutoff, nil
+		})
 	}
 	return len(ids)
 }

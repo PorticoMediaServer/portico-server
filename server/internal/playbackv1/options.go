@@ -10,6 +10,7 @@ import (
 	"portico.local/server/internal/compactcatalog"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"portico.local/server/internal/dbwork"
@@ -277,6 +278,11 @@ type Service struct {
 	build              builder
 	admission          admissionGates
 	queueSweep         queueSweeper
+	// ObservationsEnabled turns on the observation protocol (observations.go):
+	// latest sample in memory, batched writes. Off until every client speaks it.
+	ObservationsEnabled bool
+	obsOnce             sync.Once
+	obs                 *observations
 	// Hooks other resources (transfers, queues, groups) attach to sessions.
 	// SkipEvidence records a marker skip in the console's diagnostics lane
 	// (wired by HTTP composition); nil records the skip without diagnostics.
@@ -288,7 +294,11 @@ type Service struct {
 
 // New returns the service for one router.
 func New(db *sql.DB, player *playback.Service, subs *subtitles.Service) *Service {
-	return &Service{DB: db, Playback: player, Subtitles: subs}
+	s := &Service{DB: db, Playback: player, Subtitles: subs}
+	if player != nil {
+		player.GrantReplacedTx = s.grantReplacedTx
+	}
+	return s
 }
 
 func (s *Service) now() time.Time {

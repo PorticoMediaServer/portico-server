@@ -10,16 +10,17 @@ import (
 	"portico.local/server/internal/dbwork"
 )
 
-// Stop's final-position statement is a served-state write: it must take the
-// writer gate at the established-playback class, not commit on the foreground
-// read pool. These tests drive the real public Service.Stop on a session the
-// real start path created, so putting the raw s.DB.ExecContext back fails them.
-const stopPositionStatement = `UPDATE playback_v1_sessions SET position_ms=?,last_seq=last_seq+1 WHERE id=? AND ended_ms=0`
+// Stop's final position is a served-state write: it takes the writer gate at
+// the established-playback class, in the same transaction as the progress
+// evidence and the end (SRV031). These tests drive the real public
+// Service.Stop on a session the real start path created.
+const stopPositionStatement = `UPDATE playback_v1_sessions SET position_ms=?,last_seq=? WHERE id=? AND ended_ms=0`
 
 // stopWriterAdmissions is the number of ClassEstablishedPlayback admissions one
-// video Stop takes with the final position admitted: progress, the position
-// statement, End's transaction and the grant fence. The raw write took three.
-const stopWriterAdmissions = 4
+// video Stop takes with the final position admitted: one transaction for the
+// evidence, the position and the end, then the grant fence. The three
+// separate writes it replaced took four.
+const stopWriterAdmissions = 2
 
 type stoppedRow struct {
 	position   int64
@@ -60,8 +61,7 @@ func assertGrantFenced(t *testing.T, db *sql.DB, media string) {
 
 // TestStopAdmitsFinalPositionThroughTheWriterGate is the finding's regression:
 // the real Stop stores the exact final position and sequence, still ends the
-// session and fences its grant, and does it with one more writer admission than
-// the raw statement took.
+// session and fences its grant, all in one writer transaction.
 func TestStopAdmitsFinalPositionThroughTheWriterGate(t *testing.T) {
 	f := newCarryFixture(t, false)
 	q := f.queue()
@@ -125,8 +125,8 @@ func TestStopAdmitsFinalPositionThroughTheWriterGate(t *testing.T) {
 }
 
 // TestStopIgnoresFinalPositionWriteErrorAndStillEnds holds the ignored-error
-// contract: a refused position write changes no position or sequence, and End
-// still ends the session and fences the grant. The temporary trigger fails only
+// contract: a refused position write changes no position or sequence, and the
+// same transaction still ends the session and fences the grant. The temporary trigger fails only
 // the position statement.
 func TestStopIgnoresFinalPositionWriteErrorAndStillEnds(t *testing.T) {
 	f := newCarryFixture(t, false)

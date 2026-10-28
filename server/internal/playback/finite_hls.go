@@ -123,7 +123,11 @@ func (f *FiniteHLS) ensure(ctx context.Context, id string) (*finiteActor, error)
 	var generation int
 	var requestID, assetID string
 	var itemID int64
-	if err = dbwork.QueryRow(ctx, f.h.db, `SELECT generation,request_id,item_id,asset_id FROM playback_sessions WHERE id=? AND state NOT IN ('stopped','ended','failed') AND expires_at>?`, id, time.Now().UTC().Format(time.RFC3339)).Scan(&generation, &requestID, &itemID, &assetID); err != nil {
+	if err = dbwork.QueryRow(ctx, f.h.db, `SELECT generation,request_id,item_id,asset_id FROM playback_sessions WHERE id=? AND state NOT IN ('stopped','ended','failed') AND expires_at>?`, id, time.Now().UTC().Format(time.RFC3339)).Scan(&generation, &requestID, &itemID, &assetID); errors.Is(err, sql.ErrNoRows) {
+		// A stopped, ended, failed or expired occurrence is a grant that no
+		// longer authorizes anything, not a missing row.
+		return nil, identity.ErrUnauthorized
+	} else if err != nil {
 		return nil, err
 	}
 	if !f.liveGeneration(id, generation) || !intent.current() {

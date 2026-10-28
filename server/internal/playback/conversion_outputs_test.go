@@ -325,6 +325,19 @@ func TestConversionReplacementRetainsHDRTargetAndRotatesGrant(t *testing.T) {
 	if err = f.db.QueryRow(`SELECT generation,grant_hash FROM playback_sessions WHERE id=?`, session.ID).Scan(&generation, &grant); err != nil {
 		t.Fatal(err)
 	}
+	var published struct {
+		media, url string
+		generation int
+	}
+	f.s.GrantReplacedTx = func(_ context.Context, tx *sql.Tx, media string, generation int, url string) error {
+		// Inside the replacing transaction: the rotated grant is visible.
+		var current int
+		if err := tx.QueryRow(`SELECT generation FROM playback_sessions WHERE id=?`, media).Scan(&current); err != nil || current != generation {
+			t.Fatalf("published generation %d inside the transaction, row has %d (%v)", generation, current, err)
+		}
+		published.media, published.generation, published.url = media, generation, url
+		return nil
+	}
 	next, err := f.h.downgradeCopyPlan(context.Background(), session.ID, before, true)
 	if err != nil {
 		t.Fatal(err)
@@ -340,6 +353,13 @@ func TestConversionReplacementRetainsHDRTargetAndRotatesGrant(t *testing.T) {
 	}
 	if after != generation+1 || grant == newGrant {
 		t.Fatal("replacement reused generation or grant")
+	}
+	var token string
+	if err = f.db.QueryRow(`SELECT grant_token FROM playback_sessions WHERE id=?`, session.ID).Scan(&token); err != nil {
+		t.Fatal(err)
+	}
+	if published.media != session.ID || published.generation != after || !strings.HasPrefix(published.url, "/v1/media/"+token+"/") {
+		t.Fatalf("replacement published %+v, want generation %d under the new grant", published, after)
 	}
 }
 

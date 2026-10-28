@@ -1416,9 +1416,73 @@ func (s *Service) sessionEventsTx(ctx context.Context, tx *sql.Tx, r row, now ti
 	return nil
 }
 
+// grantReplacedTx publishes a media session the server replaced on its own
+// (the HLS init-change fallback rotates its grant) to the v1 session playing
+// it, in the replacing transaction (V10): the new media generation, a new
+// session generation and the new URL, with the event that tells the device.
+// The renderer's unwritten evidence for the old generation lands first.
+func (s *Service) grantReplacedTx(ctx context.Context, tx *sql.Tx, media string, generation int, url string) error {
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM playback_v1_sessions WHERE media_session_id=? AND ended_ms=0`, media)
+	if err != nil {
+		return err
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err = rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	if err = rows.Err(); err != nil {
+		return err
+	}
+	now := s.now()
+	for _, id := range ids {
+		if err = s.drainObservationTx(ctx, tx, id); err != nil {
+			return err
+		}
+		r, err := loadRow(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		var presentation Presentation
+		if err = json.Unmarshal([]byte(r.presentation), &presentation); err != nil {
+			return err
+		}
+		presentation.URL = url
+		encoded, err := json.Marshal(presentation)
+		if err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, `UPDATE playback_v1_sessions SET media_generation=?,generation=generation+1,presentation=?,revision=revision+1,updated_ms=? WHERE id=? AND media_session_id=? AND ended_ms=0`, generation, string(encoded), now.UnixMilli(), id, media); err != nil {
+			return err
+		}
+		r.mediaGeneration, r.generation, r.presentation, r.revision = generation, r.generation+1, string(encoded), r.revision+1
+		if err = s.sessionEventsTx(ctx, tx, r, now, false); err != nil {
+			return err
+		}
+	}
+	if len(ids) > 0 {
+		return dbwork.AfterCommit(tx, s.hub.wake)
+	}
+	return nil
+}
+
 // endTx ends a session: its presentation's grant is fenced once the caller
-// stops it (StopV1 after commit), and the row records why.
+// stops it (StopV1 after commit), and the row records why. The playing
+// device's unwritten latest position and watched time are written first.
 func (s *Service) endTx(ctx context.Context, tx *sql.Tx, r row, now time.Time, reason, message string) error {
+	if err := s.drainObservationTx(ctx, tx, r.id); err != nil {
+		return err
+	}
+	return s.endTxRaw(ctx, tx, r, now, reason, message)
+}
+
+// endTxRaw is endTx for a caller that already wrote the latest sample.
+func (s *Service) endTxRaw(ctx context.Context, tx *sql.Tx, r row, now time.Time, reason, message string) error {
 	res, err := tx.ExecContext(ctx, `UPDATE playback_v1_sessions SET ended_ms=?,end_reason=?,message=?,revision=revision+1,updated_ms=? WHERE id=? AND ended_ms=0`, now.UnixMilli(), reason, message, now.UnixMilli(), r.id)
 	if err != nil {
 		return err
@@ -1427,6 +1491,11 @@ func (s *Service) endTx(ctx context.Context, tx *sql.Tx, r row, now time.Time, r
 		return nil
 	}
 	r.ended, r.endReason, r.message, r.revision = now.UnixMilli(), reason, message, r.revision+1
+	if o := s.observations(); o != nil {
+		if err = dbwork.AfterCommit(tx, func() { o.retire(r.id) }); err != nil {
+			return err
+		}
+	}
 	if err = s.sessionEventsTx(ctx, tx, r, now, true); err != nil {
 		return err
 	}
@@ -1444,7 +1513,15 @@ func (s *Service) endTx(ctx context.Context, tx *sql.Tx, r row, now time.Time, r
 // End stops a session for a reason other than its own DELETE (lease expiry,
 // admin terminate, transfer commit). The grant is fenced before returning.
 func (s *Service) End(ctx context.Context, id, reason, message string) error {
-	s.cancelPreparedFor(ctx, id)
+	return s.endWhen(ctx, id, reason, message, nil)
+}
+
+// endWhen ends a session in one writer transaction: the renderer's unwritten
+// latest sample first, then still (when set) decides on the current row
+// whether the end applies at all, then the end. A sweep that chose a session
+// before it resumed or renewed therefore ends nothing (CS-06), and nothing
+// that follows an end runs unless the end really happened.
+func (s *Service) endWhen(ctx context.Context, id, reason, message string, still func(context.Context, *sql.Tx, row) (bool, error)) error {
 	r, err := loadRow(ctx, s.DB, id)
 	if err != nil {
 		return err
@@ -1453,18 +1530,36 @@ func (s *Service) End(ctx context.Context, id, reason, message string) error {
 		return nil
 	}
 	now := s.now()
+	ended := false
 	if err = dbwork.WithWriteTxContext(ctx, s.DB, dbwork.ClassEstablishedPlayback, func(ctx context.Context, tx *sql.Tx) error {
-		if err := s.endTx(ctx, tx, r, now, reason, message); err != nil || r.media == "" {
+		if err := s.drainObservationTx(ctx, tx, id); err != nil {
+			return err
+		}
+		current, err := loadRow(ctx, tx, id)
+		if err != nil || current.ended > 0 {
+			return err
+		}
+		if still != nil {
+			if ok, err := still(ctx, tx, current); err != nil || !ok {
+				return err
+			}
+			if current, err = loadRow(ctx, tx, id); err != nil {
+				return err
+			}
+		}
+		r, ended = current, true
+		if err := s.endTxRaw(ctx, tx, r, now, reason, message); err != nil || r.media == "" {
 			return err
 		}
 		// The grant is fenced in the same transaction that ends the session,
 		// so there is no moment where the session is over and its media still
 		// plays. StopV1 below then stops the stream itself.
-		_, err := tx.ExecContext(ctx, `UPDATE playback_sessions SET state='stopped' WHERE id=?`, r.media)
+		_, err = tx.ExecContext(ctx, `UPDATE playback_sessions SET state='stopped' WHERE id=?`, r.media)
 		return err
-	}); err != nil {
+	}); err != nil || !ended {
 		return err
 	}
+	s.cancelPreparedFor(ctx, id)
 	s.hub.wake()
 	if isChannel(r) {
 		s.wakeChannels()

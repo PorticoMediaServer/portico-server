@@ -329,6 +329,9 @@ func (s *Service) patchChannel(ctx context.Context, c Caller, r row, change Chan
 		state = change.State
 	}
 	err := dbwork.WithWriteTxContext(ctx, s.DB, dbwork.ClassEstablishedPlayback, func(ctx context.Context, tx *sql.Tx) error {
+		if err := s.drainObservationTx(ctx, tx, r.id); err != nil {
+			return err
+		}
 		st, err := s.Channels.ReadTx(ctx, tx, rowPrincipal(r), r.id)
 		if err != nil {
 			return err

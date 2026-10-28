@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/mediaanalysis"
 	"portico.local/server/internal/playback"
@@ -73,8 +75,8 @@ func (d Dependencies) configurePlaybackEvidence() {
 		return mediaanalysis.ViewerMarkersTx(ctx, tx, d.markerAccess(p, scope.LibraryID, scope.ItemID, scope.ViewerFence), source)
 	}
 	if d.Catalog != nil {
-		d.Playback.PersonalProgress = func(tx *sql.Tx, v identity.Viewer, playbackID, item string, sequence int64, position, duration float64, state string, canonical bool, rate float64, seeked *bool, generation int, playing bool) error {
-			return d.Catalog.AcceptPlaybackProgressEvidence(tx, v, playbackID, item, sequence, position, duration, state, canonical, rate, seeked, generation, playing)
+		d.Playback.PersonalProgress = func(tx *sql.Tx, v identity.Viewer, playbackID, item string, sequence int64, position, duration float64, state string, canonical bool, rate float64, seeked *bool, generation int, playing bool, received time.Time, proved *catalog.PlayedTime) error {
+			return d.Catalog.AcceptPlaybackProgressEvidence(tx, v, playbackID, item, sequence, position, duration, state, canonical, rate, seeked, generation, playing, received, proved)
 		}
 	}
 }

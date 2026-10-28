@@ -346,6 +346,19 @@ func (h *HLS) downgradeCopyPlan(ctx context.Context, id string, plan *DeliveryPl
 		if _, err = tx.ExecContext(ctx, `UPDATE playback_subtitle_presentations SET generation=generation+1 WHERE session_id=?`, id); err != nil {
 			return nil, err
 		}
+		// The session playing this media learns its new generation and URL in
+		// the same transaction (V10): never a rotated grant behind an old URL.
+		if s := h.discPlayback; s != nil && s.GrantReplacedTx != nil {
+			var generation int
+			var mode string
+			if err = tx.QueryRowContext(ctx, `SELECT generation,mode FROM playback_sessions WHERE id=?`, id).Scan(&generation, &mode); err != nil {
+				return nil, err
+			}
+			url, _ := streamURLTx(tx, id, generation, grant, mode)
+			if err = s.GrantReplacedTx(ctx, tx, id, generation, url); err != nil {
+				return nil, err
+			}
+		}
 	}
 	if next.ConversionTarget != nil {
 		if err = StoreConversionTarget(ctx, tx, id, *next.ConversionTarget); err != nil {

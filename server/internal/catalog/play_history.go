@@ -26,6 +26,20 @@ import (
 // title opened and closed again leaves nothing behind. counted reports that this
 // report is the one that completed the play. Personal counts are independent.
 func recordPlay(tx *sql.Tx, v identity.Viewer, playbackID string, entityID, kind int64, now time.Time, positionMs int64, duration float64, started, completed, share bool, states ...string) (counted bool, err error) {
+	return recordPlayEvidence(tx, v, playbackID, entityID, kind, now, positionMs, duration, started, completed, share, nil, states...)
+}
+
+// PlayedTime is watched wall time an observation apply has already proved
+// (playbackv1 observations): the credited delta and the server receipt span it
+// is spread over. It replaces the inference between two reports, so a seek,
+// a slow rate or a long gap neither zeroes nor halves time actually played.
+type PlayedTime struct {
+	FromMs, ToMs, WatchedMs int64
+}
+
+// recordPlayEvidence is recordPlay with optional proved played time. Nil keeps
+// the inferred rule: a short positive advance between two reports.
+func recordPlayEvidence(tx *sql.Tx, v identity.Viewer, playbackID string, entityID, kind int64, now time.Time, positionMs int64, duration float64, started, completed, share bool, played *PlayedTime, states ...string) (counted bool, err error) {
 	nowMs := now.UnixMilli()
 	var id int64
 	var was bool
@@ -44,18 +58,34 @@ func recordPlay(tx *sql.Tx, v identity.Viewer, playbackID string, entityID, kind
 		if err = insertPlay(tx, v, playbackID, entityID, kind, nowMs, positionMs, duration, completed); err != nil {
 			return false, err
 		}
+		if played != nil && played.WatchedMs > 0 {
+			if err = tx.QueryRow(`SELECT id FROM play_history WHERE playback_id=?`, playbackID).Scan(&id); err != nil {
+				return false, err
+			}
+			if err = addPlayedTime(tx, id, *played); err != nil {
+				return false, err
+			}
+		}
 	case err != nil:
 		return false, err
 	default:
-		elapsed := nowMs - previous
-		advance := positionMs - previousPosition
 		watched := int64(0)
-		if previousState == "playing" && elapsed > 0 && elapsed <= 60000 && advance > 0 && advance <= elapsed*4+2000 {
-			watched = min(elapsed, advance)
-		}
-		if watched > 0 {
-			if err = recordPlayedInterval(tx, id, previous, nowMs, watched); err != nil {
-				return false, err
+		if played != nil {
+			if watched = max(played.WatchedMs, 0); watched > 0 {
+				if err = recordPlayedInterval(tx, id, min(played.FromMs, played.ToMs-1), played.ToMs, watched); err != nil {
+					return false, err
+				}
+			}
+		} else {
+			elapsed := nowMs - previous
+			advance := positionMs - previousPosition
+			if previousState == "playing" && elapsed > 0 && elapsed <= 60000 && advance > 0 && advance <= elapsed*4+2000 {
+				watched = min(elapsed, advance)
+			}
+			if watched > 0 {
+				if err = recordPlayedInterval(tx, id, previous, nowMs, watched); err != nil {
+					return false, err
+				}
 			}
 		}
 		if _, err = tx.Exec(`UPDATE play_history SET updated_ms=max(updated_ms,?),position_ms=max(position_ms,?),completed=max(completed,?),watched_ms=watched_ms+?,last_position_ms=?,last_state=? WHERE id=?`, nowMs, positionMs, completed, watched, positionMs, state, id); err != nil {

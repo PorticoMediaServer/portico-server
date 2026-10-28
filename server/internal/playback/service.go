@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"portico.local/server/internal/assets"
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/decoder"
@@ -68,9 +69,13 @@ type Service struct {
 	// AuthorityTx is wired by HTTP composition, never a remote policy lookup.
 	AuthorityTx         ControlAuthorityTx
 	ContinueAuthorityTx ControlAuthorityTx
-	PersonalProgress    func(*sql.Tx, identity.Viewer, string, string, int64, float64, float64, string, bool, float64, *bool, int, bool) error
-	Subtitles           *subtitles.Service
-	Prepared            *preparedmedia.Service
+	// GrantReplacedTx publishes a presentation whose grant the server rotated
+	// on its own (the HLS init-change fallback) to the session that plays it,
+	// in the same transaction: the new media generation and its stream URL.
+	GrantReplacedTx  func(ctx context.Context, tx *sql.Tx, media string, generation int, streamURL string) error
+	PersonalProgress func(*sql.Tx, identity.Viewer, string, string, int64, float64, float64, string, bool, float64, *bool, int, bool, time.Time, *catalog.PlayedTime) error
+	Subtitles        *subtitles.Service
+	Prepared         *preparedmedia.Service
 	// Delivery seams. Owner administration, viewer preferences and hardware
 	// detection are all injected; playback owns none of them.
 	deliverySettings    DeliverySettings
@@ -761,18 +766,7 @@ func (s *Service) Get(p identity.Principal, id string) (Session, error) {
 		}
 	}
 	_ = tx.QueryRow(`SELECT version_id FROM prepared_media_session_pins WHERE session_id=?`, id).Scan(&out.PreparedVersionID)
-	out.StreamURL = "/v1/media/" + grant
-	if out.Mode == "hls" {
-		out.StreamURL += "/master.m3u8"
-	}
-	if out.Mode == "remote" {
-		out.Mode = "direct"
-	}
-	var renderID string
-	if queryErr := tx.QueryRow(`SELECT render_id FROM playback_subtitle_presentations WHERE session_id=? AND generation=?`, id, out.Generation).Scan(&renderID); queryErr == nil && renderID != "" {
-		out.StreamURL = "/v1/media/" + grant + "/subtitle-video/" + renderID + "/master.m3u8"
-		out.Mode = "hls"
-	}
+	out.StreamURL, out.Mode = streamURLTx(tx, id, out.Generation, grant, out.Mode)
 	if out.State == "failed" {
 		out.Error = "Playback stopped because the source or conversion failed."
 	}
@@ -817,12 +811,27 @@ func (s *Service) ProgressEvidenceContext(ctx context.Context, p identity.Princi
 	}
 	tx := gated3.Tx()
 	defer gated3.Rollback()
-	if e = s.progressTx(gated3.Context(), tx, p, id, generation, sequence, position, state, rate, seeked, playing); e != nil {
+	if e = s.progressTx(gated3.Context(), tx, p, id, generation, sequence, position, state, rate, seeked, playing, time.Time{}, nil); e != nil {
 		return e
 	}
 	return gated3.Commit()
 }
-func (s *Service) progressTx(ctx context.Context, tx *sql.Tx, p identity.Principal, id string, generation int, sequence int64, position float64, state string, rate float64, seeked *bool, playing bool) error {
+
+// ObservationEvidenceTx accepts one applied playback observation inside the
+// caller's writer transaction (playbackv1 observations): the same fences,
+// resume, history and chapter evidence as a timeline report, with the time the
+// sample was received and the played time the observation already proved.
+func (s *Service) ObservationEvidenceTx(ctx context.Context, tx *sql.Tx, p identity.Principal, id string, generation int, sequence int64, position float64, state string, rate float64, seeked *bool, playing bool, received time.Time, proved *catalog.PlayedTime) error {
+	if math.IsNaN(rate) || math.IsInf(rate, 0) || rate < 0 || math.IsNaN(position) || math.IsInf(position, 0) || position < 0 || sequence < 0 {
+		return requestinput.New("invalid progress")
+	}
+	if state != "playing" && state != "paused" && state != "ended" {
+		return requestinput.New("invalid playback state")
+	}
+	return s.progressTx(ctx, tx, p, id, generation, sequence, position, state, rate, seeked, playing, received, proved)
+}
+
+func (s *Service) progressTx(ctx context.Context, tx *sql.Tx, p identity.Principal, id string, generation int, sequence int64, position float64, state string, rate float64, seeked *bool, playing bool, received time.Time, proved *catalog.PlayedTime) error {
 	var e error
 	if e = s.checkSessionOccurrenceModeTx(ctx, tx, id, false); e != nil {
 		return e
@@ -861,7 +870,7 @@ func (s *Service) progressTx(ctx context.Context, tx *sql.Tx, p identity.Princip
 		return e
 	}
 	if s.PersonalProgress != nil {
-		if e = s.PersonalProgress(tx, p.Viewer, id, item, sequence, position, duration, state, canonical, rate, seeked, generation, playing); e != nil {
+		if e = s.PersonalProgress(tx, p.Viewer, id, item, sequence, position, duration, state, canonical, rate, seeked, generation, playing, received, proved); e != nil {
 			return e
 		}
 	} else {
@@ -1050,6 +1059,24 @@ func (s *Service) Cleanup() error {
 	return nil
 }
 func (s Session) String() string { return fmt.Sprintf("playback %s generation %d", s.ID, s.Generation) }
+
+// streamURLTx is a presentation's stream URL and wire mode for its grant: the
+// grant's own media, or the burned-subtitle rendition published for this
+// generation.
+func streamURLTx(tx *sql.Tx, id string, generation int, grant, mode string) (string, string) {
+	url := "/v1/media/" + grant
+	if mode == "hls" {
+		url += "/master.m3u8"
+	}
+	if mode == "remote" {
+		mode = "direct"
+	}
+	var renderID string
+	if err := tx.QueryRow(`SELECT render_id FROM playback_subtitle_presentations WHERE session_id=? AND generation=?`, id, generation).Scan(&renderID); err == nil && renderID != "" {
+		url, mode = "/v1/media/"+grant+"/subtitle-video/"+renderID+"/master.m3u8", "hls"
+	}
+	return url, mode
+}
 
 func (s *Service) ConfigureHLS(h *HLS) {
 	s.hls = h
