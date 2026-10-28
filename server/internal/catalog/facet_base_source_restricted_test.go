@@ -22,7 +22,8 @@ func facetRestrictedFixture(t *testing.T, shows bool) (*sql.DB, FacetBaseScope) 
  CREATE TABLE content_rating_ages(value_key TEXT PRIMARY KEY,minimum_age INTEGER NOT NULL) WITHOUT ROWID;
  CREATE TABLE catalog_facet_members(entity_id INTEGER,field TEXT,value TEXT,library_id INTEGER,PRIMARY KEY(entity_id,field,value)) WITHOUT ROWID;
  CREATE TABLE catalog_show_facet_episodes(episode_id INTEGER,show_id INTEGER,field TEXT,value TEXT,PRIMARY KEY(episode_id,field,value)) WITHOUT ROWID;
- CREATE INDEX catalog_show_facet_episodes_show_value ON catalog_show_facet_episodes(show_id,field,value,episode_id);
+ CREATE TABLE catalog_terms(id INTEGER PRIMARY KEY,vocab INTEGER NOT NULL,label TEXT NOT NULL);
+ CREATE TABLE catalog_term_sources(entity_id INTEGER NOT NULL,provider TEXT NOT NULL,source_id TEXT NOT NULL,term_id INTEGER NOT NULL,label_override TEXT,PRIMARY KEY(entity_id,provider,source_id)) WITHOUT ROWID;
  CREATE TABLE catalog_episodes(entity_id INTEGER PRIMARY KEY,show_id INTEGER,season_id INTEGER,number INTEGER NOT NULL DEFAULT 0);
  CREATE INDEX catalog_episodes_show ON catalog_episodes(show_id,season_id,number,entity_id);
  CREATE TABLE compact_visibility_classes(id INTEGER PRIMARY KEY,class_key TEXT,library_id INTEGER,retired INTEGER,active_generation INTEGER);
@@ -32,6 +33,9 @@ func facetRestrictedFixture(t *testing.T, shows bool) (*sql.DB, FacetBaseScope) 
 		t.Fatal(err)
 	}
 	if shows {
+		if _, err = db.Exec(facetBaselineBlock("current-show contribution staging")); err != nil {
+			t.Fatal(err)
+		}
 		scope.Source = RestrictedShowFacetBaseSource
 		if _, err = db.Exec(`UPDATE libraries SET kind='tv'; UPDATE catalog_libraries SET kind=2`); err != nil {
 			t.Fatal(err)
@@ -106,7 +110,9 @@ func TestFacetBaseSourceRestrictedShowsVisibleWitnessAndYear(t *testing.T) {
  INSERT INTO catalog_episodes(entity_id,show_id) VALUES(101,10),(102,10),(103,12),(104,10);
  UPDATE catalog_episodes SET season_id=1 WHERE entity_id=104;
  INSERT INTO catalog_item_attribute_edges VALUES(101,1,'PG'),(102,2,'R'),(103,2,'R'),(104,1,'PG');
- INSERT INTO catalog_show_facet_episodes VALUES(101,10,'genre','Drama'),(102,10,'genre','Drama'),(104,10,'genre','Drama'),(102,10,'genre','Hidden only'),(101,10,'genre','Episode only'),(103,12,'genre','Drama'),(101,10,'studio','Acme'),(102,10,'studio','Hidden Studio');`)
+ INSERT INTO catalog_terms VALUES(1,1,'Drama'),(2,1,'Hidden only'),(3,1,'Episode only');
+ INSERT INTO catalog_term_sources VALUES(10,'p','drama',1,NULL),(101,'p','drama',1,NULL),(104,'p','drama',1,NULL),(102,'p','hidden',2,NULL),(101,'p','own',3,NULL),(12,'p','drama',1,NULL);
+ INSERT INTO catalog_show_facet_episodes VALUES(101,10,'studio','Acme'),(102,10,'studio','Hidden Studio');`)
 	if err != nil {
 		t.Fatal(err)
 	}

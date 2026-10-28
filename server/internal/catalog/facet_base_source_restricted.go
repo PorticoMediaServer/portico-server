@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
-	"strconv"
 
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/identity"
@@ -23,23 +22,15 @@ type restrictedFacetWitness struct {
 	Fence   compactcatalog.FacetProducerFence `json:"fence"`
 }
 
-// One raw accepted cursor, one pending policy reducer and one show/value group;
-// no persisted per-class member/witness graph and no all-value map.
+// Nonshow raw accepted-fact progress. Show maintenance has its own bounded
+// episode/source cursor and ID-only current-show contribution set.
 type restrictedFacetCursor struct {
-	HasAfter     bool                      `json:"hasAfter"`
-	Entity       int64                     `json:"entity"`
-	Show         int64                     `json:"show"`
-	Field        string                    `json:"field"`
-	Value        string                    `json:"value"`
-	Season       *int64                    `json:"season"`
-	Number       int64                     `json:"number"`
-	Pending      bool                      `json:"pending"`
-	Policy       FacetBaseItemPolicyCursor `json:"policy"`
-	HasGroup     bool                      `json:"hasGroup"`
-	GroupShow    int64                     `json:"groupShow"`
-	GroupField   string                    `json:"groupField"`
-	GroupValue   string                    `json:"groupValue"`
-	GroupVisible bool                      `json:"groupVisible"`
+	HasAfter bool                      `json:"hasAfter"`
+	Entity   int64                     `json:"entity"`
+	Field    string                    `json:"field"`
+	Value    string                    `json:"value"`
+	Pending  bool                      `json:"pending"`
+	Policy   FacetBaseItemPolicyCursor `json:"policy"`
 }
 
 // CaptureRestrictedFacetBaseWitness names an exact LIVE branch. Published
@@ -82,7 +73,11 @@ func CaptureRestrictedFacetBaseWitness(ctx context.Context, q compactcatalog.Rea
 	if err != nil {
 		return "", err
 	}
-	raw, err := json.Marshal(restrictedFacetWitness{Version: 1, Kind: kind, Fence: f})
+	version := 1
+	if shows {
+		version = 2
+	}
+	raw, err := json.Marshal(restrictedFacetWitness{Version: version, Kind: kind, Fence: f})
 	return string(raw), err
 }
 func rejectPublishedFacetDecade(ctx context.Context, q compactcatalog.ReadQuery, scope FacetBaseScope, r identity.ContentRestrictions) error {
@@ -111,10 +106,13 @@ func (p RestrictedFacetBaseProducer) validate(ctx context.Context, tx *sql.Tx, s
 		return r, err
 	}
 	var w restrictedFacetWitness
-	if !r.Active() || json.Unmarshal([]byte(s.Witness), &w) != nil || w.Version != 1 {
+	if !r.Active() || json.Unmarshal([]byte(s.Witness), &w) != nil {
 		return r, ErrFacetBaseUnavailable
 	}
 	shows := w.Kind == "tv" || w.Kind == "anime"
+	if (!shows && w.Version != 1) || (shows && w.Version != 2) {
+		return r, ErrFacetBaseUnavailable
+	}
 	if (shows && s.Scope.Source != RestrictedShowFacetBaseSource) || (!shows && s.Scope.Source != RestrictedMemberFacetBaseSource) {
 		return r, ErrFacetBaseUnavailable
 	}
@@ -125,12 +123,22 @@ func (p RestrictedFacetBaseProducer) validate(ctx context.Context, tx *sql.Tx, s
 }
 func (p RestrictedFacetBaseProducer) ValidatePublication(ctx context.Context, tx *sql.Tx, s FacetBaseSnapshot) error {
 	_, err := p.validate(ctx, tx, s)
+	if err == nil && s.Scope.Source == RestrictedShowFacetBaseSource {
+		var seen bool
+		err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_facet_base_show_seen WHERE base_id=?)`, s.ID).Scan(&seen)
+		if err == nil && seen {
+			return ErrFacetBaseUnavailable
+		}
+	}
 	return err
 }
 func (p RestrictedFacetBaseProducer) Next(ctx context.Context, tx *sql.Tx, s FacetBaseSnapshot, cursor string) (FacetBaseBatch, error) {
 	r, err := p.validate(ctx, tx, s)
 	if err != nil {
 		return FacetBaseBatch{}, err
+	}
+	if s.Scope.Source == RestrictedShowFacetBaseSource {
+		return p.nextRestrictedShow(ctx, tx, s, r, cursor)
 	}
 	var c restrictedFacetCursor
 	if cursor != "" && json.Unmarshal([]byte(cursor), &c) != nil {
@@ -144,19 +152,13 @@ func (p RestrictedFacetBaseProducer) Next(ctx context.Context, tx *sql.Tx, s Fac
 		}
 		if done {
 			c.Pending = false
-			if s.Scope.Source == RestrictedShowFacetBaseSource {
-				c.GroupVisible = c.GroupVisible || visible
-			} else if visible {
+			if visible {
 				f, err := incrementFacetBaseFact(ctx, tx, s, c.Value, 1)
 				if err != nil {
 					return out, err
 				}
 				out.Facts = []FacetBaseFact{f}
 			}
-		}
-	} else if s.Scope.Source == RestrictedShowFacetBaseSource {
-		if err = p.nextShow(ctx, tx, s, &c, &out); err != nil {
-			return out, err
 		}
 	} else {
 		query := `SELECT entity_id,field,value,library_id FROM catalog_facet_members`
@@ -197,113 +199,6 @@ func (p RestrictedFacetBaseProducer) Next(ctx context.Context, tx *sql.Tx, s Fac
 	return out, nil
 }
 
-func (p RestrictedFacetBaseProducer) nextShow(ctx context.Context, tx *sql.Tx, s FacetBaseSnapshot, c *restrictedFacetCursor, out *FacetBaseBatch) error {
-	year := s.Scope.Field == "year" || s.Scope.Field == "decade"
-	var show, episode int64
-	var field, value string
-	var err error
-	var season sql.NullInt64
-	var number int64
-	if year {
-		// The existing show/season/number/entity index is the full raw key.
-		// NULL season needs a separate bounded range; never claim that this
-		// index has (show,entity) order or add another per-episode index.
-		selectRow := func(where string, args ...any) error {
-			return tx.QueryRowContext(ctx, `SELECT show_id,season_id,number,entity_id FROM catalog_episodes INDEXED BY catalog_episodes_show `+where+` ORDER BY show_id,season_id,number,entity_id LIMIT 1`, args...).Scan(&show, &season, &number, &episode)
-		}
-		if !c.HasAfter {
-			err = selectRow("")
-		} else if c.Season != nil {
-			err = selectRow(`WHERE (show_id,season_id,number,entity_id)>(?,?,?,?)`, c.Show, *c.Season, c.Number, c.Entity)
-		} else {
-			err = selectRow(`WHERE show_id=? AND season_id IS NULL AND (number,entity_id)>(?,?)`, c.Show, c.Number, c.Entity)
-			if errors.Is(err, sql.ErrNoRows) {
-				err = selectRow(`WHERE show_id=? AND season_id IS NOT NULL`, c.Show)
-			}
-			if errors.Is(err, sql.ErrNoRows) {
-				err = selectRow(`WHERE show_id>?`, c.Show)
-			}
-		}
-		field = s.Scope.Field
-	} else {
-		q := `SELECT show_id,field,value,episode_id FROM catalog_show_facet_episodes INDEXED BY catalog_show_facet_episodes_show_value`
-		args := []any{}
-		if c.HasAfter {
-			q += ` WHERE (show_id,field,value,episode_id)>(?,?,?,?)`
-			args = append(args, c.Show, c.Field, c.Value, c.Entity)
-		}
-		q += ` ORDER BY show_id,field,value,episode_id LIMIT 1`
-		err = tx.QueryRowContext(ctx, q, args...).Scan(&show, &field, &value, &episode)
-	}
-	end := errors.Is(err, sql.ErrNoRows)
-	if err != nil && !end {
-		return err
-	}
-	changed := !end && c.HasGroup && (show != c.GroupShow || field != c.GroupField || !year && value != c.GroupValue)
-	if c.HasGroup && (end || changed) {
-		if c.GroupVisible && c.GroupField == s.Scope.Field && c.GroupValue != "" {
-			f, err := incrementFacetBaseFact(ctx, tx, s, c.GroupValue, 1)
-			if err != nil {
-				return err
-			}
-			out.Facts = []FacetBaseFact{f}
-		}
-		c.HasGroup = false
-		c.GroupVisible = false
-		// Leave the prefetched next group's raw key unconsumed. The next quantum
-		// reads it again; accepted group counts and this checkpoint commit together.
-		if !end {
-			return nil
-		}
-	}
-	if end {
-		out.Done = true
-		return nil
-	}
-	if !c.HasGroup {
-		c.HasGroup = true
-		c.GroupShow, c.GroupField, c.GroupValue = show, field, value
-	}
-	c.HasAfter = true
-	if year {
-		c.Season = nil
-		if season.Valid {
-			v := season.Int64
-			c.Season = &v
-		}
-		c.Number = number
-	}
-	c.Show, c.Field, c.Value, c.Entity = show, field, value, episode
-	if field != s.Scope.Field || c.GroupVisible {
-		return nil
-	}
-	var item sql.NullInt64
-	var library int64
-	var showYear sql.NullInt64
-	err = tx.QueryRowContext(ctx, `SELECT ep.item_id,ep.library_id,sh.year FROM catalog_browse_rows ep JOIN catalog_browse_rows sh ON sh.entity_id=? WHERE ep.entity_id=?`, show, episode).Scan(&item, &library, &showYear)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	if library != s.Scope.LibraryID || !item.Valid {
-		return nil
-	}
-	if year {
-		if !showYear.Valid || showYear.Int64 < 1800 || showYear.Int64 > 2199 {
-			return nil
-		}
-		v := showYear.Int64
-		if field == "decade" {
-			v = v / 10 * 10
-		}
-		c.GroupValue = strconv.FormatInt(v, 10)
-	}
-	c.Pending = true
-	c.Policy = FacetBaseItemPolicyCursor{Item: item.Int64}
-	return nil
-}
 func incrementFacetBaseFact(ctx context.Context, tx *sql.Tx, s FacetBaseSnapshot, value string, delta int64) (FacetBaseFact, error) {
 	f, err := unrestrictedFacetPublicFact(ctx, tx, s.Scope.Field, value, delta)
 	if err != nil {

@@ -275,10 +275,11 @@ func (b *FacetBases) put(ctx context.Context, tx *sql.Tx, s FacetBaseSnapshot, f
 	if f.Count == 0 {
 		return nil
 	}
-	var value, text int64
-	if err := tx.QueryRowContext(ctx, `INSERT INTO catalog_facet_base_values(library_id,field,value) VALUES(?,?,?) ON CONFLICT(library_id,field,value) DO UPDATE SET value=excluded.value RETURNING id`, s.Scope.LibraryID, s.Scope.Field, f.Value).Scan(&value); err != nil {
+	value, err := ensureFacetBaseValueID(ctx, tx, s.Scope, f.Value)
+	if err != nil {
 		return err
 	}
+	var text int64
 	// Immutable text variants preserve old collection names/bases across renames.
 	if err := tx.QueryRowContext(ctx, `INSERT INTO catalog_facet_base_texts(value_id,label,folded) VALUES(?,?,?) ON CONFLICT(value_id,label) DO UPDATE SET label=excluded.label RETURNING id`, value, f.Label, sorttext.Fold(f.Label)).Scan(&text); err != nil {
 		return err
@@ -297,8 +298,26 @@ func (b *FacetBases) put(ctx context.Context, tx *sql.Tx, s FacetBaseSnapshot, f
 	if strings.HasPrefix(s.Scope.Source, SearchVideoGenreSource+":") {
 		order = sorttext.Key(f.Label, "", "")
 	}
-	_, err := tx.ExecContext(ctx, `INSERT INTO catalog_facet_base_rows(base_id,value_id,text_id,negative_count,label_order,value_order,charged_bytes) VALUES(?,?,?,?,?,?,?)`, s.ID, value, text, -f.Count, order, f.Value, charge)
+	_, err = tx.ExecContext(ctx, `INSERT INTO catalog_facet_base_rows(base_id,value_id,text_id,negative_count,label_order,value_order,charged_bytes) VALUES(?,?,?,?,?,?,?)`, s.ID, value, text, -f.Count, order, f.Value, charge)
 	return err
+}
+
+// ensureFacetBaseValueID preserves the exact shared (library,field,value)
+// identity. It is also used by current-show staging; text remains shared by put.
+func ensureFacetBaseValueID(ctx context.Context, tx *sql.Tx, scope FacetBaseScope, value string) (int64, error) {
+	if value == "" {
+		return 0, ErrFacetBaseInput
+	}
+	var id int64
+	err := tx.QueryRowContext(ctx, `SELECT id FROM catalog_facet_base_values WHERE library_id=? AND field=? AND value=?`, scope.LibraryID, scope.Field, value).Scan(&id)
+	if err == nil {
+		return id, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return 0, err
+	}
+	err = tx.QueryRowContext(ctx, `INSERT INTO catalog_facet_base_values(library_id,field,value) VALUES(?,?,?) ON CONFLICT(library_id,field,value) DO UPDATE SET value=excluded.value RETURNING id`, scope.LibraryID, scope.Field, value).Scan(&id)
+	return id, err
 }
 
 // RetireStep reclaims one non-active base in bounded quanta. Dropping COMPLETE
@@ -326,6 +345,12 @@ func (b *FacetBases) RetireStep(ctx context.Context, tx *sql.Tx, id int64) (bool
 	}
 	if strings.HasPrefix(source, SearchVideoGenreSource+":") {
 		done, err := retireSearchGenreBaseStep(ctx, tx, id)
+		if err != nil || !done {
+			return false, err
+		}
+	}
+	if source == RestrictedShowFacetBaseSource {
+		done, err := retireRestrictedShowSeenStep(ctx, tx, id)
 		if err != nil || !done {
 			return false, err
 		}

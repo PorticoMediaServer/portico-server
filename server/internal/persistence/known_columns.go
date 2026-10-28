@@ -1022,6 +1022,8 @@ catalog_facet_base_rows.negative_count
 catalog_facet_base_rows.text_id
 catalog_facet_base_rows.value_id
 catalog_facet_base_rows.value_order
+catalog_facet_base_show_seen.base_id
+catalog_facet_base_show_seen.value_id
 catalog_facet_base_texts.folded
 catalog_facet_base_texts.id
 catalog_facet_base_texts.label

@@ -384,6 +384,13 @@ func (w *Worker) prepare(ctx context.Context) error {
 				return err
 			}
 			if old > 0 && d.Version > old {
+				if domain == DomainFacetCounts {
+					// A phase-layout change must reject interrupted raw stages as well
+					// as rebuilding accepted rows. Reset lazily under the raw8 budget.
+					if _, err := tx.ExecContext(ctx, `UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1`); err != nil {
+						return err
+					}
+				}
 				if err := beginGeneration(ctx, tx); err != nil {
 					return err
 				}

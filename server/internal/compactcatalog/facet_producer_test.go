@@ -200,7 +200,11 @@ func TestFacetProducerSourceFanoutFullKeysBarrierAndRevision(t *testing.T) {
 		if i == 18 {
 			owner = b
 		}
-		cc1Exec(t, db, `INSERT INTO catalog_term_sources(entity_id,term_id,provider,source_id,label_override) VALUES(?,?,?,?,?)`, owner, term, fmt.Sprintf("p%02d", i), fmt.Sprintf("s%02d", i), []any{nil, "", "override"}[i%3])
+		provider, source := fmt.Sprintf("p%02d", i), fmt.Sprintf("s%02d", i)
+		if i == 17 {
+			provider, source = strings.Repeat("p", 8193), strings.Repeat("s", 8194)
+		}
+		cc1Exec(t, db, `INSERT INTO catalog_term_sources(entity_id,term_id,provider,source_id,label_override) VALUES(?,?,?,?,?)`, owner, term, provider, source, []any{nil, "", "override"}[i%3])
 	}
 	cc1Drain(t, db)
 	cc1Exec(t, db, `UPDATE catalog_terms SET label='New drama' WHERE id=?`, term)
@@ -265,7 +269,7 @@ func TestFacetProducerSourceFanoutFullKeysBarrierAndRevision(t *testing.T) {
 	}
 }
 
-func TestFacetProducerEpisodeInheritedGenreAndOwnerMoves(t *testing.T) {
+func TestFacetProducerNoGlobalEpisodeGenresAndOwnerMoves(t *testing.T) {
 	db := cc1OpenDB(t, "facet-episode.sqlite")
 	lib := cc1Library(t, db, "facet-episode", "Facet episode", "tv", "/facet-episode")
 	show := cc1Entity(t, db, Entity{Library: lib, Kind: Show, Key: "show:a", Title: "A", Year: 2001}, map[string]any{"local_key": "a"})
@@ -284,14 +288,17 @@ func TestFacetProducerEpisodeInheritedGenreAndOwnerMoves(t *testing.T) {
 		return SetAttributesTx(ctx, tx, ep, "studio", []string{"Studio"})
 	})
 	cc1Drain(t, db)
-	if cc1Scalar(t, db, `SELECT count(*) FROM catalog_show_facet_episodes WHERE episode_id=? AND field='genre'`, ep) != 2 {
-		t.Fatal("missing own/inherited episode genre witnesses")
+	if cc1Scalar(t, db, `SELECT count(*) FROM catalog_show_facet_episodes WHERE field='genre'`) != 0 {
+		t.Fatal("global episode own/inherited genre strings were materialized")
+	}
+	if cc1Scalar(t, db, `SELECT count(*) FROM catalog_facet_members WHERE entity_id=? AND field='genre' AND value='Show only'`, show) != 1 {
+		t.Fatal("unrestricted show lost its own genre")
 	}
 	if cc1Scalar(t, db, `SELECT count(*) FROM catalog_facet_members WHERE entity_id=? AND value='Episode only'`, show) != 0 {
 		t.Fatal("episode genres changed unrestricted show semantics")
 	}
-	if cc1Scalar(t, db, `SELECT count(*) FROM catalog_show_facet_values WHERE show_id=? AND field='genre' AND total=1`, show) != 2 {
-		t.Fatal("restricted-show genre directory differs from episode witnesses")
+	if cc1Scalar(t, db, `SELECT count(*) FROM catalog_show_facet_values WHERE field='genre'`) != 0 {
+		t.Fatal("global show directory expanded episode genres")
 	}
 	cc1Write(t, db, func(ctx context.Context, tx *sql.Tx) error {
 		return SetTermsTx(ctx, tx, show, VocabGenre, "show", []Term{{Name: "Changed show"}})
@@ -300,12 +307,12 @@ func TestFacetProducerEpisodeInheritedGenreAndOwnerMoves(t *testing.T) {
 		t.Fatal("show edit missed bounded episode marker")
 	}
 	facetTestDrain(t, db, 1)
-	if cc1Scalar(t, db, `SELECT count(*) FROM catalog_show_facet_episodes WHERE episode_id=? AND value='Changed show'`, ep) != 1 || cc1Scalar(t, db, `SELECT count(*) FROM catalog_show_facet_episodes WHERE episode_id=? AND value='Show only'`, ep) != 0 {
-		t.Fatal("inherited show genres stale")
+	if cc1Scalar(t, db, `SELECT count(*) FROM catalog_show_facet_episodes WHERE field='genre'`) != 0 || cc1Scalar(t, db, `SELECT count(*) FROM catalog_facet_members WHERE entity_id=? AND field='genre' AND value='Changed show'`, show) != 1 {
+		t.Fatal("show edit expanded global genres or lost own show semantics")
 	}
 	cc1Exec(t, db, `UPDATE catalog_episodes SET show_id=? WHERE entity_id=?`, other, ep)
 	facetTestDrain(t, db, 1)
-	if cc1Scalar(t, db, `SELECT count(*) FROM catalog_show_facet_episodes WHERE episode_id=? AND show_id=?`, ep, show) != 0 || cc1Scalar(t, db, `SELECT count(*) FROM catalog_show_facet_episodes WHERE episode_id=? AND value='Other show'`, ep) != 1 {
+	if cc1Scalar(t, db, `SELECT count(*) FROM catalog_show_facet_episodes WHERE episode_id=? AND show_id=?`, ep, show) != 0 || cc1Scalar(t, db, `SELECT count(*) FROM catalog_show_facet_episodes WHERE episode_id=? AND field='genre'`, ep) != 0 {
 		t.Fatal("episode move kept old show/value")
 	}
 	if cc1Scalar(t, db, `SELECT count(*) FROM catalog_show_facet_values WHERE show_id=? AND field='studio'`, show) != 0 || cc1Scalar(t, db, `SELECT count(*) FROM catalog_show_facet_values WHERE show_id=? AND value='Studio'`, other) != 1 {
@@ -390,8 +397,10 @@ func TestFacetProducerFenceAndSeekPlans(t *testing.T) {
 		{facetTermFanoutSQL, []any{1, 1, "p", "s", 8}, "catalog_term_sources_term"},
 		{facetAssetFanoutSQL, []any{1, 1, 8}, "catalog_asset_links_asset"},
 		{`SELECT l.asset_id,a.height FROM catalog_asset_links l CROSS JOIN catalog_assets a ON a.id=l.asset_id WHERE l.entity_id=? AND l.asset_id>? ORDER BY l.asset_id LIMIT ?`, []any{1, 1, 8}, "PRIMARY KEY"},
-		{`SELECT entity_id FROM catalog_episodes INDEXED BY catalog_episodes_facet_show WHERE show_id=? AND entity_id>? ORDER BY entity_id LIMIT ?`, []any{1, 1, 8}, "catalog_episodes_facet_show"},
-		{`SELECT episode_id FROM catalog_show_facet_episodes INDEXED BY catalog_show_facet_episodes_show_value WHERE show_id=? AND field=? AND value=? AND episode_id>? ORDER BY episode_id LIMIT ?`, []any{1, "genre", "g", 1, 8}, "catalog_show_facet_episodes_show_value"},
+		{`SELECT entity_id FROM catalog_episodes INDEXED BY catalog_episodes_show WHERE show_id=? AND season_id IS NULL AND (number,entity_id)>(?,?) ORDER BY number,entity_id LIMIT ?`, []any{1, 1, 1, 8}, "catalog_episodes_show"},
+		{`SELECT entity_id FROM catalog_episodes INDEXED BY catalog_episodes_show WHERE show_id=? AND season_id IS NOT NULL ORDER BY season_id,number,entity_id LIMIT ?`, []any{1, 8}, "catalog_episodes_show"},
+		{`SELECT entity_id FROM catalog_episodes INDEXED BY catalog_episodes_show WHERE show_id=? AND (season_id,number,entity_id)>(?,?,?) ORDER BY season_id,number,entity_id LIMIT ?`, []any{1, 1, 1, 1, 8}, "catalog_episodes_show"},
+		{`SELECT field,value FROM catalog_show_facet_episodes WHERE episode_id=? AND (field,value)>(?,?) ORDER BY field,value LIMIT ?`, []any{1, "studio", "g", 8}, "PRIMARY KEY"},
 	} {
 		rows, err := db.Query(`EXPLAIN QUERY PLAN `+q.sql, q.args...)
 		if err != nil {

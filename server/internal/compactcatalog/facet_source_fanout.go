@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strconv"
 )
 
 // These permanent domains are source maintenance, never query jobs. A source
@@ -39,6 +40,9 @@ func drainFacetSource(ctx context.Context, tx *sql.Tx, domain int, keys []Key, l
 		return nil, nil
 	}
 	remaining := min(limit, facetSourceQuantum)
+	if domain == DomainFacetShowGenreFanout {
+		remaining = min(remaining, upstreamQuantum)
+	}
 	scalarBytes := 0
 	done := make([]int64, 0, min(len(keys), remaining))
 	for _, key := range keys {
@@ -59,11 +63,43 @@ func drainFacetSource(ctx context.Context, tx *sql.Tx, domain int, keys []Key, l
 		if err != nil {
 			return nil, err
 		}
+		if domain == DomainFacetShowGenreFanout {
+			var number int64
+			if source != "" {
+				number, err = strconv.ParseInt(source, 10, 64)
+				if err != nil {
+					return nil, err
+				}
+			}
+			edges, err := queryShowEpisodeEdges(ctx, tx, key.ID, hasAfter, entity, number, provider, remaining)
+			if err != nil {
+				return nil, err
+			}
+			ids := make([]int64, 0, len(edges))
+			for _, edge := range edges {
+				ids = append(ids, edge.id)
+			}
+			if err = TouchTx(ctx, tx, DomainFacetCounts, ids...); err != nil {
+				return nil, err
+			}
+			if len(edges) == 0 {
+				remaining -= max(1, len(edges))
+				if _, err = tx.ExecContext(ctx, `DELETE FROM catalog_facet_source_fanouts WHERE domain=? AND source_id=? AND revision=?`, domain, key.ID, key.Revision); err != nil {
+					return nil, err
+				}
+				done = append(done, key.ID)
+			} else {
+				remaining -= len(edges)
+				last := edges[len(edges)-1]
+				if _, err = tx.ExecContext(ctx, `UPDATE catalog_facet_source_fanouts SET has_after=1,after_entity=?,after_provider=?,after_source=? WHERE domain=? AND source_id=? AND revision=?`, last.id, last.key, strconv.FormatInt(last.aux, 10), domain, key.ID, key.Revision); err != nil {
+					return nil, err
+				}
+			}
+			continue
+		}
 		var rows *sql.Rows
 		if !hasAfter {
-			if domain == DomainFacetShowGenreFanout {
-				rows, err = tx.QueryContext(ctx, `SELECT entity_id FROM catalog_episodes INDEXED BY catalog_episodes_facet_show WHERE show_id=? ORDER BY entity_id LIMIT ?`, key.ID, remaining)
-			} else if domain == DomainFacetAttributeFieldFanout {
+			if domain == DomainFacetAttributeFieldFanout {
 				rows, err = tx.QueryContext(ctx, `SELECT id,value_key FROM catalog_attribute_terms WHERE field_id=? ORDER BY value_key,id LIMIT ?`, key.ID, remaining)
 			} else if domain == DomainFacetAttributeTermFanout {
 				rows, err = tx.QueryContext(ctx, `SELECT item_id FROM catalog_item_attribute_edges INDEXED BY catalog_item_attribute_edges_term WHERE term_id=? ORDER BY item_id LIMIT ?`, key.ID, remaining)
@@ -72,8 +108,6 @@ func drainFacetSource(ctx context.Context, tx *sql.Tx, domain int, keys []Key, l
 			} else {
 				rows, err = tx.QueryContext(ctx, `SELECT entity_id FROM catalog_asset_links INDEXED BY catalog_asset_links_asset WHERE asset_id=? ORDER BY entity_id LIMIT ?`, key.ID, remaining)
 			}
-		} else if domain == DomainFacetShowGenreFanout {
-			rows, err = tx.QueryContext(ctx, `SELECT entity_id FROM catalog_episodes INDEXED BY catalog_episodes_facet_show WHERE show_id=? AND entity_id>? ORDER BY entity_id LIMIT ?`, key.ID, entity, remaining)
 		} else if domain == DomainFacetAttributeFieldFanout {
 			rows, err = tx.QueryContext(ctx, `SELECT id,value_key FROM catalog_attribute_terms WHERE field_id=? AND (value_key,id)>(?,?) ORDER BY value_key,id LIMIT ?`, key.ID, provider, entity, remaining)
 		} else if domain == DomainFacetAttributeTermFanout {
@@ -131,7 +165,7 @@ func drainFacetSource(ctx context.Context, tx *sql.Tx, domain int, keys []Key, l
 		if domain == DomainFacetTermFanout {
 			for _, id := range ids {
 				if _, err = tx.ExecContext(ctx, `INSERT INTO catalog_dirty(domain,entity_id,revision)
-     SELECT 40,?1,1 WHERE EXISTS(SELECT 1 FROM catalog_episodes INDEXED BY catalog_episodes_facet_show WHERE show_id=?1)
+     SELECT 40,?1,1 WHERE EXISTS(SELECT 1 FROM catalog_episodes INDEXED BY catalog_episodes_show WHERE show_id=?1)
      ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1`, id); err != nil {
 					return nil, err
 				}

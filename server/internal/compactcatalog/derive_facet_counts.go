@@ -67,7 +67,7 @@ func adjustFacetCount(ctx context.Context, tx *sql.Tx, at facetPlace, k facetKey
 
 func init() {
 	Register(DomainFacetCounts, Derivation{
-		Version: 6,
+		Version: 7,
 		Drain:   drainFacetHolders,
 		Backfill: func(ctx context.Context, tx *sql.Tx, after int64, limit int) ([]int64, error) {
 			// Visit current AND previously accepted owners. Missing browse rows

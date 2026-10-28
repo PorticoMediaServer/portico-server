@@ -195,7 +195,6 @@ index catalog_entities_library_id
 index catalog_entities_parent
 index catalog_entities_summary_added
 index catalog_entities_title
-index catalog_episodes_facet_show
 index catalog_episodes_position
 index catalog_episodes_season
 index catalog_episodes_show
@@ -205,6 +204,7 @@ index catalog_facet_base_classes_active
 index catalog_facet_base_order
 index catalog_facet_base_rows_text
 index catalog_facet_base_rows_value
+index catalog_facet_base_show_seen_value
 index catalog_facet_bases_class
 index catalog_facet_bases_demand
 index catalog_facet_group_recent
@@ -258,7 +258,6 @@ index catalog_search_genre_ready_value
 index catalog_search_genre_value_walk
 index catalog_search_prefix_rows_entity
 index catalog_search_prefix_rows_next_entity
-index catalog_show_facet_episodes_show_value
 index catalog_shows_local_key
 index catalog_song_artists_artist
 index catalog_songs_album_order
@@ -924,6 +923,7 @@ table catalog_episodes
 table catalog_external_ids
 table catalog_facet_base_classes
 table catalog_facet_base_rows
+table catalog_facet_base_show_seen
 table catalog_facet_base_texts
 table catalog_facet_base_usage
 table catalog_facet_base_values
@@ -2101,6 +2101,11 @@ trigger catalog_facet_base_row_immutable_delete
 trigger catalog_facet_base_row_immutable_insert
 trigger catalog_facet_base_row_immutable_update
 trigger catalog_facet_base_row_insert
+trigger catalog_facet_base_show_seen_activation
+trigger catalog_facet_base_show_seen_complete
+trigger catalog_facet_base_show_seen_delete
+trigger catalog_facet_base_show_seen_immutable
+trigger catalog_facet_base_show_seen_insert
 trigger catalog_facet_base_text_delete
 trigger catalog_facet_base_text_immutable
 trigger catalog_facet_base_text_insert
@@ -2116,7 +2121,6 @@ trigger catalog_facet_browse_update
 trigger catalog_facet_collections_delete
 trigger catalog_facet_collections_insert
 trigger catalog_facet_collections_update
-trigger catalog_facet_configuration_source
 trigger catalog_facet_counts_retain_delete
 trigger catalog_facet_counts_retain_insert
 trigger catalog_facet_counts_retain_update

@@ -240,3 +240,38 @@ func TestSourceGenerationWaitsAndReportsPoison(t *testing.T) {
 		t.Fatal("source/facet dependencies retained forever after recovery")
 	}
 }
+
+func TestSourceLibraryKeepsMetadataTVDBHeadInvalidation(t *testing.T) {
+	db := cc1OpenDB(t, "source-library-heads.sqlite")
+	lib := cc1Library(t, db, "source-library-heads", "Shows", "tv", "/shows")
+	show := cc1Entity(t, db, Entity{Library: lib, Kind: Show, Key: "show", Title: "Show"}, map[string]any{"local_key": "show"})
+	ep := cc1Entity(t, db, Entity{Library: lib, Kind: Episode, Key: "episode", Title: "Episode"}, map[string]any{"show_id": show, "numbering": "seasonal", "number": 1})
+	cc1Drain(t, db)
+	cc1Exec(t, db, `INSERT INTO tvdb_publication_heads(show_id) VALUES(?) ON CONFLICT DO NOTHING`, show)
+	metadataBefore := cc1Scalar(t, db, `SELECT source_revision FROM metadata_publication_heads WHERE item_id=?`, ep)
+	tvdbBefore := cc1Scalar(t, db, `SELECT source_revision FROM tvdb_publication_heads WHERE show_id=?`, show)
+	cc1Exec(t, db, `UPDATE libraries SET root='/shows-new' WHERE id='source-library-heads'`)
+	if cc1Scalar(t, db, `SELECT count(*) FROM catalog_upstream_sources WHERE domain=43 AND source_id=? AND (flags&68)=68`, lib) != 1 {
+		t.Fatal("library edit lost metadata/TVDB source marker")
+	}
+	if ready, err := PublicationSourcesReady(context.Background(), db); err != nil || ready {
+		t.Fatalf("deferred source heads admitted stale publication: %v %v", ready, err)
+	}
+
+	// A persisted pre-correction phase0 screen cursor is not an entity
+	// continuation. Its large target ID must not skip metadata/TVDB heads.
+	cc1Exec(t, db, `UPDATE catalog_upstream_sources SET phase=0,has_after=1,after_id=9223372036854775807,after_key='item' WHERE domain=43 AND source_id=?`, lib)
+	sourceTestFinish(t, db, 43)
+	if cc1Scalar(t, db, `SELECT source_revision FROM metadata_publication_heads WHERE item_id=?`, ep) <= metadataBefore {
+		t.Fatal("metadata source head not invalidated")
+	}
+	if cc1Scalar(t, db, `SELECT source_revision FROM tvdb_publication_heads WHERE show_id=?`, show) <= tvdbBefore {
+		t.Fatal("TVDB source head not invalidated")
+	}
+	if ready, err := PublicationSourcesReady(context.Background(), db); err != nil || !ready {
+		t.Fatalf("settled head work not accepted: %v %v", ready, err)
+	}
+	if cc1Scalar(t, db, `SELECT count(*) FROM libraries WHERE id='source-library-heads' AND root='/shows-new'`) != 1 {
+		t.Fatal("live library source state delayed")
+	}
+}

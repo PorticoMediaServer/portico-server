@@ -26,7 +26,7 @@ func facetAcceptedFixture(t *testing.T) (*sql.DB, FacetBaseScope) {
  CREATE TABLE catalog_generations(singleton INTEGER PRIMARY KEY,generation INTEGER,retaining INTEGER);
  INSERT INTO catalog_generations VALUES(1,1,0);
  CREATE TABLE catalog_derivations(domain INTEGER PRIMARY KEY,version INTEGER,rebuilding INTEGER);
- INSERT INTO catalog_derivations VALUES(33,6,0),(36,1,0),(37,1,0),(38,1,0),(39,1,0),(40,1,0);
+ INSERT INTO catalog_derivations VALUES(33,7,0),(36,1,0),(37,1,0),(38,1,0),(39,1,0),(40,1,0);
  CREATE TABLE catalog_dirty(domain INTEGER,entity_id INTEGER);
  CREATE TABLE catalog_derivation_failures(domain INTEGER,entity_id INTEGER);
  CREATE TABLE catalog_facet_source_fanouts(domain INTEGER,source_id INTEGER);

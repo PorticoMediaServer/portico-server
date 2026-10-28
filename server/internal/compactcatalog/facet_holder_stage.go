@@ -7,6 +7,9 @@ import (
 	"strconv"
 )
 
+// Episode accepted facts deliberately exclude own/inherited genres. Restricted
+// show genre reduction reads raw sources in the maintained BASE builder; the
+// unrestricted show holder continues to use only its own genres.
 // One quantum spends a shared budget on RAW rows, accepted deltas and cleanup.
 // A legal oversized scalar is one O(B) row, never a silently truncated value.
 const facetHolderQuantum = 8
@@ -17,8 +20,6 @@ const (
 	facetEpisodeAssets
 	facetEpisodeCollections
 	facetEpisodeAttributes
-	facetEpisodeGenres
-	facetEpisodeInheritedGenres
 	facetHolderGenres
 	facetHolderYear
 	facetHolderDecade
@@ -150,7 +151,7 @@ func readRawFacetRows(rows *sql.Rows, phase int) ([]rawFacetRow, error) {
 		var r rawFacetRow
 		var err error
 		switch phase {
-		case facetEpisodeGenres, facetEpisodeInheritedGenres, facetHolderGenres:
+		case facetHolderGenres:
 			err = rows.Scan(&r.provider, &r.source, &r.field, &r.value)
 		default:
 			err = rows.Scan(&r.id, &r.field, &r.value)
@@ -181,9 +182,6 @@ func (w *facetWork) raw(ctx context.Context, tx *sql.Tx, budget int) ([]rawFacet
 		}
 	} else if !w.show.Valid {
 		return nil, nil
-	}
-	if w.phase == facetEpisodeInheritedGenres {
-		subject = w.show.Int64
 	}
 	var rows *sql.Rows
 	var err error
@@ -226,7 +224,7 @@ func (w *facetWork) raw(ctx context.Context, tx *sql.Tx, budget int) ([]rawFacet
 		q += ` ORDER BY e.term_id LIMIT ?`
 		args = append(args, budget)
 		rows, err = tx.QueryContext(ctx, q, args...)
-	case facetEpisodeGenres, facetEpisodeInheritedGenres, facetHolderGenres:
+	case facetHolderGenres:
 		q := `SELECT s.provider,s.source_id,CASE WHEN t.vocab=1 THEN 'genre' ELSE '' END,COALESCE(s.label_override,t.label)
    FROM catalog_term_sources s CROSS JOIN catalog_terms t ON t.id=s.term_id WHERE s.entity_id=?`
 		args := []any{subject}
@@ -509,7 +507,7 @@ func drainFacetHolders(ctx context.Context, tx *sql.Tx, keys []Key, limit int) (
 	for remaining > 0 {
 		var n int
 		switch w.phase {
-		case facetEpisodeAssets, facetEpisodeCollections, facetEpisodeAttributes, facetEpisodeGenres, facetEpisodeInheritedGenres, facetHolderGenres, facetHolderAssets, facetHolderCollections, facetHolderAttributes:
+		case facetEpisodeAssets, facetEpisodeCollections, facetEpisodeAttributes, facetHolderGenres, facetHolderAssets, facetHolderCollections, facetHolderAttributes:
 			n, err = w.stageRaw(ctx, tx, remaining)
 		case facetHolderYear, facetHolderDecade:
 			if w.holder {

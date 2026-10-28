@@ -23,13 +23,17 @@ type FacetProducerFence struct {
 
 // CaptureFacetProducerFence must share the caller's read snapshot. It is a
 // real family barrier, including persisted failures and interrupted stages.
+// P2-52 screen/artwork queues invalidate target work, not accepted facet source
+// facts. Their asynchronous counts/leases do not gate an immutable API3 image;
+// actual later catalogue writes advance this source fence in their own turn.
+// Live policy/root authority is checked separately before/after composition.
 // This does not bless legacy restriction buckets as an exact policy oracle.
 func CaptureFacetProducerFence(ctx context.Context, q ReadQuery) (FacetProducerFence, error) {
 	var f FacetProducerFence
 	var pending, failed bool
 	err := q.QueryRowContext(ctx, `SELECT s.source_epoch,s.projection_epoch,g.generation,COALESCE((SELECT version FROM catalog_derivations WHERE domain=33),0),
  g.retaining=1
- OR NOT EXISTS(SELECT 1 FROM catalog_derivations WHERE domain=33 AND version=6)
+ OR NOT EXISTS(SELECT 1 FROM catalog_derivations WHERE domain=33 AND version=7)
  OR NOT EXISTS(SELECT 1 FROM catalog_derivations WHERE domain=36 AND version=1)
  OR NOT EXISTS(SELECT 1 FROM catalog_derivations WHERE domain=37 AND version=1)
  OR NOT EXISTS(SELECT 1 FROM catalog_derivations WHERE domain=38 AND version=1)

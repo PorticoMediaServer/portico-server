@@ -1132,7 +1132,7 @@ CREATE TABLE catalog_facet_work(
  entity_id INTEGER PRIMARY KEY,
  revision INTEGER NOT NULL,
  source_epoch INTEGER NOT NULL,
- phase INTEGER NOT NULL DEFAULT 0 CHECK(phase BETWEEN 0 AND 18),
+ phase INTEGER NOT NULL DEFAULT 0 CHECK(phase BETWEEN 0 AND 16),
  has_after INTEGER NOT NULL DEFAULT 0 CHECK(has_after IN(0,1)),
  after_id INTEGER NOT NULL DEFAULT 0,
  after_provider TEXT NOT NULL DEFAULT '',
@@ -1180,7 +1180,6 @@ CREATE TABLE catalog_show_facet_episodes(
  field TEXT NOT NULL,
  value TEXT NOT NULL,
  PRIMARY KEY(episode_id,field,value)) WITHOUT ROWID, STRICT;
-CREATE INDEX catalog_show_facet_episodes_show_value ON catalog_show_facet_episodes(show_id,field,value,episode_id);
 CREATE TABLE catalog_show_facet_values(
  show_id INTEGER NOT NULL,
  field TEXT NOT NULL,
@@ -5441,11 +5440,6 @@ CREATE TRIGGER screen_configuration_change AFTER UPDATE OF metadata_revision ON 
  next_attempt_ms=MIN(next_attempt_ms,CAST(unixepoch('subsec')*1000 AS INTEGER)+30000);
 END;
 CREATE TRIGGER screen_scan_policy_change AFTER UPDATE OF revision ON library_scan_policies WHEN NEW.revision<>OLD.revision BEGIN
- UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1;
- INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) SELECT 43,id,library_id,16 FROM catalog_libraries WHERE library_id=NEW.library_id
- ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,source_epoch=0,phase=0,has_after=0,after_id=0,after_aux=0,after_key='',active_id=NULL,active_key='',active_available=0,seen_inventory=0,inner_has=0,inner_id=0,inner_aux=0,inner_key='';
- INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 43,source_id,1 FROM catalog_upstream_sources WHERE domain=43 AND source_id=(SELECT id FROM catalog_libraries WHERE library_id=NEW.library_id)
- ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
  INSERT INTO screen_metadata_fanout(library_id,effect) VALUES(NEW.library_id,'screen')
  ON CONFLICT(library_id,effect) DO UPDATE SET
  generation=CASE WHEN generation<9223372036854775807 THEN generation+1 ELSE generation END,
@@ -5454,16 +5448,6 @@ CREATE TRIGGER screen_scan_policy_change AFTER UPDATE OF revision ON library_sca
 END;
 CREATE TRIGGER screen_source_change AFTER UPDATE OF enabled,generation,incarnation,identity_confirmed,root_identity,root,configured_root,follow_symlinks ON library_sources
  WHEN NEW.enabled IS NOT OLD.enabled OR NEW.generation IS NOT OLD.generation OR NEW.incarnation IS NOT OLD.incarnation OR NEW.identity_confirmed IS NOT OLD.identity_confirmed OR NEW.root_identity IS NOT OLD.root_identity OR NEW.root IS NOT OLD.root OR NEW.configured_root IS NOT OLD.configured_root OR NEW.follow_symlinks IS NOT OLD.follow_symlinks BEGIN
- UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1;
- INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) SELECT 43,id,library_id,16 FROM catalog_libraries WHERE library_id=NEW.library_id
- ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,source_epoch=0,phase=0,has_after=0,after_id=0,after_aux=0,after_key='',active_id=NULL,active_key='',active_available=0,seen_inventory=0,inner_has=0,inner_id=0,inner_aux=0,inner_key='';
- INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 43,source_id,1 FROM catalog_upstream_sources WHERE domain=43 AND source_id=(SELECT id FROM catalog_libraries WHERE library_id=NEW.library_id)
- ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
- UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1;
- INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) SELECT 43,id,library_id,16 FROM catalog_libraries WHERE library_id=OLD.library_id
- ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,source_epoch=0,phase=0,has_after=0,after_id=0,after_aux=0,after_key='',active_id=NULL,active_key='',active_available=0,seen_inventory=0,inner_has=0,inner_id=0,inner_aux=0,inner_key='';
- INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 43,source_id,1 FROM catalog_upstream_sources WHERE domain=43 AND source_id=(SELECT id FROM catalog_libraries WHERE library_id=OLD.library_id)
- ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
  INSERT INTO screen_metadata_fanout(library_id,effect) VALUES(NEW.library_id,'screen')
  ON CONFLICT(library_id,effect) DO UPDATE SET
  generation=CASE WHEN generation<9223372036854775807 THEN generation+1 ELSE generation END,
@@ -5836,13 +5820,6 @@ CREATE TRIGGER screen_wake_video_nfo_evidence_DELETE AFTER DELETE ON video_nfo_e
  UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error=''
  WHERE target_id IN(SELECT l.entity_id FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id WHERE a.token=OLD.asset_id
   UNION SELECT ep.show_id FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id JOIN catalog_episodes ep ON ep.entity_id=l.entity_id WHERE a.token=OLD.asset_id);END;
-CREATE TRIGGER catalog_facet_configuration_source AFTER UPDATE OF revision,metadata_revision,library_id ON library_configuration WHEN OLD.revision IS NOT NEW.revision OR OLD.metadata_revision IS NOT NEW.metadata_revision OR OLD.library_id IS NOT NEW.library_id BEGIN
- UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1;
- INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) SELECT 43,id,library_id,32 FROM catalog_libraries WHERE library_id=NEW.library_id
- ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,source_epoch=0,phase=0,has_after=0,after_id=0,after_aux=0,after_key='',active_id=NULL,active_key='',active_available=0,seen_inventory=0,inner_has=0,inner_id=0,inner_aux=0,inner_key='';
- INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 43,source_id,1 FROM catalog_upstream_sources WHERE domain=43 AND source_id=(SELECT id FROM catalog_libraries WHERE library_id=NEW.library_id)
- ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
-END;
 CREATE TRIGGER w2i01_artwork_configuration AFTER UPDATE OF metadata_revision ON library_configuration WHEN NEW.metadata_revision<>OLD.metadata_revision BEGIN
  INSERT INTO screen_metadata_fanout(library_id,effect) VALUES(NEW.library_id,'artwork')
  ON CONFLICT(library_id,effect) DO UPDATE SET
@@ -5853,16 +5830,6 @@ END;
 CREATE TRIGGER w2i01_artwork_source AFTER UPDATE OF generation,incarnation,root_identity,identity_confirmed,enabled,configured_root,root ON library_sources
  WHEN NEW.generation IS NOT OLD.generation OR NEW.incarnation IS NOT OLD.incarnation OR NEW.root_identity IS NOT OLD.root_identity OR NEW.identity_confirmed IS NOT OLD.identity_confirmed OR NEW.enabled IS NOT OLD.enabled OR NEW.configured_root IS NOT OLD.configured_root OR NEW.root IS NOT OLD.root
  BEGIN
- UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1;
- INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) SELECT 43,id,library_id,32 FROM catalog_libraries WHERE library_id=NEW.library_id
- ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,source_epoch=0,phase=0,has_after=0,after_id=0,after_aux=0,after_key='',active_id=NULL,active_key='',active_available=0,seen_inventory=0,inner_has=0,inner_id=0,inner_aux=0,inner_key='';
- INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 43,source_id,1 FROM catalog_upstream_sources WHERE domain=43 AND source_id=(SELECT id FROM catalog_libraries WHERE library_id=NEW.library_id)
- ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
- UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1;
- INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) SELECT 43,id,library_id,32 FROM catalog_libraries WHERE library_id=OLD.library_id
- ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,source_epoch=0,phase=0,has_after=0,after_id=0,after_aux=0,after_key='',active_id=NULL,active_key='',active_available=0,seen_inventory=0,inner_has=0,inner_id=0,inner_aux=0,inner_key='';
- INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 43,source_id,1 FROM catalog_upstream_sources WHERE domain=43 AND source_id=(SELECT id FROM catalog_libraries WHERE library_id=OLD.library_id)
- ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
  INSERT INTO screen_metadata_fanout(library_id,effect) VALUES(NEW.library_id,'artwork')
  ON CONFLICT(library_id,effect) DO UPDATE SET
  generation=CASE WHEN generation<9223372036854775807 THEN generation+1 ELSE generation END,
@@ -6349,7 +6316,7 @@ CREATE TRIGGER catalog_facet_terms_insert AFTER INSERT ON catalog_term_sources B
  UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1;
  INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,NEW.entity_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
  INSERT INTO catalog_dirty(domain,entity_id,revision)
-  SELECT 40,NEW.entity_id,1 WHERE EXISTS(SELECT 1 FROM catalog_episodes INDEXED BY catalog_episodes_facet_show WHERE show_id=NEW.entity_id)
+  SELECT 40,NEW.entity_id,1 WHERE EXISTS(SELECT 1 FROM catalog_episodes INDEXED BY catalog_episodes_show WHERE show_id=NEW.entity_id)
   ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
 CREATE TRIGGER catalog_facet_terms_update AFTER UPDATE OF entity_id,provider,source_id,term_id,label_override ON catalog_term_sources
@@ -6359,17 +6326,17 @@ CREATE TRIGGER catalog_facet_terms_update AFTER UPDATE OF entity_id,provider,sou
  INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 33,OLD.entity_id,1 WHERE OLD.entity_id IS NOT NEW.entity_id
   ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
  INSERT INTO catalog_dirty(domain,entity_id,revision)
-  SELECT 40,OLD.entity_id,1 WHERE EXISTS(SELECT 1 FROM catalog_episodes INDEXED BY catalog_episodes_facet_show WHERE show_id=OLD.entity_id)
+  SELECT 40,OLD.entity_id,1 WHERE EXISTS(SELECT 1 FROM catalog_episodes INDEXED BY catalog_episodes_show WHERE show_id=OLD.entity_id)
   ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
  INSERT INTO catalog_dirty(domain,entity_id,revision)
-  SELECT 40,NEW.entity_id,1 WHERE EXISTS(SELECT 1 FROM catalog_episodes INDEXED BY catalog_episodes_facet_show WHERE show_id=NEW.entity_id)
+  SELECT 40,NEW.entity_id,1 WHERE EXISTS(SELECT 1 FROM catalog_episodes INDEXED BY catalog_episodes_show WHERE show_id=NEW.entity_id)
   ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
 CREATE TRIGGER catalog_facet_terms_delete AFTER DELETE ON catalog_term_sources BEGIN
  UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1;
  INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,OLD.entity_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
  INSERT INTO catalog_dirty(domain,entity_id,revision)
-  SELECT 40,OLD.entity_id,1 WHERE EXISTS(SELECT 1 FROM catalog_episodes INDEXED BY catalog_episodes_facet_show WHERE show_id=OLD.entity_id)
+  SELECT 40,OLD.entity_id,1 WHERE EXISTS(SELECT 1 FROM catalog_episodes INDEXED BY catalog_episodes_show WHERE show_id=OLD.entity_id)
   ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
 CREATE TRIGGER catalog_facet_attributes_insert AFTER INSERT ON catalog_item_attribute_edges BEGIN
@@ -6420,7 +6387,6 @@ END;
 CREATE INDEX catalog_term_sources_term ON catalog_term_sources(term_id,entity_id);
 -- Source maintenance only: one accepting marker, independent of target count.
 -- No FKs: source deletion cannot cascade-delete a large maintenance graph.
-CREATE INDEX catalog_episodes_facet_show ON catalog_episodes(show_id,entity_id);
 CREATE TABLE catalog_facet_source_fanouts(
  domain INTEGER NOT NULL CHECK(domain IN(36,37,38,39,40)),
  source_id INTEGER NOT NULL,
@@ -7007,11 +6973,12 @@ CREATE TRIGGER metadata_source_asset_INSERT AFTER INSERT ON catalog_assets BEGIN
  INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 41,source_id,1 FROM catalog_upstream_sources WHERE domain=41 AND source_id=(NEW.id)
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
-CREATE TRIGGER metadata_source_asset_UPDATE AFTER UPDATE ON catalog_assets BEGIN
- UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1;
- INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) SELECT 41,OLD.id,OLD.token,12 WHERE 1
+CREATE TRIGGER metadata_source_asset_UPDATE AFTER UPDATE ON catalog_assets
+WHEN OLD.id IS NOT NEW.id OR OLD.token IS NOT NEW.token OR OLD.path IS NOT NEW.path OR OLD.size IS NOT NEW.size OR OLD.modified_ns IS NOT NEW.modified_ns OR OLD.container IS NOT NEW.container OR OLD.video_codec IS NOT NEW.video_codec OR OLD.audio_codec IS NOT NEW.audio_codec OR OLD.width IS NOT NEW.width OR OLD.height IS NOT NEW.height OR OLD.duration IS NOT NEW.duration OR OLD.available IS NOT NEW.available BEGIN
+ UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1 AND OLD.id IS NOT NEW.id;
+ INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) SELECT 41,OLD.id,OLD.token,12 WHERE OLD.id IS NOT NEW.id
  ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,source_epoch=0,phase=0,has_after=0,after_id=0,after_aux=0,after_key='',active_id=NULL,active_key='',active_available=0,seen_inventory=0,inner_has=0,inner_id=0,inner_aux=0,inner_key='';
- INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 41,source_id,1 FROM catalog_upstream_sources WHERE domain=41 AND source_id=(OLD.id)
+ INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 41,source_id,1 FROM catalog_upstream_sources WHERE domain=41 AND source_id=(OLD.id) AND OLD.id IS NOT NEW.id
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
  UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1;
  INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) SELECT 41,NEW.id,NEW.token,12 WHERE 1
@@ -11921,3 +11888,29 @@ CREATE TRIGGER catalog_search_genre_ready_immutable_update BEFORE UPDATE ON cata
 WHEN (SELECT complete FROM catalog_facet_bases WHERE id=OLD.base_id)=1 BEGIN SELECT RAISE(ABORT,'immutable genre ready basis'); END;
 
 -- P2-28 maintained genre candidates: end
+
+-- P2-28 current-show contribution staging: begin
+-- ID-only current show, owned by maintained BASE build, never a query result.
+-- One WITHOUT ROWID primary B-tree + one integer reverse-FK B-tree. Conservative
+-- logical charge: 128 bytes per entry, including both indexes; no label bytes.
+CREATE TABLE catalog_facet_base_show_seen (
+ base_id INTEGER NOT NULL REFERENCES catalog_facet_bases(id),
+ value_id INTEGER NOT NULL REFERENCES catalog_facet_base_values(id),
+ PRIMARY KEY(base_id,value_id)
+) STRICT, WITHOUT ROWID;
+CREATE INDEX catalog_facet_base_show_seen_value ON catalog_facet_base_show_seen(value_id);
+CREATE TRIGGER catalog_facet_base_show_seen_insert AFTER INSERT ON catalog_facet_base_show_seen BEGIN
+ UPDATE catalog_facet_base_usage SET used_bytes=used_bytes+128 WHERE id=1;
+END;
+CREATE TRIGGER catalog_facet_base_show_seen_delete AFTER DELETE ON catalog_facet_base_show_seen BEGIN
+ UPDATE catalog_facet_base_usage SET used_bytes=used_bytes-128 WHERE id=1;
+END;
+CREATE TRIGGER catalog_facet_base_show_seen_immutable BEFORE UPDATE ON catalog_facet_base_show_seen
+BEGIN SELECT RAISE(ABORT,'replace current-show contribution IDs instead of updating'); END;
+CREATE TRIGGER catalog_facet_base_show_seen_complete BEFORE INSERT ON catalog_facet_base_show_seen
+WHEN (SELECT complete FROM catalog_facet_bases WHERE id=NEW.base_id)=1
+BEGIN SELECT RAISE(ABORT,'immutable complete facet base'); END;
+CREATE TRIGGER catalog_facet_base_show_seen_activation BEFORE UPDATE OF complete ON catalog_facet_bases
+WHEN NEW.complete=1 AND EXISTS(SELECT 1 FROM catalog_facet_base_show_seen WHERE base_id=NEW.id)
+BEGIN SELECT RAISE(ABORT,'clear current-show contributions before activation'); END;
+-- P2-28 current-show contribution staging: end

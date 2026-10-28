@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strconv"
 )
 
 const (
@@ -16,7 +17,6 @@ const (
 	sourceMetadata       = 4
 	sourceRevision       = 8
 	sourceScreen         = 16
-	sourceArtwork        = 32
 	sourceTVDB           = 64
 	upstreamQuantum      = 8
 )
@@ -121,6 +121,8 @@ func sourceEdges(rows *sql.Rows, shape int) ([]sourceEdge, error) {
 			err = rows.Scan(&r.id, &r.flag)
 		case 4:
 			err = rows.Scan(&r.key, &r.flag)
+		case 5:
+			err = rows.Scan(&r.id, &r.key, &r.aux)
 		default:
 			err = rows.Scan(&r.id)
 		}
@@ -144,6 +146,40 @@ func querySourceEdges(ctx context.Context, tx *sql.Tx, shape int, q string, args
 		return nil, err
 	}
 	return sourceEdges(rows, shape)
+}
+
+// queryShowEpisodeEdges uses the existing (show,season,number,entity) index.
+// NULL seasons sort first but cannot participate in SQL tuple comparisons. Read
+// their range separately, then seek the non-NULL tuple. Every raw row advances,
+// even when its downstream semantic consumer rejects it. The nullable season
+// is encoded as "n" or its exact decimal integer in existing generic cursors.
+func queryShowEpisodeEdges(ctx context.Context, tx *sql.Tx, show int64, has bool, entity, number int64, season string, limit int) ([]sourceEdge, error) {
+	const prefix = `SELECT entity_id,COALESCE(CAST(season_id AS TEXT),'n'),number FROM catalog_episodes INDEXED BY catalog_episodes_show WHERE show_id=?`
+	// Empty is the previous entity-only cursor format. Restart that source once;
+	// duplicate dirty marks are safe, skipping an episode is not.
+	if season == "" {
+		has = false
+	}
+	if !has || season == "n" {
+		q := prefix + ` AND season_id IS NULL`
+		args := []any{show}
+		if has {
+			q += ` AND (number,entity_id)>(?,?)`
+			args = append(args, number, entity)
+		}
+		q += ` ORDER BY number,entity_id LIMIT ?`
+		args = append(args, limit)
+		edges, err := querySourceEdges(ctx, tx, 5, q, args...)
+		if err != nil || len(edges) > 0 {
+			return edges, err
+		}
+		return querySourceEdges(ctx, tx, 5, prefix+` AND season_id IS NOT NULL ORDER BY season_id,number,entity_id LIMIT ?`, show, limit)
+	}
+	seasonID, err := strconv.ParseInt(season, 10, 64)
+	if err != nil {
+		return nil, err
+	}
+	return querySourceEdges(ctx, tx, 5, prefix+` AND (season_id,number,entity_id)>(?,?,?) ORDER BY season_id,number,entity_id LIMIT ?`, show, seasonID, number, entity, limit)
 }
 
 func wakeScreenSource(ctx context.Context, tx *sql.Tx, kind string, id int64) error {
@@ -259,33 +295,39 @@ func (w *upstreamSource) parent(ctx context.Context, tx *sql.Tx, limit int) (int
 			`SELECT song_id FROM catalog_song_artists INDEXED BY catalog_song_artists_artist WHERE artist_id=?`,
 			`SELECT item_id FROM catalog_collection_members WHERE collection_id=?`,
 			`SELECT entity_id,number FROM catalog_seasons WHERE show_id=?`,
-			`SELECT entity_id FROM catalog_episodes INDEXED BY catalog_episodes_facet_show WHERE show_id=?`,
+			``, // episode stream uses queryShowEpisodeEdges below
 			`SELECT entity_id FROM catalog_songs INDEXED BY catalog_source_songs_parent WHERE album_id=?`,
 			`SELECT entity_id FROM catalog_book_files INDEXED BY catalog_source_book_files_parent WHERE book_id=?`,
 		}
 		columns := []string{"entity_id", "song_id", "item_id", "entity_id", "entity_id", "entity_id", "entity_id"}
-		q := sources[w.phase]
-		args := []any{w.id}
-		shape := 0
-		if w.phase == 3 {
-			shape = 2
-			if w.has {
-				q += ` AND (number,entity_id)>(?,?)`
-				args = append(args, w.aux, w.after)
-			}
-			q += ` ORDER BY number,entity_id LIMIT ?`
+		var edges []sourceEdge
+		var e error
+		if w.phase == 4 {
+			edges, e = queryShowEpisodeEdges(ctx, tx, w.id, w.has, w.after, w.aux, w.key, limit)
 		} else {
-			if w.has {
-				q += ` AND ` + columns[w.phase] + `>?`
-				args = append(args, w.after)
+			q := sources[w.phase]
+			args := []any{w.id}
+			shape := 0
+			if w.phase == 3 {
+				shape = 2
+				if w.has {
+					q += ` AND (number,entity_id)>(?,?)`
+					args = append(args, w.aux, w.after)
+				}
+				q += ` ORDER BY number,entity_id LIMIT ?`
+			} else {
+				if w.has {
+					q += ` AND ` + columns[w.phase] + `>?`
+					args = append(args, w.after)
+				}
+				q += ` ORDER BY ` + columns[w.phase] + ` LIMIT ?`
 			}
-			q += ` ORDER BY ` + columns[w.phase] + ` LIMIT ?`
+			if w.phase == 6 {
+				limit = 1
+			}
+			args = append(args, limit)
+			edges, e = querySourceEdges(ctx, tx, shape, q, args...)
 		}
-		if w.phase == 6 {
-			limit = 1
-		}
-		args = append(args, limit)
-		edges, e := querySourceEdges(ctx, tx, shape, q, args...)
 		if e != nil {
 			return 0, false, e
 		}
@@ -309,7 +351,7 @@ func (w *upstreamSource) parent(ctx context.Context, tx *sql.Tx, limit int) (int
 			if e != nil {
 				return 0, false, e
 			}
-			w.after, w.aux, w.has = r.id, r.aux, true
+			w.after, w.aux, w.key, w.has = r.id, r.aux, r.key, true
 		}
 		return len(edges), false, nil
 	}
@@ -325,83 +367,15 @@ func (w *upstreamSource) library(ctx context.Context, tx *sql.Tx, limit int) (in
 	if err != nil {
 		return 0, false, err
 	}
-	if w.phase == 0 {
-		if w.flags&sourceScreen == 0 {
-			w.advance()
-		} else {
-			q := `SELECT target_id,target_kind FROM screen_metadata_work INDEXED BY screen_metadata_fanout_walk WHERE library_id=?`
-			args := []any{library}
-			if w.has {
-				q += ` AND (target_kind,target_id)>(?,?)`
-				args = append(args, w.key, w.after)
-			}
-			q += ` ORDER BY target_kind,target_id LIMIT ?`
-			args = append(args, limit)
-			edges, e := querySourceEdges(ctx, tx, 1, q, args...)
-			if e != nil {
-				return 0, false, e
-			}
-			for _, r := range edges {
-				if e = wakeScreenSource(ctx, tx, r.key, r.id); e != nil {
-					return 0, false, e
-				}
-				w.after, w.key, w.has = r.id, r.key, true
-			}
-			if len(edges) > 0 {
-				return len(edges), false, nil
-			}
-			w.advance()
-		}
-	}
-	if w.flags&(sourceMetadata|sourceTVDB|sourceArtwork) == 0 {
+	// P2-52's screen_metadata_fanout is the sole library-wide screen/artwork
+	// owner. Domain43 only invalidates deferred metadata/TVDB source heads.
+	if w.flags&(sourceMetadata|sourceTVDB) == 0 {
 		return 0, true, nil
 	}
-	if w.active.Valid {
-		q := `SELECT kind FROM artwork_entity_heads INDEXED BY artwork_entity_heads_entity WHERE entity_id=?`
-		args := []any{w.active.Int64}
-		if w.innerHas {
-			q += ` AND kind>?`
-			args = append(args, w.innerKey)
-		}
-		q += ` ORDER BY kind LIMIT ?`
-		args = append(args, limit)
-		rows, e := tx.QueryContext(ctx, q, args...)
-		if e != nil {
-			return 0, false, e
-		}
-		kinds := []string{}
-		bytes := 0
-		for rows.Next() {
-			var k string
-			if e = rows.Scan(&k); e != nil {
-				rows.Close()
-				return 0, false, e
-			}
-			if len(kinds) > 0 && bytes+len(k) > facetScalarBudget {
-				break
-			}
-			kinds = append(kinds, k)
-			bytes += len(k)
-			if bytes >= facetScalarBudget {
-				break
-			}
-		}
-		e = rows.Err()
-		rows.Close()
-		if e != nil {
-			return 0, false, e
-		}
-		for _, k := range kinds {
-			if _, e = tx.ExecContext(ctx, `INSERT INTO artwork_dirty(kind,entity_id) VALUES(?,?) ON CONFLICT DO NOTHING`, k, w.active.Int64); e != nil {
-				return 0, false, e
-			}
-			w.innerKey, w.innerHas = k, true
-		}
-		if len(kinds) > 0 {
-			return len(kinds), false, nil
-		}
-		w.clearInner()
-		return 1, false, nil
+	// Keep the metadata stream in its existing phase1. An interrupted old
+	// phase0 screen cursor must not become an entity cursor and skip heads.
+	if w.phase == 0 {
+		w.advance()
 	}
 	q := `SELECT id,kind FROM catalog_entities INDEXED BY catalog_entities_library_id WHERE library_id=?`
 	args := []any{w.id}
@@ -410,9 +384,6 @@ func (w *upstreamSource) library(ctx context.Context, tx *sql.Tx, limit int) (in
 		args = append(args, w.after)
 	}
 	q += ` ORDER BY id LIMIT ?`
-	if w.flags&sourceArtwork != 0 {
-		limit = 1
-	}
 	args = append(args, limit)
 	edges, err := querySourceEdges(ctx, tx, 2, q, args...)
 	if err != nil {
@@ -430,9 +401,6 @@ func (w *upstreamSource) library(ctx context.Context, tx *sql.Tx, limit int) (in
 			}
 		}
 		w.after, w.has = r.id, true
-		if w.flags&sourceArtwork != 0 {
-			w.active = sql.NullInt64{Int64: r.id, Valid: true}
-		}
 	}
 	return len(edges), len(edges) == 0, nil
 }
@@ -476,6 +444,11 @@ func drainUpstreamSources(ctx context.Context, tx *sql.Tx, domain int, keys []Ke
 
 // PublicationSourcesReady guards deferred source-head invalidation. Provider
 // capture AND validation use it; live grants/root authority remain raw checks.
+// P2-52 owns library screen/artwork scheduling, not source-head invalidation.
+// Its pending/retry counts are not acceptance epochs: policy/config/scan/root
+// checks fence provider publication immediately, and later accepted catalogue
+// changes advance facet sources themselves. Domain41 asset-point wakes remain
+// distinct and must complete along with deferred metadata-head invalidation.
 func PublicationSourcesReady(ctx context.Context, q ReadQuery) (bool, error) {
 	var pending, failed bool
 	err := q.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_upstream_sources WHERE domain IN(41,43))
