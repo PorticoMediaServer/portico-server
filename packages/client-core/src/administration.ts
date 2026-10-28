@@ -1,3 +1,5 @@
+import type {GuideChannelMark} from './channel-guide.ts';
+import {parsePersistedRemoteConfiguration, type PersistedRemoteConfiguration} from './linear-api.ts';
 import {parseInventorySource,type InventorySource} from './library-inventory.ts';
 import {encodedRoutePath} from "../../contracts/src/route-paths.ts";
 import {unreadableServerResponse} from './server-messages.ts';
@@ -38,12 +40,12 @@ export type LiveSourceKind='playlist'|'xmltv-guide'|'hdhomerun';
 /** How a source gets its next version: an owner upload, or a remote refresh loop. Optional; an older server sends neither and this client claims neither. */
 export type LiveSourceAcquisition='upload'|'remote';
 /** `importLimits`: this source's own, lower than the server's; null keeps the server's. */
-export type LiveSourceSettings=Readonly<{enabledGroups:readonly string[];enabledChannels:readonly string[];kind:LiveSourceKind;streamBufferMs:number|null;retryWindowMs:number|null;userAgent:string;guideSourceId:string;importLimits:Readonly<{bytes:number;channels:number;programmes:number}>|null;filters:Readonly<{categories:FilterRule;countries:FilterRule;keywords:FilterRule}>;logoImport:Readonly<{enabled:boolean;overwriteExisting:boolean;/** true: this source uses the server-wide logo switch. */followServer?:boolean}>;channelNumbering:Readonly<{mode:'source'|'sequential';startAt:number;step:number}>}>;
+export type LiveSourceSettings=Readonly<{enabled?:boolean;viewerAccess?:'owner-only'|'server-members';remote?:PersistedRemoteConfiguration;enabledGroups:readonly string[];enabledChannels:readonly string[];kind:LiveSourceKind;streamBufferMs:number|null;retryWindowMs:number|null;userAgent:string;guideSourceId:string;importLimits:Readonly<{bytes:number;channels:number;programmes:number}>|null;filters:Readonly<{categories:FilterRule;countries:FilterRule;keywords:FilterRule}>;logoImport:Readonly<{enabled:boolean;overwriteExisting:boolean;/** true: this source uses the server-wide logo switch. */followServer?:boolean}>;channelNumbering:Readonly<{mode:'source'|'sequential';startAt:number;step:number}>}>;
 export type LiveSourceDocument=Readonly<{sourceId:string;sourceName:string;revision:number;digest:string;tunerCount:number;availableKinds:readonly LiveSourceKind[];settings:LiveSourceSettings;effective:LiveDefaults;/** What the logo worker uses, after the server-wide switch and any following choice. */effectiveLogoImport:Readonly<{enabled:boolean;overwriteExisting:boolean}>;
  /** The authoritative update mode when the server sends it; absent means unknown, not remote or upload. */
  acquisition?:LiveSourceAcquisition}>;
-export type ChannelMapEntry=Readonly<{channelId:string;name:string;sourceNumber:string;number:string;group:string;guideChannelId:string;hidden:boolean;position:number;overridden:boolean}>;
-export type ChannelMapPage=Readonly<{sourceId:string;generation:string;items:readonly ChannelMapEntry[];nextCursor:string}>;
+export type ChannelMapEntry=Readonly<{mark?:GuideChannelMark;channelId:string;name:string;sourceNumber:string;number:string;group:string;guideChannelId:string;hidden:boolean;position:number;overridden:boolean;overrideNumber?:string}>;
+export type ChannelMapPage=Readonly<{sourceId:string;generation:string;revision?:number;items:readonly ChannelMapEntry[];nextCursor:string}>;
 export type FolderToken=Readonly<{token:string;description:string;example:string;supportsPadding:boolean}>;
 export type KeepPolicy=Readonly<{mode:'keep-all'|'keep-count'|'keep-days';keepCount:number;keepDays:number;keepUntilWatched:boolean}>;
 export type DVRDefaults=Readonly<{prePaddingMs:number;postPaddingMs:number;keepPolicy:KeepPolicy;conversion:Readonly<{mode:'none'|'remux'|'ladder';ladderId:string;deleteOriginal:boolean}>;folderTemplate:string;movieFolderTemplate:string;recordingProfile:string;sidecars:Readonly<{nfo:boolean;poster:boolean;fanart:boolean;thumbnail:boolean}>;tunerPreference:string;
@@ -268,7 +270,8 @@ export function parseLiveSourceDocument(v:unknown):LiveSourceDocument{
  // A guide-only source has nothing to stream, so buffered stream tuning on one
  // would mean the client and the server disagree about what the source is.
  if(kind==='xmltv-guide'&&(buffer!==null||s.guideSourceId!==''))invalid('guide-only source');
- const settings=Object.freeze({enabledGroups:Object.freeze(strings(s.enabledGroups,100000,"enabled groups")),enabledChannels:Object.freeze(strings(s.enabledChannels,100000,"enabled channels")),kind,streamBufferMs:buffer,retryWindowMs:nullableCount(s.retryWindowMs,'live source retry window'),userAgent:s.userAgent,guideSourceId:s.guideSourceId,importLimits:object(s.importLimits)&&count(s.importLimits.bytes)&&count(s.importLimits.channels)&&count(s.importLimits.programmes)?Object.freeze({bytes:s.importLimits.bytes,channels:s.importLimits.channels,programmes:s.importLimits.programmes}):null,filters:Object.freeze({categories:parseFilter(s.filters.categories,'live source category filter'),countries:parseFilter(s.filters.countries,'live source country filter'),keywords:parseFilter(s.filters.keywords,'live source keyword filter')}),logoImport:Object.freeze({enabled:logos.enabled,overwriteExisting:logos.overwriteExisting,...(logos.followServer===undefined?{}:{followServer:logos.followServer})}),channelNumbering:Object.freeze({mode:choice(numbering.mode,['source','sequential'] as const,'live source numbering mode'),startAt:numbering.startAt,step:numbering.step})});
+ if(s.enabled!==undefined&&!flag(s.enabled)||s.viewerAccess!==undefined&&!['owner-only','server-members'].includes(String(s.viewerAccess)))invalid('live source access');
+ const settings=Object.freeze({...s.enabled===undefined?{}:{enabled:s.enabled as boolean},...s.viewerAccess===undefined?{}:{viewerAccess:s.viewerAccess as 'owner-only'|'server-members'},...s.remote===undefined?{}:{remote:parsePersistedRemoteConfiguration(s.remote)},enabledGroups:Object.freeze(strings(s.enabledGroups,100000,"enabled groups")),enabledChannels:Object.freeze(strings(s.enabledChannels,100000,"enabled channels")),kind,streamBufferMs:buffer,retryWindowMs:nullableCount(s.retryWindowMs,'live source retry window'),userAgent:s.userAgent,guideSourceId:s.guideSourceId,importLimits:object(s.importLimits)&&count(s.importLimits.bytes)&&count(s.importLimits.channels)&&count(s.importLimits.programmes)?Object.freeze({bytes:s.importLimits.bytes,channels:s.importLimits.channels,programmes:s.importLimits.programmes}):null,filters:Object.freeze({categories:parseFilter(s.filters.categories,'live source category filter'),countries:parseFilter(s.filters.countries,'live source country filter'),keywords:parseFilter(s.filters.keywords,'live source keyword filter')}),logoImport:Object.freeze({enabled:logos.enabled,overwriteExisting:logos.overwriteExisting,...(logos.followServer===undefined?{}:{followServer:logos.followServer})}),channelNumbering:Object.freeze({mode:choice(numbering.mode,['source','sequential'] as const,'live source numbering mode'),startAt:numbering.startAt,step:numbering.step})});
  // A kind of source this app does not know is not offered. The stored settings stay exact.
  const kinds=keepReadable('administration','live source kinds',list(v.availableKinds,8,'live source kinds'),value=>oneOf(value,liveKinds));
  const acquisition=liveSourceAcquisition(v.acquisition);
@@ -281,12 +284,17 @@ export function parseChannelMapPage(v:unknown):ChannelMapPage{
  if(!object(v)||!filled(v.sourceId,256)||!text(v.generation,256)||!text(v.nextCursor,1024))invalid('channel map page');
  const items=firstOfEach('administration','channel map entries',readable(v.items,200,'channel map entries',entry=>{
   if(!object(entry)||!filled(entry.channelId,256)||!text(entry.name,512)||!text(entry.sourceNumber,16)||!text(entry.number,16)||!text(entry.group,256)||!text(entry.guideChannelId,256)||!flag(entry.hidden)||!count(entry.position)||!flag(entry.overridden))invalid('channel map entry');
-  return Object.freeze({channelId:entry.channelId,name:entry.name,sourceNumber:entry.sourceNumber,number:entry.number,group:entry.group,guideChannelId:entry.guideChannelId,hidden:entry.hidden,position:entry.position,overridden:entry.overridden});
+  let mark:GuideChannelMark|undefined;
+  if(entry.mark!==undefined){
+   if(object(entry.mark)&&filled(entry.mark.text,1024)&&entry.mark.text.trim()&&filled(entry.mark.seed,513)&&entry.mark.seed.trim())mark=Object.freeze({text:entry.mark.text,seed:entry.mark.seed});
+   else noteSkipped('administration','channel mark');
+  }
+  return Object.freeze({...(mark?{mark}:{}),channelId:entry.channelId,name:entry.name,sourceNumber:entry.sourceNumber,number:entry.number,group:entry.group,guideChannelId:entry.guideChannelId,hidden:entry.hidden,position:entry.position,overridden:entry.overridden,...(text(entry.overrideNumber,16)?{overrideNumber:entry.overrideNumber}:{})});
  }),entry=>entry.channelId);
  // Two channels served on the same number make the lineup ambiguous. Both are listed, so the owner can see the clash and fix it here.
  const served=items.filter(entry=>!entry.hidden&&entry.number!=='').map(entry=>entry.number);
  if(new Set(served).size!==served.length)noteSkipped('administration','duplicate channel number');
- return Object.freeze({sourceId:v.sourceId,generation:v.generation,items:Object.freeze(items),nextCursor:v.nextCursor});
+ return Object.freeze({sourceId:v.sourceId,generation:v.generation,...(count(v.revision)?{revision:v.revision}:{}),items:Object.freeze(items),nextCursor:v.nextCursor});
 }
 
 /** parseDVRDocument reads the recording defaults and the folder token vocabulary. */
@@ -450,3 +458,10 @@ export function parseLiveSourceChoicePage(v:unknown):LiveSourceChoicePage{
 export function liveSourceChoicesService(request:<T>(path:string,method?:string,body?:unknown)=>Promise<T>,source:string){return Object.freeze({
  async list(kind:'groups'|'channels',cursor='',limit=50,q=''){return parseLiveSourceChoicePage(await request<unknown>(encodedRoutePath(kind==='groups'?'list_live_source_groups':'list_live_source_channels',{id:encodeURIComponent(source)})+`?cursor=${encodeURIComponent(cursor)}&limit=${limit}&q=${encodeURIComponent(q)}`));},
 });}
+
+/** One revision-fenced persisted source document, shared by owner clients. */
+export function liveSourceConfigurationService(request:<T>(path:string,method?:string,body?:unknown,signal?:AbortSignal)=>Promise<T>,serverId:string,sourceId:string){
+ const path=encodedRoutePath('get_live_source_configuration',{id:encodeURIComponent(sourceId)});
+ const checked=(raw:unknown)=>{const doc=parseEnvelope(raw,serverId,parseLiveSourceDocument).result;if(doc.sourceId!==sourceId)invalid('live source identity');return doc;};
+ return {async read(signal?:AbortSignal){return checked(await request<unknown>(path,'GET',undefined,signal));},async write(expectedRevision:number,operationId:string,settings:LiveSourceSettings,signal?:AbortSignal){return checked(await request<unknown>(path,'PUT',{expectedRevision,operationId,settings},signal));}};
+}

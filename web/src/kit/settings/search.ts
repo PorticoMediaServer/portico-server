@@ -18,10 +18,10 @@ export function searchSettings(query: string, text: (id: MessageId) => string, v
   }
   return hits;
 }
-export type SettingsRoute = Readonly<{scope: 'account' | 'server'; section: string; row?: string}>;
+export type SettingsRoute = Readonly<{scope: 'account' | 'server'; section: string; row?: string; channelId?: string}>;
 export function settingsRoute(raw: Record<string, unknown>, permitted: (section: SettingsSection) => boolean, rowPermitted?: (row: SettingsRow, section: SettingsSection) => boolean): SettingsRoute {
   const scope = raw.scope === 'server' ? 'server' : 'account';
   const section = settingsSpec.find(section => section.scope === scope && section.id === raw.section && permitted(section)) ?? settingsSpec.find(section => section.scope === scope && permitted(section)) ?? settingsSpec[0];
   const location = typeof raw.row === 'string' ? settingsRowIndex.get(raw.row) : undefined;
-  return {scope: section.scope, section: section.id, ...(location?.section === section && (!rowPermitted || rowPermitted(location.row, section)) ? {row: location.row.id} : {})};
+  return {scope: section.scope, section: section.id, ...(section.scope === 'server' && section.id === 'live' && typeof raw.channelId === 'string' && /^[A-Za-z0-9_-]{1,256}$/.test(raw.channelId) ? {channelId: raw.channelId} : {}), ...(location?.section === section && (!rowPermitted || rowPermitted(location.row, section)) ? {row: location.row.id} : {})};
 }

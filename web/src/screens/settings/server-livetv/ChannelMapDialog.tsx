@@ -4,6 +4,7 @@ import {errorMessage} from '@core/presentation/errors.ts';
 import {Button, Switch, TextField} from '../../../kit/controls';
 import {Dialog} from '../../../kit/overlays';
 import {Icon} from '../../../kit/Icon';
+import {ChannelMark} from '../../../kit/artwork';
 import {dialogAction} from '../../live/owner/dialog-lifetime';
 import type {ChannelMapController} from './channel-map-controller';
 import styles from './source-settings.module.css';
@@ -25,7 +26,7 @@ export function ChannelMapDialog({controller, name, close}: {controller: Channel
       <TextField variant="search" type="search" value={query} placeholder={t('web.live.findChannel')} aria-label={t('web.live.findChannel')} onChange={event => setQuery(event.currentTarget.value)}/>
       <div className={styles.map}><table><thead><tr>{(['channel', 'fromSource', 'number', 'guideId', 'hidden'] as const).map(id => <th key={id} scope="col">{t(`server.live.map.${id}`)}</th>)}</tr></thead><tbody>
         {shown.map(row => {const value = controller.value(row);return <tr key={row.channelId} data-changed={!!state.edits[row.channelId] || undefined} data-hidden={value.hidden || undefined}>
-          <th scope="row"><span className={styles.mapChannel}><span className={styles.mapMark}><Icon name="i-tv" size={18}/></span>{row.name}</span></th><td data-label={t('server.live.map.fromSource')}>{row.sourceNumber}</td>
+          <th scope="row"><span className={styles.mapChannel}><span className={styles.mapMark}>{row.mark ? <ChannelMark mark={{sourceId: controller.sourceId, id: row.channelId, ...row.mark}} size={28}/> : <Icon name="i-tv" size={18}/>}</span>{row.name}</span></th><td data-label={t('server.live.map.fromSource')}>{row.sourceNumber}</td>
           <td data-label={t('server.live.map.number')} data-changed={value.number !== (row.overridden ? row.number : '') || undefined}><TextField variant="setting" value={value.number} maxLength={12} disabled={disabled} placeholder={row.number} aria-label={t('web.liveSource.numberFor', {name: row.name})} onChange={event => controller.edit(row, {number: event.currentTarget.value})}/></td>
           <td data-label={t('server.live.map.guideId')} data-changed={value.guideChannelId !== row.guideChannelId || undefined}><TextField variant="setting" value={value.guideChannelId} maxLength={200} disabled={disabled} placeholder={t('player.quality.automatic')} aria-label={t('web.liveSource.guideFor', {name: row.name})} onChange={event => controller.edit(row, {guideChannelId: event.currentTarget.value})}/></td>
           <td data-label={t('server.live.map.hidden')} data-changed={value.hidden !== row.hidden || undefined}><Switch checked={value.hidden} disabled={disabled} aria-label={t('web.liveSource.hideChannel', {name: row.name})} onCheckedChange={hidden => controller.edit(row, {hidden})}/></td>

@@ -18,7 +18,7 @@ func (s *Store) DirectoryRowsTx(ctx context.Context, tx *sql.Tx, a Authority, vi
 	if err != nil {
 		return nil, "", err
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT c.config_json,c.revision,c.active_generation,c.state,g.published_ms,g.start_ms,g.end_ms,COALESCE(p.favorite,0),COALESCE(p.hidden,0),COALESCE(p.revision,0)
+	rows, err := tx.QueryContext(ctx, `SELECT c.config_json,c.revision,c.active_generation,c.state,g.published_ms,g.start_ms,g.end_ms,COALESCE(p.favorite,0),0,COALESCE(p.revision,0)
  FROM lc_channels c JOIN lc_generations g ON g.id=c.active_generation AND g.status='published'
  LEFT JOIN live_channel_preferences p ON p.authority=? AND p.account_id=? AND p.profile_id=? AND p.source_id='library:'||c.id AND p.channel_id=c.id
  WHERE c.enabled=1 AND c.removed=0 ORDER BY c.position,c.id`, viewer.Authority, viewer.AccountID, viewer.ProfileID)

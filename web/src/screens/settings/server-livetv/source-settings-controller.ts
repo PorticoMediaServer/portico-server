@@ -1,6 +1,8 @@
 import type {LibraryContentApi} from '@core/library-content.ts';
 import {parseEnvelope, parseLiveSourceDocument, type LiveSourceDocument, type LiveSourceSettings} from '@core/administration.ts';
 import {rebaseDraft} from '@core/freshness-actions.ts';
+import {lanConfirmationRoots} from '@core/linear-api.ts';
+import {confirmRoots} from '../../live/owner/checked';
 import {channelRequestID} from '@core/live-source-draft.ts';
 import {OwnerStore, errorFacts, terminal} from '../../live/owner/lifetime';
 export type SourceSettingsSnapshot = Readonly<{loading: boolean; saving: boolean; document?: LiveSourceDocument; draft?: LiveSourceSettings; error?: unknown; saved?: boolean; logoBusy?: boolean; logoResult?: Readonly<{requested: number; imported: number; skipped: number}>}>;
@@ -30,7 +32,13 @@ export class SourceSettingsController extends OwnerStore<SourceSettingsSnapshot>
   }
   edit(patch: Partial<LiveSourceSettings>) {
     if (!this.isActive() || this.snapshot.saving || this.snapshot.logoBusy || !this.snapshot.document || !this.snapshot.draft) return;
-    const draft = parseLiveSourceDocument({...this.snapshot.document, settings: {...this.snapshot.draft, ...patch}}).settings;
+    const parsed = parseLiveSourceDocument({...this.snapshot.document, settings: {...this.snapshot.draft, ...patch}}).settings;
+    const remote = patch.remote ?? this.snapshot.draft.remote;
+    const draft = {...parsed, ...(remote ? {remote: {...parsed.remote!,
+      ...(remote.username === undefined ? {} : {username: remote.username}),
+      ...(remote.password === undefined ? {} : {password: remote.password}),
+      ...(remote.confirmedLanRoots ? {confirmedLanRoots: remote.confirmedLanRoots} : {}),
+    }} : {})};
     this.publish({...this.snapshot, draft, error: undefined, saved: false});
   }
   discard() {if (this.isActive() && !this.snapshot.saving && this.snapshot.document) this.publish({...this.snapshot, draft: this.snapshot.document.settings, error: undefined});}
@@ -50,15 +58,20 @@ export class SourceSettingsController extends OwnerStore<SourceSettingsSnapshot>
       let saved: LiveSourceDocument;
       try {saved = await put(document.revision, draft);}
       catch (error) {
-        if (!this.valid(attempt) || terminal(error) || errorFacts(error).status !== 409) throw error;
+        if (!this.valid(attempt) || terminal(error) || errorFacts(error).status !== 409 || JSON.stringify(document.settings.remote) !== JSON.stringify(draft.remote)) throw error;
         const raw = await this.api.request(this.path(), 'GET', undefined, attempt.abort.signal);if (!this.valid(attempt)) return false;
         const fresh = this.checked(raw), rebased = rebaseDraft(document.settings, draft, fresh.settings);
         if (rebased.conflict) throw error;
         saved = await put(fresh.revision, rebased.merged);
       }
       if (!this.valid(attempt)) return false;
-      this.publish({loading: false, saving: false, document: saved, draft: saved.settings, saved: true});return this.valid(attempt);
-    } catch (error) {if (this.valid(attempt)) this.fail(error, {...this.snapshot, saving: false, error: errorFacts(error)});return false;}
+      this.operations.clear();this.publish({loading: false, saving: false, document: saved, draft: saved.settings, saved: true});return this.valid(attempt);
+    } catch (error) {
+      let roots: readonly string[] | undefined;
+      try {const candidate = lanConfirmationRoots(error);roots = candidate ? confirmRoots(candidate) : undefined;} catch {roots = undefined;}
+      if (this.valid(attempt)) this.fail(error, {...this.snapshot, saving: false, error: {...errorFacts(error), ...(roots ? {confirmRoots: roots} : {})}});
+      return false;
+    }
   }
   async importLogos() {
     const doc = this.snapshot.document;

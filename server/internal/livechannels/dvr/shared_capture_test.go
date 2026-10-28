@@ -25,6 +25,7 @@ func sharingStore(t *testing.T) (*Store, livechannels.Source, livechannels.Progr
 		t.Fatal(e)
 	}
 	t.Cleanup(func() { db.Close() })
+	recordingProfiles(t, db, "account", "profile", "0", "1", "other", "other-profile")
 	live, e := livechannels.New(db)
 	if e != nil {
 		t.Fatal(e)
@@ -138,5 +139,23 @@ func TestOneTimeRecordingFollowsUniqueGuideCorrection(t *testing.T) {
 	}
 	if updated.State != "scheduled" || updated.Start != oldStart.Add(5*time.Minute).Format(time.RFC3339Nano) {
 		t.Fatalf("%+v", updated)
+	}
+}
+
+// recordingProfiles makes the fixture's owners real profiles whose Recordings
+// switch is on: who may record is the profile's own switch, and a profile that
+// does not exist records nothing.
+func recordingProfiles(t *testing.T, db *sql.DB, account string, profiles ...string) {
+	t.Helper()
+	if _, e := db.Exec(`INSERT OR IGNORE INTO accounts(id,username,password_hash,profile_id,epoch) VALUES(?,?,x'00',?,1)`, account, account, profiles[0]); e != nil {
+		t.Fatal(e)
+	}
+	for _, profile := range profiles {
+		if _, e := db.Exec(`INSERT OR IGNORE INTO direct_profiles(id,account_id,name) VALUES(?,?,?)`, profile, account, profile); e != nil {
+			t.Fatal(e)
+		}
+		if _, e := db.Exec(`INSERT INTO profile_restrictions(profile_id,allow_dvr) VALUES(?,1) ON CONFLICT(profile_id) DO UPDATE SET allow_dvr=1`, profile); e != nil {
+			t.Fatal(e)
+		}
 	}
 }

@@ -112,6 +112,7 @@ func (s *Store) Guide(ctx context.Context, a Authority, q livechannels.GuideQuer
 			}
 			if q.Viewer.Valid() {
 				e = tx.QueryRowContext(ctx, `SELECT favorite,hidden,revision FROM live_channel_preferences WHERE authority=? AND account_id=? AND profile_id=? AND source_id=? AND channel_id=?`, q.Viewer.Authority, q.Viewer.AccountID, q.Viewer.ProfileID, "library:"+c.Config.ID, c.Config.ID).Scan(&ch.Favorite, &ch.Hidden, &ch.PreferenceRevision)
+				ch.Hidden = false // only the owner hides channels, for everyone
 				if e != nil && !errors.Is(e, sql.ErrNoRows) {
 					return unavailable(e)
 				}

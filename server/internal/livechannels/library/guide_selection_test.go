@@ -111,7 +111,7 @@ func TestLibraryDirectoryBypassesScheduleAndKeepsProfilePreferences(t *testing.T
 	if err != nil || len(rows) != 3 || fence == "" {
 		t.Fatalf("directory failed: %+v %v", rows, err)
 	}
-	if !rows[1].Channel.Favorite || !rows[1].Channel.Hidden || rows[1].Channel.PreferenceRevision != 7 {
+	if !rows[1].Channel.Favorite || rows[1].Channel.Hidden || rows[1].Channel.PreferenceRevision != 7 { // a profile's own hidden mark is ignored: only the owner hides
 		t.Fatalf("preference identity lost: %+v", rows[1])
 	}
 	for _, row := range rows {

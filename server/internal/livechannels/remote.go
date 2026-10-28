@@ -45,9 +45,11 @@ type RemoteDraft struct {
 }
 
 type remoteConfig struct {
-	Draft         RemoteDraft            `json:"draft"`
-	Approvals     []remotemedia.Approval `json:"approvals"`
-	PhysicalCount int                    `json:"physicalCount"`
+	// Retain redaction when a credential embedded in a guide path is replaced.
+	PrivateGuideURL bool                   `json:"privateGuideUrl,omitempty"`
+	Draft           RemoteDraft            `json:"draft"`
+	Approvals       []remotemedia.Approval `json:"approvals"`
+	PhysicalCount   int                    `json:"physicalCount"`
 }
 
 type remoteSnapshot struct {

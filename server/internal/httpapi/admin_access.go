@@ -173,7 +173,9 @@ func (d Dependencies) accessRoutes(mux *http.ServeMux) {
 			accessFailure(w, e)
 			return
 		}
-		out, e := store.SetMemberProfileRestrictions(r.Context(), d.accessTargetAuthority(p, r.PathValue("id"), false), r.PathValue("id"), r.PathValue("profileId"), body)
+		// Who can record is the owner's: an administrator managing this person can
+		// switch Recordings off but never on.
+		out, e := store.SetMemberProfileRestrictions(r.Context(), d.accessTargetAuthority(p, r.PathValue("id"), false), r.PathValue("id"), r.PathValue("profileId"), body, p.Authority == "local" && p.Role == "owner")
 		if e != nil {
 			accessFailure(w, e)
 			return

@@ -68,6 +68,7 @@ type DirectoryRow struct {
 // It is separate from Authority, whose callback can additionally restrict
 // individual channels. HTTP's source membership policy is source-level.
 type DirectoryScope struct {
+	Owner              bool
 	Fence              string
 	AllowedLiveSources []string
 	LibraryRows        []DirectoryRow
@@ -75,21 +76,22 @@ type DirectoryScope struct {
 }
 type DirectoryAuthority func(context.Context, *sql.Tx) (DirectoryScope, error)
 type DirectoryQuery struct {
-	Kind              string `json:"kind"`
-	SourceID          string `json:"sourceId"`
-	Search            string `json:"search"`
-	Group             string `json:"group"`
-	FavoritesOnly     bool   `json:"favorites"`
-	IncludeHidden     bool   `json:"includeHidden"`
-	Sort              string `json:"sort"`
-	Offset            int    `json:"offset"`
-	Limit             int    `json:"limit"`
-	Revision          string `json:"-"`
-	AnchorChannelID   string `json:"-"`
-	AnchorSourceID    string `json:"-"`
-	AnchorProvenance  string `json:"-"`
-	Direction         string `json:"-"`
-	DeliveryAvailable bool   `json:"-"`
+	Kind                string `json:"kind"`
+	SourceID            string `json:"sourceId"`
+	Search              string `json:"search"`
+	Group               string `json:"group"`
+	FavoritesOnly       bool   `json:"favorites"`
+	IncludeHidden       bool   `json:"includeHidden"`
+	IncludeServerHidden bool   `json:"includeServerHidden"`
+	Sort                string `json:"sort"`
+	Offset              int    `json:"offset"`
+	Limit               int    `json:"limit"`
+	Revision            string `json:"-"`
+	AnchorChannelID     string `json:"-"`
+	AnchorSourceID      string `json:"-"`
+	AnchorProvenance    string `json:"-"`
+	Direction           string `json:"-"`
+	DeliveryAvailable   bool   `json:"-"`
 }
 type Directory struct {
 	ViewerFence string        `json:"viewerFence"`
@@ -124,18 +126,21 @@ type DirectorySummary struct {
 // Every live row stays in SQLite. Only the <=64 library configurations cross
 // the Go boundary to apply their selected-library policy. Count, source summary
 // and global sort/paging use this same authorized, filtered relation.
+// A profile's own hidden mark reads as 0: only the owner hides channels, for
+// everyone (admin_channel_numbers.hidden). Older per-profile marks have no
+// control left to undo them, so they are ignored rather than obeyed.
 const directoryEligibleSQL = `WITH candidates AS (
  SELECT c.channel_id,s.id source_id,'live-source' provenance,c.name,COALESCE(NULLIF(n.number,''),c.number) number,c.group_name,s.active_generation generation,'' logo_path,
- COALESCE(p.favorite,0) favorite,COALESCE(p.hidden,0) hidden,COALESCE(p.revision,0) preference_revision,
+ COALESCE(p.favorite,0) favorite,0 hidden,COALESCE(p.revision,0) preference_revision,COALESCE(n.hidden,0) server_hidden,
  s.name source_name,s.published_at,c.available_start,c.available_end,COALESCE(r.state,'manual') refresh_state,0 source_position,c.position channel_position,s.revision+COALESCE(n.updated_ms,0) config_revision
  FROM live_sources s JOIN live_channel_versions c ON c.generation_id=s.active_generation
  LEFT JOIN live_channel_preferences p ON p.authority=? AND p.account_id=? AND p.profile_id=? AND p.source_id=s.id AND p.channel_id=c.channel_id
  LEFT JOIN live_remote_configs r ON r.source_id=s.id
  LEFT JOIN admin_channel_numbers n ON n.source_id=s.id AND n.channel_id=c.channel_id
- WHERE s.state='active' AND COALESCE(n.hidden,0)=0 AND s.id IN (SELECT value FROM json_each(?))
+ WHERE s.state='active' AND (?=1 OR COALESCE(n.hidden,0)=0) AND s.id IN (SELECT value FROM json_each(?))
  UNION ALL
  SELECT json_extract(value,'$.channel.id'),json_extract(value,'$.channel.sourceId'),'library-channel',json_extract(value,'$.channel.name'),json_extract(value,'$.channel.number'),json_extract(value,'$.channel.group'),json_extract(value,'$.channel.generation'),COALESCE(json_extract(value,'$.channel.logoPath'),''),
- json_extract(value,'$.channel.favorite'),json_extract(value,'$.channel.hidden'),json_extract(value,'$.channel.preferenceRevision'),json_extract(value,'$.source.name'),json_extract(value,'$.source.publishedAt'),json_extract(value,'$.source.availableStart'),json_extract(value,'$.source.availableEnd'),json_extract(value,'$.source.refreshState'),json_extract(value,'$.position'),json_extract(value,'$.position'),json_extract(value,'$.revision') FROM json_each(?)
+ json_extract(value,'$.channel.favorite'),json_extract(value,'$.channel.hidden'),json_extract(value,'$.channel.preferenceRevision'),0,json_extract(value,'$.source.name'),json_extract(value,'$.source.publishedAt'),json_extract(value,'$.source.availableStart'),json_extract(value,'$.source.availableEnd'),json_extract(value,'$.source.refreshState'),json_extract(value,'$.position'),json_extract(value,'$.position'),json_extract(value,'$.revision') FROM json_each(?)
 ), eligible AS (SELECT * FROM candidates WHERE (?='all' OR provenance=?)
  AND (?='' OR source_id=? OR (?='library' AND provenance='library-channel'))
  AND (?='' OR instr(lower(name||' '||group_name),lower(?))>0)
@@ -144,7 +149,7 @@ const directoryEligibleSQL = `WITH candidates AS (
 func directoryArgs(scope DirectoryScope, q DirectoryQuery) []any {
 	live, _ := json.Marshal(scope.AllowedLiveSources)
 	library, _ := json.Marshal(scope.LibraryRows)
-	return []any{scope.Viewer.Authority, scope.Viewer.AccountID, scope.Viewer.ProfileID, string(live), string(library), q.Kind, q.Kind, q.SourceID, q.SourceID, q.SourceID, q.Search, q.Search, q.Group, q.Group, q.FavoritesOnly, q.IncludeHidden}
+	return []any{scope.Viewer.Authority, scope.Viewer.AccountID, scope.Viewer.ProfileID, q.IncludeServerHidden && scope.Owner, string(live), string(library), q.Kind, q.Kind, q.SourceID, q.SourceID, q.SourceID, q.Search, q.Search, q.Group, q.Group, q.FavoritesOnly, q.IncludeHidden}
 }
 func validDirectoryQuery(q DirectoryQuery) bool {
 	if q.Direction != "" {
@@ -251,6 +256,9 @@ func (s *Store) ChannelDirectory(ctx context.Context, a DirectoryAuthority, q Di
 		return out, ErrInvalid
 	}
 	err := s.directorySnapshot(ctx, a, func(tx *sql.Tx, scope DirectoryScope) error {
+		if q.IncludeServerHidden && !scope.Owner {
+			return ErrDenied
+		}
 		out.ViewerFence = scope.Fence
 		var err error
 		out.Revision, err = s.directoryRevision(ctx, tx, scope, q)
@@ -285,7 +293,7 @@ func (s *Store) ChannelDirectory(ctx context.Context, a DirectoryAuthority, q Di
 			out.Offset = neighbor
 		}
 
-		rows, err := tx.QueryContext(ctx, directoryEligibleSQL+`SELECT channel_id,source_id,provenance,name,number,group_name,generation,logo_path,favorite,hidden,preference_revision,source_name,published_at,available_start,available_end,refresh_state FROM eligible ORDER BY `+order+` LIMIT ? OFFSET ?`, append(args, q.Limit, out.Offset)...)
+		rows, err := tx.QueryContext(ctx, directoryEligibleSQL+`SELECT channel_id,source_id,provenance,name,number,group_name,generation,logo_path,favorite,hidden,preference_revision,server_hidden,source_name,published_at,available_start,available_end,refresh_state FROM eligible ORDER BY `+order+` LIMIT ? OFFSET ?`, append(args, q.Limit, out.Offset)...)
 		if err != nil {
 			return err
 		}
@@ -293,7 +301,7 @@ func (s *Store) ChannelDirectory(ctx context.Context, a DirectoryAuthority, q Di
 		for rows.Next() {
 			var c Channel
 			var src GuideSource
-			if err = rows.Scan(&c.ID, &c.SourceID, &c.Provenance, &c.Name, &c.Number, &c.Group, &c.Generation, &c.LogoPath, &c.Favorite, &c.Hidden, &c.PreferenceRevision, &src.Name, &src.PublishedAt, &src.AvailableStart, &src.AvailableEnd, &src.RefreshState); err != nil {
+			if err = rows.Scan(&c.ID, &c.SourceID, &c.Provenance, &c.Name, &c.Number, &c.Group, &c.Generation, &c.LogoPath, &c.Favorite, &c.Hidden, &c.PreferenceRevision, &c.ServerHidden, &src.Name, &src.PublishedAt, &src.AvailableStart, &src.AvailableEnd, &src.RefreshState); err != nil {
 				rows.Close()
 				return err
 			}
@@ -316,17 +324,20 @@ func (s *Store) ChannelDirectory(ctx context.Context, a DirectoryAuthority, q Di
 		err = rows.Err()
 		rows.Close()
 		if err == nil {
-			err = directoryMarks(ctx, tx, scope, q, out.Channels)
+			err = s.directoryMarks(ctx, tx, scope, out.Channels)
 		}
 		return err
 	})
 	return out, err
 }
 
-func (s *Store) ChannelSourceSummary(ctx context.Context, a DirectoryAuthority, includeHidden bool, now time.Time) (DirectorySummary, error) {
+func (s *Store) ChannelSourceSummary(ctx context.Context, a DirectoryAuthority, includeHidden bool, now time.Time, includeServerHidden ...bool) (DirectorySummary, error) {
 	out := DirectorySummary{Sources: []SourceSummary{}}
-	q := DirectoryQuery{Kind: "all", Sort: "server", Limit: 50, IncludeHidden: includeHidden}
+	q := DirectoryQuery{Kind: "all", Sort: "server", Limit: 50, IncludeHidden: includeHidden, IncludeServerHidden: len(includeServerHidden) > 0 && includeServerHidden[0]}
 	err := s.directorySnapshot(ctx, a, func(tx *sql.Tx, scope DirectoryScope) error {
+		if q.IncludeServerHidden && !scope.Owner {
+			return ErrDenied
+		}
 		out.ViewerFence = scope.Fence
 		var err error
 		out.Revision, err = s.directoryRevision(ctx, tx, scope, q)

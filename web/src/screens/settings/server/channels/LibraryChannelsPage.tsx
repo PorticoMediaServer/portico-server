@@ -1,4 +1,6 @@
 import {useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
+import {useLocation} from '@tanstack/react-router';
+import {settingsRoute} from '../../../../kit/settings/search';
 import {defaultI18n} from '@i18n';
 import type {LibraryChannel, LibraryChannelTemplate} from '@core/library-channels.ts';
 import {Button} from '../../../../kit/controls';
@@ -34,16 +36,20 @@ type Modal = Readonly<{kind: 'logo' | 'delete'; channel: LibraryChannel}>;
 
 /** Mounted only with the real captured primary-owner/manageServer admission. */
 export function LibraryChannelsPage(props: LibraryChannelsPageProps) {
+  const location = useLocation();
+  const initialChannelId = settingsRoute(Object.fromEntries(new URLSearchParams(location.searchStr)), () => true).channelId;
   const {api, serverId, isCurrent, reportError, uploadLogo} = props;
   const [sources, setSources] = useState<Sources>();
   useLayoutEffect(() => {
     const next = createSources({api, serverId, isCurrent, reportError, uploadLogo});setSources(next);
     return () => next.dispose();
   }, [api, serverId, isCurrent, reportError, uploadLogo]);
-  return sources?.current() && isCurrent() ? <ChannelPageBody key={serverId} sources={sources} ports={props}/> : null;
+  return sources?.current() && isCurrent() ? <ChannelPageBody key={serverId} sources={sources} ports={{...props, initialChannelId}}/> : null;
 }
 
 function ChannelPageBody({sources, ports}: Readonly<{sources: Sources; ports: LibraryChannelsPageProps}>) {
+  const reader = useSyncExternalStore(sources.reader.subscribe, sources.reader.getSnapshot, sources.reader.getSnapshot);
+  const deepLink = useRef<string | undefined>(undefined);
   const editor = useSyncExternalStore(sources.editor.subscribe, sources.editor.getSnapshot, sources.editor.getSnapshot);
   const action = useSyncExternalStore(sources.actions.subscribe, sources.actions.getSnapshot, sources.actions.getSnapshot);
   const logo = useSyncExternalStore(sources.logos.subscribe, sources.logos.getSnapshot, sources.logos.getSnapshot);
@@ -67,12 +73,19 @@ function ChannelPageBody({sources, ports}: Readonly<{sources: Sources; ports: Li
   };
   const closeEditor = () => {if (!editorCurrent() || sources.editor.getSnapshot().busy) return;sources.editor.close();view.editor = undefined;setEditorToken(undefined);};
   const close = () => {if (!current() || view.modal !== modal || sources.actions.getSnapshot().busy || sources.logos.getSnapshot().busy) return;view.modal = undefined;setModal(undefined);};
-  const actionOn = (channel: LibraryChannel, kind: ChannelAction) => {
+  const actionOn = useCallback((channel: LibraryChannel, kind: ChannelAction) => {
     if (!current() || blocked || moving.current || !sources.reader.getSnapshot().channels?.includes(channel)) return;
     if (kind === 'edit') {const token = {id: ++editorSequence, creating: false};lastCreating.current = false;view.editor = token;setEditorToken(token);sources.editor.edit(channel);}
     else if (kind === 'logo' || kind === 'delete') {const next = {kind, channel};view.modal = next;setModal(next);}
     else void sources.actions.perform(channel, kind === 'up' || kind === 'down' ? 'move' : kind, kind === 'up' ? -1 : kind === 'down' ? 1 : undefined);
-  };
+  }, [current, blocked, sources, view]);
+  useLayoutEffect(() => {
+    const id = ports.initialChannelId;
+    if (!id || deepLink.current === id || reader.phase !== 'ready' || blocked || !current()) return;
+    deepLink.current = id;
+    const channel = reader.channels?.find(value => value.config.id === id);
+    if (channel) actionOn(channel, 'edit');
+  }, [ports.initialChannelId, reader, blocked, current, actionOn]);
   const reorder = async (channel: LibraryChannel, target: number) => {
     if (!current() || blocked || moving.current) return;
     moving.current = true;setReordering(true);setReorderError(false);setAnnouncement('');

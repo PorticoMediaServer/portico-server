@@ -256,11 +256,22 @@ func liveSourceExists(ctx context.Context, tx *sql.Tx, id string) (string, int, 
 	if !tableExists(ctx, tx, "live_sources") {
 		return "", 0, ErrNotFound
 	}
-	err := tx.QueryRowContext(ctx, `SELECT name,tuner_count FROM live_sources WHERE id=?`, id).Scan(&name, &tuners)
+	err := tx.QueryRowContext(ctx, `SELECT name,tuner_count FROM live_sources WHERE id=? AND NOT EXISTS(SELECT 1 FROM live_source_removals WHERE source_id=live_sources.id)`, id).Scan(&name, &tuners)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", 0, ErrNotFound
 	}
 	return name, tuners, err
+}
+
+// liveSourceDocumentRevision combines the two authorities in one monotonic
+// fence. Both counters only increase, so either authority moving changes the
+// sum; subtracting one preserves revision 1 for an untouched document/source.
+func liveSourceDocumentRevision(ctx context.Context, tx *sql.Tx, id string, adminRevision int64) (int64, error) {
+	var sourceRevision int64
+	if err := tx.QueryRowContext(ctx, `SELECT revision FROM live_sources WHERE id=?`, id).Scan(&sourceRevision); err != nil {
+		return 0, err
+	}
+	return adminRevision + sourceRevision - 1, nil
 }
 
 func (s *Service) liveSourceDocument(ctx context.Context, tx *sql.Tx, id string) (LiveSourceDocument, error) {
@@ -288,6 +299,13 @@ func (s *Service) liveSourceDocument(ctx context.Context, tx *sql.Tx, id string)
 		return out, err
 	}
 	normalizeLiveSourceSettings(&settings)
+	if err = livechannels.ReadPersistedConfigurationTx(ctx, tx, id, &settings); err != nil {
+		return out, err
+	}
+	revision, err = liveSourceDocumentRevision(ctx, tx, id, revision)
+	if err != nil {
+		return out, err
+	}
 	effective := defaults
 	if settings.StreamBufferMs != nil {
 		effective.StreamBufferMs = *settings.StreamBufferMs
@@ -318,7 +336,7 @@ func (s *Service) LiveSourceConfiguration(ctx context.Context, auth Authorize, i
 }
 
 // SaveLiveSourceConfiguration writes one source's configuration.
-func (s *Service) SaveLiveSourceConfiguration(ctx context.Context, auth Authorize, id string, change Change[LiveSourceSettings]) (LiveSourceDocument, error) {
+func (s *Service) SaveLiveSourceConfiguration(ctx context.Context, auth Authorize, id string, change Change[LiveSourceSettings], accepted ...func(context.Context, *sql.Tx, string, LiveSourceSettings) error) (LiveSourceDocument, error) {
 	var out LiveSourceDocument
 	if !validOperationID(change.OperationID) {
 		return out, ErrInput
@@ -333,7 +351,43 @@ func (s *Service) SaveLiveSourceConfiguration(ctx context.Context, auth Authoriz
 		Expected int64              `json:"expected"`
 		Settings LiveSourceSettings `json:"settings"`
 	}{change.ExpectedRevision, value})
-	err := s.transaction(ctx, auth, func(tx *sql.Tx) error {
+	var snapshot *livechannels.PersistedConfigurationSnapshot
+	var replayed bool
+	err := s.snapshot(ctx, auth, func(tx *sql.Tx) error {
+		var err error
+		out, replayed, err = receipt[LiveSourceDocument](ctx, tx, scope, change.OperationID, digest)
+		if err != nil || replayed {
+			return err
+		}
+		if _, _, err = liveSourceExists(ctx, tx, id); err != nil {
+			return err
+		}
+		_, revision, err := readDocument(ctx, tx, scope, DefaultLiveSourceSettings())
+		if err != nil {
+			return err
+		}
+		revision, err = liveSourceDocumentRevision(ctx, tx, id, revision)
+		if err != nil {
+			return err
+		}
+		if revision != change.ExpectedRevision {
+			return ErrConflict
+		}
+		if value.Remote != nil {
+			snapshot, err = livechannels.ReadPersistedConfigurationSnapshotTx(ctx, tx, id)
+		}
+		return err
+	})
+	if err != nil || replayed {
+		return out, err
+	}
+	prepared, err := snapshot.Prepare(ctx, &value)
+	if err != nil {
+		return out, err
+	}
+	// Network work is complete. Reauthorize and recheck the revision and exact
+	// sealed policy inputs inside the accepting writer before applying anything.
+	err = s.transaction(ctx, auth, func(tx *sql.Tx) error {
 		stored, replayed, err := receipt[LiveSourceDocument](ctx, tx, scope, change.OperationID, digest)
 		if err != nil {
 			return err
@@ -357,10 +411,29 @@ func (s *Service) SaveLiveSourceConfiguration(ctx context.Context, auth Authoriz
 		if err != nil {
 			return err
 		}
-		if revision != change.ExpectedRevision {
+		documentRevision, err := liveSourceDocumentRevision(ctx, tx, id, revision)
+		if err != nil {
+			return err
+		}
+		if documentRevision != change.ExpectedRevision {
 			return ErrConflict
 		}
 		at := s.milliseconds()
+		if err = livechannels.SavePersistedConfigurationTx(ctx, tx, id, &value, prepared); err != nil {
+			if errors.Is(err, livechannels.ErrConflict) {
+				return ErrConflict
+			}
+			return err
+		}
+		for _, accept := range accepted {
+			if err = accept(ctx, tx, id, value); err != nil {
+				return err
+			}
+		}
+		// Runtime acquisition state has one authority; never copy it or credentials into admin_documents.
+		value.Enabled = nil
+		value.ViewerAccess = nil
+		value.Remote = nil
 		if err = writeDocument(ctx, tx, scope, revision+1, value, at); err != nil {
 			return err
 		}
@@ -387,17 +460,20 @@ type ChannelMapEntry struct {
 	// SourceNumber is the provider's number captured before configuration, empty
 	// when the source did not publish one. Number is what the server serves: the
 	// accepted generation's number unless an owner override exists.
-	SourceNumber   string `json:"sourceNumber"`
-	Number         string `json:"number"`
-	Group          string `json:"group"`
-	GuideChannelID string `json:"guideChannelId"`
-	Hidden         bool   `json:"hidden"`
-	Position       int    `json:"position"`
-	Overridden     bool   `json:"overridden"`
+	SourceNumber   string                   `json:"sourceNumber"`
+	Number         string                   `json:"number"`
+	Group          string                   `json:"group"`
+	GuideChannelID string                   `json:"guideChannelId"`
+	Hidden         bool                     `json:"hidden"`
+	Position       int                      `json:"position"`
+	Overridden     bool                     `json:"overridden"`
+	Mark           livechannels.ChannelMark `json:"mark"`
+	OverrideNumber string                   `json:"overrideNumber"`
 }
 
 // ChannelMapPage is one page of a source's channel map.
 type ChannelMapPage struct {
+	Revision   int64             `json:"revision"`
 	SourceID   string            `json:"sourceId"`
 	Generation string            `json:"generation"`
 	Items      []ChannelMapEntry `json:"items"`
@@ -406,12 +482,18 @@ type ChannelMapPage struct {
 
 // channelMapPage reads one page inside a caller's transaction, so a write can
 // return the page it just produced rather than reading it again afterwards.
-func channelMapPage(ctx context.Context, tx *sql.Tx, id string, after int64, size int) (ChannelMapPage, error) {
+func channelMapPage(ctx context.Context, tx *sql.Tx, db *sql.DB, id string, after int64, size int) (ChannelMapPage, error) {
 	out := ChannelMapPage{SourceID: id, Items: []ChannelMapEntry{}}
 	if _, _, err := liveSourceExists(ctx, tx, id); err != nil {
 		return out, err
 	}
 	if err := tx.QueryRowContext(ctx, `SELECT active_generation FROM live_sources WHERE id=?`, id).Scan(&out.Generation); err != nil {
+		return out, err
+	}
+	// The same combined fence the write checks, so a fresh read can always write.
+	if _, revision, err := readDocument(ctx, tx, liveSourceScope(id), DefaultLiveSourceSettings()); err != nil {
+		return out, err
+	} else if out.Revision, err = liveSourceDocumentRevision(ctx, tx, id, revision); err != nil {
 		return out, err
 	}
 	if out.Generation == "" {
@@ -430,6 +512,7 @@ func channelMapPage(ctx context.Context, tx *sql.Tx, id string, after int64, siz
 			return out, err
 		}
 		e.Hidden = hidden != 0
+		e.OverrideNumber = override
 		if override != "" {
 			e.Number, e.Overridden = override, true
 		}
@@ -442,19 +525,26 @@ func channelMapPage(ctx context.Context, tx *sql.Tx, id string, after int64, siz
 		out.Items = out.Items[:size]
 		out.NextCursor = encodeCursor("channel-map", int64(out.Items[size-1].Position), out.Items[size-1].ChannelID)
 	}
-	return out, nil
+	rows.Close()
+	return out, channelMapMarks(ctx, tx, db, &out)
 }
 
 // channelMapEntry reads one channel of the active generation inside a caller's
 // transaction. A channel the source does not currently carry is reported as a
 // missing resource rather than an empty page, so a lookup that found nothing is
 // distinguishable from a source whose map is empty.
-func channelMapEntry(ctx context.Context, tx *sql.Tx, id, channelID string) (ChannelMapPage, error) {
+func channelMapEntry(ctx context.Context, tx *sql.Tx, db *sql.DB, id, channelID string) (ChannelMapPage, error) {
 	out := ChannelMapPage{SourceID: id, Items: []ChannelMapEntry{}}
 	if _, _, err := liveSourceExists(ctx, tx, id); err != nil {
 		return out, err
 	}
 	if err := tx.QueryRowContext(ctx, `SELECT active_generation FROM live_sources WHERE id=?`, id).Scan(&out.Generation); err != nil {
+		return out, err
+	}
+	// The same combined fence the write checks, so a fresh read can always write.
+	if _, revision, err := readDocument(ctx, tx, liveSourceScope(id), DefaultLiveSourceSettings()); err != nil {
+		return out, err
+	} else if out.Revision, err = liveSourceDocumentRevision(ctx, tx, id, revision); err != nil {
 		return out, err
 	}
 	if out.Generation == "" {
@@ -471,11 +561,29 @@ func channelMapEntry(ctx context.Context, tx *sql.Tx, id, channelID string) (Cha
 		return out, err
 	}
 	e.Hidden = hidden != 0
+	e.OverrideNumber = override
 	if override != "" {
 		e.Number, e.Overridden = override, true
 	}
 	out.Items = append(out.Items, e)
-	return out, nil
+	return out, channelMapMarks(ctx, tx, db, &out)
+}
+
+// channelMapMarks fills each entry's mark from the source's whole lineup. With
+// no database (inside the writer) it fills nothing: a lineup scan must never hold
+// the writer, so the write path adds marks after it commits.
+func channelMapMarks(ctx context.Context, tx *sql.Tx, db *sql.DB, page *ChannelMapPage) error {
+	if len(page.Items) == 0 || db == nil {
+		return nil
+	}
+	marks, err := livechannels.SourceChannelMarksTx(ctx, tx, db, page.SourceID)
+	if err != nil {
+		return err
+	}
+	for i := range page.Items {
+		page.Items[i].Mark = marks[page.SourceID+"\x00"+page.Items[i].ChannelID]
+	}
+	return nil
 }
 
 // ChannelMap pages the active generation's channels with their overrides. A
@@ -499,7 +607,7 @@ func (s *Service) ChannelMap(ctx context.Context, auth Authorize, id, token, cha
 	}
 	err = s.snapshot(ctx, auth, func(tx *sql.Tx) error {
 		if channelID != "" {
-			page, readErr := channelMapEntry(ctx, tx, id, channelID)
+			page, readErr := channelMapEntry(ctx, tx, s.db, id, channelID)
 			out = page
 			return readErr
 		}
@@ -508,7 +616,7 @@ func (s *Service) ChannelMap(ctx context.Context, auth Authorize, id, token, cha
 			// Positions start at 0; the first page starts before the first one.
 			after = -1
 		}
-		page, readErr := channelMapPage(ctx, tx, id, after, size)
+		page, readErr := channelMapPage(ctx, tx, s.db, id, after, size)
 		out = page
 		return readErr
 	})
@@ -582,7 +690,11 @@ func (s *Service) SaveChannelMap(ctx context.Context, auth Authorize, id string,
 		if err != nil {
 			return err
 		}
-		if revision != change.ExpectedRevision {
+		documentRevision, err := liveSourceDocumentRevision(ctx, tx, id, revision)
+		if err != nil {
+			return err
+		}
+		if documentRevision != change.ExpectedRevision {
 			return ErrConflict
 		}
 		if len(change.Overrides) > 0 {
@@ -670,11 +782,16 @@ func (s *Service) SaveChannelMap(ctx context.Context, auth Authorize, id string,
 		if err = writeDocument(ctx, tx, scope, revision+1, settings, at); err != nil {
 			return err
 		}
-		if out, err = channelMapPage(ctx, tx, id, -1, DefaultPageSize); err != nil {
+		if out, err = channelMapPage(ctx, tx, nil, id, -1, DefaultPageSize); err != nil {
 			return err
 		}
 		return saveReceipt(ctx, tx, "channel-map:"+id, change.OperationID, digest, out, at)
 	})
+	if err != nil {
+		return out, err
+	}
+	// Marks come from a read snapshot after the writer is released.
+	err = s.snapshot(ctx, auth, func(tx *sql.Tx) error { return channelMapMarks(ctx, tx, s.db, &out) })
 	return out, err
 }
 

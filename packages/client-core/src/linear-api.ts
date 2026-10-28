@@ -36,3 +36,11 @@ export function lanConfirmationRoots(error:unknown):readonly string[]|undefined{
 export function withConfirmedLanRoots(draft:RemoteSourceDraft,roots:readonly string[]):RemoteSourceDraft{
  return {...draft,confirmedLanRoots:[...new Set([...draft.confirmedLanRoots,...roots])]};
 }
+
+/** Persisted acquisition settings. Credentials appear only in a write draft. */
+export type PersistedRemoteConfiguration=Readonly<{kind:SourceKind;guideUrl:string;guideUrlRedacted:boolean;refreshMs:number;ownerLimit:number;useDiscoveredCapacity:boolean;username?:string;password?:string;confirmedLanRoots?:readonly string[]}>;
+export function parsePersistedRemoteConfiguration(raw:unknown):PersistedRemoteConfiguration {
+ if(!isRecord(raw)||!['m3u','xtream','hdhomerun'].includes(String(raw.kind))||!boundedText(raw.guideUrl,8192)||typeof raw.guideUrlRedacted!=='boolean'||!safeCounter(raw.refreshMs,86400000)||Number(raw.refreshMs)<300000||!safeCounter(raw.ownerLimit,256)||typeof raw.useDiscoveredCapacity!=='boolean')bad();
+ // Never retain credentials or unknown provider fields from a response.
+ return Object.freeze({kind:raw.kind as SourceKind,guideUrl:raw.guideUrl as string,guideUrlRedacted:raw.guideUrlRedacted as boolean,refreshMs:raw.refreshMs as number,ownerLimit:raw.ownerLimit as number,useDiscoveredCapacity:raw.useDiscoveredCapacity as boolean});
+}

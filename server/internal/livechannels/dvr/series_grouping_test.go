@@ -25,6 +25,7 @@ func TestRecordingsCarrySeriesGrouping(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	recordingProfiles(t, db, "account", "profile")
 	live, err := livechannels.New(db)
 	if err != nil {
 		t.Fatal(err)
