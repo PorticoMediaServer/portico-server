@@ -116,7 +116,7 @@ func TestAdministrationOwnerBoundaryAndLibrarySettingsRoundTrip(t *testing.T) {
 	if updateRead.State != "unavailable" || updateRead.Status != "unavailable" {
 		t.Fatalf("unconfigured update service state: %+v", updateRead)
 	}
-	grantBody := `{"owner":{"authority":"local","accountId":"owner","profileId":"profile"},"enabled":true,"inheritProfiles":false,"revision":0}`
+	grantBody := `{"owner":{"authority":"local","accountId":"owner","profileId":"profile"},"enabled":true,"revision":1}`
 	if w := request("PUT", "/v1/admin/dvr/recording-permissions", member.AccessToken, grantBody); w.Code != 401 {
 		t.Fatalf("member managed recording grant: %d %s", w.Code, w.Body.String())
 	}

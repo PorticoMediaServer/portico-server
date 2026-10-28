@@ -261,7 +261,7 @@ function PeopleWorkspace({bindings, initialStatus, rowActions, advancedRows}: {b
       void run(async () => {const saved = await client.limits(before, {...before.limits, tagPolicy: {deniedLabels}}); setPerson(current => current?.accountId === before.accountId ? {...before, limits: saved.limits, limitsRevision: saved.revision} : current);});
     }} />;
     if (row.id === 'people.profiles') return bindings.memberProfiles && managesTier(bindings.actor.role, person.role) && person.accountId !== bindings.actor.accountId
-      ? <PeopleMemberProfiles api={bindings.memberProfiles} accountId={person.accountId} canEdit={canEdit} />
+      ? <PeopleMemberProfiles api={bindings.memberProfiles} accountId={person.accountId} canEdit={canEdit} serverOwner={bindings.actor.role === 'owner'} />
       : <>{person.profileNames?.map((name, index) => <Row key={index} label={name}><span /></Row>)}</>;
     if (row.control.type === 'readonly') return <span>{values[row.id] as string}</span>;
     if (row.id === personMemberResetCodeRow.id) {

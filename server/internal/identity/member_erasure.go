@@ -178,16 +178,6 @@ func (s *Service) EraseMemberTx(ctx context.Context, tx *sql.Tx, account string)
 	if e = ForgetPlayHistoryNamesTx(ctx, tx, "local", account, ""); e != nil {
 		return e
 	}
-	// Permission to watch recordings that was given to the whole account.
-	var grants bool
-	if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='dvr_recording_grants')`).Scan(&grants); e != nil {
-		return e
-	}
-	if grants {
-		if _, e = tx.ExecContext(ctx, `DELETE FROM dvr_recording_grants WHERE authority='local' AND account_id=?`, account); e != nil {
-			return e
-		}
-	}
 	// A code this person approved and nobody has collected can no longer sign
 	// a device in as them.
 	if _, e = tx.ExecContext(ctx, `UPDATE quick_connect_v1 SET status='cancelled',grant_cipher=NULL,user_hash=NULL WHERE approver_id=? AND status='approved'`, account); e != nil {

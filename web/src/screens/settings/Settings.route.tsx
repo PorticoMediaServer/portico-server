@@ -616,7 +616,7 @@ export function SettingsEntry() {
         if (row.id === 'signin.people') return {present: current() && (role === 'owner' || role === 'admin') && controller.sectionVisible(selected.section)};
         if (row.id === 'signin.outside') return {present: current() && role === 'owner' && controller.sectionVisible(selected.section)};
         if (row.id === 'signin.dataFolder') return {present: !!signinStorage && current() && controller.sectionVisible(selected.section)};
-        if (restrictions && profiles && isProfileRestriction(row.id)) return restrictionRow(restrictions, profiles, row.id)!;
+        if (restrictions && profiles && isProfileRestriction(row.id)) return restrictionRow(restrictions, profiles, row.id, role === 'owner')!;
         if (row.id === 'libraries.list') return {present: !!libraries && current() && controller.sectionVisible(selected.section)};
         if (row.id === 'storage.missingNow') return {present: !!missing && current()};
         if (row.id === 'storage.removeMissing') return {present: false};

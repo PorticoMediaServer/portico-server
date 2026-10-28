@@ -15,7 +15,7 @@ func TestDVRHidesProgrammeFactsAfterRatingRestriction(t *testing.T) {
 			s, source, p, a := sharingStore(t)
 			ctx := context.Background()
 			owner := livechannels.Owner{Authority: "local", AccountID: "account", ProfileID: "profile"}
-			if _, e := s.db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('account','Owner',x'00','profile',1)`); e != nil {
+			if _, e := s.db.Exec(`UPDATE accounts SET username='Owner' WHERE id='account'`); e != nil {
 				t.Fatal(e)
 			}
 			if _, e := s.db.Exec(`UPDATE live_programme_metadata SET facts=json_set(facts,'$.rating',json('{"system":"mpaa","value":"R"}')) WHERE generation_id=? AND id=?`, source.Generation, p.ID); e != nil {
@@ -27,7 +27,7 @@ func TestDVRHidesProgrammeFactsAfterRatingRestriction(t *testing.T) {
 				t.Fatal(e)
 			}
 			if scope == "profile" {
-				_, e = s.db.Exec(`INSERT INTO profile_restrictions(profile_id,maximum_age,allow_unrated) VALUES('profile',7,0)`)
+				_, e = s.db.Exec(`UPDATE profile_restrictions SET maximum_age=7,allow_unrated=0 WHERE profile_id='profile'`)
 			} else {
 				_, e = s.db.Exec(`INSERT INTO access_limits(account_id,revision,updated_ms,body) VALUES('account',1,1,'{"maxContentRating":"PG","allowUnrated":false}')`)
 			}
@@ -65,7 +65,7 @@ func TestDVRCancellationReceiptDoesNotReplayRestrictedFacts(t *testing.T) {
 	s, source, p, a := sharingStore(t)
 	ctx := context.Background()
 	o := livechannels.Owner{Authority: "local", AccountID: "account", ProfileID: "profile"}
-	if _, e := s.db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('account','Owner',x'00','profile',1)`); e != nil {
+	if _, e := s.db.Exec(`UPDATE accounts SET username='Owner' WHERE id='account'`); e != nil {
 		t.Fatal(e)
 	}
 	if _, e := s.db.Exec(`UPDATE live_programme_metadata SET facts=json_set(facts,'$.rating',json('{"value":"R"}')) WHERE generation_id=? AND id=?`, source.Generation, p.ID); e != nil {
@@ -79,7 +79,7 @@ func TestDVRCancellationReceiptDoesNotReplayRestrictedFacts(t *testing.T) {
 	if _, e = s.Cancel(ctx, a, o, r.ID, mutation); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = s.db.Exec(`INSERT INTO profile_restrictions(profile_id,maximum_age) VALUES('profile',7)`); e != nil {
+	if _, e = s.db.Exec(`UPDATE profile_restrictions SET maximum_age=7 WHERE profile_id='profile'`); e != nil {
 		t.Fatal(e)
 	}
 	replayed, e := s.Cancel(ctx, a, o, r.ID, mutation)
@@ -93,14 +93,14 @@ func TestDVRCancellationReceiptDoesNotReplayRestrictedFacts(t *testing.T) {
 
 func TestActiveDVRCaptureRechecksRatingPolicy(t *testing.T) {
 	s, c, _ := sharedClaims(t)
-	if _, e := s.db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('account','Owner',x'00',?,1)`, c.request.Owner.ProfileID); e != nil {
+	if _, e := s.db.Exec(`UPDATE accounts SET username='Owner' WHERE id='account' AND profile_id=?`, c.request.Owner.ProfileID); e != nil {
 		t.Fatal(e)
 	}
 	c.request.Recording.Programme.Rating = &livechannels.ProgrammeRating{Value: "R"}
 	if e := s.renew(context.Background(), c, false); e != nil {
 		t.Fatal(e)
 	}
-	if _, e := s.db.Exec(`INSERT INTO profile_restrictions(profile_id,maximum_age) VALUES(?,7)`, c.request.Owner.ProfileID); e != nil {
+	if _, e := s.db.Exec(`UPDATE profile_restrictions SET maximum_age=7 WHERE profile_id=?`, c.request.Owner.ProfileID); e != nil {
 		t.Fatal(e)
 	}
 	if e := s.renew(context.Background(), c, false); e == nil {

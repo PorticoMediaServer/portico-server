@@ -31270,6 +31270,9 @@
                     "accountName": {
                       "type": "string"
                     },
+                    "canRecord": {
+                      "type": "boolean"
+                    },
                     "owner": {
                       "properties": {
                         "accountId": {
@@ -31291,12 +31294,19 @@
                     },
                     "profileName": {
                       "type": "string"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     }
                   },
                   "required": [
                     "owner",
                     "accountName",
-                    "profileName"
+                    "profileName",
+                    "canRecord",
+                    "revision"
                   ],
                   "type": "object"
                 },
@@ -31338,9 +31348,6 @@
                 "enabled": {
                   "type": "boolean"
                 },
-                "inheritProfiles": {
-                  "type": "boolean"
-                },
                 "owner": {
                   "properties": {
                     "accountId": {
@@ -31369,7 +31376,6 @@
               "required": [
                 "owner",
                 "enabled",
-                "inheritProfiles",
                 "revision"
               ],
               "type": "object"
@@ -255650,9 +255656,6 @@
           "enabled": {
             "type": "boolean"
           },
-          "inheritProfiles": {
-            "type": "boolean"
-          },
           "owner": {
             "properties": {
               "accountId": {
@@ -255681,7 +255684,6 @@
         "required": [
           "owner",
           "enabled",
-          "inheritProfiles",
           "revision"
         ],
         "type": "object"
@@ -255694,9 +255696,6 @@
           "result": {
             "properties": {
               "enabled": {
-                "type": "boolean"
-              },
-              "inheritProfiles": {
                 "type": "boolean"
               },
               "owner": {
@@ -255727,7 +255726,6 @@
             "required": [
               "owner",
               "enabled",
-              "inheritProfiles",
               "revision"
             ],
             "type": "object"
@@ -313948,6 +313946,9 @@
                               "accountName": {
                                 "type": "string"
                               },
+                              "canRecord": {
+                                "type": "boolean"
+                              },
                               "owner": {
                                 "properties": {
                                   "accountId": {
@@ -313969,12 +313970,19 @@
                               },
                               "profileName": {
                                 "type": "string"
+                              },
+                              "revision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
                               }
                             },
                             "required": [
                               "owner",
                               "accountName",
-                              "profileName"
+                              "profileName",
+                              "canRecord",
+                              "revision"
                             ],
                             "type": "object"
                           },
@@ -314070,9 +314078,6 @@
                           "enabled": {
                             "type": "boolean"
                           },
-                          "inheritProfiles": {
-                            "type": "boolean"
-                          },
                           "owner": {
                             "properties": {
                               "accountId": {
@@ -314101,7 +314106,6 @@
                         "required": [
                           "owner",
                           "enabled",
-                          "inheritProfiles",
                           "revision"
                         ],
                         "type": "object"
@@ -314179,9 +314183,6 @@
                   "enabled": {
                     "type": "boolean"
                   },
-                  "inheritProfiles": {
-                    "type": "boolean"
-                  },
                   "owner": {
                     "properties": {
                       "accountId": {
@@ -314210,7 +314211,6 @@
                 "required": [
                   "owner",
                   "enabled",
-                  "inheritProfiles",
                   "revision"
                 ],
                 "type": "object"
@@ -314231,9 +314231,6 @@
                     "result": {
                       "properties": {
                         "enabled": {
-                          "type": "boolean"
-                        },
-                        "inheritProfiles": {
                           "type": "boolean"
                         },
                         "owner": {
@@ -314264,7 +314261,6 @@
                       "required": [
                         "owner",
                         "enabled",
-                        "inheritProfiles",
                         "revision"
                       ],
                       "type": "object"
