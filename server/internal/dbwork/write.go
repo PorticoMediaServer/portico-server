@@ -104,6 +104,7 @@ func Begin(ctx context.Context, db *sql.DB, class Class) (*Write, error) {
 		return &Write{tx: parent.tx, ctx: ctx, parent: parent}, nil
 	}
 	site := captureSite(2)
+	ctx = walContext(ctx, db, class, "")
 	release, err := gate.Acquire(ctx, class)
 	if err != nil {
 		return nil, err
@@ -437,6 +438,7 @@ func ExecWrite(ctx context.Context, db *sql.DB, class Class, query string, args 
 		return parent.tx.ExecContext(ctx, query, args...)
 	}
 	site := captureSite(2)
+	ctx = walContext(ctx, db, class, query)
 	release, err := gate.Acquire(ctx, class)
 	if err != nil {
 		return nil, err
@@ -447,6 +449,7 @@ func ExecWrite(ctx context.Context, db *sql.DB, class Class, query string, args 
 		return nil, err
 	}
 	meter := &writeMeter{}
+	meter.wal, _ = ctx.Value(walRequestKey{}).(*walRequest)
 	_ = conn.Raw(func(inner any) error { meter.begin(inner); return nil })
 	changes := &changeSet{}
 	writeCtx := context.WithValue(ctx, changeKey{}, changes)
@@ -464,8 +467,8 @@ func ExecWrite(ctx context.Context, db *sql.DB, class Class, query string, args 
 			// running it again could execute a non-idempotent write twice.
 			after, changes = before+1, nil
 		}
-		_ = conn.Raw(func(inner any) error { meter.end(inner); return nil })
 	}
+	_ = conn.Raw(func(inner any) error { meter.end(inner); return nil })
 	_ = conn.Close()
 	release()
 	if err != nil {
@@ -548,6 +551,7 @@ func ReserveWriterConn(ctx context.Context, db *sql.DB, class Class) (context.Co
 	}
 	var once sync.Once
 	release := func() { once.Do(func() { _ = conn.Close(); releaseGate() }) }
+	ctx = context.WithValue(ctx, reservedWALKey{}, ledgerFor(db))
 	return context.WithValue(ctx, writerReservationKey{}, writerReservation{conn: conn}), conn, release, nil
 }
 
@@ -567,6 +571,16 @@ func BeginConn(ctx context.Context, conn *sql.Conn, class Class) (*Write, error)
 		return nil, errors.New("dbwork: BeginConn requires a reserved writer connection")
 	}
 	site := captureSite(2)
+	// The connection reservation may perform many independent transactions.
+	// Each BEGIN has its own debit; holding the gate is not a reservation.
+	if d, ok := ctx.Value(reservedWALKey{}).(*walLedger); ok {
+		ctx = walContextForLedger(ctx, d, class, "")
+		r, _ := ctx.Value(walRequestKey{}).(*walRequest)
+		if !r.ready() {
+			return nil, ErrWriterCapacity
+		}
+		r.take()
+	}
 	changes := &changeSet{}
 	meter := &writeMeter{}
 	ctx = context.WithValue(context.WithValue(ctx, changeKey{}, changes), meterKey{}, meter)

@@ -176,7 +176,7 @@ func TestCheckpointHardPressureDrainsOverlappingReadersAndShrinksPhysicalWAL(t *
 		t.Fatal(err)
 	}
 	scope := readerScopeForTest(t, db)
-	stats := WAL(ctx, db)
+	stats := copyWALForTest(t, ctx, db)
 	if stats.LogFrames < CheckpointHardFrames || stats.FileBytes < 192<<20 {
 		t.Fatalf("fixture lacks hard WAL pressure: %+v", stats)
 	}
@@ -349,7 +349,7 @@ func TestCheckpointHardPressureDrainsOverlappingReadersAndShrinksPhysicalWAL(t *
 		// committed tail may still be awaiting PASSIVE copying, so final zero
 		// backlog would test a quiet database rather than writer progress.
 		// Retain both the physical ceiling and a bound on logical frames.
-		if current := WAL(ctx, db); current.LastError != "" || current.LogFrames >= CheckpointTruncateFrames || current.BacklogFrames >= CheckpointTruncateFrames || current.FileBytes >= 1<<20 {
+		if current := copyWALForTest(t, ctx, db); current.LastError != "" || current.LogFrames >= CheckpointTruncateFrames || current.BacklogFrames >= CheckpointTruncateFrames || current.FileBytes >= 1<<20 {
 			t.Fatalf("churn checkpoint did not converge physical WAL: %+v", current)
 		}
 		t.Logf("four continually reopening readers completed%d snapshots; hard reset%d frames after%dms drain (%dms total); writers progressed before/after", completed.Load(), reset.BeforeLogFrames, reset.DrainMs, reset.DurationMs)

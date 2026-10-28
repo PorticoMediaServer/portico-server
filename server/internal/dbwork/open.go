@@ -108,6 +108,42 @@ func OpenHandle(path string, policy Policy) (*sql.DB, error) {
 			return nil, err
 		}
 	}
+	var pageSize int64
+	if err = db.QueryRow(`PRAGMA page_size`).Scan(&pageSize); err != nil {
+		db.Close()
+		return nil, err
+	}
+	var native bool
+	var scope *readerScope
+	conn, err := writer.Conn(context.Background())
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	err = conn.Raw(func(inner any) error {
+		if c, ok := inner.(*observedConn); ok {
+			scope = c.readers
+			inner = c.inner
+		}
+		if counter, ok := inner.(interface{ WALWriteBytes() (uint64, bool) }); ok {
+			_, native = counter.WALWriteBytes()
+		}
+		return nil
+	})
+	_ = conn.Close()
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	nativePath := DatabaseFile(context.Background(), db)
+	if nativePath == "" {
+		db.Close()
+		return nil, errors.New("dbwork: live database filename unavailable")
+	}
+	l := newWALLedger(nativePath, pageSize)
+	l.native = native
+	l = shareWALLedger(scope, l)
+	db.Driver().(*splitDriver).wal = l
 	return db, nil
 }
 

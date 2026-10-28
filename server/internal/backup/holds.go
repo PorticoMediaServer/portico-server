@@ -63,6 +63,7 @@ func (s *Service) holdBlobs(ctx context.Context, limits copyLimits, backupID, sc
 func (s *Service) advanceHold(ctx context.Context, limits copyLimits, backupID, state string) error {
 	wait, cancel := holdWait(ctx, limits)
 	defer cancel()
+	wait = dbwork.WithPlan(wait, dbwork.WritePlan{Name: dbwork.BackupHoldPhasePlanName, Rows: 1, Pages: 4, VMOps: 250_000, Why: "one singleton state update; no indexed state column, foreign-key action or trigger"})
 	_, err := dbwork.ExecWrite(wait, s.db, limits.class,
 		`UPDATE backup_blob_holds SET state=? WHERE singleton=1 AND backup_id=? AND process_epoch=?`, state, backupID, s.epoch)
 	return holdError(ctx, err)

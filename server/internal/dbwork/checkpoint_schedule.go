@@ -81,15 +81,19 @@ func (s *CheckpointSchedule) Tick(ctx context.Context) (CheckpointResult, bool) 
 		return CheckpointResult{}, false
 	}
 	now := time.Now()
+	ledger := ledgerFor(s.db)
+	ledger.probe()
+	wakeWALWaiters()
 	if !s.resolved && now.Sub(s.lastResolve) >= CheckpointRegularInterval {
 		_ = s.resolve(ctx)
 	}
 	bytes, _ := checkpointFileBytes(s.walPath)
-	pressure := bytes >= CheckpointHardFileBytes
+	soft, hard := ledger.pressure()
+	pressure := bytes >= CheckpointHardFileBytes || hard
 	commits := ChangingCommits()
 	regular := now.Sub(s.lastAttempt) >= CheckpointRegularInterval && (!s.settled || commits != s.settledAt)
 	copying := now.Sub(s.lastAttempt) >= CheckpointCopyInterval && commits != s.settledAt
-	if (!pressure && !regular && !copying) || now.Before(s.nextAttempt) {
+	if (!pressure && !regular && !copying && !soft) || now.Before(s.nextAttempt) {
 		return CheckpointResult{}, false
 	}
 	out := checkpoint(ctx, s.db, s.walPath)
