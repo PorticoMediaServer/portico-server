@@ -43,7 +43,7 @@ test('barriers install debt before cursor acknowledgement; repeated concurrent r
   await c.advance(1000);
   assert.deepEqual(calls, [2, 2, 2, 2, 1, 1, 1]);
   assert.equal(registrations.every(r => !r.getState().owed), true);
-  off(); registrations.forEach(r => r.dispose()); events.resync.dispose(); assert.equal(c.pending(), 0);
+  off(); registrations.forEach(r => r.dispose()); events.resyncReads.dispose(); assert.equal(c.pending(), 0);
 });
 
 test('hidden debt activates once; stale completion cannot clear newer debt or release an occupied permit early', async () => {
@@ -100,5 +100,26 @@ test('actual attached freshness documents, interests and imperative recovery sha
   events.deliver({id: 'barrier', type: 'stream.resync'}); await tick(); await c.advance(0);
   assert.equal(active, 4); assert.equal(starts, 4);
   held.resolve(); await tick(); assert.equal(starts, 7); assert.equal(maximum, 4);
-  documents.forEach(d => d.dispose()); interests.forEach(i => i.dispose()); urgent.dispose(); hub.dispose(); events.resync.dispose(); assert.equal(c.pending(), 0);
+  documents.forEach(d => d.dispose()); interests.forEach(i => i.dispose()); urgent.dispose(); hub.dispose(); events.resyncReads.dispose(); assert.equal(c.pending(), 0);
+});
+
+test('fan-out owners admit each actual read without nested permits or exceeding four', async () => {
+  const coordinator = new ResyncCoordinator(), held = gate(), signal = new AbortController().signal;
+  let active = 0, maximum = 0, started = 0;
+  for (let i = 0; i < 6; i++) coordinator.register(async () => {
+    await Promise.all(Array.from({length: 2}, () => coordinator.run(signal, async () => {
+      started++; active++; maximum = Math.max(maximum, active); await held.promise; active--;
+    })));
+  }, {admission: 'external'});
+  coordinator.invalidate(); await tick(); assert.equal(active, 4); assert.equal(started, 4);
+  held.resolve(); await tick(); assert.equal(started, 12); assert.equal(maximum, 4); coordinator.dispose();
+});
+
+test('a background barrier keeps visible services owed while urgent retained authority recovers', async () => {
+  const coordinator = new ResyncCoordinator(); let visible = 0, urgent = 0;
+  const document = coordinator.register(async () => {visible++;});
+  coordinator.register(async () => {urgent++;}, {priority: 0});
+  coordinator.setActive(false); coordinator.invalidate(); await tick();
+  assert.equal(visible, 0); assert.equal(urgent, 1); assert.equal(document.getState().owed, true);
+  coordinator.setActive(true); await tick(); assert.equal(visible, 1); assert.equal(document.getState().owed, false); coordinator.dispose();
 });

@@ -706,15 +706,15 @@ export class PlaybackSessionController {
 
   /** A `session.updated` event for our session (with its payload when the app has it): an end
    * with its reason is taken as is; otherwise the session is re-read if its revision moved. */
-  async sessionUpdated(sessionId: string, revision?: string, data?: unknown): Promise<void> {
+  async sessionUpdated(sessionId: string, revision?: string, data?: unknown, recovery?: {signal?: AbortSignal; strict?: boolean}): Promise<void> {
     const session = this.state.session;
-    if (this.disposed || !session || session.id !== sessionId || this.state.phase !== 'active' || (revision !== undefined && revision === session.revision)) return;
+    if (recovery?.signal?.aborted || this.disposed || !session || session.id !== sessionId || this.state.phase !== 'active' || (revision !== undefined && revision === session.revision)) return;
     const token = this.startToken, serial = ++this.updateSerial;
-    const owns = () => !this.disposed && token === this.startToken && serial === this.updateSerial && this.state.session?.id === sessionId && this.state.phase === 'active';
+    const owns = () => !recovery?.signal?.aborted && !this.disposed && token === this.startToken && serial === this.updateSerial && this.state.session?.id === sessionId && this.state.phase === 'active';
     const end = data && typeof data === 'object' && (data as {state?: unknown}).state === 'ended' ? parseSessionEnd(data) : undefined;
     if (end) { void this.serverEnded(end); return; }
     try {
-      const fresh = await this.client.get(sessionId);
+      const fresh = await this.client.get(sessionId, recovery?.signal);
       if (!owns()) return;
       if (fresh.state === 'ended') { void this.serverEnded(fresh.end ?? {reason: 'stopped'}); return; }
       if (this.state.session?.revision !== session.revision && fresh.presentation.generation <= (this.gate.value ?? 0)) return;
@@ -722,6 +722,7 @@ export class PlaybackSessionController {
     } catch (e) {
       if (!owns()) return;
       if (e instanceof PlaybackApiError && (e.status === 404 || e.status === 410)) void this.serverEnded();
+      else if (recovery?.strict) throw e;
     }
   }
 

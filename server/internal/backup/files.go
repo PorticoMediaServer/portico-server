@@ -76,7 +76,7 @@ func copyStateFilesForBackup(ctx context.Context, state, partial string, include
 			if entry.IsDir() {
 				return os.MkdirAll(filepath.Join(partial, filepath.FromSlash(name)), 0700)
 			}
-			if rebuildable(name) && strings.Contains(name, artworkTombMarker) {
+			if rebuildable(name) && (strings.Contains(name, artworkTombMarker) || strings.HasPrefix(name, "Metadata/guide-images/") && strings.Contains(name, ".tomb-")) {
 				return nil // a collector's file in transit, carried by its own name if needed
 			}
 			info, err := entry.Info()
@@ -104,6 +104,9 @@ func copyStateFilesForBackup(ctx context.Context, state, partial string, include
 		}
 	}
 	_, err := copyOwnerArtwork(ctx, state, partial, nil)
+	if err == nil && includeArtwork {
+		err = copyGuideImages(ctx, state, partial)
+	}
 	return nil, err
 }
 
@@ -230,12 +233,12 @@ func writeManifest(partial string, manifest Manifest) error {
 
 // readManifest parses a backup folder's manifest, checking its identity.
 func readManifest(dir string) (Manifest, error) {
-	if isStreamManifest(dir) {
-		return readStreamHeader(dir)
-	}
 	var manifest Manifest
 	if err := regularManifestFile(dir, ManifestName); err != nil {
 		return manifest, err
+	}
+	if isStreamManifest(dir) {
+		return readStreamHeader(dir)
 	}
 	info, err := os.Stat(filepath.Join(dir, ManifestName))
 	if err != nil || info.Size() > maxManifestBytes {
@@ -517,21 +520,7 @@ const artworkTombMarker = ".img.tomb-"
 // the moved-aside file has the same bytes (the name is their digest, and the
 // caller checks it).
 func copyArtworkBlob(ctx context.Context, state, partial, name string) (FileEntry, error) {
-	source := filepath.Join(state, filepath.FromSlash(name))
-	entry, err := copyOneFileContext(ctx, source, filepath.Join(partial, filepath.FromSlash(name)), name, nil)
-	if err == nil || !errors.Is(err, fs.ErrNotExist) {
-		return entry, err
-	}
-	tombs, globErr := filepath.Glob(source + strings.TrimPrefix(artworkTombMarker, ".img") + "*")
-	if globErr != nil {
-		return entry, err
-	}
-	for _, tomb := range tombs {
-		if moved, e := copyOneFileContext(ctx, tomb, filepath.Join(partial, filepath.FromSlash(name)), name, nil); e == nil {
-			return moved, nil
-		}
-	}
-	return entry, err
+	return copyBlobWithTombs(ctx, state, partial, name)
 }
 
 // rebuildable is a file under a folder of downloaded metadata, which can be

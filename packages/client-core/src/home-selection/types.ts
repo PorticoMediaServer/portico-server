@@ -38,7 +38,7 @@ export interface HomeSelectionRoutes {
 }
 export type HomeSelectionOptions = Readonly<{
   api: HomeApi;
-  events: Pick<EventsClient, 'on'> & Partial<Pick<EventsClient, 'onResync' | 'resync'>>;
+  events: Pick<EventsClient, 'on'> & Partial<Pick<EventsClient, 'onResync' | 'resyncReads'>>;
   home: HomeService;
   context: SelectionContext;
   environment: SelectionEnvironment;

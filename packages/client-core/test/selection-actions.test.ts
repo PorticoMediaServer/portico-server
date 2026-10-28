@@ -38,6 +38,7 @@ test('selection action input rejects unsupported pivots, absent basis, refinemen
     {...input, selector: {query: {...input.selector.query, sort: [{field: 'title', direction: 'asc', seed: 2}]}}},
   ]) assert.throws(() => selectionActionInput(raw));
   assert.equal(selectionActionInput({...input, action: 'download', options: {deviceId: 'device', quality: 'original'}}).action, 'download');
+  for (const quality of ['cd-quality', '320', '96']) assert.equal(selectionActionInput({...input, action: 'download', options: {deviceId: 'device', quality}}).action, 'download');
 });
 test('selection action synchronous offer validates real model semantics without expanding 48000 targets', () => {
   const target = {mode: 'query', context: {}, queryId: 'held', selector: input.selector, expected: input.expected, total: 48_000, sourceTotal: 48_000,
@@ -61,6 +62,8 @@ test('selection action parsers accept only exact bounded previews and truthful a
   for (const patch of [{done: 1}, {state: 'complete'}, {admitted: 48_001}, {done: 48_000, failed: 1}, {bytesDeleted: 1},
     {state: 'running'}, {retryAfterMs: -1}, {targets: ['item']}]) assert.throws(() => parseSelectionActionJob({...job, ...patch}));
   assert.equal(parseSelectionActionJob({...job, state: 'partial', done: 1, failed: 1, errorCode: 'interrupted'}).state, 'partial');
+  const cancelledPartial = parseSelectionActionJob({...job, state: 'partial', done: 0, failed: 1, filesDeleted: 1, bytesDeleted: 5000, errorCode: 'cancelled'});
+  assert.equal(cancelledPartial.done, 0); assert.equal(cancelledPartial.filesDeleted, 1); assert.equal(cancelledPartial.bytesDeleted, 5000);
 });
 
 test('selection action transports use registered routes and real parser runtime without member requests', async () => {

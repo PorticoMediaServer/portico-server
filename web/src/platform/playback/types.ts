@@ -52,7 +52,7 @@ export type WebPlaybackSource = Readonly<{
   /** Same actual session as authority, including its independently captured family id. */
   localScope?: LocalPlaybackScope;
   api: HttpLocalApi; authority: WebPlaybackAuthority; contentScope: ContentScope;
-  events: Pick<EventsClient, 'on'> & Partial<Pick<EventsClient, 'onResync' | 'getStatus' | 'subscribeStatus'>>; isCurrent: () => boolean;
+  events: Pick<EventsClient, 'on'> & Partial<Pick<EventsClient, 'onResync' | 'getStatus' | 'subscribeStatus' | 'onResyncRead' | 'resyncReads'>>; isCurrent: () => boolean;
   settings: WebPlaybackSettings;
 }>;
 /** Bound to one runtime and its captured five-field local authority. The app registers

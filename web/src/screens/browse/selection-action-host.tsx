@@ -33,7 +33,7 @@ export function createBrowserQueryActions<C>(host: Host<C>, options: BrowserQuer
     const operation = host.captureOperation?.();
     if (!operation || operation.target.mode !== 'query' || !host.isOperationCurrent?.(operation) || !browserQueryActionOffered(operation.target, action, options)) throw new Error('query-action-unavailable');
     const originalSource = options.sourceIdentity?.();
-    const source = {isCurrent: () => !options.signal.aborted && options.isCurrent() && active?.operation === operation && host.isOperationCurrent?.(operation) === true
+    const source = {expectedTotal: operation.target.total, isCurrent: () => !options.signal.aborted && options.isCurrent() && active?.operation === operation && host.isOperationCurrent?.(operation) === true
       && (!options.sourceIdentity || options.sourceIdentity() === originalSource),
       subscribe: (changed: () => void) => {const a = host.subscribe(changed), b = options.subscribe(changed); return () => {a(); b();};}, signal: options.signal};
     active = Object.freeze({operation, action: actionOptions(action, options), source});

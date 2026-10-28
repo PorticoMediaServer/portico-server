@@ -132,14 +132,20 @@ func (s *Service) StepSmallSelectionOrder(ctx context.Context, previous *SmallSe
 			return err
 		}
 		reserve := func(n int64) error {
-			if n < 0 || n > int64(retained-next.Bytes()) {
-				return ErrSelectionBatchCapacity
+			// Negative internal requests reserve Go allocation only. Positive
+			// requests disclose actual source scalar bytes, including rejects.
+			// Transient source work must not consume the retained-state budget.
+			allocation := n < 0
+			if allocation { n = -n }
+			peak := int64(previous.Bytes()+next.Bytes()) + 4*n + 65536
+			if n < 0 || peak > 32<<20 { return ErrSelectionBatchCapacity }
+			if !allocation {
+				work.DecodedBytes += int(n)
+				work.ExaminedBytes += int(n)
+				work.TransientScalarBytes = max(work.TransientScalarBytes, int(n))
 			}
-			work.DecodedBytes += int(n)
-			work.ExaminedBytes += int(n)
-			work.TransientScalarBytes = max(work.TransientScalarBytes, int(n))
 			if limits.ReserveTransient != nil {
-				return limits.ReserveTransient(int64(previous.Bytes()+next.Bytes()) + 4*n + 65536)
+				return limits.ReserveTransient(peak)
 			}
 			return nil
 		}

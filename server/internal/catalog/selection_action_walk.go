@@ -120,7 +120,8 @@ func (s *Service) StepSelectionActionWalk(ctx context.Context, w *SelectionActio
 			if id != 0 {
 				value := selectionactions.Target{EntityID: id, LibraryID: w.query.LibraryID}
 				var parent, added sql.NullInt64
-				err := read.read().QueryRow(`SELECT pid(e.public_id),e.title,k.name,e.parent_id,e.added_ms FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id=? AND l.library_id=? AND e.retired=0`, id, w.query.LibraryID).Scan(&value.ItemID, &value.Title, &value.Kind, &parent, &added)
+				var titleBytes int
+				err := read.read().QueryRow(`SELECT pid(e.public_id),CASE WHEN length(CAST(e.title AS BLOB))<=? THEN e.title ELSE '' END,k.name,e.parent_id,e.added_ms,length(CAST(e.title AS BLOB)) FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id=? AND l.library_id=? AND e.retired=0`, SelectionBatchMaximumBytes, id, w.query.LibraryID).Scan(&value.ItemID, &value.Title, &value.Kind, &parent, &added, &titleBytes)
 				if errors.Is(err, sql.ErrNoRows) {
 					return ErrSelectionBatchStale
 				}
@@ -137,7 +138,7 @@ func (s *Service) StepSelectionActionWalk(ctx context.Context, w *SelectionActio
 				}
 				// Scalar materialization is bounded by the source/store lease, not an
 				// uncharged sample/result cache. A single exceptional title is not truncated.
-				if len(value.Title)+len(value.ItemID)+next.state.Bytes() > SelectionBatchMaximumBytes {
+				if titleBytes > SelectionBatchMaximumBytes || len(value.Title)+len(value.ItemID)+next.state.Bytes() > SelectionBatchMaximumBytes {
 					return ErrSelectionBatchCapacity
 				}
 				target = &value

@@ -730,6 +730,14 @@ func (s *Service) execute(ctx context.Context, c command) error {
 		return nil
 	}
 	err = s.apply(dbwork.WithDurableUser(dbwork.WithOwner(ctx, "selection-actions")), c.principal, c.job.Action, c.options, t, file, checkpoint)
+	// A proved domain refusal (changed file, gone target or policy mismatch) is
+	// not a storage failure. Record it with the same atomic checkpoint; a file
+	// refusal drains the rest of that target without granting final deletion.
+	var refusal *TargetFailure
+	if !checkpointed && errors.As(err, &refusal) && refusal.Code != "" {
+		err = s.write(ctx, func(tx *sql.Tx) error { return checkpoint(tx, Effect{Code: refusal.Code}) })
+	}
+
 	if checkpointed {
 		// Domain code can reconcile an observed unlink, commit its checkpoint,
 		// then return the refusal that stopped further effects. Verify commit:

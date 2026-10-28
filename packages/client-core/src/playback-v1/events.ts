@@ -63,7 +63,7 @@ type Listener = (event: ServerEvent) => void;
 export class EventsClient {
   private readonly o: EventsClientOptions;
   /** Shared by imperative resync reads and the attached freshness hub. */
-  readonly resync: ResyncCoordinator;
+  readonly resyncReads: ResyncCoordinator;
   private listeners = new Map<string, Set<Listener>>();
   private anyListeners = new Set<Listener>();
   private resyncListeners = new Set<() => void>();
@@ -83,7 +83,7 @@ export class EventsClient {
 
   constructor(options: EventsClientOptions) {
     this.o = options;
-    this.resync = new ResyncCoordinator(options);
+    this.resyncReads = new ResyncCoordinator(options);
     this.status = Object.freeze({mode: 'stopped', connected: false, cursor: options.cursor, failures: 0});
     this.setTimer = options.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
     this.clearTimer = options.clearTimer ?? (t => clearTimeout(t as ReturnType<typeof setTimeout>));
@@ -109,7 +109,7 @@ export class EventsClient {
 
   /** Register current-state recovery; barriers install debt synchronously. */
   onResyncRead(read: (context: ResyncReadContext) => Promise<void>, options: {priority?: number; open?: boolean; admission?: 'external'} = {}): ResyncRegistration {
-    return this.resync.register(read, options);
+    return this.resyncReads.register(read, options);
   }
 
   start(): void {
@@ -136,7 +136,7 @@ export class EventsClient {
     if (event.type === 'stream.resync') {
       // Every subscriber marks what it shows as stale before the cursor moves past the gap; a
       // throwing one must not keep the others from hearing it.
-      this.resync.invalidate();
+      this.resyncReads.invalidate();
       this.recent = []; this.recentSet.clear(); this.recentSize = 0;
       for (const listener of [...this.resyncListeners]) { try { listener(); } catch { /* the others still refetch */ } }
       this.setStatus({cursor: event.id});
@@ -234,7 +234,7 @@ export class EventsClient {
         this.setStatus({connected: true});
         if (signal.aborted) return;
         if (raw.resync) {
-          this.resync.invalidate();
+          this.resyncReads.invalidate();
           for (const listener of [...this.resyncListeners]) {try {listener();} catch { /* Install every consumer’s debt. */ }}
           return;
         }

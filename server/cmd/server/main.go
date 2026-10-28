@@ -1404,8 +1404,19 @@ func run() (runErr error) {
 	apiDependencies.SelectionActions = httpapi.NewSelectionActions(apiDependencies)
 	defer apiDependencies.SelectionActions.Close()
 	supervise.Go("cmd.selection-actions", func() {
-		if err := apiDependencies.SelectionActions.Run(ctx); err != nil && ctx.Err() == nil {
-			log.Printf("Selection action worker stopped: %v", err)
+		for ctx.Err() == nil {
+			if err := apiDependencies.SelectionActions.Run(ctx); err != nil && ctx.Err() == nil {
+				log.Printf("Selection action worker paused: %v", err)
+			} else {
+				return
+			}
+			timer := time.NewTimer(time.Second)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return
+			case <-timer.C:
+			}
 		}
 	})
 	handler := httpapi.New(apiDependencies)

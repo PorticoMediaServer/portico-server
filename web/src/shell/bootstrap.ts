@@ -361,7 +361,12 @@ export class ShellBootstrap {
     cleanups.push(() => { freshness.pool.dispose(); freshness.hub.dispose(); });
     const preferences = new PreferencesReader(api, {serverId: session.viewer.serverId, viewerId: viewerId(session)});
     cleanups.push(() => preferences.dispose());
-    const notificationScope = createNotificationScope(api, {serverId: session.viewer.serverId, signal, isCurrent,
+    const notificationApi = {request: <T,>(path: string, method?: string, body?: unknown, requestSignal?: AbortSignal) => {
+      const readSignal = requestSignal ? AbortSignal.any([requestSignal, signal]) : signal;
+      const request = () => api.request<T>(path, method, body, readSignal);
+      return !method || method === 'GET' ? events.resyncReads.run(readSignal, request) : request();
+    }};
+    const notificationScope = createNotificationScope(notificationApi, {serverId: session.viewer.serverId, signal, isCurrent,
       onRetired: () => { if (isCurrent()) this.restart(); }});
     cleanups.push(() => notificationScope.dispose());
     let manifestFence: string | undefined;

@@ -2,7 +2,7 @@ import {routePath} from '../../../../contracts/src/route-paths.ts';
 import {utcOrderKey} from '../../local-session.ts';
 import {call} from '../../playback-v1/http.ts';
 import type {EventsClient} from '../../playback-v1/events.ts';
-type ActivityEvents = Pick<EventsClient, 'on' | 'onResync'> & Partial<Pick<EventsClient, 'resync' | 'onResyncRead'>>;
+type ActivityEvents = Pick<EventsClient, 'on' | 'onResync'> & Partial<Pick<EventsClient, 'resyncReads' | 'onResyncRead'>>;
 import {parseActivitySummary,parseDashboardSessions} from './parser.ts';
 import type {DashboardSessionsSnapshot, ActivitySummaryErrorCode, ActivitySummaryScope, ActivitySummarySnapshot, ActivitySummarySource, ActivitySummarySourceStore, ActivitySummaryTimers, OwnerActivitySummary} from './types.ts';
 
@@ -158,7 +158,7 @@ export class ActivitySummaryService {
         const document = await Promise.race([
           (async () => {
             const request = () => call(source.http, {method: 'GET', path: routePath('get_admin_activity'), headers: {'Cache-Control': 'no-cache, no-store'}, signal: controller.signal}, [200]);
-            const admission = this.readEvents?.resync;
+            const admission = this.readEvents?.resyncReads;
             const response = await (admission && context?.admission !== admission ? admission.run(controller.signal, request) : request());
             return parseActivitySummary(response.body);
           })(),
@@ -275,7 +275,7 @@ export class DashboardSessionsService {
    this.sync();if(epoch!==this.epoch || serial!==this.serial || !same(source,this.current))return;
    const query=new URLSearchParams({limit:String(limit)});if(cursor)query.set('cursor',cursor);
    const request=()=>call(source.http,{method:'GET',path:routePath('list_admin_sessions')+'?'+query,signal:controller.signal});
-   const response=await Promise.race([this.readEvents?.resync?this.readEvents.resync.run(controller.signal,request):request(),timedOut]);
+   const response=await Promise.race([this.readEvents?.resyncReads?this.readEvents.resyncReads.run(controller.signal,request):request(),timedOut]);
    this.sync();if(epoch!==this.epoch || serial!==this.serial || !same(source,this.current))return;
    const document=parseDashboardSessions(response.body);
    if(document.scope.serverId!==source.scope.serverId || this.fence && this.fence!==document.scope.viewerFence || this.observed && utcOrderKey(document.observedAt)<utcOrderKey(this.observed))throw failure('permission_changed');

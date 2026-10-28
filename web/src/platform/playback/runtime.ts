@@ -178,7 +178,7 @@ export class WebShellPlaybackRuntime {
     this.equalizerPort = environment.equalizerPort;
     this.capabilityPublisher = new CapabilityPublisher(localV1Http(source.api), () => JSON.stringify([this.authority.serverId, this.authority.accountId, this.authority.profileId, this.authority.epoch]));
     const inner = localV1Http(source.api);
-    this.channelControl = new V1ChannelControl({http: {send: request => inner.send(request.method === 'DELETE' ? request : {...request, signal: request.signal ? AbortSignal.any([request.signal, this.life.signal]) : this.life.signal})}, key: environment.key, now: environment.timers?.now});
+    this.channelControl = new V1ChannelControl({events: source.events, http: {send: request => inner.send(request.method === 'DELETE' ? request : {...request, signal: request.signal ? AbortSignal.any([request.signal, this.life.signal]) : this.life.signal})}, key: environment.key, now: environment.timers?.now});
     // This is the exact device-queue scope V1QueuePlayer exposes; these are its existing v1
     // controller values, never a Cast/receiver identity or a newly invented server resource.
     this.dock = new PlaybackDock(queueScope({...source.authority, controllerId: 'v1', controllerEpoch: 'v1', commandLaneId: 'v1'}), localScope);

@@ -741,3 +741,34 @@ func TestJournalCommittedRefusalKeepsObservedFileAndFailsTarget(t *testing.T) {
 		t.Fatalf("post-unlink refusal %+v calls=%d err=%v", j, calls, e)
 	}
 }
+
+func TestJournalTypedDomainRefusalCompletesWithoutRetryingEffect(t *testing.T) {
+	for _, files := range []int{0, 1} {
+		t.Run(fmt.Sprint("files-", files), func(t *testing.T) {
+			db := journalOpen(t, filepath.Join(t.TempDir(), "db"), true)
+			calls := 0
+			service := New(db, nil, journalAuth, func(context.Context, identity.Principal, string, Options, Target, *File, func(*sql.Tx, Effect) error) error {
+				calls++
+				return &TargetFailure{Code: "file_changed", Cause: ErrConflict}
+			})
+			defer service.Close()
+			accepted := journalAcceptance("typed-refusal", journalRecords(1, files))
+			if _, err := service.Accept(context.Background(), *accepted); err != nil {
+				t.Fatal(err)
+			}
+			for turn := 0; turn < 20; turn++ {
+				worked, err := service.step(context.Background())
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !worked {
+					break
+				}
+			}
+			job, err := service.Lookup(context.Background(), accepted.Binding, accepted.OperationID)
+			if err != nil || job.State != "failed" || job.Failed != 1 || job.Done != 0 || job.ErrorCode != "file_changed" || calls != 1 {
+				t.Fatalf("job %+v calls%d err%v", job, calls, err)
+			}
+		})
+	}
+}

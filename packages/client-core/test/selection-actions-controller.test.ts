@@ -96,6 +96,14 @@ test('controller disposal detaches a possibly accepted action without implicit c
   const pending = controller.confirm(); await flush(); controller.dispose(); resolve(complete); await pending;
   assert.equal(mock.requests.length, 2); assert.ok(mock.requests.every(r => r.method === 'POST'));
   assert.equal(controller.getSnapshot().job, null); assert.equal(live.listeners.size, 0);
+  const denied = apiWith((_path, _method, body) => {
+    if (body && 'selector' in (body as object)) return preview;
+    throw Object.assign(new Error('revoked'), {status: 403, code: 'not_permitted'});
+  });
+  const revoked = new SelectionActionController({api: denied.api, requestId: async () => 'operation'});
+  await revoked.open(input, source()); revoked.setConfirmation('1000'); await revoked.confirm();
+  assert.equal(revoked.getSnapshot().phase, 'retired'); assert.equal(revoked.getSnapshot().preparation, null);
+  assert.equal(revoked.getSnapshot().job, null); assert.equal(denied.requests.length, 2); revoked.dispose();
 });
 test('controller refuses foreign basis/action/total and expired ready descriptors before confirmation', async () => {
   for (const bad of [{...preview, basis: 'b'.repeat(64)}, {...preview, action: 'download'}, {...preview, expiresAt: '2000-01-01T00:00:00Z'}]) {
@@ -103,4 +111,8 @@ test('controller refuses foreign basis/action/total and expired ready descriptor
     await controller.open(input, source()); await controller.confirm(); assert.equal(controller.getSnapshot().phase, 'error');
     assert.equal(mock.requests.length, 1); controller.dispose();
   }
+  const mock = apiWith(() => preview), controller = new SelectionActionController({api: mock.api, requestId: async () => {throw new Error('must not choose id');}});
+  await controller.open(input, {...source(), expectedTotal: 999});
+  assert.equal(controller.getSnapshot().phase, 'error'); assert.equal(controller.getSnapshot().job, null);
+  controller.dispose();
 });

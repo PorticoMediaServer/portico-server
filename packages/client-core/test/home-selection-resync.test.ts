@@ -22,7 +22,7 @@ test('a resync wakes the actual job status wait immediately and never resubmits 
     assert.equal(calls.filter(c => c.method !== 'POST').length, 2);
     assert.equal(tasks[0]!.request.operationId, 'original-operation'); assert.equal(tasks[0]!.job?.state, 'complete');
     assert.equal(tasks[0]!.observed, true);
-  } finally {controller.abort(); feed.resync.dispose();}
+  } finally {controller.abort(); feed.resyncReads.dispose();}
 });
 
 test('resync debt arriving during a held status GET is retained through its stale answer', async () => {
@@ -40,7 +40,7 @@ test('resync debt arriving during a held status GET is retained through its stal
     for (let i = 0; i < 20; i++) feed.deliver({id: `gap-${i}`, type: 'stream.resync'});
     release(); await running;
     assert.equal(gets, 2); assert.equal(posts, 1); assert.equal(tasks[0]!.job?.state, 'complete');
-  } finally {release(); controller.abort(); feed.resync.dispose();}
+  } finally {release(); controller.abort(); feed.resyncReads.dispose();}
 });
 
 test('cancelled job observation releases its resync wake and leaves the genuine job for later reconciliation', async () => {
@@ -51,5 +51,5 @@ test('cancelled job observation releases its resync wake and leaves the genuine 
     await tick(); controller.abort(); await assert.rejects(running, /cancelled/);
     const before = requests; feed.deliver({id: 'retired-job', type: 'stream.resync'}); await tick();
     assert.equal(requests, before); assert.equal(tasks[0]!.job?.jobId, 'job-1'); assert.equal(tasks[0]!.observed, false);
-  } finally {controller.abort(); feed.resync.dispose();}
+  } finally {controller.abort(); feed.resyncReads.dispose();}
 });

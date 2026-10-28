@@ -143,7 +143,7 @@ function setup(options: {nativeFor?: (kind: string) => boolean; refuse?: boolean
   if (options.refuse) owner.adopt = async () => { throw new Error('native owner closed'); };
   const player = new V1QueuePlayer({http, api, playback, viewer, key: () => `q${++serial}-key-000000`, pendingPollMs: 10, events: events as never, native: owner, nativeFor: options.nativeFor ?? (kind => kind === 'song')});
   const disconnect = player.connect();
-  const stop = () => {disconnect(); events.resync.dispose();};
+  const stop = () => {disconnect(); events.resyncReads.dispose();};
   const jsTimeline = () => log.filter(r => r.path.endsWith('/observation')).length;
   return {server, api, playback, player, owner, log, stop, jsTimeline, ownerHttp, emitEvent, events};
 }
