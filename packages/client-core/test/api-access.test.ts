@@ -49,7 +49,7 @@ test('scope presets map to exact scope sets and back', () => {
 });
 
 test('credential services call the documented routes', async () => {
- const page=recorder({items:[credential],limit:100});
+ const page=recorder({items:[credential],limit:100,total:1});
  assert.equal((await listApiKeys(page.transport,'next page')).items.length,1);
  assert.equal(page.calls[0].path,'/v1/admin/api-keys?limit=100&cursor=next%20page');
  await listAccessTokens(page.transport,'own next page');
@@ -129,4 +129,11 @@ test('a webhook edit made against an older copy is sent again quietly unless the
  assert.equal(webhookChangeApplies(was,parseWebhook({...webhook,revision:8}),{rotateSecret:true}),'send');
  assert.deepEqual(webhookEdits(was,{name:'Home',url:webhook.url,events:['a.future.event','playback.started']}),{});
  assert.deepEqual(webhookEdits(was,{name:'Hall',url:webhook.url,events:[...was.events]}),{name:'Hall'});
+});
+
+test('a credential page carries the exact total across pages and refuses a page without one', async () => {
+ const page=recorder({items:[credential],limit:100,total:250});
+ assert.equal((await listApiKeys(page.transport)).total,250);
+ await assert.rejects(listApiKeys(recorder({items:[credential],limit:100}).transport));
+ await assert.rejects(listApiKeys(recorder({items:[credential],limit:100,total:-1}).transport));
 });

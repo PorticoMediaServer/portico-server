@@ -78,7 +78,8 @@ export type ApiCredential=Readonly<{id:string;kind:ApiCredentialKind;name:string
  expiresAt?:string;lastUsedAt?:string;state:ApiCredentialState;endedReason?:string;member:ApiCredentialMember}>;
 /** The answer to a create. `secret` is present only the first time the request is answered. */
 export type IssuedApiCredential=Readonly<{credential:ApiCredential;secret?:string}>;
-export type ApiCredentialPage=Readonly<{items:readonly ApiCredential[];limit:number;nextCursor?:string}>;
+/** `total` is the exact count under the same filters, across every page. */
+export type ApiCredentialPage=Readonly<{items:readonly ApiCredential[];limit:number;total:number;nextCursor?:string}>;
 export type ApiAccessOptions=Readonly<{scopes:readonly ApiScope[];maximumKeys:number;maximumTokens:number;tokensAllowed:boolean;requestsPerMinute:number;/** The query parameter a key or token may travel in on a GET, for an address that works on its own. */queryParameter:string}>;
 export type NewApiCredential=Readonly<{operationId:string;name:string;scopes:readonly ApiScope[];expiresAt?:string}>;
 
@@ -103,7 +104,7 @@ export function parseIssuedApiCredential(raw:unknown):IssuedApiCredential{
 }
 export function parseApiCredentialPage(raw:unknown):ApiCredentialPage{
  if(!object(raw))return invalid('credential page');
- return Object.freeze({items:list(raw.items,100,parseApiCredential,'credential page items'),limit:whole(raw.limit,'credential page limit'),nextCursor:optional(raw.nextCursor,512,'credential page cursor')});
+ return Object.freeze({items:list(raw.items,100,parseApiCredential,'credential page items'),limit:whole(raw.limit,'credential page limit'),total:whole(raw.total,'credential page total'),nextCursor:optional(raw.nextCursor,512,'credential page cursor')});
 }
 export function parseApiAccessOptions(raw:unknown):ApiAccessOptions{
  if(!object(raw))return invalid('api access options');
