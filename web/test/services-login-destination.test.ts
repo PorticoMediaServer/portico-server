@@ -85,3 +85,19 @@ test('provider failures stay visible with an active family or an original server
     }finally{h.dispose();}
   }}finally{if(previous)Object.defineProperty(globalThis,'location',previous);else Reflect.deleteProperty(globalThis,'location');}
 });
+
+
+test('a provider return explicitly holds boot while the signed-out coordinator is ready', async()=>{
+  const previous=Object.getOwnPropertyDescriptor(globalThis,'location');
+  Object.defineProperty(globalThis,'location',{configurable:true,value:{pathname:'/',search:''}});
+  const h=createRenderer();let Root!:()=>unknown;const ready:unknown[]=[];
+  const context={providerReturn:true,invalidContinuation:false,account:{service:{subscribe:()=>()=>{},getSnapshot:()=>({phase:'signedOut'})}},bootstrap:{subscribe:()=>()=>{},getSnapshot:()=>({phase:'ready'})}};
+  try{
+    await componentModule(new URL('../src/services/ServicesApp.tsx',import.meta.url),{
+      react:h.react,'./i18n':{servicesI18n:()=>({t:(key:string)=>key})},
+      '../shell/DocumentBootReady':{DocumentBootReady:({ready: value,children}:{ready?:boolean;children:unknown})=>{ready.push(value);return children;}},
+      '@tanstack/react-router':{createRootRouteWithContext:()=> (options:{component:()=>unknown})=>{Root=options.component;return {useRouteContext:()=>context};},createRoute:(x:unknown)=>x,Outlet:()=>null},
+    });
+    h.render(Root);assert.deepEqual(ready,[false],'undefined would enable DocumentBootReady default=true');
+  }finally{h.dispose();if(previous)Object.defineProperty(globalThis,'location',previous);else Reflect.deleteProperty(globalThis,'location');}
+});

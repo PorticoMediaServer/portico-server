@@ -76,7 +76,7 @@ function ServicesRoot() {
   // A signed-out account is a resolved opening too. Public email links and the
   // sign-in shell must retire the same static first paint as the server app.
   const waitingForAuth = providerReturn || !session && (location.pathname === '/' || location.pathname === '/account');
-  return <ProviderFailureContext.Provider value={providerFailure}><DocumentBootReady ready={!waitingForAuth || state.phase === 'error' || Boolean(providerFailure && session) || invalidContinuation || state.invalidSignIn || state.invalidOwner}>{state.phase === 'error'
+  return <ProviderFailureContext.Provider value={providerFailure}><DocumentBootReady ready={Boolean(!waitingForAuth || state.phase === 'error' || providerFailure && session || invalidContinuation || state.invalidSignIn || state.invalidOwner)}>{state.phase === 'error'
     ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
       primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => { void bootstrap.start(); }}} />
     : providerFailure && session ? <ServicesAuthStage variant="state"><ServicesHeading>{t('auth.welcomeHome')}</ServicesHeading><ServicesNotice tone="error">{providerFailure === 'unknown' ? t('web.link.invalid') : t('services.provider.stopped', {provider: t(providerFailure === 'apple' ? 'accounts.provider.apple' : 'accounts.provider.google')})}</ServicesNotice><ServicesActions><Button variant="primary" onClick={() => location.assign(location.pathname === '/account' ? '/account?tab=security' : '/')}>{t('action.continue')}</Button></ServicesActions></ServicesAuthStage>
