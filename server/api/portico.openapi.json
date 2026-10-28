@@ -34519,6 +34519,21 @@
                     "hidden": {
                       "type": "boolean"
                     },
+                    "mark": {
+                      "properties": {
+                        "seed": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "text",
+                        "seed"
+                      ],
+                      "type": "object"
+                    },
                     "name": {
                       "type": "string"
                     },
@@ -34546,7 +34561,8 @@
                     "guideChannelId",
                     "hidden",
                     "position",
-                    "overridden"
+                    "overridden",
+                    "mark"
                   ],
                   "type": "object"
                 },
@@ -256600,6 +256616,21 @@
                     "hidden": {
                       "type": "boolean"
                     },
+                    "mark": {
+                      "properties": {
+                        "seed": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "text",
+                        "seed"
+                      ],
+                      "type": "object"
+                    },
                     "name": {
                       "type": "string"
                     },
@@ -256627,7 +256658,8 @@
                     "guideChannelId",
                     "hidden",
                     "position",
-                    "overridden"
+                    "overridden",
+                    "mark"
                   ],
                   "type": "object"
                 },
@@ -330514,6 +330546,21 @@
                               "hidden": {
                                 "type": "boolean"
                               },
+                              "mark": {
+                                "properties": {
+                                  "seed": {
+                                    "type": "string"
+                                  },
+                                  "text": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "text",
+                                  "seed"
+                                ],
+                                "type": "object"
+                              },
                               "name": {
                                 "type": "string"
                               },
@@ -330541,7 +330588,8 @@
                               "guideChannelId",
                               "hidden",
                               "position",
-                              "overridden"
+                              "overridden",
+                              "mark"
                             ],
                             "type": "object"
                           },
@@ -330715,6 +330763,21 @@
                               "hidden": {
                                 "type": "boolean"
                               },
+                              "mark": {
+                                "properties": {
+                                  "seed": {
+                                    "type": "string"
+                                  },
+                                  "text": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "text",
+                                  "seed"
+                                ],
+                                "type": "object"
+                              },
                               "name": {
                                 "type": "string"
                               },
@@ -330742,7 +330805,8 @@
                               "guideChannelId",
                               "hidden",
                               "position",
-                              "overridden"
+                              "overridden",
+                              "mark"
                             ],
                             "type": "object"
                           },

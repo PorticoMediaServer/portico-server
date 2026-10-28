@@ -316,7 +316,7 @@ func (s *Store) ChannelDirectory(ctx context.Context, a DirectoryAuthority, q Di
 		err = rows.Err()
 		rows.Close()
 		if err == nil {
-			err = directoryMarks(ctx, tx, scope, q, out.Channels)
+			err = s.directoryMarks(ctx, tx, scope, out.Channels)
 		}
 		return err
 	})
