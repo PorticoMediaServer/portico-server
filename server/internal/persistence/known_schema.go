@@ -758,6 +758,7 @@ index screen_metadata_candidate_target
 index screen_metadata_children
 index screen_metadata_due
 index screen_metadata_fanout_due
+index screen_metadata_fanout_served
 index screen_metadata_fanout_walk
 index screen_metadata_library
 index screen_metadata_publication_target

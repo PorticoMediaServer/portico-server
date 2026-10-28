@@ -23,11 +23,6 @@ const (
 	artworkFanoutRowLimit = 30
 )
 
-var screenPolicyConsentPlan = dbwork.WritePlan{
-	Name: "screen-policy-consent-200-libraries", Rows: 2048, Pages: 512, VMOps: 2_000_000,
-	Why: "the immediate global TVDB publication fence and consent markers touch each screen library; this approved residual is measured at 200 libraries, not bounded in library count",
-}
-
 var screenFanoutPlan = dbwork.WritePlan{
 	Name: "screen-policy-fanout-quantum", Rows: 160, Pages: 256, VMOps: 250_000,
 	Why: "one atomic raw-keyset quantum: twelve screen base rows plus <=84 attention/count, browse revision/hint, artwork and identity-lock child effects and two marker writes; or thirty artwork heads",
@@ -67,7 +62,7 @@ func (s *Service) ScreenFanoutStep(ctx context.Context) error {
 	defer w.Rollback()
 	tx := w.Tx()
 	var m screenFanoutMarker
-	err = tx.QueryRowContext(ctx, `SELECT library_id,effect,generation,pass_generation,rematch,pass_rematch,after_kind,after_id,upper_kind,upper_id,last_served_ms,attempts FROM screen_metadata_fanout WHERE pending=1 AND next_attempt_ms<=? ORDER BY last_served_ms,library_id,effect LIMIT 1`, now).Scan(
+	err = tx.QueryRowContext(ctx, `SELECT library_id,effect,generation,pass_generation,rematch,pass_rematch,after_kind,after_id,upper_kind,upper_id,last_served_ms,attempts FROM screen_metadata_fanout WHERE pending=1 AND next_attempt_ms<=? ORDER BY next_attempt_ms,last_served_ms,library_id,effect LIMIT 1`, now).Scan(
 		&m.library, &m.effect, &m.generation, &m.passGeneration, &m.rematch, &m.passRematch, &m.afterKind, &m.afterID, &m.upperKind, &m.upperID, &m.lastServed, &m.attempts)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
@@ -161,10 +156,10 @@ func (s *Service) screenFanoutQuantum(ctx context.Context, tx *sql.Tx, m *screen
 		_, err := tx.ExecContext(ctx, `UPDATE screen_metadata_fanout SET served_generation=pass_generation,
  rematch=CASE WHEN pass_rematch=1 AND rerun=0 THEN 0 ELSE rematch END,
  pending=rerun,pass_generation=0,pass_rematch=0,after_kind='',after_id=0,upper_kind='',upper_id=0,
- attempts=0,next_attempt_ms=0,error_code='',last_served_ms=`+stamp+` WHERE library_id=? AND effect=?`, now, m.library, m.effect)
+ attempts=0,next_attempt_ms=?,error_code='',last_served_ms=`+stamp+` WHERE library_id=? AND effect=?`, now, now, m.library, m.effect)
 		return err
 	}
-	_, err := tx.ExecContext(ctx, `UPDATE screen_metadata_fanout SET after_kind=?,after_id=?,attempts=0,next_attempt_ms=0,error_code='',last_served_ms=`+stamp+` WHERE library_id=? AND effect=?`, m.afterKind, m.afterID, now, m.library, m.effect)
+	_, err := tx.ExecContext(ctx, `UPDATE screen_metadata_fanout SET after_kind=?,after_id=?,attempts=0,next_attempt_ms=?,error_code='',last_served_ms=`+stamp+` WHERE library_id=? AND effect=?`, m.afterKind, m.afterID, now, now, m.library, m.effect)
 	return err
 }
 

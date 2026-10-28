@@ -214,7 +214,7 @@ func (s *Service) claimTVDBProjection(ctx context.Context) (*tvdbPublication, er
 		return nil, tvdbProblem("invalid_job")
 	}
 	var valid bool
-	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM tvdb_publication_sets WHERE show_id=? AND incarnation=? AND generation=? AND provider_id=? AND episode_order=? AND policy_incarnation=? AND policy_revision=? AND complete=1)`, p.ShowID, p.Set, p.Generation, p.Provider, p.Order, p.Policy, p.PolicyRevision).Scan(&valid); err != nil {
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM tvdb_publication_sets WHERE show_id=? AND incarnation=? AND generation=? AND provider_id=? AND episode_order=? AND policy_incarnation=? AND policy_revision=? AND consent_revision=? AND complete=1)`, p.ShowID, p.Set, p.Generation, p.Provider, p.Order, p.Policy, p.PolicyRevision, p.ConsentRevision).Scan(&valid); err != nil {
 		return nil, err
 	}
 	if valid {
@@ -232,7 +232,7 @@ func (s *Service) claimTVDBProjection(ctx context.Context) (*tvdbPublication, er
 		return nil, gated.Commit()
 	}
 	after := ""
-	err = tx.QueryRowContext(ctx, `SELECT after_item FROM tvdb_projection_coverage WHERE show_id=? AND set_incarnation=? AND set_revision=? AND source_revision=? AND hierarchy_revision=? AND selection_revision=? AND policy_incarnation=? AND policy_revision=?`, p.ShowID, p.Set, p.SetRevision, p.Source, p.Hierarchy, p.Selection, p.Policy, p.PolicyRevision).Scan(&after)
+	err = tx.QueryRowContext(ctx, `SELECT after_item FROM tvdb_projection_coverage WHERE show_id=? AND set_incarnation=? AND set_revision=? AND source_revision=? AND hierarchy_revision=? AND selection_revision=? AND policy_incarnation=? AND policy_revision=? AND consent_revision=?`, p.ShowID, p.Set, p.SetRevision, p.Source, p.Hierarchy, p.Selection, p.Policy, p.PolicyRevision, p.ConsentRevision).Scan(&after)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
@@ -368,7 +368,7 @@ func (s *Service) publishTVDBProjection(ctx context.Context, p tvdbPublication) 
 	if complete {
 		status = "complete"
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO tvdb_projection_coverage(show_id,set_incarnation,set_revision,source_revision,hierarchy_revision,selection_revision,policy_incarnation,policy_revision,after_item,complete) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(show_id) DO UPDATE SET set_incarnation=excluded.set_incarnation,set_revision=excluded.set_revision,source_revision=excluded.source_revision,hierarchy_revision=excluded.hierarchy_revision,selection_revision=excluded.selection_revision,policy_incarnation=excluded.policy_incarnation,policy_revision=excluded.policy_revision,after_item=excluded.after_item,complete=excluded.complete`, p.ShowID, p.Set, p.SetRevision, p.Source, p.Hierarchy, p.Selection, p.Policy, p.PolicyRevision, after, complete); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO tvdb_projection_coverage(show_id,set_incarnation,set_revision,source_revision,hierarchy_revision,selection_revision,policy_incarnation,policy_revision,consent_revision,after_item,complete) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(show_id) DO UPDATE SET set_incarnation=excluded.set_incarnation,set_revision=excluded.set_revision,source_revision=excluded.source_revision,hierarchy_revision=excluded.hierarchy_revision,selection_revision=excluded.selection_revision,policy_incarnation=excluded.policy_incarnation,policy_revision=excluded.policy_revision,consent_revision=excluded.consent_revision,after_item=excluded.after_item,complete=excluded.complete`, p.ShowID, p.Set, p.SetRevision, p.Source, p.Hierarchy, p.Selection, p.Policy, p.PolicyRevision, p.ConsentRevision, after, complete); err != nil {
 		return err
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE tvdb_jobs SET status=?,apply_after=?,attempts=0,error='',retry_status='',next_attempt='',revision=revision+1 WHERE show_id=?`, status, after, p.ShowID); err != nil {

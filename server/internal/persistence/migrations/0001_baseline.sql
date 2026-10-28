@@ -1911,6 +1911,7 @@ CREATE TABLE tvdb_publication_sets(
  incarnation TEXT NOT NULL DEFAULT(lower(hex(randomblob(16)))),
  generation INTEGER NOT NULL CHECK(generation>0),provider_id INTEGER NOT NULL CHECK(provider_id>0),
  episode_order TEXT NOT NULL CHECK(episode_order IN('official','dvd','absolute','default','alternate','regional')),
+ consent_revision INTEGER NOT NULL DEFAULT 1 CHECK(consent_revision>0),
  policy_incarnation TEXT NOT NULL,policy_revision INTEGER NOT NULL CHECK(policy_revision>0),
  revision INTEGER NOT NULL DEFAULT 1 CHECK(typeof(revision)='integer' AND revision>0),
  complete INTEGER NOT NULL DEFAULT 0 CHECK(complete IN(0,1)),
@@ -1936,6 +1937,7 @@ CREATE TABLE tvdb_projection_coverage(
  show_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,
  set_incarnation TEXT NOT NULL,set_revision INTEGER NOT NULL,
  source_revision INTEGER NOT NULL,hierarchy_revision INTEGER NOT NULL,selection_revision INTEGER NOT NULL,
+ consent_revision INTEGER NOT NULL DEFAULT 1 CHECK(consent_revision>0),
  policy_incarnation TEXT NOT NULL,policy_revision INTEGER NOT NULL,
  after_item TEXT NOT NULL DEFAULT '',complete INTEGER NOT NULL DEFAULT 0 CHECK(complete IN(0,1))) STRICT;
 CREATE TABLE tvdb_publication_operations(
@@ -5482,12 +5484,10 @@ CREATE TRIGGER w2i01_screen_artwork_policy AFTER UPDATE ON screen_metadata_polic
  pending=1,rerun=1,
  next_attempt_ms=MIN(next_attempt_ms,CAST(unixepoch('subsec')*1000 AS INTEGER)+30000);
 END;
-CREATE TRIGGER w2i01_screen_artwork_consent AFTER UPDATE ON screen_metadata_consent BEGIN
- INSERT INTO screen_metadata_fanout(library_id,effect) SELECT p.library_id,'screen' FROM screen_metadata_policies p WHERE 1
- ON CONFLICT(library_id,effect) DO UPDATE SET
- generation=CASE WHEN generation<9223372036854775807 THEN generation+1 ELSE generation END,
- pending=1,rerun=1,
- next_attempt_ms=MIN(next_attempt_ms,CAST(unixepoch('subsec')*1000 AS INTEGER)+30000);
+CREATE TRIGGER w2i01_screen_artwork_consent AFTER UPDATE ON screen_metadata_consent
+ WHEN NEW.revision IS NOT OLD.revision BEGIN
+ INSERT INTO metadata_lookup_fanout(effect) VALUES('screen_consent')
+ ON CONFLICT(effect) DO UPDATE SET generation=generation+1,pending=1,rerun=1,next_attempt_ms=0;
 END;
 CREATE TRIGGER w2i01_music_artwork_identity AFTER UPDATE OF selected_id,generation ON mb_jobs WHEN NEW.kind='album' BEGIN INSERT INTO artwork_dirty VALUES('album',NEW.entity_id) ON CONFLICT(kind,entity_id) DO NOTHING;END;
 CREATE TRIGGER metadata_publication_metadata_tags_INSERT AFTER INSERT ON metadata_tags
@@ -11672,13 +11672,14 @@ CREATE TABLE screen_metadata_fanout(
  error_code TEXT NOT NULL DEFAULT '',
  PRIMARY KEY(library_id,effect)
 ) WITHOUT ROWID, STRICT;
-CREATE INDEX screen_metadata_fanout_due ON screen_metadata_fanout(last_served_ms,library_id,effect,next_attempt_ms) WHERE pending=1;
+CREATE INDEX screen_metadata_fanout_due ON screen_metadata_fanout(next_attempt_ms,last_served_ms,library_id,effect) WHERE pending=1;
+CREATE INDEX screen_metadata_fanout_served ON screen_metadata_fanout(last_served_ms) WHERE pending=1;
 CREATE INDEX screen_metadata_fanout_walk ON screen_metadata_work(library_id,target_kind,target_id);
 
--- Global online policy mutation intent: at most six fixed policy classes.
+-- Global policy mutation intent: at most seven fixed policy classes.
 -- No per-query result/work, payload, or per-item queue is retained here.
 CREATE TABLE metadata_lookup_fanout(
- effect TEXT PRIMARY KEY CHECK(effect IN('screen','mb','tvdb','artwork','screen_retry','subtitles')),
+ effect TEXT PRIMARY KEY CHECK(effect IN('screen','mb','tvdb','artwork','screen_retry','subtitles','screen_consent')),
  generation INTEGER NOT NULL DEFAULT 1 CHECK(generation>0),
  served_generation INTEGER NOT NULL DEFAULT 0 CHECK(served_generation>=0 AND served_generation<=generation),
  pass_generation INTEGER NOT NULL DEFAULT 0 CHECK(pass_generation>=0 AND pass_generation<=generation),
