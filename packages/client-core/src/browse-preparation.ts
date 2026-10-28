@@ -12,6 +12,17 @@ function capture<T>(value: T): T {
 type Lifetime = Readonly<{signal?: AbortSignal; isCurrent: () => boolean; runtime?: Partial<PreparationRuntime>}>;
 const object = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 
+function current(lifetime: Lifetime): void {
+  if (lifetime.signal?.aborted || !lifetime.isCurrent()) throw Object.assign(new Error('Browse read retired'), {name: 'AbortError'});
+}
+function legacyReady(body: unknown): unknown {
+  // Body-only ports cannot expose status. An explicit pending body is never a 200.
+  if (object(body) && (body.state === 'preparing' || typeof body.kind === 'string' && body.kind.endsWith('-preparing'))) {
+    throw new PreparationProtocolError('invalid_preparing');
+  }
+  return body;
+}
+
 /** A handle from another domain is never usable. */
 export function parseBrowsePreparing(body: unknown, domain: Domain, response?: PreparationResponse): PreparingRead {
   if (!object(body) || body.kind !== `${domain}-preparing` || body.state !== 'preparing'
@@ -54,7 +65,10 @@ export async function readBrowsePage(api: LibraryContentApi, libraryId: string, 
   const refreshed = object(captured) ? capture(Object.fromEntries(Object.entries(captured).filter(([key]) => key !== 'cursor').map(([key, value]) =>
     [key, key === 'range' && object(value) ? {start: value.start} : value]))) : captured;
   const path = browsePath(libraryId);
-  if (!api.requestRaw) return {page: parseBrowseResult(await api.request(path, 'POST', captured, lifetime.signal))};
+  if (!api.requestRaw) {
+    current(lifetime); const value = await api.request(path, 'POST', captured, lifetime.signal); current(lifetime);
+    return {page: parseBrowseResult(legacyReady(value))};
+  }
   const raw = api.requestRaw.bind(api);
   const result = await readPreparation({api: {requestRaw: (target, method, options) => raw(target, target === path && method === 'GET' ? 'POST' : method,
     {...options, ...(target === path && method === 'GET' ? {body: reanchor ? refreshed : captured} : {})}).then(response => {
@@ -70,7 +84,10 @@ export async function readBrowsePage(api: LibraryContentApi, libraryId: string, 
 
 /** Reading offset facets retain the exact ready DTO. SIMPLE has its own adapter. */
 export async function readReadingFacet(api: LibraryContentApi, libraryId: string, path: string, field: string, lifetime: Lifetime): Promise<BrowseFacetPage> {
-  if (!api.requestRaw) return parseBrowseFacets(await api.request(path, 'GET', undefined, lifetime.signal), field);
+  if (!api.requestRaw) {
+    current(lifetime); const value = await api.request(path, 'GET', undefined, lifetime.signal); current(lifetime);
+    return parseBrowseFacets(legacyReady(value), field);
+  }
   const result = await readPreparation({api: {requestRaw: api.requestRaw.bind(api)}, descriptor: Object.freeze({libraryId, path, field}),
     paths: {initial: d => d.path, refresh: d => d.path,
       poll: (id, d) => queryPath('reading-facet', d.libraryId, id), cancel: (id, d) => queryPath('reading-facet', d.libraryId, id, true)},
@@ -90,7 +107,8 @@ export async function readBrowseSelection(api: LibraryContentApi, libraryId: str
   const raw = api.requestRaw.bind(api);
   const basis = capture(page), body = capture(originalBody);
   const refreshPath = browsePath(libraryId);
-  const result = await readPreparation({api: {requestRaw: (path, method, options) => {
+  let result: Awaited<ReturnType<typeof readPreparation<WholeSelectionPage, BrowseWholeSelection>>>;
+  try {result = await readPreparation({api: {requestRaw: (path, method, options) => {
     if (seeded && method === 'GET') {seeded = false; return Promise.resolve({status: 202, headers: response.headers, body: pending});}
     if (path === refreshPath && method === 'GET') return raw(path, 'POST', {...options, body}).then(reply => {
       if (reply.status !== 200 || !object(reply.body)) return reply;
@@ -111,6 +129,7 @@ export async function readBrowseSelection(api: LibraryContentApi, libraryId: str
       if (!whole || whole.libraryId !== libraryId) throw Object.assign(new Error('browse-selection-basis-changed'), {code: 'stale_continuation', response: metadata});
       return whole;
     }, parsePreparing: (value, metadata) => parseBrowsePreparing(value, 'browse-selection', metadata),
-    errorFromResponse: browsePreparationError, ...lifetime});
+    errorFromResponse: browsePreparationError, ...lifetime});}
+  catch (error) {if (seeded) releaseBrowseSelection(api, libraryId, response); throw error;}
   return result.value;
 }
