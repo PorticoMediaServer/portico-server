@@ -311,9 +311,10 @@ export class PersonalSavedService{
    // A list paged further than its first page stays where the viewer is (a move, a removal deep in a collection).
    if(!deleted&&!((this.state.history.length||this.seen>PAGE)&&await this.readThrough({}).catch(()=>false)))await this.refresh();return this.alive(g);
   }catch(e){if(!this.alive(g))return false;const error=info(e);this.publish({pending:false,retryPending:true,mutationError:error});if(error.conflict)await this.refresh();
-   // A move made while the collection changed elsewhere is made again on what is there now, once:
-   // the entries it names still say what the viewer meant. The viewer sees a conflict only if that fails too.
-   if(error.conflict&&c.intent.action==='reorder'&&!c.rebased&&this.alive(g)&&this.command===c){this.command=undefined;const again=await this.mutate(c.intent,true);return again;}
+   // A single entry moved while the collection changed elsewhere is moved again on what is there now,
+   // once: it and its anchor still say what the viewer meant. Several entries carry an order read
+   // from the old revision, so they surface the conflict and the viewer decides (`rebase`).
+   if(error.conflict&&c.intent.action==='reorder'&&c.intent.entryIds.length===1&&!c.rebased&&this.alive(g)&&this.command===c){this.command=undefined;const again=await this.mutate(c.intent,true);return again;}
    return false;}
  }
  /** Network retry is byte-identical. Rebase is a separate, explicit reviewed intent. */
