@@ -692,6 +692,8 @@ index screen_metadata_children
 index screen_metadata_due
 index screen_metadata_library
 index screen_metadata_publication_target
+index screen_metadata_refresh_sweep
+index screen_metadata_refresh_sweep_waiting
 index screen_metadata_work_target
 index screen_publications_provider
 index search_history_recent

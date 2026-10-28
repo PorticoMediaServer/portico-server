@@ -126,11 +126,14 @@ func TestAStaleDocumentIsAskedForConditionally(t *testing.T) {
 		t.Fatal(e)
 	}
 	p.notModified = true
+	// Settling already asked the provider itself once (an admitted refresh never uses the
+	// response cache), so count from here.
+	before := p.conditional
 	publicationExec(t, db, `UPDATE screen_metadata_work SET status='pending',lease='',lease_until='' WHERE target_id=?`, item.ID)
 	if e := s.ScreenStep(ctx); e != nil {
 		t.Fatal(e)
 	}
-	if p.conditional != 1 {
+	if p.conditional != before+1 {
 		t.Fatalf("a stale document was not asked for conditionally: %d details, %d conditional", p.details, p.conditional)
 	}
 	if p.sentETag != `W/"v1"` {
@@ -141,7 +144,7 @@ func TestAStaleDocumentIsAskedForConditionally(t *testing.T) {
 	if e := s.ScreenStep(ctx); e != nil {
 		t.Fatal(e)
 	}
-	if p.conditional != 1 {
+	if p.conditional != before+1 {
 		t.Fatal("a 304 did not renew the freshness window", p.conditional)
 	}
 	if publicationScalar(t, db, `SELECT provider_id FROM screen_metadata_work WHERE target_id=?`, item.ID) != "42" {

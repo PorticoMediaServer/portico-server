@@ -5,8 +5,12 @@ import (
 	"database/sql"
 	"fmt"
 	"portico.local/server/internal/capabilityreport"
-	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/supervise"
+	"slices"
+	"sync"
+	"time"
 
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/metadatalanguage"
@@ -63,6 +67,9 @@ func (s *Service) ConfigureDelivery(settings DeliverySettings, preferences Deliv
 	s.deliverySettings = settings
 	s.deliveryPreferences = preferences
 	s.hardware = hardware
+	// Discover the adapters now, off the request path, so the first session
+	// resolves the owner's Device choice from a known inventory.
+	s.cachedHardwareDevices()
 	s.hardwareFFmpeg = ffmpeg
 }
 
@@ -75,7 +82,7 @@ func (s *Service) DeliveryConfiguration() DeliveryConfiguration {
 // HardwareReport probes every backend for the owner capacity read. A server
 // without a detector reports software only, which is the truth for it.
 func (s *Service) HardwareReport(ctx context.Context) []decoder.HardwareProbe {
-	cfg := s.DeliveryConfiguration()
+	cfg := s.hardwareConfiguration(ctx, s.DeliveryConfiguration())
 	if s.hardware == nil || s.hardwareFFmpeg == "" {
 		return []decoder.HardwareProbe{{Backend: decoder.BackendSoftware, Available: true, Reason: decoder.ProbeAvailable, Encoder: "libx264"}}
 	}
@@ -88,13 +95,86 @@ func (s *Service) HardwareReport(ctx context.Context) []decoder.HardwareProbe {
 // probe: a cold cache answers software-and-warming now, exactly as a session
 // would, and the background warm-up fills the cache for the next read.
 func (s *Service) HardwareSelection(ctx context.Context) decoder.HardwareProbe {
-	cfg := s.DeliveryConfiguration()
+	cfg := s.hardwareConfiguration(ctx, s.DeliveryConfiguration())
 	if s.hardware == nil || s.hardwareFFmpeg == "" || cfg.HardwareBackend == string(decoder.BackendSoftware) {
 		return decoder.HardwareProbe{Backend: decoder.BackendSoftware, Available: true, Reason: decoder.ProbeDisabled}
 	}
 	probe, err := s.hardware.SelectCachedContext(ctx, s.hardwareFFmpeg, cfg.HardwareBackend, cfg.HardwareDevice)
 	if err != nil {
 		return decoder.HardwareProbe{Backend: decoder.BackendSoftware, Reason: decoder.ProbeTimedOut}
+	}
+	return withoutHardwareDecode(probe, cfg)
+}
+
+// hardwareInventory is the adapters the last discovery found. Discovery can
+// start a process (nvidia-smi), so it never runs on a session start: a stale
+// list is refreshed in the background and the last answer is used meanwhile.
+type hardwareInventory struct {
+	mu        sync.Mutex
+	devices   []decoder.HardwareDevice
+	at        time.Time
+	known     bool
+	refreshes bool
+}
+
+const hardwareInventoryAge = 5 * time.Minute
+
+// cachedHardwareDevices answers from the last discovery and starts a refresh when
+// it is missing or old. ok is false until a discovery has finished once.
+func (s *Service) cachedHardwareDevices() ([]decoder.HardwareDevice, bool) {
+	inv := &s.adapters
+	inv.mu.Lock()
+	defer inv.mu.Unlock()
+	if (!inv.known || time.Since(inv.at) > hardwareInventoryAge) && !inv.refreshes && s.hardware != nil {
+		inv.refreshes = true
+		supervise.Go("playback.hardware-inventory", func() {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+			defer cancel()
+			defer func() { inv.mu.Lock(); inv.refreshes = false; inv.mu.Unlock() }()
+			s.HardwareDevices(ctx)
+		})
+	}
+	return inv.devices, inv.known
+}
+
+func (s *Service) rememberHardwareDevices(devices []decoder.HardwareDevice) {
+	s.adapters.mu.Lock()
+	defer s.adapters.mu.Unlock()
+	s.adapters.devices, s.adapters.at, s.adapters.known, s.adapters.refreshes = devices, time.Now(), true, false
+}
+
+// hardwareConfiguration applies the owner's Device choice. "auto" leaves the
+// backend and device as configured; "software" converts on the processor; an
+// adapter id converts on that adapter alone, by whichever of its backends
+// probes. An id no adapter has any more, an adapter with no usable backend or
+// device path, or an inventory not yet discovered is the processor, never
+// another adapter: the owner chose that one.
+func (s *Service) hardwareConfiguration(_ context.Context, cfg DeliveryConfiguration) DeliveryConfiguration {
+	switch cfg.HardwareSelection {
+	case "", "auto":
+		return cfg
+	case string(decoder.BackendSoftware):
+		cfg.HardwareBackend, cfg.HardwareDevice = string(decoder.BackendSoftware), ""
+		return cfg
+	}
+	devices, _ := s.cachedHardwareDevices()
+	device, err := decoder.ResolveHardwareDeviceSelection(cfg.HardwareSelection, devices)
+	if err != nil || device == nil || device.Path == "" || len(device.Backends) == 0 {
+		cfg.HardwareBackend, cfg.HardwareDevice = string(decoder.BackendSoftware), ""
+		return cfg
+	}
+	cfg.HardwareDevice = device.Path
+	if cfg.HardwareBackend != "auto" && !slices.Contains(device.Backends, decoder.HardwareBackend(cfg.HardwareBackend)) {
+		cfg.HardwareBackend = "auto"
+	}
+	return cfg
+}
+
+// withoutHardwareDecode removes the proven decode formats when the owner turned
+// Hardware decoding off, so every conversion decodes on the processor.
+func withoutHardwareDecode(probe decoder.HardwareProbe, cfg DeliveryConfiguration) decoder.HardwareProbe {
+	if cfg.SoftwareDecode {
+		probe.DecodeCodecs = nil
 	}
 	return probe
 }
@@ -110,7 +190,11 @@ func (s *Service) HardwareDevices(ctx context.Context) []decoder.HardwareDevice 
 	if discover == nil {
 		discover = decoder.DiscoverHardwareDevices
 	}
-	return discover(ctx)
+	devices := discover(ctx)
+	if ctx.Err() == nil {
+		s.rememberHardwareDevices(devices)
+	}
+	return devices
 }
 
 // HardwareTest probes every backend on every adapter again now, for the owner's
@@ -152,6 +236,7 @@ func (s *Service) selectHardware(ctx context.Context, cfg DeliveryConfiguration)
 	if err := ctx.Err(); err != nil {
 		return decoder.HardwareProbe{}, err
 	}
+	cfg = s.hardwareConfiguration(ctx, cfg)
 	if s.hardware == nil || s.hardwareFFmpeg == "" || cfg.HardwareBackend == string(decoder.BackendSoftware) {
 		s.noteHardware(cfg.HardwareBackend, true, "")
 		return decoder.HardwareProbe{Backend: decoder.BackendSoftware, Available: true, Reason: decoder.ProbeDisabled}, nil
@@ -172,7 +257,7 @@ func (s *Service) selectHardware(ctx context.Context, cfg DeliveryConfiguration)
 	default:
 		s.noteHardware(cfg.HardwareBackend, true, "")
 	}
-	return probe, nil
+	return withoutHardwareDecode(probe, cfg), nil
 }
 
 // hardwareState is what the hardware capability report last said.

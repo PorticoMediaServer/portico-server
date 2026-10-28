@@ -127,17 +127,30 @@ export function certificateForm(deps: ServerFormDeps): DraftForm<CertificateDraf
 
 // ── Alert thresholds ─────────────────────────────────────────────────────────────────────────
 
-export type AlertThresholds = Readonly<{storageWarningPercent: number; storageCriticalPercent: number; certificateWarningDays: number}>;
+/** Who receives each server notice: the owner and the administrators, the owner alone, or no one. */
+export type NoticeAudience = 'both' | 'owner' | 'off';
+export const noticeKinds = ['scan', 'storage', 'certificate', 'recording', 'feedback'] as const;
+export type AlertThresholds = Readonly<{storageWarningPercent: number; storageCriticalPercent: number; certificateWarningDays: number; noticeAudience?: Readonly<Record<typeof noticeKinds[number], NoticeAudience>>}>;
+
+const noticeAudienceValue = (v: unknown): v is NoticeAudience => v === 'both' || v === 'owner' || v === 'off';
+/** Every kind with a known value, or nothing: a server that does not route notices offers no row for it. */
+function readNoticeAudience(raw: unknown): AlertThresholds['noticeAudience'] {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const v = raw as Record<string, unknown>;
+  return noticeKinds.every(kind => noticeAudienceValue(v[kind])) ? Object.freeze(Object.fromEntries(noticeKinds.map(kind => [kind, v[kind]]))) as AlertThresholds['noticeAudience'] : undefined;
+}
 
 export function alertsForm(deps: ServerFormDeps): DraftForm<AlertThresholds, {revision: number}> {
   const read = (raw: unknown): Loaded<AlertThresholds, {revision: number}> => {
-    const v = ((raw as {data?: unknown})?.data ?? raw) as AlertThresholds & {revision: number};
+    const v = ((raw as {data?: unknown})?.data ?? raw) as AlertThresholds & {revision: number; noticeAudience?: unknown};
     if (!v || typeof v.revision !== 'number' || typeof v.storageWarningPercent !== 'number') throw new Error('The server returned alert settings this version cannot read.');
-    return {value: {storageWarningPercent: v.storageWarningPercent, storageCriticalPercent: v.storageCriticalPercent, certificateWarningDays: v.certificateWarningDays}, status: {revision: v.revision}};
+    const noticeAudience = readNoticeAudience(v.noticeAudience);
+    return {value: {storageWarningPercent: v.storageWarningPercent, storageCriticalPercent: v.storageCriticalPercent, certificateWarningDays: v.certificateWarningDays, ...(noticeAudience ? {noticeAudience} : {})}, status: {revision: v.revision}};
   };
   return new DraftForm<AlertThresholds, {revision: number}>({
     load: async signal => read(await deps.api.request(routePath("get_admin_notifications_settings"), 'GET', undefined, signal)),
     save: async (draft, _saved, status) => { await deps.api.request(routePath("patch_admin_notifications_settings"), 'PATCH', routeBody("patch_admin_notifications_settings", {expectedRevision: status?.revision ?? 0, ...draft})); },
+    // Free space: the critical threshold is the lower one (5 % beneath a 10 % warning).
     validate: draft => (draft.storageCriticalPercent >= draft.storageWarningPercent ? 'server.form.alertOrder' : undefined),
   });
 }

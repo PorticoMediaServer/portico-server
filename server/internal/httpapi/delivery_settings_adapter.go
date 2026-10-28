@@ -36,6 +36,8 @@ func deliveryFromSettings(s telemetry.TranscodeSettings, bitrate int) playback.D
 		SessionStorageMiB:      s.SessionStorageMiB,
 		HardwareBackend:        s.HardwareBackend,
 		HardwareDevice:         s.HardwareDevice,
+		HardwareSelection:      s.HardwareSelection,
+		SoftwareDecode:         !s.HardwareDecode,
 		ToneMapping:            s.HDRToneMapping,
 		ToneMapAlgorithm:       s.HDRToneMappingAlgorithm,
 		SoftwarePreset:         s.X264Preset,

@@ -119,6 +119,19 @@ func registerMetadataSettings(registry *apikit.Registry, d Dependencies) {
 		out, e := d.Metadata.UpdateMetadataSettings(ctx, in, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") })
 		return out, metadataAttentionError(e)
 	})
+	// Refresh all: marks every held document stale and starts the paced sweep.
+	// It answers with the settings, whose refreshAll reports the sweep.
+	v1Route(registry, apikit.Metadata{Admission: laneAdmin, ID: "refresh_all_metadata", Method: "POST", Path: "/v1/admin/metadata/settings/refresh-all", Summary: "Refresh every title's details from the providers within the refresh allowance", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, OptionalBody: true, BodyLimit: 4096, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (metadata.MetadataSettings, error) {
+		p, e := d.owner(r)
+		if e != nil {
+			return metadata.MetadataSettings{}, e
+		}
+		if d.Metadata == nil {
+			return metadata.MetadataSettings{}, errMetadataUnavailable()
+		}
+		out, e := d.Metadata.RefreshAll(ctx, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") })
+		return out, metadataAttentionError(e)
+	})
 	// Test connection: one or two OpenSubtitles requests, within its sign-in limits.
 	checks := &personalLimiter{}
 	v1Route(registry, apikit.Metadata{Admission: laneAdmin, ID: "check_opensubtitles", Method: "POST", Path: "/v1/admin/metadata/settings/opensubtitles/check", Summary: "Test the OpenSubtitles key and account in force", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, OptionalBody: true, BodyLimit: 4096, Errors: []string{"unauthorized", "not_permitted", "rate_limited", "internal"}}, func(ctx context.Context, r *http.Request, _ noBody) (metadata.OpenSubtitlesStatus, error) {

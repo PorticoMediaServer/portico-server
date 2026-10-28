@@ -24,10 +24,11 @@ func (s *Service) musicCheckCurrent(ctx context.Context, j mbJob) error {
 func (s *Service) musicSongSearch(ctx context.Context, j mbJob) error {
 	ctx = s.lookupContext(ctx)
 	scores := map[string]float64{}
-	j.fingerprintStatus = musicFingerprintStatus(j, s.acoustid != nil)
+	acoustid, acoustidConfig := s.acoustidState()
+	j.fingerprintStatus = musicFingerprintStatus(j, acoustid != nil)
 	if j.fingerprintStatus == "ready" {
 		var reason string
-		e := s.db.QueryRowContext(ctx, `SELECT reason FROM music_acoustid_health WHERE singleton=1 AND configuration_digest=?`, s.acoustidConfig).Scan(&reason)
+		e := s.db.QueryRowContext(ctx, `SELECT reason FROM music_acoustid_health WHERE singleton=1 AND configuration_digest=?`, acoustidConfig).Scan(&reason)
 		if e != nil && !errors.Is(e, sql.ErrNoRows) {
 			return e
 		}
@@ -48,7 +49,7 @@ func (s *Service) musicSongSearch(ctx context.Context, j mbJob) error {
 			if e = s.musicCheckCurrent(ctx, j); e != nil {
 				return e
 			}
-			matches, e := s.acoustid.Lookup(ctx, j.base.Music.Tags["acoustid_fingerprint"], j.base.Music.Duration)
+			matches, e := acoustid.Lookup(ctx, j.base.Music.Tags["acoustid_fingerprint"], j.base.Music.Duration)
 			if e != nil {
 				j.fingerprintStatus = "provider_unavailable"
 				j.acousticError = "unavailable"
@@ -56,7 +57,7 @@ func (s *Service) musicSongSearch(ctx context.Context, j mbJob) error {
 				if errors.As(e, &failure) {
 					j.acousticError = failure.Code
 					if failure.Code == "authentication" || failure.Code == "rights_or_terms" {
-						if _, e = dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `INSERT INTO music_acoustid_health VALUES(1,?,?,?) ON CONFLICT(singleton) DO UPDATE SET configuration_digest=excluded.configuration_digest,reason=excluded.reason,observed_at=excluded.observed_at`, s.acoustidConfig, failure.Code, s.publicationTime().Format(time.RFC3339)); e != nil {
+						if _, e = dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `INSERT INTO music_acoustid_health VALUES(1,?,?,?) ON CONFLICT(singleton) DO UPDATE SET configuration_digest=excluded.configuration_digest,reason=excluded.reason,observed_at=excluded.observed_at`, acoustidConfig, failure.Code, s.publicationTime().Format(time.RFC3339)); e != nil {
 							return e
 						}
 						j.fingerprintStatus = "provider_disabled"

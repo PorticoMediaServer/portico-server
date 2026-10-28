@@ -14,6 +14,7 @@ test('the stored directory chooses separate, memory or folder; capacity facts an
   assert.equal(transcodeLocationChoice({...directory, fallback: true}).value, 'separate');
   assert.equal(transcodeLocationChoice({...directory, memoryPath: ''}, '/dev/shm').value, 'folder');
   assert.equal(transcodeLocationChoice({...directory, memoryPath: ''}).memoryAvailable, false);
+  assert.equal(transcodeLocationChoice(directory).memoryAvailable, false, 'the server does not place conversions in memory yet');
 });
 
 test('a choice writes the directory it names; folder writes nothing; memory needs a RAM file system', () => {

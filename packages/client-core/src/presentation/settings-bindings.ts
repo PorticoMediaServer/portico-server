@@ -12,7 +12,7 @@ import {validatePreferencePatch,type PreferenceSnapshot,type PreferenceScope,typ
 import type {ReadingPreferences} from '../preference-effects.ts';
 
 export type SettingsBindingForm='runtime'|'connectivity'|'connectivityStatus'|'maintenance'|'alerts'|'preferences'|'device'|'remote'|'managedRoute'|'logs'|'library'|'metadata';
-export type SettingsBinding=Readonly<{form:SettingsBindingForm;key:string;scope?:PreferenceScope;readOnly?:boolean;scale?:number;codec?:'history-retention'|'number-choice'|'unlimited'|'domain'|'interface'|'remote-policy'|'away-quality'|'update-checks'|'window-mode'|'days'|'log-retention'|'still-watching'|'missing-rule'|'music-quality-choice'|'video-quality-choice'|'inherited-watched-threshold'|'surround'|'player-engine'|'tv-support'|'boolean'|'artwork-size';fields?:Readonly<Record<string,string>>;window?:'heavy'|'backup'}>;
+export type SettingsBinding=Readonly<{form:SettingsBindingForm;key:string;scope?:PreferenceScope;readOnly?:boolean;scale?:number;codec?:'history-retention'|'number-choice'|'unlimited'|'domain'|'interface'|'remote-policy'|'away-quality'|'update-checks'|'window-mode'|'days'|'log-retention'|'still-watching'|'missing-rule'|'music-quality-choice'|'video-quality-choice'|'inherited-watched-threshold'|'surround'|'player-engine'|'tv-support'|'boolean'|'artwork-size'|'notice-audience'|'hardware-selection';fields?:Readonly<Record<string,string>>;window?:'heavy'|'backup'}>;
 export type SettingsBindingSources=Readonly<{configuration?:SettingsConfiguration;preferences?:PreferenceSnapshot;forms?:Readonly<Partial<Record<SettingsBindingForm,Readonly<Record<string,unknown>>>>>;device?:Readonly<Record<string,unknown>>;deviceDefaults?:Readonly<Record<string,unknown>>}>;
 export type SettingsBindingValue=Readonly<{current:unknown;effective:unknown;default:unknown;source:string;configOnly:boolean;applicationMode?:string}>;
 export type SettingsBindingPatch=Readonly<{form:SettingsBindingForm;values:Readonly<Record<string,unknown>>}>;
@@ -69,6 +69,8 @@ const bindings:Readonly<Record<string,SettingsBinding>>={
  'streaming.encoderSpeed':{form:'runtime',key:'x264Preset'},
  'streaming.repackage':{form:'runtime',key:'directStreamRemux'},
  'streaming.ffmpegPath':{form:'runtime',key:'ffmpegPath'},
+ 'streaming.hardware':{form:'runtime',key:'hardwareSelection',codec:'hardware-selection'},
+ 'streaming.hardwareDecode':{form:'runtime',key:'hardwareDecode',codec:'boolean'},
  'streaming.convertAhead':{form:'runtime',key:'throttleBufferMs',scale:1000,codec:'number-choice'},
  'streaming.rewindKeep':{form:'runtime',key:'playedRetentionMs',scale:1000,codec:'number-choice'},
  'streaming.sessionSpace':{form:'runtime',key:'sessionStorageMiB',codec:'number-choice'},
@@ -103,6 +105,7 @@ const bindings:Readonly<Record<string,SettingsBinding>>={
  'general.alertStorageWarn':{form:'alerts',key:'storageWarningPercent',codec:'number-choice'},
  'general.alertStorageCritical':{form:'alerts',key:'storageCriticalPercent',codec:'number-choice'},
  'general.alertCertificateDays':{form:'alerts',key:'certificateWarningDays',codec:'number-choice'},
+ 'general.noticeAudience':{form:'alerts',key:'noticeAudience',codec:'notice-audience'},
  'storage.analysisSpace':{form:'runtime',key:'analysisStorageGiB',codec:'number-choice'},
  'storage.analysisStage':{form:'runtime',key:'analysisStageStorageMiB',codec:'number-choice'},
  'storage.subtitleTracks':{form:'runtime',key:'subtitleTrackLimit',codec:'number-choice'},
@@ -254,6 +257,8 @@ function presented(binding:SettingsBinding,v:unknown,sources:SettingsBindingSour
  if(binding.codec==='music-quality-choice')return typeof v==='string'&&canonicalMusicQualityLadder.some(q=>q.id===v)?(v==='cd-quality'?'cd':v):undefined;
  if(binding.codec==='video-quality-choice')return typeof v==='string'&&canonicalQualityLadder.some(q=>q.id===v)&&(binding.key!=='downloadMaxQuality'||v!=='automatic')?(v==='2160p'?'4k':v):undefined;
  if(binding.codec==='artwork-size')return v===1280?'small':v===1920?'standard':v===2560?'large':undefined;
+ if(binding.codec==='notice-audience')return validNoticeAudience(v)?v:undefined;
+ if(binding.codec==='hardware-selection')return validHardwareSelection(v)?v:undefined;
  if(binding.codec==='boolean')return typeof v==='boolean'?v:undefined;
  if(binding.codec==='surround')return typeof v==='boolean'?(v?'stereo':'asis'):undefined;
  if(binding.codec==='player-engine')return v==='automatic'?'auto':v==='native'||v==='mpv'?v:undefined;
@@ -271,6 +276,14 @@ function presented(binding:SettingsBinding,v:unknown,sources:SettingsBindingSour
  if(binding.scale){if(v===0&&binding.key==='uploadCapacityKbps')return null;v=typeof v==='number'?v/binding.scale:v;}
  return binding.codec==='number-choice'?String(v):v;
 }
+/** Settings › General › Who sees each notice: every notice kind, each sent to both, the owner, or no one. */
+function validNoticeAudience(v:unknown):v is Readonly<Record<string,'both'|'owner'|'off'>>{
+ if(!v||typeof v!=='object'||Array.isArray(v))return false;
+ const entries=Object.entries(v),kinds=['scan','storage','certificate','recording','feedback'];
+ return entries.length===kinds.length&&entries.every(([k,x])=>kinds.includes(k)&&(x==='both'||x==='owner'||x==='off'));
+}
+/** Settings › Streaming › Device: automatic, the processor, or one adapter's opaque id from the hardware report. */
+function validHardwareSelection(v:unknown):v is string{return typeof v==='string'&&(v==='auto'||v==='software'||/^[a-z0-9_-]{1,80}$/.test(v));}
 export function readSettingsBinding(binding:SettingsBinding,sources:SettingsBindingSources,rowId?:string):SettingsBindingValue|undefined{
  if(binding.fields){
   const values=Object.entries(binding.fields).map(([name,key])=>[name,readSettingsBinding({form:binding.form,key,scope:binding.scope},sources,binding.key==='segments.libraryModes'?key:undefined)] as const);
@@ -367,6 +380,8 @@ export function settingsBindingPatch(binding:SettingsBinding,value:unknown,sourc
   raw=value==='4k'?'2160p':value;
  }
  if(binding.codec==='boolean'&&typeof value!=='boolean')throw new Error('Invalid setting value.');
+ if(binding.codec==='notice-audience'){if(!validNoticeAudience(value))throw new Error('Invalid setting matrix.');raw={...value};}
+ if(binding.codec==='hardware-selection'&&!validHardwareSelection(value))throw new Error('Invalid setting value.');
  if(binding.codec==='surround'){if(value!=='asis'&&value!=='stereo')throw new Error('Invalid setting value.');raw=value==='stereo';}
  if(binding.codec==='player-engine'){if(value!=='auto'&&value!=='native'&&value!=='mpv')throw new Error('Invalid setting value.');raw=value==='auto'?'automatic':value;}
  if(binding.form==='preferences')return preferenceBindingPatch(binding,{[binding.key]:raw},sources);

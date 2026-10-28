@@ -22,9 +22,18 @@ function parseLibraries(raw:unknown):readonly MetadataLibrarySettings[]{
   return Object.freeze({id:v.id,name:v.name,kind:v.kind,revision:v.revision,agent:v.agent,agentOptions:Object.freeze([...v.agentOptions]),lyricsSource:v.lyricsSource,episodeThumbnailMode:v.episodeThumbnailMode,scrubPreviews:v.scrubPreviews,canScrub:v.canScrub,managed:v.managed}) as MetadataLibrarySettings;
  }));
 }
-export type MetadataSettings=Readonly<{artworkLanguage?:ArtworkLanguage;artworkPreference?:ArtworkPreference;onlineLookups?:boolean;defaultLanguage?:string;defaultRegion?:string;librariesComplete?:boolean;libraries?:readonly MetadataLibrarySettings[];revision:number;localArtworkLimitBytes:number;localArtworkUsedBytes:number;includeAdult:boolean;artworkMaxEdge:ArtworkMaxEdge;tmdbCredentialConfigured:boolean;tvdbCredentialConfigured:boolean;openSubtitlesKeyConfigured:boolean;openSubtitlesUsername:string;openSubtitlesPasswordConfigured:boolean;openSubtitles:OpenSubtitlesStatus}>;
+export type MetadataRefreshPolicy='regular'|'recent'|'never';
+export type MetadataFallbackLanguage='en'|'original'|'blank';
+export type MetadataAnimeTitles='language'|'english'|'romaji'|'native';
+/** Server › Metadata › Refresh all: when it was last asked for, and whether its paced sweep is still waking titles. */
+export type MetadataRefreshAll=Readonly<{running:boolean;requestedAt:string}>;
+/** Advanced: which held titles are refreshed on their own, what fills a gap in the metadata language, AniList's title form,
+ * cast and crew photos, and the owner's AcoustID key (never sent back; the source says which key is in force). */
+export type MetadataAdvanced=Readonly<{refreshPolicy:MetadataRefreshPolicy;fallbackLanguage:MetadataFallbackLanguage;animeTitles:MetadataAnimeTitles;castPhotos:boolean;acoustidKeyConfigured:boolean;acoustidKeySource:'owner'|'environment'|'none';refreshAll:MetadataRefreshAll}>;
+const advancedWords={refreshPolicy:['regular','recent','never'],fallbackLanguage:['en','original','blank'],animeTitles:['language','english','romaji','native']} as const;
+export type MetadataSettings=Readonly<{advanced?:MetadataAdvanced;artworkLanguage?:ArtworkLanguage;artworkPreference?:ArtworkPreference;onlineLookups?:boolean;defaultLanguage?:string;defaultRegion?:string;librariesComplete?:boolean;libraries?:readonly MetadataLibrarySettings[];revision:number;localArtworkLimitBytes:number;localArtworkUsedBytes:number;includeAdult:boolean;artworkMaxEdge:ArtworkMaxEdge;tmdbCredentialConfigured:boolean;tvdbCredentialConfigured:boolean;openSubtitlesKeyConfigured:boolean;openSubtitlesUsername:string;openSubtitlesPasswordConfigured:boolean;openSubtitles:OpenSubtitlesStatus}>;
 /** A credential left out is unchanged; an empty one goes back to the server's own (for the username: no account). */
-export type MetadataSettingsChange=Readonly<{artworkLanguage?:ArtworkLanguage;artworkPreference?:ArtworkPreference;onlineLookups?:boolean;defaultLanguage?:string;defaultRegion?:string;libraries?:readonly MetadataLibraryChange[];expectedRevision:number;localArtworkLimitBytes:number;includeAdult:boolean;artworkMaxEdge?:ArtworkMaxEdge;tmdbReadToken?:string;tvdbProjectKey?:string;openSubtitlesApiKey?:string;openSubtitlesUsername?:string;openSubtitlesPassword?:string}>;
+export type MetadataSettingsChange=Readonly<{refreshPolicy?:MetadataRefreshPolicy;fallbackLanguage?:MetadataFallbackLanguage;animeTitles?:MetadataAnimeTitles;castPhotos?:boolean;acoustidKey?:string;artworkLanguage?:ArtworkLanguage;artworkPreference?:ArtworkPreference;onlineLookups?:boolean;defaultLanguage?:string;defaultRegion?:string;libraries?:readonly MetadataLibraryChange[];expectedRevision:number;localArtworkLimitBytes:number;includeAdult:boolean;artworkMaxEdge?:ArtworkMaxEdge;tmdbReadToken?:string;tvdbProjectKey?:string;openSubtitlesApiKey?:string;openSubtitlesUsername?:string;openSubtitlesPassword?:string}>;
 export function parseMetadataSettings(raw:unknown):MetadataSettings{
  if(typeof raw!=='object'||raw===null||Array.isArray(raw))throw new Error(unreadableServerResponse);
  const v=raw as Record<string,unknown>;
@@ -35,10 +44,19 @@ export function parseMetadataSettings(raw:unknown):MetadataSettings{
  if(!isArtworkMaxEdge(v.artworkMaxEdge))throw new Error(unreadableServerResponse);
  if(typeof v.revision!=='number'||!Number.isSafeInteger(v.revision)||v.revision<1||typeof v.localArtworkLimitBytes!=='number'||!Number.isSafeInteger(v.localArtworkLimitBytes)||v.localArtworkLimitBytes<1||typeof v.includeAdult!=='boolean'||typeof v.tmdbCredentialConfigured!=='boolean'||typeof v.tvdbCredentialConfigured!=='boolean')throw new Error(unreadableServerResponse);
  if(typeof v.localArtworkUsedBytes!=="number"||!Number.isSafeInteger(v.localArtworkUsedBytes)||v.localArtworkUsedBytes<0)throw new Error(unreadableServerResponse);
- return Object.freeze({...(v.artworkLanguage==='same'||v.artworkLanguage==='en'||v.artworkLanguage==='textless'?{artworkLanguage:v.artworkLanguage}:{}),...(v.artworkPreference==='folders'||v.artworkPreference==='online'?{artworkPreference:v.artworkPreference}:{}),...(typeof v.onlineLookups==='boolean'?{onlineLookups:v.onlineLookups}:{}),...(typeof v.defaultLanguage==='string'?{defaultLanguage:v.defaultLanguage}:{}),...(typeof v.defaultRegion==='string'?{defaultRegion:v.defaultRegion}:{}),librariesComplete:v.librariesComplete===true,libraries:v.librariesComplete===true?parseLibraries(v.libraries):Object.freeze([]),localArtworkUsedBytes:v.localArtworkUsedBytes,revision:v.revision,localArtworkLimitBytes:v.localArtworkLimitBytes,includeAdult:v.includeAdult,artworkMaxEdge:v.artworkMaxEdge,tmdbCredentialConfigured:v.tmdbCredentialConfigured,tvdbCredentialConfigured:v.tvdbCredentialConfigured,
+ const advanced=parseAdvanced(v);
+ return Object.freeze({...(advanced?{advanced}:{}),...(v.artworkLanguage==='same'||v.artworkLanguage==='en'||v.artworkLanguage==='textless'?{artworkLanguage:v.artworkLanguage}:{}),...(v.artworkPreference==='folders'||v.artworkPreference==='online'?{artworkPreference:v.artworkPreference}:{}),...(typeof v.onlineLookups==='boolean'?{onlineLookups:v.onlineLookups}:{}),...(typeof v.defaultLanguage==='string'?{defaultLanguage:v.defaultLanguage}:{}),...(typeof v.defaultRegion==='string'?{defaultRegion:v.defaultRegion}:{}),librariesComplete:v.librariesComplete===true,libraries:v.librariesComplete===true?parseLibraries(v.libraries):Object.freeze([]),localArtworkUsedBytes:v.localArtworkUsedBytes,revision:v.revision,localArtworkLimitBytes:v.localArtworkLimitBytes,includeAdult:v.includeAdult,artworkMaxEdge:v.artworkMaxEdge,tmdbCredentialConfigured:v.tmdbCredentialConfigured,tvdbCredentialConfigured:v.tvdbCredentialConfigured,
   openSubtitlesKeyConfigured:v.openSubtitlesKeyConfigured===true,openSubtitlesUsername:typeof v.openSubtitlesUsername==='string'&&v.openSubtitlesUsername.length<=512?v.openSubtitlesUsername:'',openSubtitlesPasswordConfigured:v.openSubtitlesPasswordConfigured===true,openSubtitles:parseOpenSubtitlesStatus(v.openSubtitles)});
 }
 const word=<T extends string>(v:unknown,allowed:readonly T[],fallback:T):T=>allowed.includes(v as T)?v as T:fallback;
+/** The Advanced producers arrive together; a server without them (or with a value this version cannot read) offers none of their rows. */
+function parseAdvanced(v:Record<string,unknown>):MetadataAdvanced|undefined{
+ const known=<T extends string>(value:unknown,allowed:readonly T[]):value is T=>allowed.includes(value as T);
+ if(!known(v.refreshPolicy,advancedWords.refreshPolicy)||!known(v.fallbackLanguage,advancedWords.fallbackLanguage)||!known(v.animeTitles,advancedWords.animeTitles)||typeof v.castPhotos!=='boolean'||typeof v.acoustidKeyConfigured!=='boolean')return undefined;
+ const all=(typeof v.refreshAll==='object'&&v.refreshAll!==null&&!Array.isArray(v.refreshAll)?v.refreshAll:{}) as Record<string,unknown>;
+ return Object.freeze({refreshPolicy:v.refreshPolicy,fallbackLanguage:v.fallbackLanguage,animeTitles:v.animeTitles,castPhotos:v.castPhotos,acoustidKeyConfigured:v.acoustidKeyConfigured,
+  acoustidKeySource:word(v.acoustidKeySource,['owner','environment','none'] as const,'none'),refreshAll:Object.freeze({running:all.running===true,requestedAt:instant(all.requestedAt)})});
+}
 const instant=(v:unknown)=>typeof v==='string'&&v.length<=40&&Number.isFinite(Date.parse(v))?v:'';
 const count=(v:unknown)=>typeof v==='number'&&Number.isSafeInteger(v)&&v>=0?v:-1;
 /** A status that cannot be read is "nothing known", never a reason to refuse the settings page. */
@@ -73,6 +91,8 @@ export function openSubtitlesSummary(status:OpenSubtitlesStatus,i18n:I18n,now=Da
 }
 type Request=<T>(path:string,method?:string,body?:unknown)=>Promise<T>;
 export function metadataSettingsService(request:Request){const path=routePath("get_metadata_settings");return Object.freeze({async read(){return parseMetadataSettings(await request<unknown>(path));},async save(change:MetadataSettingsChange){if(change.artworkMaxEdge!==undefined&&!isArtworkMaxEdge(change.artworkMaxEdge))throw new Error(unreadableServerResponse);return parseMetadataSettings(await request<unknown>(path,'PUT',change));},
+ /** Refresh all: every title is refreshed from the providers in the background, within the daily allowance. */
+ async refreshAll(){return parseMetadataSettings(await request<unknown>(routePath("refresh_all_metadata"),'POST'));},
  /** Test connection: OpenSubtitles is asked now whether the saved key and account work. */
  async checkOpenSubtitles(){return parseOpenSubtitlesStatus(await request<unknown>(routePath("check_opensubtitles"),'POST'));}});}
 const GIBIBYTE=2**30;

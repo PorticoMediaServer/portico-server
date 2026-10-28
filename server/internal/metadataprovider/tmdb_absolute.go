@@ -142,7 +142,12 @@ func (s *TMDB) ScreenEpisodeConditional(ctx context.Context, previous ScreenReco
 	if ValidateScreenRecord(previous) != nil || previous.Identity.Provider != "tmdb" || previous.Identity.Type != "episode" || c == nil || !ValidScreenID(ScreenID{"tmdb", "show", c.ShowID}) || c.OriginalSeason == nil || c.OriginalEpisode == nil || *c.OriginalSeason < 0 || *c.OriginalSeason > 9999 || *c.OriginalEpisode < 0 || *c.OriginalEpisode > 1000000 {
 		return ScreenRecord{}, in, &Error{Provider: "tmdb", Code: "invalid_episode_order"}
 	}
-	q := url.Values{"append_to_response": {"external_ids,credits"}, "language": {language}}
+	// The same English fallback as the first fetch, so a refresh never empties a filled overview.
+	fallback, parts := s.fallbackLanguage(), "external_ids,credits"
+	if fallback == "en" {
+		parts += ",translations"
+	}
+	q := url.Values{"append_to_response": {parts}, "language": {language}}
 	raw, out, err := s.http.rawConditional(ctx, nil, "", fmt.Sprintf("/tv/%s/season/%d/episode/%d?%s", c.ShowID, *c.OriginalSeason, *c.OriginalEpisode, q.Encode()), s.credential(), 4<<20, in)
 	if err != nil {
 		return ScreenRecord{}, out, err
@@ -152,6 +157,9 @@ func (s *TMDB) ScreenEpisodeConditional(ctx context.Context, previous ScreenReco
 		return ScreenRecord{}, out, &Error{Provider: "tmdb", Code: "episode_identity_mismatch"}
 	}
 	r := v.record("episode")
+	if fallback == "en" {
+		fillFallback(&r, v, language, fallback)
+	}
 	r.Coordinates = c
 	r.Relations = append(r.Relations, ScreenRelation{"show", ScreenID{"tmdb", "show", c.ShowID}, ""})
 	if r.Identity != previous.Identity {

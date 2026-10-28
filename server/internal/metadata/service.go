@@ -85,8 +85,16 @@ type Service struct {
 	missingMu            sync.Mutex
 	missingArtwork       map[missingArtwork]struct{}
 	missingWake          worker.Broadcast
-	acoustid             AcousticProvider
-	acoustidConfig       string
+	// acoustid is swapped when the owner saves or clears their own key, so it is
+	// read through acoustidState under acoustidMu, never directly.
+	acoustidMu     sync.RWMutex
+	acoustid       AcousticProvider
+	acoustidConfig string
+	acoustidKey    string
+	acoustidEnvKey string
+	// The owner's Advanced metadata choices the workers consult on every pass.
+	refreshPolicy atomic.Value // string
+	castPhotos    atomic.Bool
 	artClient            *http.Client
 	artDirectory         *os.File
 }
@@ -121,6 +129,8 @@ func New(db *sql.DB, token string) *Service {
 	if tvdb, ok := s.tvdb.(ScreenProvider); ok {
 		s.screenProviders["tvdb"] = tvdb
 	}
+	s.refreshPolicy.Store("regular")
+	s.castPhotos.Store(true)
 	s.artClient = newArtworkClient()
 	return s
 }
@@ -206,7 +216,7 @@ func (s *Service) Run(ctx context.Context) {
 func (s *Service) RunArtwork(ctx context.Context) {
 	ctx = dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia)
 	var wg sync.WaitGroup
-	for i, step := range []func(context.Context) error{s.RepairMissingArtworkStep, s.ArtworkDiscoveryStep, s.ArtworkStep, s.CompactArtworkStep, s.RepairCascadeStep, s.GlobalArtworkSizeStep} {
+	for i, step := range []func(context.Context) error{s.RepairMissingArtworkStep, s.ArtworkDiscoveryStep, s.ArtworkStep, s.CompactArtworkStep, s.RepairCascadeStep, s.GlobalArtworkSizeStep, s.RefreshAllStep} {
 		wg.Add(1)
 		supervise.Go("metadata.artwork-lane", func() {
 			run := step

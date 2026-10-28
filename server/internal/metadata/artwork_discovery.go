@@ -369,6 +369,7 @@ func (s *Service) ArtworkDiscoveryStep(ctx context.Context) error {
 		locale = ""
 	}
 	images, problem := s.discoverArtworkFor(work, provider, id, t.Kind, locale)
+	images = s.withoutCastPhotos(images)
 	sort.SliceStable(images, func(i, j int) bool {
 		return artworkLanguageRank(images[i].locale, locale) < artworkLanguageRank(images[j].locale, locale)
 	})
@@ -461,6 +462,23 @@ func (s *Service) ArtworkDiscoveryStep(ctx context.Context) error {
 		return err
 	}
 	return gated3.Commit()
+}
+
+// withoutCastPhotos drops cast and crew portraits a film or series names when
+// the owner turned Cast and crew photos off, so none is requested or stored.
+// Portraits already kept stay until they are replaced.
+func (s *Service) withoutCastPhotos(images []discoveredArtwork) []discoveredArtwork {
+	if s.castPhotos.Load() {
+		return images
+	}
+	kept := images[:0]
+	for _, image := range images {
+		if image.role == "portrait" && (strings.HasPrefix(image.subject, "tmdb:") || strings.HasPrefix(image.subject, "tvdb:")) {
+			continue
+		}
+		kept = append(kept, image)
+	}
+	return kept
 }
 
 func (s *Service) discoverArtworkFor(ctx context.Context, provider, id, kind, locale string) ([]discoveredArtwork, error) {

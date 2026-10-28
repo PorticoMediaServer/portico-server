@@ -36,7 +36,35 @@ type MetadataSettings struct {
 	OpenSubtitlesPasswordConfigured bool   `json:"openSubtitlesPasswordConfigured"`
 	// Where the key and account in force come from and how OpenSubtitles last answered.
 	OpenSubtitles OpenSubtitlesStatus `json:"openSubtitles"`
+	// Advanced: which held titles are refreshed on their own ("regular",
+	// "recent" or "never"), what fills a field the metadata language lacks
+	// ("en", "original" or "blank"), AniList's title form ("language",
+	// "english", "romaji" or "native"), and whether cast and crew photos are
+	// fetched.
+	RefreshPolicy    string `json:"refreshPolicy"`
+	FallbackLanguage string `json:"fallbackLanguage"`
+	AnimeTitles      string `json:"animeTitles"`
+	CastPhotos       bool   `json:"castPhotos"`
+	// The owner's AcoustID application key is never sent back. AcoustIDKeySource
+	// says which key is in force: "owner", "environment" or "none".
+	AcoustIDKeyConfigured bool   `json:"acoustidKeyConfigured"`
+	AcoustIDKeySource     string `json:"acoustidKeySource"`
+	// RefreshAll reports an owner's Refresh all: when it was asked for and
+	// whether its sweep is still waking titles.
+	RefreshAll RefreshAllStatus `json:"refreshAll"`
 }
+
+// RefreshAllStatus is the state of Server › Metadata › Refresh all.
+type RefreshAllStatus struct {
+	Running     bool   `json:"running"`
+	RequestedAt string `json:"requestedAt,omitempty"`
+}
+
+var (
+	MetadataRefreshPolicies   = []string{"regular", "recent", "never"}
+	MetadataFallbackLanguages = []string{"en", "original", "blank"}
+	MetadataAnimeTitleChoices = []string{"language", "english", "romaji", "native"}
+)
 
 // OpenSubtitlesStatus mirrors subtitles.OwnerStatus field for field (the
 // server converts one to the other); it never carries a secret.
@@ -96,10 +124,18 @@ type MetadataSettingsUpdate struct {
 	OpenSubtitlesAPIKey   *string `json:"openSubtitlesApiKey,omitempty"`
 	OpenSubtitlesUsername *string `json:"openSubtitlesUsername,omitempty"`
 	OpenSubtitlesPassword *string `json:"openSubtitlesPassword,omitempty"`
+	// Absent: unchanged.
+	RefreshPolicy    *string `json:"refreshPolicy,omitempty"`
+	FallbackLanguage *string `json:"fallbackLanguage,omitempty"`
+	AnimeTitles      *string `json:"animeTitles,omitempty"`
+	CastPhotos       *bool   `json:"castPhotos,omitempty"`
+	// Absent: unchanged. Empty: back to the server's own (the environment's).
+	AcoustIDKey *string `json:"acoustidKey,omitempty"`
 }
 
-// subtitleCredentials are the owner's saved OpenSubtitles key and account.
-type subtitleCredentials struct{ key, username, password string }
+// subtitleCredentials are the owner's saved OpenSubtitles key and account,
+// read together with the other provider secrets the settings hold.
+type subtitleCredentials struct{ key, username, password, acoustid string }
 
 func readMetadataSettings(ctx context.Context, tx *sql.Tx) (MetadataSettings, string, string, error) {
 	out, tmdb, tvdb, _, err := readMetadataSettingsWithSubtitles(ctx, tx)
@@ -115,13 +151,18 @@ func readMetadataSettingsWithSubtitles(ctx context.Context, tx *sql.Tx) (Metadat
 	var online bool
 	var tmdb, tvdb string
 	var subs subtitleCredentials
-	err := tx.QueryRowContext(ctx, `SELECT revision,local_artwork_limit_bytes,include_adult,artwork_max_edge,tmdb_read_token,tvdb_project_key,opensubtitles_api_key,opensubtitles_username,opensubtitles_password,default_language,default_region,online_lookups,artwork_preference,artwork_language FROM metadata_runtime_settings WHERE singleton=1`).Scan(&out.Revision, &out.LocalArtworkLimitBytes, &out.IncludeAdult, &out.ArtworkMaxEdge, &tmdb, &tvdb, &subs.key, &subs.username, &subs.password, &out.DefaultLanguage, &out.DefaultRegion, &online, &out.ArtworkPreference, &out.ArtworkLanguage)
+	var refreshEpoch int64
+	err := tx.QueryRowContext(ctx, `SELECT revision,local_artwork_limit_bytes,include_adult,artwork_max_edge,tmdb_read_token,tvdb_project_key,opensubtitles_api_key,opensubtitles_username,opensubtitles_password,default_language,default_region,online_lookups,artwork_preference,artwork_language,refresh_policy,fallback_language,anime_titles,cast_photos,acoustid_key,refresh_all_epoch,refresh_all_running FROM metadata_runtime_settings WHERE singleton=1`).Scan(&out.Revision, &out.LocalArtworkLimitBytes, &out.IncludeAdult, &out.ArtworkMaxEdge, &tmdb, &tvdb, &subs.key, &subs.username, &subs.password, &out.DefaultLanguage, &out.DefaultRegion, &online, &out.ArtworkPreference, &out.ArtworkLanguage, &out.RefreshPolicy, &out.FallbackLanguage, &out.AnimeTitles, &out.CastPhotos, &subs.acoustid, &refreshEpoch, &out.RefreshAll.Running)
 	out.OnlineLookups = &online
 	out.TMDBCredentialConfigured = tmdb != ""
 	out.TVDBCredentialConfigured = tvdb != ""
 	out.OpenSubtitlesKeyConfigured = subs.key != ""
 	out.OpenSubtitlesUsername = subs.username
 	out.OpenSubtitlesPasswordConfigured = subs.password != ""
+	out.AcoustIDKeyConfigured = subs.acoustid != ""
+	if refreshEpoch > 0 {
+		out.RefreshAll.RequestedAt = time.Unix(refreshEpoch, 0).UTC().Format(time.RFC3339)
+	}
 	return out, tmdb, tvdb, subs, err
 }
 
@@ -152,6 +193,7 @@ func (s *Service) MetadataSettings(ctx context.Context) (MetadataSettings, error
 		out.LocalArtworkUsedBytes, e = s.LocalArtworkUsage(ctx)
 	}
 	out.OpenSubtitles = s.subtitleStatus()
+	out.AcoustIDKeySource = s.acoustidKeySource(out.AcoustIDKeyConfigured)
 	return out, e
 }
 func LocalArtworkLimit(ctx context.Context, db *sql.DB) int64 {
@@ -216,6 +258,7 @@ func (s *Service) UpdateMetadataSettings(ctx context.Context, in MetadataSetting
 		out.LocalArtworkUsedBytes, e = s.LocalArtworkUsage(ctx)
 	}
 	out.OpenSubtitles = s.subtitleStatus()
+	out.AcoustIDKeySource = s.acoustidKeySource(out.AcoustIDKeyConfigured)
 	return out, e
 }
 func (s *Service) loadProviderSettings(ctx context.Context) error {
@@ -246,6 +289,15 @@ func (s *Service) loadProviderSettings(ctx context.Context) error {
 	if s.tmdbPaced != nil {
 		s.tmdbPaced.SetCredential(tmdb)
 		s.tmdbPaced.SetIncludeAdult(out.IncludeAdult)
+		s.tmdbPaced.SetFallbackLanguage(out.FallbackLanguage)
+	}
+	if s.anilistPaced != nil {
+		s.anilistPaced.SetTitlePreference(out.AnimeTitles)
+	}
+	s.refreshPolicy.Store(out.RefreshPolicy)
+	s.castPhotos.Store(out.CastPhotos)
+	if e = s.useAcoustIDKey(subs.acoustid); e != nil {
+		return e
 	}
 	if p, ok := s.tvdb.(interface {
 		SetCredential(context.Context, string) error
@@ -269,6 +321,10 @@ func ReadMetadataSettingsTx(ctx context.Context, tx *sql.Tx) (MetadataSettings, 
 }
 
 func validMetadataSettingsUpdate(in MetadataSettingsUpdate) bool {
+	oneOf := func(v *string, set []string) bool { return v == nil || slices.Contains(set, *v) }
+	if !oneOf(in.RefreshPolicy, MetadataRefreshPolicies) || !oneOf(in.FallbackLanguage, MetadataFallbackLanguages) || !oneOf(in.AnimeTitles, MetadataAnimeTitleChoices) || !validProviderCredential(in.AcoustIDKey) || in.AcoustIDKey != nil && len(*in.AcoustIDKey) > 256 {
+		return false
+	}
 	return !(in.ExpectedRevision < 1 || in.LocalArtworkLimitBytes < 1 || in.LocalArtworkLimitBytes > 1<<50 || !validProviderCredential(in.TMDBReadToken) || !validProviderCredential(in.TVDBProjectKey) || !validProviderCredential(in.OpenSubtitlesAPIKey) || !validSubtitleAccount(in.OpenSubtitlesUsername) || !validSubtitleAccount(in.OpenSubtitlesPassword) || in.ArtworkMaxEdge != nil && !validArtworkEdge(*in.ArtworkMaxEdge))
 }
 
@@ -347,7 +403,22 @@ func ApplyMetadataSettingsTx(ctx context.Context, tx *sql.Tx, in MetadataSetting
 	if in.ArtworkMaxEdge != nil {
 		edge = *in.ArtworkMaxEdge
 	}
-	_, e = tx.ExecContext(ctx, `UPDATE metadata_runtime_settings SET revision=revision+1,local_artwork_limit_bytes=?,include_adult=?,artwork_max_edge=?,tmdb_read_token=?,tvdb_project_key=?,opensubtitles_api_key=?,opensubtitles_username=?,opensubtitles_password=?,default_language=?,default_region=?,lookup_epoch=lookup_epoch+CASE WHEN online_lookups<>? THEN 1 ELSE 0 END,online_lookups=?,artwork_policy_revision=artwork_policy_revision+CASE WHEN artwork_preference<>? OR artwork_language<>? THEN 1 ELSE 0 END,artwork_preference=?,artwork_language=? WHERE singleton=1`, in.LocalArtworkLimitBytes, in.IncludeAdult, edge, tmdb, tvdb, subs.key, subs.username, subs.password, defaultLanguage, defaultRegion, online, online, artworkPreference, artworkLanguage, artworkPreference, artworkLanguage)
+	advanced := current
+	for _, v := range []struct {
+		in  *string
+		out *string
+	}{{in.RefreshPolicy, &advanced.RefreshPolicy}, {in.FallbackLanguage, &advanced.FallbackLanguage}, {in.AnimeTitles, &advanced.AnimeTitles}} {
+		if v.in != nil {
+			*v.out = *v.in
+		}
+	}
+	if in.CastPhotos != nil {
+		advanced.CastPhotos = *in.CastPhotos
+	}
+	if in.AcoustIDKey != nil {
+		subs.acoustid = strings.TrimSpace(*in.AcoustIDKey)
+	}
+	_, e = tx.ExecContext(ctx, `UPDATE metadata_runtime_settings SET revision=revision+1,local_artwork_limit_bytes=?,include_adult=?,artwork_max_edge=?,tmdb_read_token=?,tvdb_project_key=?,opensubtitles_api_key=?,opensubtitles_username=?,opensubtitles_password=?,default_language=?,default_region=?,lookup_epoch=lookup_epoch+CASE WHEN online_lookups<>? THEN 1 ELSE 0 END,online_lookups=?,artwork_policy_revision=artwork_policy_revision+CASE WHEN artwork_preference<>? OR artwork_language<>? THEN 1 ELSE 0 END,artwork_preference=?,artwork_language=?,refresh_policy=?,fallback_language=?,anime_titles=?,cast_photos=?,acoustid_key=? WHERE singleton=1`, in.LocalArtworkLimitBytes, in.IncludeAdult, edge, tmdb, tvdb, subs.key, subs.username, subs.password, defaultLanguage, defaultRegion, online, online, artworkPreference, artworkLanguage, artworkPreference, artworkLanguage, advanced.RefreshPolicy, advanced.FallbackLanguage, advanced.AnimeTitles, advanced.CastPhotos, subs.acoustid)
 	if e == nil && current.OnlineLookups != nil && online != *current.OnlineLookups {
 		e = invalidateLookupWorkTx(ctx, tx)
 	}

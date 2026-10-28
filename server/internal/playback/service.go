@@ -85,6 +85,9 @@ type Service struct {
 	deliveryPreferences DeliveryPreferenceSource
 	hardware            *decoder.HardwareDetector
 	hardwareFFmpeg      string
+	// adapters is the last hardware discovery, so a session start resolves the
+	// owner's Device choice without discovering adapters itself.
+	adapters hardwareInventory
 	// hardwareSeen is the hardware state last reported (review P22): a
 	// request reports only a change, never on every session.
 	hardwareSeen atomic.Pointer[hardwareState]

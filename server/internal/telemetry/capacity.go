@@ -22,6 +22,8 @@ type TranscodeSettings struct {
 	Enabled                 bool
 	HardwareBackend         string
 	HardwareDevice          string
+	HardwareSelection       string
+	HardwareDecode          bool
 	HDRToneMapping          bool
 	HDRToneMappingAlgorithm string
 	X264Preset              string

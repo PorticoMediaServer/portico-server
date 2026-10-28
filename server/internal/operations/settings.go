@@ -95,6 +95,8 @@ func Registry() []Field {
 		field("serverCap", "playback", "nullable-integer", nil, bounded(1), bounded(1000000), nil, "next-operation", "playback admission and expired-lease recovery", "Null means unlimited. Lowering a cap never evicts existing streams."),
 		field("hardwareBackend", "transcoding", "enumeration", "auto", nil, nil, HardwareBackends, "next-operation", "delivery planning and conversion launch", "Encoder family used for conversions. Auto picks the first backend that probes successfully and falls back to software."),
 		field("hardwareDevice", "transcoding", "string", "", nil, nil, nil, "next-operation", "delivery planning and conversion launch", "Optional device selector for the chosen backend, such as a render node path or adapter index. Empty lets the backend choose."),
+		field("hardwareSelection", "transcoding", "string", "auto", nil, nil, nil, "next-operation", "delivery planning and conversion launch", "Which adapter converts: auto (every adapter found, best first), software (the processor only), or one adapter's opaque id from the hardware report. An id that is no longer present converts on the processor."),
+		field("hardwareDecode", "transcoding", "boolean", true, nil, nil, nil, "next-operation", "conversion launch", "Decode on the conversion adapter where it has been proven to work. Off sends all decoding to the processor; encoding still uses the adapter."),
 		field("hdrToneMapping", "transcoding", "boolean", true, nil, nil, nil, "next-operation", "delivery planning", "Converts HDR sources to SDR when a conversion is required. Costs additional processing per stream."),
 		field("hdrToneMappingAlgorithm", "transcoding", "enumeration", "hable", nil, nil, ToneMappingAlgorithms, "next-operation", "delivery planning", "Tone curve used when HDR tone mapping runs."),
 		field("x264Preset", "transcoding", "enumeration", "veryfast", nil, nil, X264Presets, "next-operation", "software conversion launch", "Software encoder speed against size. Slower presets need more CPU per stream."),
@@ -174,8 +176,13 @@ type Settings struct {
 	ServerCap          *int   `json:"serverCap"`
 	// Transcoding administration. No domain table mirrors these, so the console
 	// document is their single authority and the registry their only contract.
-	HardwareBackend         string `json:"hardwareBackend"`
-	HardwareDevice          string `json:"hardwareDevice"`
+	HardwareBackend string `json:"hardwareBackend"`
+	HardwareDevice  string `json:"hardwareDevice"`
+	// HardwareSelection is Settings › Streaming › Device: "auto", "software" or
+	// one adapter's opaque id (decoder.HardwareDevice.ID). HardwareDecode off
+	// keeps decoding on the processor.
+	HardwareSelection       string `json:"hardwareSelection"`
+	HardwareDecode          bool   `json:"hardwareDecode"`
 	HDRToneMapping          bool   `json:"hdrToneMapping"`
 	HDRToneMappingAlgorithm string `json:"hdrToneMappingAlgorithm"`
 	X264Preset              string `json:"x264Preset"`
@@ -277,7 +284,7 @@ type LogRetention struct {
 // fresh database and a document saved before these fields existed agree.
 func DefaultSettings() Settings {
 	chapterNames := true
-	return Settings{AnalysisStorageGiB: 32, AnalysisStageStorageMiB: 256, SubtitleTrackLimit: medialimits.DefaultSubtitleTracks, SubtitleFileLimitMiB: medialimits.DefaultSubtitleFileMiB, Name: "Portico", TranscodingEnabled: true, ConversionMode: "all", OutputFormat: "auto", DownloadMaxQuality: "original", MusicAwayQuality: "original", HDRToneMapping: true, HardwareBackend: "auto", HDRToneMappingAlgorithm: "hable", X264Preset: "veryfast", DirectStreamRemux: true, PlanningPolicy: "maximum_fidelity", ThrottleBufferMs: 60000, PlayedRetentionMs: 180000, SessionStorageMiB: 4096, DiagnosticDays: 30, NotificationDays: 180, JobDays: 30, UpdateChannel: "stable", UpdateFeedURL: DefaultUpdateFeedURL, MissingTitles: "after_days", MissingTitlesDays: 30, PeopleInvitationRole: "member", PeopleInvitationDays: 7, SegmentDetection: "standard", SegmentUseChapterNames: &chapterNames, SegmentShortestEpisode: 2, SegmentShortestFilm: 10, SegmentIntroWindow: "usual", SegmentCreditsWindow: "usual", SegmentFilmCreditsWindow: "usual", SegmentTVMode: "server", SegmentAnimeMode: "server", SegmentMovieMode: "server", SegmentViewerConfidencePercent: 50, SegmentAutomaticConfidencePercent: 85,
+	return Settings{AnalysisStorageGiB: 32, AnalysisStageStorageMiB: 256, SubtitleTrackLimit: medialimits.DefaultSubtitleTracks, SubtitleFileLimitMiB: medialimits.DefaultSubtitleFileMiB, Name: "Portico", TranscodingEnabled: true, ConversionMode: "all", OutputFormat: "auto", DownloadMaxQuality: "original", MusicAwayQuality: "original", HDRToneMapping: true, HardwareBackend: "auto", HardwareSelection: "auto", HardwareDecode: true, HDRToneMappingAlgorithm: "hable", X264Preset: "veryfast", DirectStreamRemux: true, PlanningPolicy: "maximum_fidelity", ThrottleBufferMs: 60000, PlayedRetentionMs: 180000, SessionStorageMiB: 4096, DiagnosticDays: 30, NotificationDays: 180, JobDays: 30, UpdateChannel: "stable", UpdateFeedURL: DefaultUpdateFeedURL, MissingTitles: "after_days", MissingTitlesDays: 30, PeopleInvitationRole: "member", PeopleInvitationDays: 7, SegmentDetection: "standard", SegmentUseChapterNames: &chapterNames, SegmentShortestEpisode: 2, SegmentShortestFilm: 10, SegmentIntroWindow: "usual", SegmentCreditsWindow: "usual", SegmentFilmCreditsWindow: "usual", SegmentTVMode: "server", SegmentAnimeMode: "server", SegmentMovieMode: "server", SegmentViewerConfidencePercent: 50, SegmentAutomaticConfidencePercent: 85,
 		RemoteSignInPolicy: "allow", LANNetworks: networkpolicy.DefaultHomeNetworks(), AccessURLs: []string{}, LANDiscoveryEnabled: true, TrustedProxies: []string{}, LogLevel: "info", LogDetailMinutes: 30, LogRetention: []LogRetention{}}
 }
 
@@ -515,6 +522,21 @@ func clamp(v *int, low, high int) {
 	}
 }
 
+// validHardwareDeviceID accepts the shape of an adapter id the hardware report
+// publishes: a short lowercase token. Whether that adapter is present is a
+// runtime fact; an absent one converts on the processor.
+func validHardwareDeviceID(v string) bool {
+	if v == "" || len(v) > 80 {
+		return false
+	}
+	for _, r := range v {
+		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-' || r == '_') {
+			return false
+		}
+	}
+	return true
+}
+
 // validTemporaryDirectory accepts only an absolute, already-clean path without
 // control characters. Empty means "use the server state directory".
 func validTemporaryDirectory(v string) bool {
@@ -583,6 +605,9 @@ func validateSettings(v *Settings) error {
 	}
 	if v.HardwareDevice != "" && (len(v.HardwareDevice) > 200 || !SafeText(v.HardwareDevice, 200) || strings.ContainsAny(v.HardwareDevice, "\n\t")) {
 		fields = append(fields, "values.hardwareDevice")
+	}
+	if v.HardwareSelection != "auto" && v.HardwareSelection != "software" && !validHardwareDeviceID(v.HardwareSelection) {
+		fields = append(fields, "values.hardwareSelection")
 	}
 	if !oneOf(v.HDRToneMappingAlgorithm, ToneMappingAlgorithms) {
 		fields = append(fields, "values.hdrToneMappingAlgorithm")

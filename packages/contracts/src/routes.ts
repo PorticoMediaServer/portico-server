@@ -17926,6 +17926,30 @@ export const routes = [
     "admission": "browsing"
   },
   {
+    "id": "refresh_all_metadata",
+    "method": "POST",
+    "path": "/v1/admin/metadata/settings/refresh-all",
+    "summary": "Refresh every title's details from the providers within the refresh allowance",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "revision_mismatch",
+      "internal",
+      "timeout",
+      "database_busy",
+      "writer_capacity"
+    ],
+    "status": 200,
+    "optionalBody": true,
+    "admission": "admin"
+  },
+  {
     "id": "refresh_items_metadata",
     "method": "POST",
     "path": "/v1/items/{id}/metadata/refresh",

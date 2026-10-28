@@ -33,18 +33,75 @@ type AcousticProvider interface {
 	Lookup(context.Context, string, int) ([]metadataprovider.AcousticMatch, error)
 }
 
-// ConfigureAcoustID is startup-only; workers are started after configuration.
+// ConfigureAcoustID installs the server's own application key (the
+// environment's). An owner key saved in Server › Metadata replaces it while it
+// is set; clearing that key brings this one back.
 func (s *Service) ConfigureAcoustID(key string) error {
-	p, e := metadataprovider.NewAcoustID(key)
-	if e != nil {
+	key = strings.TrimSpace(key)
+	if _, e := metadataprovider.NewAcoustID(key); e != nil {
 		return e
 	}
-	if p != nil {
-		s.acoustid = p
-		digest := sha256.Sum256([]byte(strings.TrimSpace(key)))
-		s.acoustidConfig = hex.EncodeToString(digest[:])
+	s.acoustidMu.Lock()
+	s.acoustidEnvKey = key
+	owner := s.acoustidKey != "" && s.acoustidKey != s.acoustidEnvKey
+	s.acoustidMu.Unlock()
+	if owner {
+		return nil
 	}
+	return s.installAcoustID(key)
+}
+
+// useAcoustIDKey applies the owner's saved key ("" for none) over the server's.
+func (s *Service) useAcoustIDKey(owner string) error {
+	s.acoustidMu.RLock()
+	key := s.acoustidEnvKey
+	s.acoustidMu.RUnlock()
+	if owner != "" {
+		key = owner
+	}
+	return s.installAcoustID(key)
+}
+
+func (s *Service) installAcoustID(key string) error {
+	s.acoustidMu.Lock()
+	defer s.acoustidMu.Unlock()
+	if s.acoustid != nil && key == s.acoustidKey {
+		return nil
+	}
+	p, e := metadataprovider.NewAcoustID(key)
+	if e != nil {
+		// A stored key that no longer parses leaves fingerprint lookup off
+		// rather than failing every other provider's settings.
+		s.acoustid, s.acoustidConfig, s.acoustidKey = nil, "", key
+		return nil
+	}
+	s.acoustidKey = key
+	if p == nil {
+		s.acoustid, s.acoustidConfig = nil, ""
+		return nil
+	}
+	digest := sha256.Sum256([]byte(key))
+	s.acoustid, s.acoustidConfig = p, hex.EncodeToString(digest[:])
 	return nil
+}
+
+// acoustidState is the provider in force and its configuration digest.
+func (s *Service) acoustidState() (AcousticProvider, string) {
+	s.acoustidMu.RLock()
+	defer s.acoustidMu.RUnlock()
+	return s.acoustid, s.acoustidConfig
+}
+
+// acoustidKeySource names which key is in force, for the settings page.
+func (s *Service) acoustidKeySource(ownerConfigured bool) string {
+	provider, _ := s.acoustidState()
+	switch {
+	case provider == nil:
+		return "none"
+	case ownerConfigured:
+		return "owner"
+	}
+	return "environment"
 }
 
 func readMusicInputs(ctx context.Context, tx *sql.Tx, kind, id, library string) (musicInputs, error) {
