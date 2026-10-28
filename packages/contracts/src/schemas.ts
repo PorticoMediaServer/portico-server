@@ -370,6 +370,10 @@ export const schemas = {
                       }
                     ]
                   },
+                  "selectionBasis": {
+                    "pattern": "^[a-f0-9]{64}$",
+                    "type": "string"
+                  },
                   "selectionRevision": {
                     "pattern": "^browse_[a-f0-9]{64}$",
                     "type": "string"
@@ -3735,6 +3739,10 @@ export const schemas = {
                       }
                     ]
                   },
+                  "selectionBasis": {
+                    "pattern": "^[a-f0-9]{64}$",
+                    "type": "string"
+                  },
                   "selectionRevision": {
                     "pattern": "^browse_[a-f0-9]{64}$",
                     "type": "string"
@@ -5609,6 +5617,10 @@ export const schemas = {
           "prefix"
         ],
         "type": "object"
+      },
+      "selectionBasis": {
+        "pattern": "^[a-f0-9]{64}$",
+        "type": "string"
       },
       "sort": {
         "items": {
@@ -7567,6 +7579,10 @@ export const schemas = {
                   "pivot": {
                     "type": "string"
                   },
+                  "selectionBasis": {
+                    "pattern": "^[a-f0-9]{64}$",
+                    "type": "string"
+                  },
                   "sort": {
                     "items": {
                       "properties": {
@@ -7729,6 +7745,54 @@ export const schemas = {
           "catalogRevision",
           "total",
           "types"
+        ],
+        "type": "object"
+      },
+      "wholeSelectionPreparing": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "browse-selection-preparing"
+            ],
+            "type": "string"
+          },
+          "queryId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "retryAfterMs": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "preparing"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "state",
+          "queryId",
+          "retryAfterMs"
+        ],
+        "type": "object"
+      },
+      "wholeSelectionUnavailable": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "enum": [
+              "search_not_bounded"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
         ],
         "type": "object"
       }
@@ -7950,6 +8014,10 @@ export const schemas = {
         ],
         "type": "object"
       },
+      "selectionBasis": {
+        "pattern": "^[a-f0-9]{64}$",
+        "type": "string"
+      },
       "sort": {
         "items": {
           "properties": {
@@ -7986,699 +8054,169 @@ export const schemas = {
     "type": "object"
   },
   "BrowseLibraryResponse": {
-    "properties": {
-      "applied": {
+    "anyOf": [
+      {
         "properties": {
-          "query": {
-            "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
-            "nullable": true,
-            "oneOf": [
-              {
-                "additionalProperties": false,
-                "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
-                "properties": {
-                  "field": {
-                    "enum": [
-                      "releaseDate",
-                      "dateAdded",
-                      "lastPlayedAt"
-                    ],
-                    "type": "string"
-                  },
-                  "operator": {
-                    "enum": [
-                      "within-last-days"
-                    ],
-                    "type": "string"
-                  },
-                  "value": {
-                    "maximum": 36500,
-                    "minimum": 1,
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "field",
-                  "operator",
-                  "value"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "all": {
-                    "items": {
-                      "additionalProperties": {},
-                      "properties": {},
-                      "required": [],
-                      "type": "object"
-                    },
-                    "maxItems": 40,
-                    "minItems": 1,
-                    "type": "array"
-                  },
-                  "any": {
-                    "items": {
-                      "additionalProperties": {},
-                      "properties": {},
-                      "required": [],
-                      "type": "object"
-                    },
-                    "maxItems": 40,
-                    "minItems": 1,
-                    "type": "array"
-                  },
-                  "field": {
-                    "type": "string"
-                  },
-                  "not": {
-                    "additionalProperties": {},
-                    "properties": {},
-                    "required": [],
-                    "type": "object"
-                  },
-                  "operator": {
-                    "enum": [
-                      "equals",
-                      "not-equals",
-                      "in",
-                      "not-in",
-                      "contains",
-                      "starts-with",
-                      "is-present",
-                      "is-missing",
-                      "less-than",
-                      "at-most",
-                      "greater-than",
-                      "at-least",
-                      "between",
-                      "contains-any",
-                      "contains-all"
-                    ],
-                    "type": "string"
-                  },
-                  "value": {}
-                },
-                "required": [],
-                "type": "object"
-              }
-            ]
-          },
-          "seek": {
+          "applied": {
             "properties": {
-              "prefix": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "prefix"
-            ],
-            "type": "object"
-          },
-          "sort": {
-            "items": {
-              "properties": {
-                "direction": {
-                  "type": "string"
-                },
-                "field": {
-                  "type": "string"
-                },
-                "seed": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                }
-              },
-              "required": [
-                "field",
-                "direction"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "query",
-          "sort"
-        ],
-        "type": "object"
-      },
-      "displayTargets": {
-        "items": {
-          "properties": {
-            "entryId": {
-              "type": "string"
-            },
-            "membershipId": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "membershipId",
-            "entryId"
-          ],
-          "type": "object"
-        },
-        "type": "array"
-      },
-      "entries": {
-        "items": {
-          "additionalProperties": false,
-          "properties": {
-            "absoluteNumber": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "activeBeginYear": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "activeEndYear": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "addedAt": {
-              "nullable": true,
-              "type": "string"
-            },
-            "airDate": {
-              "type": "string"
-            },
-            "album": {
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "name": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "id",
-                "name"
-              ],
-              "type": "object"
-            },
-            "albumCount": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "albumType": {
-              "type": "string"
-            },
-            "artist": {
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "name": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "id",
-                "name"
-              ],
-              "type": "object"
-            },
-            "artistType": {
-              "type": "string"
-            },
-            "artworkPaths": {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            "audioFacts": {
-              "properties": {
-                "atmos": {
-                  "type": "boolean"
-                },
-                "bitDepth": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "channels": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "codec": {
-                  "type": "string"
-                },
-                "layout": {
-                  "type": "string"
-                },
-                "lossless": {
-                  "type": "boolean"
-                },
-                "sampleRate": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                }
-              },
-              "required": [
-                "codec"
-              ],
-              "type": "object"
-            },
-            "author": {
-              "type": "string"
-            },
-            "available": {
-              "type": "boolean"
-            },
-            "backdropUrl": {
-              "type": "string"
-            },
-            "badges": {
-              "items": {
+              "query": {
+                "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
+                "nullable": true,
                 "oneOf": [
                   {
                     "additionalProperties": false,
+                    "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
                     "properties": {
-                      "bitDepth": {
-                        "minimum": 17,
-                        "type": "integer"
-                      },
-                      "codec": {
-                        "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                      "field": {
+                        "enum": [
+                          "releaseDate",
+                          "dateAdded",
+                          "lastPlayedAt"
+                        ],
                         "type": "string"
                       },
-                      "kind": {
-                        "const": "lossless"
+                      "operator": {
+                        "enum": [
+                          "within-last-days"
+                        ],
+                        "type": "string"
                       },
-                      "sampleRate": {
+                      "value": {
+                        "maximum": 36500,
                         "minimum": 1,
                         "type": "integer"
                       }
                     },
                     "required": [
-                      "kind",
-                      "codec",
-                      "bitDepth",
-                      "sampleRate"
+                      "field",
+                      "operator",
+                      "value"
                     ],
                     "type": "object"
                   },
                   {
                     "additionalProperties": false,
                     "properties": {
-                      "kind": {
-                        "enum": [
-                          "atmos",
-                          "dsd"
-                        ]
-                      }
-                    },
-                    "required": [
-                      "kind"
-                    ],
-                    "type": "object"
-                  },
-                  {
-                    "additionalProperties": false,
-                    "properties": {
-                      "kind": {
-                        "const": "surround"
+                      "all": {
+                        "items": {
+                          "additionalProperties": {},
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        "maxItems": 40,
+                        "minItems": 1,
+                        "type": "array"
                       },
-                      "layout": {
+                      "any": {
+                        "items": {
+                          "additionalProperties": {},
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        "maxItems": 40,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "field": {
+                        "type": "string"
+                      },
+                      "not": {
+                        "additionalProperties": {},
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
+                      },
+                      "operator": {
                         "enum": [
-                          "5.1",
-                          "7.1"
-                        ]
-                      }
+                          "equals",
+                          "not-equals",
+                          "in",
+                          "not-in",
+                          "contains",
+                          "starts-with",
+                          "is-present",
+                          "is-missing",
+                          "less-than",
+                          "at-most",
+                          "greater-than",
+                          "at-least",
+                          "between",
+                          "contains-any",
+                          "contains-all"
+                        ],
+                        "type": "string"
+                      },
+                      "value": {}
                     },
-                    "required": [
-                      "kind",
-                      "layout"
-                    ],
+                    "required": [],
                     "type": "object"
                   }
                 ]
               },
-              "maxItems": 2,
-              "type": "array"
-            },
-            "bookProgress": {
-              "properties": {
-                "bookId": {
-                  "type": "string"
-                },
-                "chapter": {
-                  "properties": {
-                    "endMs": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "index": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "startMs": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "title": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "index",
-                    "title",
-                    "startMs",
-                    "endMs"
-                  ],
-                  "type": "object"
-                },
-                "durationMs": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "itemId": {
-                  "type": "string"
-                },
-                "partPositionMs": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "positionMs": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "remainingMs": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                }
-              },
-              "required": [
-                "bookId",
-                "itemId",
-                "partPositionMs"
-              ],
-              "type": "object"
-            },
-            "contentRating": {
-              "type": "string"
-            },
-            "count": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "country": {
-              "type": "string"
-            },
-            "dateBased": {
-              "type": "boolean"
-            },
-            "discNumber": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "displayTitle": {
-              "type": "string"
-            },
-            "durationMs": {
-              "maximum": 9007199254740991,
-              "minimum": 0,
-              "type": "integer"
-            },
-            "edition": {
-              "type": "string"
-            },
-            "episodeNumber": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "favorite": {
-              "type": "boolean"
-            },
-            "genres": {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            "hidden": {
-              "nullable": true,
-              "type": "boolean"
-            },
-            "homeActions": {
-              "properties": {
-                "collection": {
-                  "type": "boolean"
-                },
-                "delete": {
-                  "type": "boolean"
-                },
-                "details": {
-                  "type": "boolean"
-                },
-                "download": {
-                  "type": "boolean"
-                },
-                "editMetadata": {
-                  "type": "boolean"
-                },
-                "favorite": {
-                  "type": "boolean"
-                },
-                "myList": {
-                  "type": "boolean"
-                },
-                "notInterested": {
-                  "type": "boolean"
-                },
-                "play": {
-                  "type": "boolean"
-                },
-                "played": {
-                  "type": "boolean"
-                },
-                "playlist": {
-                  "type": "boolean"
-                },
-                "queue": {
-                  "type": "boolean"
-                },
-                "rating": {
-                  "type": "boolean"
-                },
-                "refreshMetadata": {
-                  "type": "boolean"
-                },
-                "removeFromContinue": {
-                  "type": "boolean"
-                },
-                "selection": {
-                  "properties": {
-                    "collection": {
-                      "type": "boolean"
-                    },
-                    "delete": {
-                      "type": "boolean"
-                    },
-                    "download": {
-                      "type": "boolean"
-                    },
-                    "edit": {
-                      "type": "boolean"
-                    },
-                    "favorite": {
-                      "type": "boolean"
-                    },
-                    "myList": {
-                      "type": "boolean"
-                    },
-                    "play": {
-                      "type": "boolean"
-                    },
-                    "playlist": {
-                      "type": "boolean"
-                    },
-                    "queue": {
-                      "type": "boolean"
-                    },
-                    "refresh": {
-                      "type": "boolean"
-                    },
-                    "watched": {
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "play",
-                    "queue",
-                    "playlist",
-                    "collection",
-                    "myList",
-                    "favorite",
-                    "watched",
-                    "download",
-                    "edit",
-                    "refresh",
-                    "delete"
-                  ],
-                  "type": "object"
-                },
-                "state": {
-                  "properties": {
-                    "containerRevision": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "favorite": {
-                      "type": "boolean"
-                    },
-                    "personalRevision": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "rating": {
-                      "nullable": true,
-                      "type": "number"
-                    },
-                    "watched": {
-                      "type": "boolean"
-                    },
-                    "watchlisted": {
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "watchlisted",
-                    "favorite",
-                    "watched",
-                    "rating",
-                    "personalRevision",
-                    "containerRevision"
-                  ],
-                  "type": "object"
-                },
-                "watched": {
-                  "type": "boolean"
-                }
-              },
-              "required": [
-                "play",
-                "queue",
-                "playlist",
-                "collection",
-                "myList",
-                "favorite",
-                "watched",
-                "played",
-                "rating",
-                "editMetadata",
-                "refreshMetadata",
-                "delete",
-                "download",
-                "details",
-                "state",
-                "selection"
-              ],
-              "type": "object"
-            },
-            "homeTitleContext": {
-              "properties": {
-                "genres": {
-                  "items": {
+              "seek": {
+                "properties": {
+                  "prefix": {
                     "type": "string"
+                  }
+                },
+                "required": [
+                  "prefix"
+                ],
+                "type": "object"
+              },
+              "sort": {
+                "items": {
+                  "properties": {
+                    "direction": {
+                      "type": "string"
+                    },
+                    "field": {
+                      "type": "string"
+                    },
+                    "seed": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
                   },
-                  "type": "array"
+                  "required": [
+                    "field",
+                    "direction"
+                  ],
+                  "type": "object"
                 },
-                "kind": {
-                  "type": "string"
-                },
-                "seasonCount": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "year": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                }
-              },
-              "required": [
-                "kind",
-                "genres"
-              ],
-              "type": "object"
+                "type": "array"
+              }
             },
-            "id": {
-              "type": "string"
-            },
-            "kind": {
-              "type": "string"
-            },
-            "label": {
-              "type": "string"
-            },
-            "language": {
-              "type": "string"
-            },
-            "lastChanged": {
-              "type": "string"
-            },
-            "latestEpisode": {
+            "required": [
+              "query",
+              "sort"
+            ],
+            "type": "object"
+          },
+          "displayTargets": {
+            "items": {
               "properties": {
-                "airDate": {
+                "entryId": {
                   "type": "string"
                 },
-                "count": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "episodeNumber": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "seasonNumber": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "title": {
+                "membershipId": {
                   "type": "string"
                 }
               },
               "required": [
-                "airDate",
-                "episodeNumber",
-                "count"
+                "membershipId",
+                "entryId"
               ],
               "type": "object"
             },
-            "libraryId": {
-              "type": "string"
-            },
-            "media": {
+            "type": "array"
+          },
+          "entries": {
+            "items": {
+              "additionalProperties": false,
               "properties": {
                 "absoluteNumber": {
                   "maximum": 9007199254740991,
@@ -8971,6 +8509,10 @@ export const schemas = {
                   },
                   "type": "array"
                 },
+                "hidden": {
+                  "nullable": true,
+                  "type": "boolean"
+                },
                 "homeActions": {
                   "properties": {
                     "collection": {
@@ -9205,6 +8747,843 @@ export const schemas = {
                 },
                 "libraryId": {
                   "type": "string"
+                },
+                "media": {
+                  "properties": {
+                    "absoluteNumber": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "activeBeginYear": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "activeEndYear": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "addedAt": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "airDate": {
+                      "type": "string"
+                    },
+                    "album": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "albumCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "albumType": {
+                      "type": "string"
+                    },
+                    "artist": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "artistType": {
+                      "type": "string"
+                    },
+                    "artworkPaths": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "audioFacts": {
+                      "properties": {
+                        "atmos": {
+                          "type": "boolean"
+                        },
+                        "bitDepth": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "channels": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "codec": {
+                          "type": "string"
+                        },
+                        "layout": {
+                          "type": "string"
+                        },
+                        "lossless": {
+                          "type": "boolean"
+                        },
+                        "sampleRate": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "codec"
+                      ],
+                      "type": "object"
+                    },
+                    "author": {
+                      "type": "string"
+                    },
+                    "available": {
+                      "type": "boolean"
+                    },
+                    "backdropUrl": {
+                      "type": "string"
+                    },
+                    "badges": {
+                      "items": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "bitDepth": {
+                                "minimum": 17,
+                                "type": "integer"
+                              },
+                              "codec": {
+                                "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "const": "lossless"
+                              },
+                              "sampleRate": {
+                                "minimum": 1,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "codec",
+                              "bitDepth",
+                              "sampleRate"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "enum": [
+                                  "atmos",
+                                  "dsd"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "surround"
+                              },
+                              "layout": {
+                                "enum": [
+                                  "5.1",
+                                  "7.1"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "layout"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "maxItems": 2,
+                      "type": "array"
+                    },
+                    "bookProgress": {
+                      "properties": {
+                        "bookId": {
+                          "type": "string"
+                        },
+                        "chapter": {
+                          "properties": {
+                            "endMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "index": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "startMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "title": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "index",
+                            "title",
+                            "startMs",
+                            "endMs"
+                          ],
+                          "type": "object"
+                        },
+                        "durationMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "itemId": {
+                          "type": "string"
+                        },
+                        "partPositionMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "positionMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "remainingMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "bookId",
+                        "itemId",
+                        "partPositionMs"
+                      ],
+                      "type": "object"
+                    },
+                    "contentRating": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "country": {
+                      "type": "string"
+                    },
+                    "dateBased": {
+                      "type": "boolean"
+                    },
+                    "discNumber": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "displayTitle": {
+                      "type": "string"
+                    },
+                    "durationMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "edition": {
+                      "type": "string"
+                    },
+                    "episodeNumber": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "genres": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "homeActions": {
+                      "properties": {
+                        "collection": {
+                          "type": "boolean"
+                        },
+                        "delete": {
+                          "type": "boolean"
+                        },
+                        "details": {
+                          "type": "boolean"
+                        },
+                        "download": {
+                          "type": "boolean"
+                        },
+                        "editMetadata": {
+                          "type": "boolean"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "myList": {
+                          "type": "boolean"
+                        },
+                        "notInterested": {
+                          "type": "boolean"
+                        },
+                        "play": {
+                          "type": "boolean"
+                        },
+                        "played": {
+                          "type": "boolean"
+                        },
+                        "playlist": {
+                          "type": "boolean"
+                        },
+                        "queue": {
+                          "type": "boolean"
+                        },
+                        "rating": {
+                          "type": "boolean"
+                        },
+                        "refreshMetadata": {
+                          "type": "boolean"
+                        },
+                        "removeFromContinue": {
+                          "type": "boolean"
+                        },
+                        "selection": {
+                          "properties": {
+                            "collection": {
+                              "type": "boolean"
+                            },
+                            "delete": {
+                              "type": "boolean"
+                            },
+                            "download": {
+                              "type": "boolean"
+                            },
+                            "edit": {
+                              "type": "boolean"
+                            },
+                            "favorite": {
+                              "type": "boolean"
+                            },
+                            "myList": {
+                              "type": "boolean"
+                            },
+                            "play": {
+                              "type": "boolean"
+                            },
+                            "playlist": {
+                              "type": "boolean"
+                            },
+                            "queue": {
+                              "type": "boolean"
+                            },
+                            "refresh": {
+                              "type": "boolean"
+                            },
+                            "watched": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "play",
+                            "queue",
+                            "playlist",
+                            "collection",
+                            "myList",
+                            "favorite",
+                            "watched",
+                            "download",
+                            "edit",
+                            "refresh",
+                            "delete"
+                          ],
+                          "type": "object"
+                        },
+                        "state": {
+                          "properties": {
+                            "containerRevision": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "favorite": {
+                              "type": "boolean"
+                            },
+                            "personalRevision": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "rating": {
+                              "nullable": true,
+                              "type": "number"
+                            },
+                            "watched": {
+                              "type": "boolean"
+                            },
+                            "watchlisted": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "watchlisted",
+                            "favorite",
+                            "watched",
+                            "rating",
+                            "personalRevision",
+                            "containerRevision"
+                          ],
+                          "type": "object"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "play",
+                        "queue",
+                        "playlist",
+                        "collection",
+                        "myList",
+                        "favorite",
+                        "watched",
+                        "played",
+                        "rating",
+                        "editMetadata",
+                        "refreshMetadata",
+                        "delete",
+                        "download",
+                        "details",
+                        "state",
+                        "selection"
+                      ],
+                      "type": "object"
+                    },
+                    "homeTitleContext": {
+                      "properties": {
+                        "genres": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "seasonCount": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "year": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "genres"
+                      ],
+                      "type": "object"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "language": {
+                      "type": "string"
+                    },
+                    "lastChanged": {
+                      "type": "string"
+                    },
+                    "latestEpisode": {
+                      "properties": {
+                        "airDate": {
+                          "type": "string"
+                        },
+                        "count": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "episodeNumber": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "seasonNumber": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "airDate",
+                        "episodeNumber",
+                        "count"
+                      ],
+                      "type": "object"
+                    },
+                    "libraryId": {
+                      "type": "string"
+                    },
+                    "missing": {
+                      "type": "boolean"
+                    },
+                    "narrators": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "navigation": {
+                      "properties": {
+                        "browse": {
+                          "properties": {
+                            "pivot": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "query": {
+                              "additionalProperties": {},
+                              "type": "object"
+                            },
+                            "sort": {
+                              "items": {
+                                "properties": {
+                                  "direction": {
+                                    "enum": [
+                                      "asc",
+                                      "desc"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "field": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "field",
+                                  "direction"
+                                ],
+                                "type": "object"
+                              },
+                              "maxItems": 1,
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "pivot",
+                            "sort"
+                          ],
+                          "type": "object"
+                        },
+                        "category": {
+                          "type": "string"
+                        },
+                        "channelId": {
+                          "type": "string"
+                        },
+                        "entityId": {
+                          "type": "string"
+                        },
+                        "provenance": {
+                          "type": "string"
+                        },
+                        "sourceId": {
+                          "type": "string"
+                        },
+                        "view": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "view"
+                      ],
+                      "type": "object"
+                    },
+                    "new": {
+                      "type": "boolean"
+                    },
+                    "origin": {
+                      "type": "string"
+                    },
+                    "overview": {
+                      "type": "string"
+                    },
+                    "overviewSource": {
+                      "type": "string"
+                    },
+                    "overviewSourceUrl": {
+                      "type": "string"
+                    },
+                    "pageCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "pinned": {
+                      "type": "boolean"
+                    },
+                    "playback": {
+                      "properties": {
+                        "itemId": {
+                          "type": "string"
+                        },
+                        "startMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "itemId"
+                      ],
+                      "type": "object"
+                    },
+                    "plays": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "posterUrl": {
+                      "type": "string"
+                    },
+                    "progressMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "publicationType": {
+                      "enum": [
+                        "book",
+                        "magazine",
+                        "newspaper"
+                      ],
+                      "type": "string"
+                    },
+                    "publishedYear": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "publisher": {
+                      "type": "string"
+                    },
+                    "radioSeed": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "kind"
+                      ],
+                      "type": "object"
+                    },
+                    "rating": {
+                      "type": "number"
+                    },
+                    "readingMark": {
+                      "properties": {
+                        "itemId": {
+                          "type": "string"
+                        },
+                        "read": {
+                          "type": "boolean"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "itemId",
+                        "read",
+                        "revision"
+                      ],
+                      "type": "object"
+                    },
+                    "releaseDate": {
+                      "type": "string"
+                    },
+                    "removed": {
+                      "type": "boolean"
+                    },
+                    "resolution": {
+                      "type": "string"
+                    },
+                    "role": {
+                      "type": "string"
+                    },
+                    "seasonCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "seasonNumber": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "series": {
+                      "items": {
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "position": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "show": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "sortLetter": {
+                      "type": "string"
+                    },
+                    "special": {
+                      "type": "boolean"
+                    },
+                    "stillUrl": {
+                      "type": "string"
+                    },
+                    "subtitle": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "totalAtLeast": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "trackNumber": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "unwatchedCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "userRating": {
+                      "maximum": 10,
+                      "minimum": 0,
+                      "nullable": true,
+                      "type": "integer"
+                    },
+                    "watched": {
+                      "type": "boolean"
+                    },
+                    "watchedCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "watchlisted": {
+                      "type": "boolean"
+                    },
+                    "year": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "yearMax": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "yearMin": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "missing",
+                    "id",
+                    "kind",
+                    "title",
+                    "addedAt"
+                  ],
+                  "type": "object"
                 },
                 "missing": {
                   "type": "boolean"
@@ -9507,580 +9886,356 @@ export const schemas = {
                 }
               },
               "required": [
-                "missing",
-                "id",
-                "kind",
-                "title",
-                "addedAt"
-              ],
-              "type": "object"
-            },
-            "missing": {
-              "type": "boolean"
-            },
-            "narrators": {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            "navigation": {
-              "properties": {
-                "browse": {
-                  "properties": {
-                    "pivot": {
-                      "maxLength": 256,
-                      "minLength": 1,
-                      "type": "string"
-                    },
-                    "query": {
-                      "additionalProperties": {},
-                      "type": "object"
-                    },
-                    "sort": {
-                      "items": {
-                        "properties": {
-                          "direction": {
-                            "enum": [
-                              "asc",
-                              "desc"
-                            ],
-                            "type": "string"
-                          },
-                          "field": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "field",
-                          "direction"
-                        ],
-                        "type": "object"
-                      },
-                      "maxItems": 1,
-                      "type": "array"
-                    }
-                  },
-                  "required": [
-                    "pivot",
-                    "sort"
-                  ],
-                  "type": "object"
-                },
-                "category": {
-                  "type": "string"
-                },
-                "channelId": {
-                  "type": "string"
-                },
-                "entityId": {
-                  "type": "string"
-                },
-                "provenance": {
-                  "type": "string"
-                },
-                "sourceId": {
-                  "type": "string"
-                },
-                "view": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "view"
-              ],
-              "type": "object"
-            },
-            "new": {
-              "type": "boolean"
-            },
-            "origin": {
-              "type": "string"
-            },
-            "overview": {
-              "type": "string"
-            },
-            "overviewSource": {
-              "type": "string"
-            },
-            "overviewSourceUrl": {
-              "type": "string"
-            },
-            "pageCount": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "pinned": {
-              "type": "boolean"
-            },
-            "playback": {
-              "properties": {
-                "itemId": {
-                  "type": "string"
-                },
-                "startMs": {
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                }
-              },
-              "required": [
-                "itemId"
-              ],
-              "type": "object"
-            },
-            "plays": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "posterUrl": {
-              "type": "string"
-            },
-            "progressMs": {
-              "maximum": 9007199254740991,
-              "minimum": 0,
-              "type": "integer"
-            },
-            "publicationType": {
-              "enum": [
-                "book",
-                "magazine",
-                "newspaper"
-              ],
-              "type": "string"
-            },
-            "publishedYear": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "publisher": {
-              "type": "string"
-            },
-            "radioSeed": {
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "kind": {
-                  "type": "string"
-                }
-              },
-              "required": [
                 "id",
                 "kind"
               ],
               "type": "object"
             },
-            "rating": {
-              "type": "number"
+            "type": "array"
+          },
+          "pageInfo": {
+            "properties": {
+              "durationIsLowerBound": {
+                "type": "boolean"
+              },
+              "durationMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "hasMore": {
+                "type": "boolean"
+              },
+              "nextCursor": {
+                "type": "string"
+              },
+              "revision": {
+                "type": "string"
+              },
+              "start": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "total": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "totalIsLowerBound": {
+                "type": "boolean"
+              }
             },
-            "readingMark": {
+            "required": [
+              "start",
+              "total",
+              "totalIsLowerBound",
+              "revision",
+              "hasMore",
+              "nextCursor",
+              "durationMs",
+              "durationIsLowerBound"
+            ],
+            "type": "object"
+          },
+          "pivot": {
+            "type": "string"
+          },
+          "positionIndex": {
+            "items": {
               "properties": {
-                "itemId": {
-                  "type": "string"
-                },
-                "read": {
-                  "type": "boolean"
-                },
-                "revision": {
+                "index": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "key": {
+                  "type": "string"
                 }
               },
               "required": [
-                "itemId",
-                "read",
-                "revision"
+                "key",
+                "index"
               ],
               "type": "object"
             },
-            "releaseDate": {
-              "type": "string"
-            },
-            "removed": {
-              "type": "boolean"
-            },
-            "resolution": {
-              "type": "string"
-            },
-            "role": {
-              "type": "string"
-            },
-            "seasonCount": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "seasonNumber": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "series": {
-              "items": {
+            "type": "array"
+          },
+          "wholeSelection": {
+            "properties": {
+              "catalogRevision": {
+                "type": "string"
+              },
+              "selector": {
                 "properties": {
-                  "name": {
-                    "type": "string"
-                  },
-                  "position": {
-                    "type": "string"
+                  "query": {
+                    "properties": {
+                      "filter": {},
+                      "libraryId": {
+                        "type": "string"
+                      },
+                      "pivot": {
+                        "type": "string"
+                      },
+                      "selectionBasis": {
+                        "pattern": "^[a-f0-9]{64}$",
+                        "type": "string"
+                      },
+                      "sort": {
+                        "items": {
+                          "properties": {
+                            "direction": {
+                              "type": "string"
+                            },
+                            "field": {
+                              "type": "string"
+                            },
+                            "seed": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "field",
+                            "direction"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "libraryId",
+                      "pivot"
+                    ],
+                    "type": "object"
                   }
                 },
                 "required": [
-                  "name"
+                  "query"
                 ],
                 "type": "object"
               },
-              "type": "array"
-            },
-            "show": {
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "name": {
-                  "type": "string"
-                }
+              "total": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
               },
-              "required": [
-                "id",
-                "name"
-              ],
-              "type": "object"
-            },
-            "sortLetter": {
-              "type": "string"
-            },
-            "special": {
-              "type": "boolean"
-            },
-            "stillUrl": {
-              "type": "string"
-            },
-            "subtitle": {
-              "type": "string"
-            },
-            "title": {
-              "type": "string"
-            },
-            "totalAtLeast": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "trackNumber": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "unwatchedCount": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "userRating": {
-              "maximum": 10,
-              "minimum": 0,
-              "nullable": true,
-              "type": "integer"
-            },
-            "watched": {
-              "type": "boolean"
-            },
-            "watchedCount": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "watchlisted": {
-              "type": "boolean"
-            },
-            "year": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "yearMax": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "yearMin": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            }
-          },
-          "required": [
-            "id",
-            "kind"
-          ],
-          "type": "object"
-        },
-        "type": "array"
-      },
-      "pageInfo": {
-        "properties": {
-          "durationIsLowerBound": {
-            "type": "boolean"
-          },
-          "durationMs": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "hasMore": {
-            "type": "boolean"
-          },
-          "nextCursor": {
-            "type": "string"
-          },
-          "revision": {
-            "type": "string"
-          },
-          "start": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "total": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "totalIsLowerBound": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "start",
-          "total",
-          "totalIsLowerBound",
-          "revision",
-          "hasMore",
-          "nextCursor",
-          "durationMs",
-          "durationIsLowerBound"
-        ],
-        "type": "object"
-      },
-      "pivot": {
-        "type": "string"
-      },
-      "positionIndex": {
-        "items": {
-          "properties": {
-            "index": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "key": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "key",
-            "index"
-          ],
-          "type": "object"
-        },
-        "type": "array"
-      },
-      "wholeSelection": {
-        "properties": {
-          "catalogRevision": {
-            "type": "string"
-          },
-          "selector": {
-            "properties": {
-              "query": {
-                "properties": {
-                  "filter": {},
-                  "libraryId": {
-                    "type": "string"
-                  },
-                  "pivot": {
-                    "type": "string"
-                  },
-                  "sort": {
-                    "items": {
+              "types": {
+                "items": {
+                  "properties": {
+                    "capabilityCounts": {
                       "properties": {
-                        "direction": {
-                          "type": "string"
+                        "collection": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
                         },
-                        "field": {
-                          "type": "string"
+                        "delete": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
                         },
-                        "seed": {
+                        "download": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "edit": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "favorite": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "myList": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "play": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "playlist": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "queue": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "refresh": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "watched": {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
                         }
                       },
                       "required": [
-                        "field",
-                        "direction"
+                        "play",
+                        "queue",
+                        "playlist",
+                        "myList",
+                        "watched",
+                        "collection",
+                        "favorite",
+                        "download",
+                        "edit",
+                        "refresh",
+                        "delete"
                       ],
                       "type": "object"
                     },
-                    "type": "array"
-                  }
-                },
-                "required": [
-                  "libraryId",
-                  "pivot"
-                ],
-                "type": "object"
-              }
-            },
-            "required": [
-              "query"
-            ],
-            "type": "object"
-          },
-          "total": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "types": {
-            "items": {
-              "properties": {
-                "capabilityCounts": {
-                  "properties": {
-                    "collection": {
+                    "count": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
-                    "delete": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
+                    "kind": {
+                      "type": "string"
                     },
-                    "download": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "edit": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "favorite": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "myList": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "play": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "playlist": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "queue": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "refresh": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "watched": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
+                    "libraries": {
+                      "items": {
+                        "properties": {
+                          "count": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "libraryId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "libraryId",
+                          "count"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
                     }
                   },
                   "required": [
-                    "play",
-                    "queue",
-                    "playlist",
-                    "myList",
-                    "watched",
-                    "collection",
-                    "favorite",
-                    "download",
-                    "edit",
-                    "refresh",
-                    "delete"
+                    "kind",
+                    "count",
+                    "capabilityCounts",
+                    "libraries"
                   ],
                   "type": "object"
                 },
-                "count": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "kind": {
-                  "type": "string"
-                },
-                "libraries": {
-                  "items": {
-                    "properties": {
-                      "count": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "libraryId": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "libraryId",
-                      "count"
-                    ],
-                    "type": "object"
-                  },
-                  "type": "array"
-                }
-              },
-              "required": [
-                "kind",
-                "count",
-                "capabilityCounts",
-                "libraries"
-              ],
-              "type": "object"
+                "type": "array"
+              }
             },
-            "type": "array"
+            "required": [
+              "selector",
+              "catalogRevision",
+              "total",
+              "types"
+            ],
+            "type": "object"
+          },
+          "wholeSelectionPreparing": {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "browse-selection-preparing"
+                ],
+                "type": "string"
+              },
+              "queryId": {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              "retryAfterMs": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "state": {
+                "enum": [
+                  "preparing"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "state",
+              "queryId",
+              "retryAfterMs"
+            ],
+            "type": "object"
+          },
+          "wholeSelectionUnavailable": {
+            "additionalProperties": false,
+            "properties": {
+              "reason": {
+                "enum": [
+                  "search_not_bounded"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "reason"
+            ],
+            "type": "object"
           }
         },
         "required": [
-          "selector",
-          "catalogRevision",
-          "total",
-          "types"
+          "pivot",
+          "applied",
+          "entries",
+          "pageInfo",
+          "positionIndex"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "reading-browse-preparing",
+            "type": "string"
+          },
+          "queryId": {
+            "maxLength": 256,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "retryAfterMs": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "state": {
+            "const": "preparing",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "kind",
+          "queryId",
+          "retryAfterMs"
         ],
         "type": "object"
       }
-    },
-    "required": [
-      "pivot",
-      "applied",
-      "entries",
-      "pageInfo",
-      "positionIndex"
-    ],
-    "type": "object"
+    ]
   },
   "ChangeConnectivityPolicyRequest": {
     "properties": {
@@ -16596,6 +16751,10 @@ export const schemas = {
                     "minLength": 1,
                     "type": "string"
                   },
+                  "selectionBasis": {
+                    "pattern": "^[a-f0-9]{64}$",
+                    "type": "string"
+                  },
                   "sort": {
                     "items": {
                       "additionalProperties": false,
@@ -16699,6 +16858,10 @@ export const schemas = {
               "pivot": {
                 "maxLength": 256,
                 "minLength": 1,
+                "type": "string"
+              },
+              "selectionBasis": {
+                "pattern": "^[a-f0-9]{64}$",
                 "type": "string"
               },
               "sort": {
@@ -16955,6 +17118,10 @@ export const schemas = {
                               "type": "object"
                             }
                           ]
+                        },
+                        "selectionBasis": {
+                          "pattern": "^[a-f0-9]{64}$",
+                          "type": "string"
                         },
                         "selectionRevision": {
                           "pattern": "^browse_[a-f0-9]{64}$",
@@ -17216,6 +17383,10 @@ export const schemas = {
                         "type": "object"
                       }
                     ]
+                  },
+                  "selectionBasis": {
+                    "pattern": "^[a-f0-9]{64}$",
+                    "type": "string"
                   },
                   "selectionRevision": {
                     "pattern": "^browse_[a-f0-9]{64}$",
@@ -20346,6 +20517,36 @@ export const schemas = {
       "provenance",
       "createdAt"
     ],
+    "type": "object"
+  },
+  "DeleteLibraryBrowseSelectionQueryRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "DeleteLibraryBrowseSelectionQueryResponse": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "DeleteLibraryReadingBrowseQueryRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "DeleteLibraryReadingBrowseQueryResponse": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "DeleteLibraryReadingFacetQueryRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "DeleteLibraryReadingFacetQueryResponse": {
+    "properties": {},
+    "required": [],
     "type": "object"
   },
   "DeleteMeRemovedTitlesIdRequest": {
@@ -130198,6 +130399,235 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetLibraryBrowseSelectionQueryRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetLibraryBrowseSelectionQueryResponse": {
+    "oneOf": [
+      {
+        "additionalProperties": false,
+        "properties": {
+          "catalogRevision": {
+            "type": "string"
+          },
+          "selector": {
+            "properties": {
+              "query": {
+                "properties": {
+                  "filter": {},
+                  "libraryId": {
+                    "type": "string"
+                  },
+                  "pivot": {
+                    "type": "string"
+                  },
+                  "selectionBasis": {
+                    "pattern": "^[a-f0-9]{64}$",
+                    "type": "string"
+                  },
+                  "sort": {
+                    "items": {
+                      "properties": {
+                        "direction": {
+                          "type": "string"
+                        },
+                        "field": {
+                          "type": "string"
+                        },
+                        "seed": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "field",
+                        "direction"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "libraryId",
+                  "pivot",
+                  "selectionBasis"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "query"
+            ],
+            "type": "object"
+          },
+          "total": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "types": {
+            "items": {
+              "properties": {
+                "capabilityCounts": {
+                  "properties": {
+                    "collection": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "delete": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "download": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "edit": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "favorite": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "myList": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "play": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "playlist": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "queue": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "refresh": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "watched": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "play",
+                    "queue",
+                    "playlist",
+                    "myList",
+                    "watched",
+                    "collection",
+                    "favorite",
+                    "download",
+                    "edit",
+                    "refresh",
+                    "delete"
+                  ],
+                  "type": "object"
+                },
+                "count": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "libraries": {
+                  "items": {
+                    "properties": {
+                      "count": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "libraryId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "libraryId",
+                      "count"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "kind",
+                "count",
+                "capabilityCounts",
+                "libraries"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "selector",
+          "catalogRevision",
+          "total",
+          "types"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "browse-selection-preparing"
+            ],
+            "type": "string"
+          },
+          "queryId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "retryAfterMs": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "preparing"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "state",
+          "queryId",
+          "retryAfterMs"
+        ],
+        "type": "object"
+      }
+    ]
+  },
   "GetLibraryChannelsIdLogoRequest": {
     "properties": {},
     "required": [],
@@ -130213,61 +130643,98 @@ export const schemas = {
     "type": "object"
   },
   "GetLibraryFacetsResponse": {
-    "properties": {
-      "field": {
-        "type": "string"
-      },
-      "revision": {
-        "type": "string"
-      },
-      "total": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "totalIsLowerBound": {
-        "type": "boolean"
-      },
-      "values": {
-        "items": {
-          "properties": {
-            "count": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "countIsLowerBound": {
-              "type": "boolean"
-            },
-            "label": {
-              "type": "string"
-            },
-            "seriesId": {
-              "pattern": "^[A-Za-z0-9_-]{43}$",
-              "type": "string"
-            },
-            "value": {
-              "type": "string"
-            }
+    "anyOf": [
+      {
+        "properties": {
+          "field": {
+            "type": "string"
           },
-          "required": [
-            "value",
-            "label",
-            "count",
-            "countIsLowerBound"
-          ],
-          "type": "object"
+          "revision": {
+            "type": "string"
+          },
+          "total": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "totalIsLowerBound": {
+            "type": "boolean"
+          },
+          "values": {
+            "items": {
+              "properties": {
+                "count": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "countIsLowerBound": {
+                  "type": "boolean"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "seriesId": {
+                  "pattern": "^[A-Za-z0-9_-]{43}$",
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "value",
+                "label",
+                "count",
+                "countIsLowerBound"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
         },
-        "type": "array"
+        "required": [
+          "field",
+          "totalIsLowerBound",
+          "total",
+          "values"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "reading-facet-preparing"
+            ],
+            "type": "string"
+          },
+          "queryId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "retryAfterMs": {
+            "maximum": 9007199254740991,
+            "minimum": 1000,
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "preparing"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "state",
+          "queryId",
+          "retryAfterMs"
+        ],
+        "type": "object"
       }
-    },
-    "required": [
-      "field",
-      "totalIsLowerBound",
-      "total",
-      "values"
-    ],
-    "type": "object"
+    ]
   },
   "GetLibraryInventoryRequest": {
     "properties": {},
@@ -130441,6 +130908,2294 @@ export const schemas = {
       "agents"
     ],
     "type": "object"
+  },
+  "GetLibraryReadingBrowseQueryRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetLibraryReadingBrowseQueryResponse": {
+    "anyOf": [
+      {
+        "properties": {
+          "applied": {
+            "properties": {
+              "query": {
+                "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
+                "nullable": true,
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                    "properties": {
+                      "field": {
+                        "enum": [
+                          "releaseDate",
+                          "dateAdded",
+                          "lastPlayedAt"
+                        ],
+                        "type": "string"
+                      },
+                      "operator": {
+                        "enum": [
+                          "within-last-days"
+                        ],
+                        "type": "string"
+                      },
+                      "value": {
+                        "maximum": 36500,
+                        "minimum": 1,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "field",
+                      "operator",
+                      "value"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "all": {
+                        "items": {
+                          "additionalProperties": {},
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        "maxItems": 40,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "any": {
+                        "items": {
+                          "additionalProperties": {},
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        "maxItems": 40,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "field": {
+                        "type": "string"
+                      },
+                      "not": {
+                        "additionalProperties": {},
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
+                      },
+                      "operator": {
+                        "enum": [
+                          "equals",
+                          "not-equals",
+                          "in",
+                          "not-in",
+                          "contains",
+                          "starts-with",
+                          "is-present",
+                          "is-missing",
+                          "less-than",
+                          "at-most",
+                          "greater-than",
+                          "at-least",
+                          "between",
+                          "contains-any",
+                          "contains-all"
+                        ],
+                        "type": "string"
+                      },
+                      "value": {}
+                    },
+                    "required": [],
+                    "type": "object"
+                  }
+                ]
+              },
+              "seek": {
+                "properties": {
+                  "prefix": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "prefix"
+                ],
+                "type": "object"
+              },
+              "sort": {
+                "items": {
+                  "properties": {
+                    "direction": {
+                      "type": "string"
+                    },
+                    "field": {
+                      "type": "string"
+                    },
+                    "seed": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "field",
+                    "direction"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "query",
+              "sort"
+            ],
+            "type": "object"
+          },
+          "displayTargets": {
+            "items": {
+              "properties": {
+                "entryId": {
+                  "type": "string"
+                },
+                "membershipId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "membershipId",
+                "entryId"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "entries": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "absoluteNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "activeBeginYear": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "activeEndYear": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "addedAt": {
+                  "nullable": true,
+                  "type": "string"
+                },
+                "airDate": {
+                  "type": "string"
+                },
+                "album": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "albumCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "albumType": {
+                  "type": "string"
+                },
+                "artist": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "artistType": {
+                  "type": "string"
+                },
+                "artworkPaths": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "audioFacts": {
+                  "properties": {
+                    "atmos": {
+                      "type": "boolean"
+                    },
+                    "bitDepth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "channels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "codec": {
+                      "type": "string"
+                    },
+                    "layout": {
+                      "type": "string"
+                    },
+                    "lossless": {
+                      "type": "boolean"
+                    },
+                    "sampleRate": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "codec"
+                  ],
+                  "type": "object"
+                },
+                "author": {
+                  "type": "string"
+                },
+                "available": {
+                  "type": "boolean"
+                },
+                "backdropUrl": {
+                  "type": "string"
+                },
+                "badges": {
+                  "items": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "bitDepth": {
+                            "minimum": 17,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "lossless"
+                          },
+                          "sampleRate": {
+                            "minimum": 1,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "codec",
+                          "bitDepth",
+                          "sampleRate"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "atmos",
+                              "dsd"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "const": "surround"
+                          },
+                          "layout": {
+                            "enum": [
+                              "5.1",
+                              "7.1"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "layout"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "maxItems": 2,
+                  "type": "array"
+                },
+                "bookProgress": {
+                  "properties": {
+                    "bookId": {
+                      "type": "string"
+                    },
+                    "chapter": {
+                      "properties": {
+                        "endMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "index": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "startMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "index",
+                        "title",
+                        "startMs",
+                        "endMs"
+                      ],
+                      "type": "object"
+                    },
+                    "durationMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "partPositionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "positionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "remainingMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "bookId",
+                    "itemId",
+                    "partPositionMs"
+                  ],
+                  "type": "object"
+                },
+                "contentRating": {
+                  "type": "string"
+                },
+                "count": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "country": {
+                  "type": "string"
+                },
+                "dateBased": {
+                  "type": "boolean"
+                },
+                "discNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "displayTitle": {
+                  "type": "string"
+                },
+                "durationMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "edition": {
+                  "type": "string"
+                },
+                "episodeNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "favorite": {
+                  "type": "boolean"
+                },
+                "genres": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "hidden": {
+                  "nullable": true,
+                  "type": "boolean"
+                },
+                "homeActions": {
+                  "properties": {
+                    "collection": {
+                      "type": "boolean"
+                    },
+                    "delete": {
+                      "type": "boolean"
+                    },
+                    "details": {
+                      "type": "boolean"
+                    },
+                    "download": {
+                      "type": "boolean"
+                    },
+                    "editMetadata": {
+                      "type": "boolean"
+                    },
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "myList": {
+                      "type": "boolean"
+                    },
+                    "notInterested": {
+                      "type": "boolean"
+                    },
+                    "play": {
+                      "type": "boolean"
+                    },
+                    "played": {
+                      "type": "boolean"
+                    },
+                    "playlist": {
+                      "type": "boolean"
+                    },
+                    "queue": {
+                      "type": "boolean"
+                    },
+                    "rating": {
+                      "type": "boolean"
+                    },
+                    "refreshMetadata": {
+                      "type": "boolean"
+                    },
+                    "removeFromContinue": {
+                      "type": "boolean"
+                    },
+                    "selection": {
+                      "properties": {
+                        "collection": {
+                          "type": "boolean"
+                        },
+                        "delete": {
+                          "type": "boolean"
+                        },
+                        "download": {
+                          "type": "boolean"
+                        },
+                        "edit": {
+                          "type": "boolean"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "myList": {
+                          "type": "boolean"
+                        },
+                        "play": {
+                          "type": "boolean"
+                        },
+                        "playlist": {
+                          "type": "boolean"
+                        },
+                        "queue": {
+                          "type": "boolean"
+                        },
+                        "refresh": {
+                          "type": "boolean"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "play",
+                        "queue",
+                        "playlist",
+                        "collection",
+                        "myList",
+                        "favorite",
+                        "watched",
+                        "download",
+                        "edit",
+                        "refresh",
+                        "delete"
+                      ],
+                      "type": "object"
+                    },
+                    "state": {
+                      "properties": {
+                        "containerRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "personalRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "rating": {
+                          "nullable": true,
+                          "type": "number"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        },
+                        "watchlisted": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "watchlisted",
+                        "favorite",
+                        "watched",
+                        "rating",
+                        "personalRevision",
+                        "containerRevision"
+                      ],
+                      "type": "object"
+                    },
+                    "watched": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "play",
+                    "queue",
+                    "playlist",
+                    "collection",
+                    "myList",
+                    "favorite",
+                    "watched",
+                    "played",
+                    "rating",
+                    "editMetadata",
+                    "refreshMetadata",
+                    "delete",
+                    "download",
+                    "details",
+                    "state",
+                    "selection"
+                  ],
+                  "type": "object"
+                },
+                "homeTitleContext": {
+                  "properties": {
+                    "genres": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "seasonCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "year": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "genres"
+                  ],
+                  "type": "object"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "language": {
+                  "type": "string"
+                },
+                "lastChanged": {
+                  "type": "string"
+                },
+                "latestEpisode": {
+                  "properties": {
+                    "airDate": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "episodeNumber": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "seasonNumber": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "airDate",
+                    "episodeNumber",
+                    "count"
+                  ],
+                  "type": "object"
+                },
+                "libraryId": {
+                  "type": "string"
+                },
+                "media": {
+                  "properties": {
+                    "absoluteNumber": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "activeBeginYear": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "activeEndYear": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "addedAt": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "airDate": {
+                      "type": "string"
+                    },
+                    "album": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "albumCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "albumType": {
+                      "type": "string"
+                    },
+                    "artist": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "artistType": {
+                      "type": "string"
+                    },
+                    "artworkPaths": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "audioFacts": {
+                      "properties": {
+                        "atmos": {
+                          "type": "boolean"
+                        },
+                        "bitDepth": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "channels": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "codec": {
+                          "type": "string"
+                        },
+                        "layout": {
+                          "type": "string"
+                        },
+                        "lossless": {
+                          "type": "boolean"
+                        },
+                        "sampleRate": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "codec"
+                      ],
+                      "type": "object"
+                    },
+                    "author": {
+                      "type": "string"
+                    },
+                    "available": {
+                      "type": "boolean"
+                    },
+                    "backdropUrl": {
+                      "type": "string"
+                    },
+                    "badges": {
+                      "items": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "bitDepth": {
+                                "minimum": 17,
+                                "type": "integer"
+                              },
+                              "codec": {
+                                "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "const": "lossless"
+                              },
+                              "sampleRate": {
+                                "minimum": 1,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "codec",
+                              "bitDepth",
+                              "sampleRate"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "enum": [
+                                  "atmos",
+                                  "dsd"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "surround"
+                              },
+                              "layout": {
+                                "enum": [
+                                  "5.1",
+                                  "7.1"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "layout"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "maxItems": 2,
+                      "type": "array"
+                    },
+                    "bookProgress": {
+                      "properties": {
+                        "bookId": {
+                          "type": "string"
+                        },
+                        "chapter": {
+                          "properties": {
+                            "endMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "index": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "startMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "title": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "index",
+                            "title",
+                            "startMs",
+                            "endMs"
+                          ],
+                          "type": "object"
+                        },
+                        "durationMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "itemId": {
+                          "type": "string"
+                        },
+                        "partPositionMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "positionMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "remainingMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "bookId",
+                        "itemId",
+                        "partPositionMs"
+                      ],
+                      "type": "object"
+                    },
+                    "contentRating": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "country": {
+                      "type": "string"
+                    },
+                    "dateBased": {
+                      "type": "boolean"
+                    },
+                    "discNumber": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "displayTitle": {
+                      "type": "string"
+                    },
+                    "durationMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "edition": {
+                      "type": "string"
+                    },
+                    "episodeNumber": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "genres": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "homeActions": {
+                      "properties": {
+                        "collection": {
+                          "type": "boolean"
+                        },
+                        "delete": {
+                          "type": "boolean"
+                        },
+                        "details": {
+                          "type": "boolean"
+                        },
+                        "download": {
+                          "type": "boolean"
+                        },
+                        "editMetadata": {
+                          "type": "boolean"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "myList": {
+                          "type": "boolean"
+                        },
+                        "notInterested": {
+                          "type": "boolean"
+                        },
+                        "play": {
+                          "type": "boolean"
+                        },
+                        "played": {
+                          "type": "boolean"
+                        },
+                        "playlist": {
+                          "type": "boolean"
+                        },
+                        "queue": {
+                          "type": "boolean"
+                        },
+                        "rating": {
+                          "type": "boolean"
+                        },
+                        "refreshMetadata": {
+                          "type": "boolean"
+                        },
+                        "removeFromContinue": {
+                          "type": "boolean"
+                        },
+                        "selection": {
+                          "properties": {
+                            "collection": {
+                              "type": "boolean"
+                            },
+                            "delete": {
+                              "type": "boolean"
+                            },
+                            "download": {
+                              "type": "boolean"
+                            },
+                            "edit": {
+                              "type": "boolean"
+                            },
+                            "favorite": {
+                              "type": "boolean"
+                            },
+                            "myList": {
+                              "type": "boolean"
+                            },
+                            "play": {
+                              "type": "boolean"
+                            },
+                            "playlist": {
+                              "type": "boolean"
+                            },
+                            "queue": {
+                              "type": "boolean"
+                            },
+                            "refresh": {
+                              "type": "boolean"
+                            },
+                            "watched": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "play",
+                            "queue",
+                            "playlist",
+                            "collection",
+                            "myList",
+                            "favorite",
+                            "watched",
+                            "download",
+                            "edit",
+                            "refresh",
+                            "delete"
+                          ],
+                          "type": "object"
+                        },
+                        "state": {
+                          "properties": {
+                            "containerRevision": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "favorite": {
+                              "type": "boolean"
+                            },
+                            "personalRevision": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "rating": {
+                              "nullable": true,
+                              "type": "number"
+                            },
+                            "watched": {
+                              "type": "boolean"
+                            },
+                            "watchlisted": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "watchlisted",
+                            "favorite",
+                            "watched",
+                            "rating",
+                            "personalRevision",
+                            "containerRevision"
+                          ],
+                          "type": "object"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "play",
+                        "queue",
+                        "playlist",
+                        "collection",
+                        "myList",
+                        "favorite",
+                        "watched",
+                        "played",
+                        "rating",
+                        "editMetadata",
+                        "refreshMetadata",
+                        "delete",
+                        "download",
+                        "details",
+                        "state",
+                        "selection"
+                      ],
+                      "type": "object"
+                    },
+                    "homeTitleContext": {
+                      "properties": {
+                        "genres": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "seasonCount": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "year": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "genres"
+                      ],
+                      "type": "object"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "language": {
+                      "type": "string"
+                    },
+                    "lastChanged": {
+                      "type": "string"
+                    },
+                    "latestEpisode": {
+                      "properties": {
+                        "airDate": {
+                          "type": "string"
+                        },
+                        "count": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "episodeNumber": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "seasonNumber": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "airDate",
+                        "episodeNumber",
+                        "count"
+                      ],
+                      "type": "object"
+                    },
+                    "libraryId": {
+                      "type": "string"
+                    },
+                    "missing": {
+                      "type": "boolean"
+                    },
+                    "narrators": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "navigation": {
+                      "properties": {
+                        "browse": {
+                          "properties": {
+                            "pivot": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "query": {
+                              "additionalProperties": {},
+                              "type": "object"
+                            },
+                            "sort": {
+                              "items": {
+                                "properties": {
+                                  "direction": {
+                                    "enum": [
+                                      "asc",
+                                      "desc"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "field": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "field",
+                                  "direction"
+                                ],
+                                "type": "object"
+                              },
+                              "maxItems": 1,
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "pivot",
+                            "sort"
+                          ],
+                          "type": "object"
+                        },
+                        "category": {
+                          "type": "string"
+                        },
+                        "channelId": {
+                          "type": "string"
+                        },
+                        "entityId": {
+                          "type": "string"
+                        },
+                        "provenance": {
+                          "type": "string"
+                        },
+                        "sourceId": {
+                          "type": "string"
+                        },
+                        "view": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "view"
+                      ],
+                      "type": "object"
+                    },
+                    "new": {
+                      "type": "boolean"
+                    },
+                    "origin": {
+                      "type": "string"
+                    },
+                    "overview": {
+                      "type": "string"
+                    },
+                    "overviewSource": {
+                      "type": "string"
+                    },
+                    "overviewSourceUrl": {
+                      "type": "string"
+                    },
+                    "pageCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "pinned": {
+                      "type": "boolean"
+                    },
+                    "playback": {
+                      "properties": {
+                        "itemId": {
+                          "type": "string"
+                        },
+                        "startMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "itemId"
+                      ],
+                      "type": "object"
+                    },
+                    "plays": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "posterUrl": {
+                      "type": "string"
+                    },
+                    "progressMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "publicationType": {
+                      "enum": [
+                        "book",
+                        "magazine",
+                        "newspaper"
+                      ],
+                      "type": "string"
+                    },
+                    "publishedYear": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "publisher": {
+                      "type": "string"
+                    },
+                    "radioSeed": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "kind"
+                      ],
+                      "type": "object"
+                    },
+                    "rating": {
+                      "type": "number"
+                    },
+                    "readingMark": {
+                      "properties": {
+                        "itemId": {
+                          "type": "string"
+                        },
+                        "read": {
+                          "type": "boolean"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "itemId",
+                        "read",
+                        "revision"
+                      ],
+                      "type": "object"
+                    },
+                    "releaseDate": {
+                      "type": "string"
+                    },
+                    "removed": {
+                      "type": "boolean"
+                    },
+                    "resolution": {
+                      "type": "string"
+                    },
+                    "role": {
+                      "type": "string"
+                    },
+                    "seasonCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "seasonNumber": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "series": {
+                      "items": {
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "position": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "show": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "sortLetter": {
+                      "type": "string"
+                    },
+                    "special": {
+                      "type": "boolean"
+                    },
+                    "stillUrl": {
+                      "type": "string"
+                    },
+                    "subtitle": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "totalAtLeast": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "trackNumber": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "unwatchedCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "userRating": {
+                      "maximum": 10,
+                      "minimum": 0,
+                      "nullable": true,
+                      "type": "integer"
+                    },
+                    "watched": {
+                      "type": "boolean"
+                    },
+                    "watchedCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "watchlisted": {
+                      "type": "boolean"
+                    },
+                    "year": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "yearMax": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "yearMin": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "missing",
+                    "id",
+                    "kind",
+                    "title",
+                    "addedAt"
+                  ],
+                  "type": "object"
+                },
+                "missing": {
+                  "type": "boolean"
+                },
+                "narrators": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "navigation": {
+                  "properties": {
+                    "browse": {
+                      "properties": {
+                        "pivot": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "query": {
+                          "additionalProperties": {},
+                          "type": "object"
+                        },
+                        "sort": {
+                          "items": {
+                            "properties": {
+                              "direction": {
+                                "enum": [
+                                  "asc",
+                                  "desc"
+                                ],
+                                "type": "string"
+                              },
+                              "field": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "field",
+                              "direction"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 1,
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "pivot",
+                        "sort"
+                      ],
+                      "type": "object"
+                    },
+                    "category": {
+                      "type": "string"
+                    },
+                    "channelId": {
+                      "type": "string"
+                    },
+                    "entityId": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
+                      "type": "string"
+                    },
+                    "view": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "view"
+                  ],
+                  "type": "object"
+                },
+                "new": {
+                  "type": "boolean"
+                },
+                "origin": {
+                  "type": "string"
+                },
+                "overview": {
+                  "type": "string"
+                },
+                "overviewSource": {
+                  "type": "string"
+                },
+                "overviewSourceUrl": {
+                  "type": "string"
+                },
+                "pageCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "pinned": {
+                  "type": "boolean"
+                },
+                "playback": {
+                  "properties": {
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "startMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "itemId"
+                  ],
+                  "type": "object"
+                },
+                "plays": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "posterUrl": {
+                  "type": "string"
+                },
+                "progressMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "publicationType": {
+                  "enum": [
+                    "book",
+                    "magazine",
+                    "newspaper"
+                  ],
+                  "type": "string"
+                },
+                "publishedYear": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "publisher": {
+                  "type": "string"
+                },
+                "radioSeed": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind"
+                  ],
+                  "type": "object"
+                },
+                "rating": {
+                  "type": "number"
+                },
+                "readingMark": {
+                  "properties": {
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "read": {
+                      "type": "boolean"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "itemId",
+                    "read",
+                    "revision"
+                  ],
+                  "type": "object"
+                },
+                "releaseDate": {
+                  "type": "string"
+                },
+                "removed": {
+                  "type": "boolean"
+                },
+                "resolution": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "seasonCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "seasonNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "series": {
+                  "items": {
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "position": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "show": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "sortLetter": {
+                  "type": "string"
+                },
+                "special": {
+                  "type": "boolean"
+                },
+                "stillUrl": {
+                  "type": "string"
+                },
+                "subtitle": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "totalAtLeast": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "trackNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "unwatchedCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "userRating": {
+                  "maximum": 10,
+                  "minimum": 0,
+                  "nullable": true,
+                  "type": "integer"
+                },
+                "watched": {
+                  "type": "boolean"
+                },
+                "watchedCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "watchlisted": {
+                  "type": "boolean"
+                },
+                "year": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "yearMax": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "yearMin": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "kind"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "pageInfo": {
+            "properties": {
+              "durationIsLowerBound": {
+                "type": "boolean"
+              },
+              "durationMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "hasMore": {
+                "type": "boolean"
+              },
+              "nextCursor": {
+                "type": "string"
+              },
+              "revision": {
+                "type": "string"
+              },
+              "start": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "total": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "totalIsLowerBound": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "start",
+              "total",
+              "totalIsLowerBound",
+              "revision",
+              "hasMore",
+              "nextCursor",
+              "durationMs",
+              "durationIsLowerBound"
+            ],
+            "type": "object"
+          },
+          "pivot": {
+            "type": "string"
+          },
+          "positionIndex": {
+            "items": {
+              "properties": {
+                "index": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "key": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "key",
+                "index"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "wholeSelection": {
+            "properties": {
+              "catalogRevision": {
+                "type": "string"
+              },
+              "selector": {
+                "properties": {
+                  "query": {
+                    "properties": {
+                      "filter": {},
+                      "libraryId": {
+                        "type": "string"
+                      },
+                      "pivot": {
+                        "type": "string"
+                      },
+                      "selectionBasis": {
+                        "pattern": "^[a-f0-9]{64}$",
+                        "type": "string"
+                      },
+                      "sort": {
+                        "items": {
+                          "properties": {
+                            "direction": {
+                              "type": "string"
+                            },
+                            "field": {
+                              "type": "string"
+                            },
+                            "seed": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "field",
+                            "direction"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "libraryId",
+                      "pivot"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "query"
+                ],
+                "type": "object"
+              },
+              "total": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "types": {
+                "items": {
+                  "properties": {
+                    "capabilityCounts": {
+                      "properties": {
+                        "collection": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "delete": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "download": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "edit": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "favorite": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "myList": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "play": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "playlist": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "queue": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "refresh": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "watched": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "play",
+                        "queue",
+                        "playlist",
+                        "myList",
+                        "watched",
+                        "collection",
+                        "favorite",
+                        "download",
+                        "edit",
+                        "refresh",
+                        "delete"
+                      ],
+                      "type": "object"
+                    },
+                    "count": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "libraries": {
+                      "items": {
+                        "properties": {
+                          "count": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "libraryId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "libraryId",
+                          "count"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "count",
+                    "capabilityCounts",
+                    "libraries"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "selector",
+              "catalogRevision",
+              "total",
+              "types"
+            ],
+            "type": "object"
+          },
+          "wholeSelectionPreparing": {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "browse-selection-preparing"
+                ],
+                "type": "string"
+              },
+              "queryId": {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              "retryAfterMs": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "state": {
+                "enum": [
+                  "preparing"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "state",
+              "queryId",
+              "retryAfterMs"
+            ],
+            "type": "object"
+          },
+          "wholeSelectionUnavailable": {
+            "additionalProperties": false,
+            "properties": {
+              "reason": {
+                "enum": [
+                  "search_not_bounded"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "reason"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "pivot",
+          "applied",
+          "entries",
+          "pageInfo",
+          "positionIndex"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "reading-browse-preparing",
+            "type": "string"
+          },
+          "queryId": {
+            "maxLength": 256,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "retryAfterMs": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "state": {
+            "const": "preparing",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "kind",
+          "queryId",
+          "retryAfterMs"
+        ],
+        "type": "object"
+      }
+    ]
+  },
+  "GetLibraryReadingFacetQueryRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetLibraryReadingFacetQueryResponse": {
+    "anyOf": [
+      {
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "total": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "totalIsLowerBound": {
+            "type": "boolean"
+          },
+          "values": {
+            "items": {
+              "properties": {
+                "count": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "countIsLowerBound": {
+                  "type": "boolean"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "seriesId": {
+                  "pattern": "^[A-Za-z0-9_-]{43}$",
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "value",
+                "label",
+                "count",
+                "countIsLowerBound"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "field",
+          "totalIsLowerBound",
+          "total",
+          "values"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "reading-facet-preparing"
+            ],
+            "type": "string"
+          },
+          "queryId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "retryAfterMs": {
+            "maximum": 9007199254740991,
+            "minimum": 1000,
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "preparing"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "state",
+          "queryId",
+          "retryAfterMs"
+        ],
+        "type": "object"
+      }
+    ]
   },
   "GetLibrarySettingsRequest": {
     "properties": {},
@@ -155983,6 +158738,10 @@ export const schemas = {
                       "pivot": {
                         "type": "string"
                       },
+                      "selectionBasis": {
+                        "pattern": "^[a-f0-9]{64}$",
+                        "type": "string"
+                      },
                       "sort": {
                         "items": {
                           "properties": {
@@ -156145,6 +158904,54 @@ export const schemas = {
               "catalogRevision",
               "total",
               "types"
+            ],
+            "type": "object"
+          },
+          "wholeSelectionPreparing": {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "browse-selection-preparing"
+                ],
+                "type": "string"
+              },
+              "queryId": {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              "retryAfterMs": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "state": {
+                "enum": [
+                  "preparing"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "state",
+              "queryId",
+              "retryAfterMs"
+            ],
+            "type": "object"
+          },
+          "wholeSelectionUnavailable": {
+            "additionalProperties": false,
+            "properties": {
+              "reason": {
+                "enum": [
+                  "search_not_bounded"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "reason"
             ],
             "type": "object"
           }
@@ -222431,6 +225238,10 @@ export const schemas = {
                     "minLength": 1,
                     "type": "string"
                   },
+                  "selectionBasis": {
+                    "pattern": "^[a-f0-9]{64}$",
+                    "type": "string"
+                  },
                   "sort": {
                     "items": {
                       "additionalProperties": false,
@@ -222534,6 +225345,10 @@ export const schemas = {
               "pivot": {
                 "maxLength": 256,
                 "minLength": 1,
+                "type": "string"
+              },
+              "selectionBasis": {
+                "pattern": "^[a-f0-9]{64}$",
                 "type": "string"
               },
               "sort": {
