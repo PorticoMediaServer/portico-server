@@ -29,7 +29,7 @@ export class SettingsChannelActionsSource{
   private publish(patch:Partial<ChannelActionsSnapshot>){if(this.current()){this.state=Object.freeze({...this.state,...patch});for(const listener of this.listeners)listener();}}
   private admitted(channel:LibraryChannel){return this.current()&&!this.flight&&!this.intent&&this.reader.getSnapshot().phase==='ready'&&this.reader.getSnapshot().channels?.includes(channel);}
   private envelope(value:{serverId:string;protocolVersion:string}){if(value.serverId!==this.serverId||value.protocolVersion!=='1.0')throw new Error('invalid_channel_action_receipt');}
-  perform=async(channel:LibraryChannel,kind:Kind,direction?:-1|1):Promise<boolean>=>{
+  perform=async(channel:LibraryChannel,kind:Kind,direction?:-1|1,targetIndex?:number):Promise<boolean>=>{
     if(!this.admitted(channel))return false;
     const list=this.reader.getSnapshot().channels!;let send:Intent['send'];
     try{
@@ -44,8 +44,10 @@ export class SettingsChannelActionsSource{
         const id=channel.config.id,body=Object.freeze({expectedRevision:channel.revision,requestId});
         send=async(api,signal)=>{const response=decodePostAdminLibraryChannelsIdDeleteResponse(await api.request(encodedRoutePath('post_admin_library_channels_id_delete',{id:encodeURIComponent(id)}),'POST',body,signal));this.envelope(response);if(!response.deleted)throw new Error('invalid_channel_delete_receipt');};
       }else{
-        if(direction!==-1&&direction!==1)return false;const index=list.indexOf(channel),target=index+direction;if(target<0||target>=list.length)return false;
-        const ordered=[...list];[ordered[index],ordered[target]]=[ordered[target]!,ordered[index]!];
+        // A drag of any distance is one reorder of the whole list, never a run of adjacent swaps.
+        const index=list.indexOf(channel),target=targetIndex??(direction===-1||direction===1?index+direction:-1);
+        if(!Number.isSafeInteger(target)||target<0||target>=list.length||target===index)return false;
+        const ordered=[...list];ordered.splice(target,0,...ordered.splice(index,1));
         const body=frozen({requestId,channels:ordered.map(row=>({id:row.config.id,expectedRevision:row.revision}))});
         send=async(api,signal)=>{const response=decodePostAdminLibraryChannelsReorderResponse(await api.request(routePath('post_admin_library_channels_reorder'),'POST',body,signal));this.envelope(response);if(!response.saved)throw new Error('invalid_channel_order_receipt');};
       }
@@ -53,6 +55,8 @@ export class SettingsChannelActionsSource{
     if(!this.admitted(channel)||this.reader.getSnapshot().channels!==list)return false;
     const intent=Object.freeze({pending:Object.freeze({kind,channelId:channel.config.id,name:channel.config.name}),send});this.intent=intent;return this.run(intent);
   };
+  /** Moves the channel to `targetIndex` in the current list with one reorder request. */
+  moveTo=(channel:LibraryChannel,targetIndex:number):Promise<boolean>=>this.perform(channel,'move',undefined,targetIndex);
   retry=async():Promise<boolean>=>{const intent=this.intent;return intent?this.run(intent):false;};
   private async run(intent:Intent):Promise<boolean>{
     if(!this.current()||this.flight||this.intent!==intent)return false;
