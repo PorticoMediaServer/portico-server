@@ -170,6 +170,9 @@ func (s *Service) IssueTx(ctx context.Context, tx *sql.Tx, aid, pid, authority, 
 	if _, err := tx.ExecContext(ctx, `INSERT INTO identity_device_families(family_id,device_id) VALUES(?,?)`, family, device.ID); err != nil {
 		return Envelope{}, err
 	}
+	if err := bindPINLineageTx(ctx, tx, aid, device.ID, family); err != nil {
+		return Envelope{}, err
+	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO authorization_family_tokens(token_hash,family_id,generation,expires_at,retired) VALUES(?,?,1,?,0)`, Digest(token), family, expiry); err != nil {
 		return Envelope{}, err
 	}

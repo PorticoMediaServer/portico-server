@@ -3451,13 +3451,34 @@ CREATE TABLE authorization_family_grants(
  family_id TEXT PRIMARY KEY REFERENCES authorization_session_families(id) ON DELETE CASCADE,
  grant_kind TEXT NOT NULL CHECK(grant_kind IN('cast_target','owner_claim_completion'))
 ) STRICT;
+-- PIN attempts are counted per approving device chain (IDENT-04). A lineage
+-- starts at a device's own credential sign-in; every session that descends from
+-- it (profile selection, Quick Connect, Cast pairing, access tokens) keeps it.
+-- The origin device is named, not referenced: forgetting that device must not
+-- clear the debt its descendants still carry.
+CREATE TABLE identity_pin_lineages(
+ id TEXT PRIMARY KEY,
+ account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+ origin_device_id TEXT NOT NULL,
+ created_at TEXT NOT NULL,
+ UNIQUE(account_id,origin_device_id)
+) STRICT;
+CREATE TABLE identity_family_pin_lineages(
+ family_id TEXT PRIMARY KEY REFERENCES authorization_session_families(id) ON DELETE CASCADE,
+ lineage_id TEXT NOT NULL REFERENCES identity_pin_lineages(id) ON DELETE CASCADE
+) STRICT;
+CREATE TRIGGER identity_family_pin_lineage_account BEFORE INSERT ON identity_family_pin_lineages
+WHEN (SELECT account_id FROM identity_pin_lineages WHERE id=NEW.lineage_id) IS NOT (SELECT account_id FROM authorization_session_families WHERE id=NEW.family_id)
+BEGIN SELECT RAISE(ABORT,'pin lineage belongs to another account'); END;
+CREATE TRIGGER identity_family_pin_lineage_fixed BEFORE UPDATE ON identity_family_pin_lineages
+BEGIN SELECT RAISE(ABORT,'a session family keeps its pin lineage'); END;
 CREATE TABLE direct_profile_pin_attempts(
  profile_id TEXT NOT NULL REFERENCES direct_profiles(id) ON DELETE CASCADE,
- device_id TEXT NOT NULL REFERENCES identity_devices(id) ON DELETE CASCADE,
+ lineage_id TEXT NOT NULL REFERENCES identity_pin_lineages(id) ON DELETE CASCADE,
  failed_attempts INTEGER NOT NULL DEFAULT 0,
  last_failed_ms INTEGER NOT NULL DEFAULT 0,
  locked_until_ms INTEGER NOT NULL DEFAULT 0,
- PRIMARY KEY(profile_id,device_id)
+ PRIMARY KEY(profile_id,lineage_id)
 ) STRICT;
 CREATE TABLE client_log_daily_usage(
  account_id TEXT NOT NULL,
@@ -4977,7 +4998,10 @@ CREATE INDEX api_events_expiry ON api_events(at_ms,id);
 CREATE INDEX authorization_families_owner_history ON authorization_session_families(authority,account_id,revoked,revoked_at,id);
 CREATE INDEX playback_sessions_session_hash ON playback_sessions(session_hash);
 CREATE INDEX topshelf_tokens_account ON topshelf_tokens(authority,account_id);
-CREATE INDEX direct_profile_pin_attempts_device ON direct_profile_pin_attempts(device_id);
+CREATE INDEX direct_profile_pin_attempts_lineage ON direct_profile_pin_attempts(lineage_id);
+CREATE INDEX direct_profile_pin_attempts_last_failed ON direct_profile_pin_attempts(last_failed_ms);
+CREATE INDEX identity_pin_lineages_created ON identity_pin_lineages(created_at);
+CREATE INDEX identity_family_pin_lineages_lineage ON identity_family_pin_lineages(lineage_id);
 CREATE INDEX metadata_repair_cascades_entity ON metadata_repair_cascades(kind,entity_id);
 CREATE INDEX artwork_selections_candidate ON artwork_selections(candidate_id);
 CREATE INDEX listening_book_series_key ON listening_book_series(library_id,series_key,book_id);

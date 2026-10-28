@@ -18,7 +18,9 @@ func TestTriggerJoinsSearchInsteadOfScan(t *testing.T) {
 	for statement, table := range map[string]string{
 		`UPDATE playback_sessions SET state='stopped' WHERE session_hash IN(SELECT token_hash FROM authorization_family_tokens WHERE family_id='f')`: "playback_sessions",
 		`DELETE FROM topshelf_tokens WHERE authority='local' AND account_id='a'`:                                                                     "topshelf_tokens",
-		`DELETE FROM identity_devices WHERE authority='local' AND account_id='a'`:                                                                    "direct_profile_pin_attempts",
+		`DELETE FROM identity_devices WHERE authority='local' AND account_id='a'`:                                                                    "identity_device_families",
+		`DELETE FROM identity_pin_lineages WHERE account_id='a'`:                                                                                     "direct_profile_pin_attempts",
+		`DELETE FROM identity_pin_lineages WHERE id='l'`:                                                                                             "identity_family_pin_lineages",
 		`DELETE FROM identity_device_families WHERE device_id IN (SELECT id FROM identity_devices WHERE authority='local' AND account_id='a')`:       "identity_devices",
 	} {
 		rows, err := db.Query(`EXPLAIN QUERY PLAN ` + statement)

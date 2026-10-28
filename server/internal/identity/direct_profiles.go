@@ -373,8 +373,8 @@ type profilePINProof struct {
 
 // proveProfilePIN compares the offered PIN with the profile's, reading what it
 // needs in a snapshot and hashing with no transaction open. A profile with no
-// PIN, or a selection covered by remembered trust, needs no proof. A device in its
-// own retry delay is refused before hashing; other devices remain unaffected.
+// PIN, or a selection covered by remembered trust, needs no proof. A device chain in its
+// own retry delay is refused before hashing; other device chains remain unaffected.
 func (s *Service) proveProfilePIN(ctx context.Context, bearer, id string, q DirectSelection) (profilePINProof, error) {
 	var proof profilePINProof
 	gated, e := dbwork.BeginSnapshot(ctx, s.db)
@@ -404,9 +404,14 @@ func (s *Service) proveProfilePIN(ctx context.Context, bearer, id string, q Dire
 		gated.Rollback()
 		return proof, nil
 	}
+	lineage, e := familyPINLineageTx(ctx, tx, c.familyID)
+	if e != nil {
+		gated.Rollback()
+		return proof, e
+	}
 	nowMS := time.Now().UnixMilli()
 	var lastFailed, locked int64
-	e = tx.QueryRowContext(ctx, `SELECT last_failed_ms,locked_until_ms FROM direct_profile_pin_attempts WHERE profile_id=? AND device_id=?`, id, c.deviceID).Scan(&lastFailed, &locked)
+	e = tx.QueryRowContext(ctx, `SELECT last_failed_ms,locked_until_ms FROM direct_profile_pin_attempts WHERE profile_id=? AND lineage_id=?`, id, lineage).Scan(&lastFailed, &locked)
 	if e != nil && !errors.Is(e, sql.ErrNoRows) {
 		gated.Rollback()
 		return proof, e
@@ -469,10 +474,14 @@ func (s *Service) SelectDirectProfileFrom(ctx context.Context, bearer, id string
 			return out, e
 		}
 	}
+	lineage, e := familyPINLineageTx(ctx, tx, c.familyID)
+	if e != nil {
+		return out, e
+	}
 	if len(hash) > 0 && !trusted {
 		var attempts int
 		var lastFailed, locked int64
-		e = tx.QueryRowContext(ctx, `SELECT failed_attempts,last_failed_ms,locked_until_ms FROM direct_profile_pin_attempts WHERE profile_id=? AND device_id=?`, id, c.deviceID).Scan(&attempts, &lastFailed, &locked)
+		e = tx.QueryRowContext(ctx, `SELECT failed_attempts,last_failed_ms,locked_until_ms FROM direct_profile_pin_attempts WHERE profile_id=? AND lineage_id=?`, id, lineage).Scan(&attempts, &lastFailed, &locked)
 		if e != nil && !errors.Is(e, sql.ErrNoRows) {
 			return out, e
 		}
@@ -497,7 +506,7 @@ func (s *Service) SelectDirectProfileFrom(ctx context.Context, bearer, id string
 				return out, err
 			}
 			delay := pinDelay(policy.Values.PINAttempts, attempts)
-			if _, e = tx.ExecContext(ctx, `INSERT INTO direct_profile_pin_attempts(profile_id,device_id,failed_attempts,last_failed_ms,locked_until_ms) VALUES(?,?,?,?,?) ON CONFLICT(profile_id,device_id) DO UPDATE SET failed_attempts=excluded.failed_attempts,last_failed_ms=excluded.last_failed_ms,locked_until_ms=excluded.locked_until_ms`, id, c.deviceID, attempts, nowMS, nowMS+delay*1000); e != nil {
+			if _, e = tx.ExecContext(ctx, `INSERT INTO direct_profile_pin_attempts(profile_id,lineage_id,failed_attempts,last_failed_ms,locked_until_ms) VALUES(?,?,?,?,?) ON CONFLICT(profile_id,lineage_id) DO UPDATE SET failed_attempts=excluded.failed_attempts,last_failed_ms=excluded.last_failed_ms,locked_until_ms=excluded.locked_until_ms`, id, lineage, attempts, nowMS, nowMS+delay*1000); e != nil {
 				return out, e
 			}
 			if e = gated4.Commit(); e != nil {
@@ -505,7 +514,7 @@ func (s *Service) SelectDirectProfileFrom(ctx context.Context, bearer, id string
 			}
 			return out, &ProfilePINError{RetryAfterSeconds: delay}
 		}
-		if _, e = tx.ExecContext(ctx, `DELETE FROM direct_profile_pin_attempts WHERE profile_id=? AND device_id=?`, id, c.deviceID); e != nil {
+		if _, e = tx.ExecContext(ctx, `DELETE FROM direct_profile_pin_attempts WHERE profile_id=? AND lineage_id=?`, id, lineage); e != nil {
 			return out, e
 		}
 	}
@@ -519,6 +528,8 @@ func (s *Service) SelectDirectProfileFrom(ctx context.Context, bearer, id string
 	if e != nil {
 		return out, e
 	}
+	// The profile's session continues this sign-in's PIN-attempt lineage.
+	issueCtx = withPINLineage(issueCtx, lineage)
 	out.Session, e = s.IssueTx(withExistingDevice(continuedSignIn(issueCtx), c.deviceID), tx, c.account.ID, id, "local", role, c.epoch, time.Time{})
 	if e != nil {
 		return out, e

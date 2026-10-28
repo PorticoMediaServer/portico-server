@@ -165,6 +165,15 @@ func (s *Service) IssueAPICredentialTx(ctx context.Context, tx *sql.Tx, maker Pr
 	if _, err := tx.ExecContext(ctx, `INSERT INTO identity_device_families(family_id,device_id) VALUES(?,?)`, out.FamilyID, out.DeviceID); err != nil {
 		return out, err
 	}
+	// The credential continues its maker's PIN-attempt lineage; it is not a new
+	// device chain with a budget of its own, so a maker with no session has none.
+	lineageCtx, err := withPINLineageOf(ctx, tx, familyForTokenTx(ctx, tx, maker.Hash))
+	if err != nil {
+		return out, err
+	}
+	if err := bindPINLineageTx(lineageCtx, tx, p.AccountID, out.DeviceID, out.FamilyID); err != nil {
+		return out, err
+	}
 	// One token for the family's whole life: there is no refresh credential, so
 	// nothing can rotate it or push its horizon out.
 	if _, err := tx.ExecContext(ctx, `INSERT INTO authorization_family_tokens(token_hash,family_id,generation,expires_at,retired) VALUES(?,?,1,?,0)`, Digest(out.Secret), out.FamilyID, horizonText); err != nil {

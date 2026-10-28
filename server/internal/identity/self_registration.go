@@ -119,6 +119,11 @@ type SelfRegistrationRequest struct {
 // registration.
 type InvitationRedeemer func(ctx context.Context, tx *sql.Tx, code, account string) ([]string, error)
 
+// selfRegistrationPlan bounds signing up: the account, its membership, primary
+// profile and any invitation limits, and its first sign-in, in one commit.
+var selfRegistrationPlan = dbwork.WritePlan{Name: "self-registration", Rows: 160, Pages: 128, VMOps: 250_000,
+	Why: "signing up creates the account, its membership, primary profile and limits and signs it in together, so nobody is ever half-registered"}
+
 // Register creates a member account under the owner's self-registration policy and
 // signs it in. A new account is always a member with no libraries: reaching the
 // server is not evidence of what its owner wants shared.
@@ -152,7 +157,7 @@ func (s *Service) Register(ctx context.Context, q SelfRegistrationRequest, priva
 	if e != nil {
 		return DirectSignIn{}, e
 	}
-	gated, e := dbwork.Begin(ctx, s.db, dbwork.ClassSecurityFence)
+	gated, e := dbwork.Begin(dbwork.WithPlan(ctx, selfRegistrationPlan), s.db, dbwork.ClassSecurityFence)
 	if e != nil {
 		return DirectSignIn{}, e
 	}
