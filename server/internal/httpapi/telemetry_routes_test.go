@@ -197,3 +197,22 @@ func TestCapacityComposerUsesTheAppliedCacheDirectory(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestCapacityComposerWiresMemoryAdmissionAndCap(t *testing.T) {
+	c := (Dependencies{}).capacityComposer()
+	if c.MemoryAvailable == nil {
+		t.Fatal("capacity must use playback memory admission")
+	}
+	if c.MemoryAvailable(t.TempDir(), "quarter") {
+		t.Fatal("an ordinary disk directory is not available memory output")
+	}
+	s := operations.DefaultSettings()
+	s.MemoryCap = "2gb"
+	s.TranscodeLocation = "disk"
+	if got := transcodeSettings(s).TranscodeLocation; got != "disk" {
+		t.Fatal("explicit location did not reach delivery settings", got)
+	}
+	if got := transcodeSettings(s).MemoryCap; got != "2gb" {
+		t.Fatal("memory cap did not reach telemetry", got)
+	}
+}

@@ -59,13 +59,13 @@ export function hardwareFormats(snapshot: HardwareSnapshot): readonly SettingsTa
 
 /** The Hardware rows the server can answer, in the frame's wording. A row with
  * no measured fact is absent rather than drawn as an empty or invented value. */
-export function hardwareRowState(rowId: string, snapshot: HardwareSnapshot, storedDirectory?: string): SettingPresentation | undefined {
+export function hardwareRowState(rowId: string, snapshot: HardwareSnapshot, storedLocation?: string): SettingPresentation | undefined {
   if (snapshot.phase !== 'ready' || !snapshot.capacity) return undefined;
   const hardware = snapshot.capacity.hardware;
   const devices = hardware.devices.length > 0;
   switch (rowId) {
     case 'streaming.transcodeStatus': {
-      // The drawn status line: where conversions are written and whether this
+      // The disk fallback/spill folder and whether this
       // server can write there, from the same capacity read the rest of the page
       // uses. A directory with no measured free space says the path only.
       const directory = snapshot.capacity.temporaryDirectory;
@@ -80,16 +80,13 @@ export function hardwareRowState(rowId: string, snapshot: HardwareSnapshot, stor
       return {present: true, statusTone: 'ok', displayValue: where + advice};
     }
     case 'streaming.transcodeLocation': {
-      // One stored directory, drawn as the frame's three choices. A RAM file
-      // system this server cannot write to is not offered at all, so the choice
-      // never promises storage the host does not have.
-      const {value, memoryAvailable} = transcodeLocationChoice(snapshot.capacity.temporaryDirectory, storedDirectory);
+      // The preference stays selectable while playback safely falls back to disk.
+      const {value, memoryAvailable} = transcodeLocationChoice(snapshot.capacity.temporaryDirectory, storedLocation);
       const options = [
-        {value: 'separate', label: t('next.settingsSpec.server.streaming.groups.2.rows.1.control.options.0.label'), hint: t('next.settingsSpec.server.streaming.groups.2.rows.1.control.options.0.hint')},
-        {value: 'memory', label: t('next.settingsSpec.server.streaming.groups.2.rows.1.control.options.1.label'), hint: t('next.settingsSpec.server.streaming.groups.2.rows.1.control.options.1.hint'), locked: !memoryAvailable},
-        {value: 'folder', label: t('next.settingsSpec.server.streaming.groups.2.rows.1.control.options.2.label')},
+        {value: 'memory', label: t('next.settingsSpec.server.streaming.groups.2.rows.1.control.options.0.label')},
+        {value: 'disk', label: t('next.settingsSpec.server.streaming.groups.2.rows.1.control.options.1.label')},
       ];
-      return {present: true, value, defaultValue: 'separate', choices: options};
+      return {present: true, value, defaultValue: 'memory', choices: options, help: memoryAvailable ? undefined : t('next.settings.streaming.memoryUnavailable')};
     }
     case 'streaming.hwError': {
       const text = faultText(snapshot);
@@ -123,8 +120,8 @@ export function hardwareRowState(rowId: string, snapshot: HardwareSnapshot, stor
  * row does instead of looking for a settings binding these rows do not have. */
 export const hardwareRowIds: readonly string[] = ['streaming.transcodeStatus', 'streaming.transcodeLocation', 'streaming.hwError', 'streaming.hwDevices', 'streaming.hwLimit', 'streaming.hwFormats', 'streaming.hwToneMapping', 'streaming.hwTest'];
 
-export function hardwareEligible(rowId: string, snapshot: HardwareSnapshot, storedDirectory?: string): boolean {
-  return hardwareRowIds.includes(rowId) && hardwareRowState(rowId, snapshot, storedDirectory) !== undefined;
+export function hardwareEligible(rowId: string, snapshot: HardwareSnapshot, storedLocation?: string): boolean {
+  return hardwareRowIds.includes(rowId) && hardwareRowState(rowId, snapshot, storedLocation) !== undefined;
 }
 
 /** The one result line a test may leave: good news only, as drawn. */

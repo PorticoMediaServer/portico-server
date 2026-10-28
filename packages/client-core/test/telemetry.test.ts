@@ -187,3 +187,14 @@ test('unreadable point detail is omitted independently without erasing known lim
  assert.deepEqual(parseTelemetryReading(raw).series.cpu,[{t:1,v:4,status:'limited'},
   {t:2,v:0,status:'available'},{t:3,v:5,status:'limited',detail:'measured'}]);
 });
+
+test('memory admission is authoritative and missing or malformed facts are unavailable', () => {
+ const directory={path:'/dev/shm/portico-hls',ready:true,freeBytes:100,memoryPath:'/dev/shm'};
+ for(const fact of [undefined,false,'true',1,null]) {
+  const parsed=parseTranscodeCapacity(capacity({temporaryDirectory:{...directory,memoryAvailable:fact}}));
+  assert.equal(parsed.temporaryDirectory.memoryAvailable,false);
+  assert.equal(parsed.temporaryDirectory.memoryPath,'/dev/shm');
+ }
+ assert.equal(parseTranscodeCapacity(capacity({temporaryDirectory:{...directory,memoryAvailable:true}})).temporaryDirectory.memoryAvailable,true);
+ assert.equal(parseTranscodeCapacity(capacity({temporaryDirectory:{...directory,memoryPath:'',memoryAvailable:true}})).temporaryDirectory.memoryAvailable,false);
+});
