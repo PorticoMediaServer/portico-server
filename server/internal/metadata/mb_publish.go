@@ -13,14 +13,6 @@ import (
 	"portico.local/server/internal/metadataprovider"
 )
 
-// A pin move is indivisible: accepting the new release and releasing the old
-// one can change up to 20,000 recording counters, each with a singleton update.
-// This is the explicitly approved SRV023 exception, not the normal 160-row turn.
-var mbPublicationAccountingPlan = dbwork.WritePlan{
-	Name: "musicbrainz-publication-accounting", Rows: 50_000, Pages: 4096, VMOps: 8_000_000,
-	Why: "one atomic old/new accepted-release pin move, each already capped at 10,000 tracks; exact final budget refusal must roll back the pin and its accounting together",
-}
-
 // resolveMBEntity maps a job's public id to its integer entity id. The worker
 // holds a lease on live catalogue state; a vanished entity reads as a stale
 // base, which the worker already releases cleanly.
@@ -94,7 +86,7 @@ func (s *Service) mbPublishSong(ctx context.Context, j mbJob, result metadatapro
 		return e
 	}
 	var gated2 *dbwork.Write
-	gated2, e = dbwork.Begin(dbwork.WithPlan(ctx, mbPublicationAccountingPlan), s.db, dbwork.ClassBackgroundMedia)
+	gated2, e = dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
 	if e != nil {
 		return e
 	}
@@ -203,7 +195,7 @@ func (s *Service) mbPublishAlbum(ctx context.Context, j mbJob, result metadatapr
 		return e
 	}
 	var gated4 *dbwork.Write
-	gated4, e = dbwork.Begin(dbwork.WithPlan(ctx, mbPublicationAccountingPlan), s.db, dbwork.ClassBackgroundMedia)
+	gated4, e = dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
 	if e != nil {
 		return e
 	}

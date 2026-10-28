@@ -154,33 +154,6 @@ func defaultScreenProviders(string) []string {
 	return []string{"tmdb"}
 }
 
-// screenRematchLibraryTx keeps a library's titles with the library's one
-// provider. An accepted identity is otherwise a refresh target for good, so a
-// title matched before the provider changed would stay with a provider the
-// library no longer uses and fail every refresh. Each such title goes back to
-// unmatched and is searched for again with the new provider; what it shows
-// stays until that match is published (a different identity supersedes the
-// old one's facts, screen_publish.go). An owner's Fix Match with the old
-// provider is given up too: that provider is no longer available to it.
-func screenRematchLibraryTx(ctx context.Context, tx *sql.Tx, library string, providers []string) error {
-	if len(providers) == 0 {
-		return nil // lookups are off: nothing is matched, and the last match is kept
-	}
-	args := []any{library}
-	marks := ""
-	for _, p := range providers {
-		args = append(args, p)
-		marks += ",?"
-	}
-	stale := ` FROM screen_metadata_work WHERE library_id=? AND provider<>'' AND provider NOT IN(` + marks[1:] + `)`
-	// An identity lock says "keep this match"; the match is with a provider the library has left.
-	if _, err := tx.ExecContext(ctx, `UPDATE metadata_relationship_decisions SET locked=0 WHERE relationship='identity' AND locked=1 AND (kind,entity_id) IN(SELECT target_kind,target_id`+stale+`)`, args...); err != nil {
-		return err
-	}
-	_, err := tx.ExecContext(ctx, `UPDATE screen_metadata_work SET provider='',provider_type='',provider_id='',selection_mode='none',episode_order='official',requested_provider='',child_cursor='',selection_revision=selection_revision+1
- WHERE (target_kind,target_id) IN(SELECT target_kind,target_id`+stale+`)`, args...)
-	return err
-}
 func (s *Service) ScreenPolicy(ctx context.Context, library string) (ScreenPolicy, error) {
 	gated, err := dbwork.BeginSnapshot(ctx, s.db)
 	if err != nil {
@@ -224,6 +197,12 @@ func (s *Service) UpdateScreenPolicy(ctx context.Context, library string, body S
 	if policy.Revision != body.ExpectedRevision || policy.ConsentRevision != body.ExpectedConsentRevision {
 		return ErrScreenConflict
 	}
+	consentChanged := body.ConfirmRemote != nil && *body.ConfirmRemote != policy.Confirmed
+	if consentChanged {
+		if err = dbwork.UsePlan(tx, screenPolicyConsentPlan); err != nil {
+			return err
+		}
+	}
 	seen := map[string]bool{}
 	for _, p := range body.Providers {
 		allowed := false
@@ -251,7 +230,6 @@ func (s *Service) UpdateScreenPolicy(ctx context.Context, library string, body S
 	if err != nil {
 		return err
 	}
-	consentChanged := body.ConfirmRemote != nil && *body.ConfirmRemote != policy.Confirmed
 	if consentChanged {
 		_, err = tx.ExecContext(ctx, `UPDATE screen_metadata_consent SET revision=revision+1,confirmed=?,confirmed_at=? WHERE singleton=1`, *body.ConfirmRemote, tvdbStamp(s.publicationTime()))
 		if err != nil {
@@ -274,20 +252,12 @@ func (s *Service) UpdateScreenPolicy(ctx context.Context, library string, body S
 		return err
 	}
 	if body.Enabled {
-		if err = screenRematchLibraryTx(ctx, tx, library, body.Providers); err != nil {
+		if err = screenRequestRematchTx(ctx, tx, library, body.Providers); err != nil {
 			return err
 		}
 	}
-	where := " WHERE library_id=?"
-	args := []any{library}
-	if consentChanged {
-		where = ""
-		args = nil
-	}
-	_, err = tx.ExecContext(ctx, `UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error=''`+where, args...)
-	if err != nil {
-		return err
-	}
+	// The policy/consent triggers own the durable fanout generation. Explicit
+	// paths only OR rematch intent; rows transition in bounded worker turns.
 	if consentChanged {
 		if _, err = tx.ExecContext(ctx, `UPDATE tvdb_provider_policies SET revision=revision+1`); err != nil {
 			return err

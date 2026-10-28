@@ -40,7 +40,13 @@ func tvdbDirtyOracle(t *testing.T, tx *sql.Tx) {
 	}
 	defer rows.Close()
 	if rows.Next() {
-		t.Fatal("producer left a foreign key violation")
+		var table, parent string
+		var row sql.NullInt64
+		var key int
+		if err := rows.Scan(&table, &row, &parent, &key); err != nil {
+			t.Fatal(err)
+		}
+		t.Fatalf("producer left a foreign key violation: table=%s row=%v parent=%s key=%d", table, row, parent, key)
 	}
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
@@ -123,7 +129,17 @@ func TestTVDBDirtyWorkProducerMatrix(t *testing.T) {
 			exec(`ROLLBACK TO mutation`)
 			exec(`RELEASE mutation`)
 			exec(`DELETE FROM catalog_entities WHERE id=?`, two) // cascaded pe/ce cannot enqueue invalid FKs
+			// removeLibraryRowTx clears these non-cascading library references
+			// before deleting the public row. The TVDB head itself must still
+			// disappear through its catalog-library FK cascade.
+			exec(`DELETE FROM inventory_policy_pending WHERE library_id='other'`)
+			exec(`DELETE FROM library_scan_policies WHERE library_id='other'`)
+			exec(`DELETE FROM library_sources WHERE library_id='other'`)
 			exec(`DELETE FROM libraries WHERE id='other'`)
+			var remaining int
+			if err := tx.QueryRow(`SELECT count(*) FROM tvdb_episode_credit_heads WHERE library_id=?`, other).Scan(&remaining); err != nil || remaining != 0 {
+				t.Fatal("library deletion retained TVDB head", remaining, err)
+			}
 		})
 	}
 }

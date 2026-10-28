@@ -127,11 +127,10 @@ func ApplyAdministrationPolicyTx(ctx context.Context, tx *sql.Tx, library, kind 
 		if _, err = tx.ExecContext(ctx, `UPDATE metadata_provider_policies SET enabled=?,language=?,region=?,refresh_mode=? WHERE library_id=? AND provider='tmdb'`, seen["tmdb"], p.Language, p.Region, p.RefreshMode, library); err != nil {
 			return err
 		}
-		if err = screenRematchLibraryTx(ctx, tx, library, p.Providers); err != nil {
+		if err = screenRequestRematchTx(ctx, tx, library, p.Providers); err != nil {
 			return err
 		}
-		_, err = tx.ExecContext(ctx, `UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error='' WHERE library_id=?`, library)
-		return err
+		return nil
 	}
 	if kind == "music" || kind == "audiobook" {
 		if p.Language != "" || p.Region != "" || len(p.Providers) > 1 || (len(p.Providers) == 1 && p.Providers[0] != "musicbrainz") {
