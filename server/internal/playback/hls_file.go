@@ -40,8 +40,22 @@ func (h *HLS) openOutputPath(ctx context.Context, path, name string) (*os.File, 
 			h.mu.Unlock()
 			return nil, ErrHLSArtifactUnavailable
 		}
-		file, err := openHLSOutput(h.outputRootLocked(id), id, name)
+		if h.cleaning[id] {
+			h.mu.Unlock()
+			return nil, ErrHLSArtifactUnavailable
+		}
+		root := h.outputRootLocked(id)
+		if h.outputBusy == nil {
+			h.outputBusy = map[string]int{}
+		}
+		h.outputBusy[id]++
 		h.mu.Unlock()
+		open := h.outputOpen
+		if open == nil {
+			open = openHLSOutput
+		}
+		file, err := open(root, id, name)
+		h.releaseOutput(id)
 		if err != nil {
 			return nil, ErrHLSArtifactUnavailable
 		}

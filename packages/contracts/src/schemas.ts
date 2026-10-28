@@ -10656,6 +10656,9 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "transcodeLocation": {
+            "type": "string"
+          },
           "trustedProxies": {
             "items": {
               "type": "string"
@@ -10700,6 +10703,7 @@ export const schemas = {
           "planningPolicy",
           "throttleBufferMs",
           "playedRetentionMs",
+          "transcodeLocation",
           "temporaryDirectory",
           "ffmpegPath",
           "sessionStorageMiB",
@@ -11148,6 +11152,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "transcodeLocation": {
+                "type": "string"
+              },
               "trustedProxies": {
                 "items": {
                   "type": "string"
@@ -11192,6 +11199,7 @@ export const schemas = {
               "planningPolicy",
               "throttleBufferMs",
               "playedRetentionMs",
+              "transcodeLocation",
               "temporaryDirectory",
               "ffmpegPath",
               "sessionStorageMiB",
@@ -11656,6 +11664,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "transcodeLocation": {
+                "type": "string"
+              },
               "trustedProxies": {
                 "items": {
                   "type": "string"
@@ -11700,6 +11711,7 @@ export const schemas = {
               "planningPolicy",
               "throttleBufferMs",
               "playedRetentionMs",
+              "transcodeLocation",
               "temporaryDirectory",
               "ffmpegPath",
               "sessionStorageMiB",
@@ -33893,6 +33905,16 @@ export const schemas = {
           "lifecycle": {
             "type": "string"
           },
+          "memoryPlacementsRefused": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "memorySpills": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "outputPolicy": {
             "type": "string"
           },
@@ -34023,6 +34045,8 @@ export const schemas = {
           "conversionLimitSource",
           "outputPolicy",
           "hostConversionCapacity",
+          "memorySpills",
+          "memoryPlacementsRefused",
           "conversionsRefused",
           "hardwareFallbacks",
           "fragmentedOutput",
@@ -35932,6 +35956,9 @@ export const schemas = {
                 "nullable": true,
                 "type": "integer"
               },
+              "memoryAvailable": {
+                "type": "boolean"
+              },
               "memoryPath": {
                 "type": "string"
               },
@@ -35947,7 +35974,8 @@ export const schemas = {
               "ready",
               "freeBytes",
               "fallback",
-              "memoryPath"
+              "memoryPath",
+              "memoryAvailable"
             ],
             "type": "object"
           },
@@ -41118,6 +41146,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "transcodeLocation": {
+                "type": "string"
+              },
               "trustedProxies": {
                 "items": {
                   "type": "string"
@@ -41162,6 +41193,7 @@ export const schemas = {
               "planningPolicy",
               "throttleBufferMs",
               "playedRetentionMs",
+              "transcodeLocation",
               "temporaryDirectory",
               "ffmpegPath",
               "sessionStorageMiB",
@@ -41626,6 +41658,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "transcodeLocation": {
+                "type": "string"
+              },
               "trustedProxies": {
                 "items": {
                   "type": "string"
@@ -41670,6 +41705,7 @@ export const schemas = {
               "planningPolicy",
               "throttleBufferMs",
               "playedRetentionMs",
+              "transcodeLocation",
               "temporaryDirectory",
               "ffmpegPath",
               "sessionStorageMiB",
@@ -269924,6 +269960,9 @@ export const schemas = {
                 "nullable": true,
                 "type": "integer"
               },
+              "memoryAvailable": {
+                "type": "boolean"
+              },
               "memoryPath": {
                 "type": "string"
               },
@@ -269939,7 +269978,8 @@ export const schemas = {
               "ready",
               "freeBytes",
               "fallback",
-              "memoryPath"
+              "memoryPath",
+              "memoryAvailable"
             ],
             "type": "object"
           },

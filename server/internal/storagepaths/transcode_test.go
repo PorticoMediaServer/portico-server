@@ -1,9 +1,43 @@
 package storagepaths
 
 import (
+	"os"
+	"path/filepath"
 	"runtime"
 	"testing"
 )
+
+func TestMemoryTranscodeDirectoryIsPrivateAndStable(t *testing.T) {
+	disk := t.TempDir()
+	mounts := []Mount{{"/", "ext4"}, {"/dev/shm", "tmpfs"}}
+	got := MemoryTranscodeDirectory(disk, mounts)
+	if runtime.GOOS != "linux" {
+		if got != "" {
+			t.Fatal("non-Linux platform offered memory", got)
+		}
+		return
+	}
+	if filepath.Dir(got) != "/dev/shm" || filepath.Base(got) == "portico-hls" {
+		t.Fatal("not an installation-specific child", got)
+	}
+	if other := MemoryTranscodeDirectory(t.TempDir(), mounts); other == got {
+		t.Fatal("different disk roots share RAM output")
+	}
+	alias := filepath.Join(t.TempDir(), "disk")
+	if err := os.Symlink(disk, alias); err != nil {
+		t.Fatal(err)
+	}
+	if MemoryTranscodeDirectory(alias, mounts) != got {
+		t.Fatal("canonical disk identity is unstable")
+	}
+	mounts = append(mounts, Mount{"/memory-transcode", "tmpfs"})
+	if preferred := MemoryTranscodeDirectory(disk, mounts); filepath.Dir(preferred) != "/memory-transcode" {
+		t.Fatal("dedicated bounded mount not preferred", preferred)
+	}
+	if MemoryTranscodeDirectory(disk, []Mount{{"/", "ext4"}}) != "" {
+		t.Fatal("disk offered as memory")
+	}
+}
 
 func TestTranscodeDirectoriesPlacementAndVerification(t *testing.T) {
 	mounts := []Mount{{"/", "ext4"}, {"/ram", "tmpfs"}, {"/unbounded", "ramfs"}}

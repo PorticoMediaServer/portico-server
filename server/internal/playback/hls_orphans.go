@@ -40,7 +40,11 @@ func (h *HLS) sweepOrphanDirectories(ctx context.Context) {
 				}
 				continue
 			}
-			if h.db == nil || !entry.IsDir() || !generatedDirectoryID.MatchString(id) {
+			placementMarker := root == h.root && strings.HasPrefix(id, diskPlacementPrefix) && info.Mode().IsRegular() && info.Size() == 0
+			if placementMarker {
+				id = strings.TrimPrefix(id, diskPlacementPrefix)
+			}
+			if h.db == nil || (!entry.IsDir() && !placementMarker) || !generatedDirectoryID.MatchString(id) {
 				continue
 			}
 			var exists bool
@@ -52,8 +56,22 @@ func (h *HLS) sweepOrphanDirectories(ctx context.Context) {
 				h.mu.Unlock()
 				continue
 			}
+			if h.cleaning == nil {
+				h.cleaning = map[string]bool{}
+			}
+			h.cleaning[id] = true
+			h.mu.Unlock()
 			retired := filepath.Join(root, ".evicted-"+id+"-"+time.Now().Format("150405.000000000"))
-			err = os.Rename(filepath.Join(root, id), retired)
+			if placementMarker {
+				err = os.Remove(filepath.Join(root, entry.Name()))
+			} else {
+				err = h.renameOutput(filepath.Join(root, id), retired)
+			}
+			h.mu.Lock()
+			delete(h.cleaning, id)
+			if err == nil && placementMarker {
+				delete(h.diskOnly, id)
+			}
 			if err == nil && root == h.memoryRoot {
 				delete(h.inMemory, id)
 				delete(h.memoryFull, id)

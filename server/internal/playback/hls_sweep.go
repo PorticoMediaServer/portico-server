@@ -344,6 +344,10 @@ func (h *HLS) enforceGlobalBudgetMeasured(ctx context.Context, measured map[stri
 		id := entry.Name()
 		present[id] = true
 		measuredUsage, known := measured[id]
+		h.mu.Lock()
+		// A spill invalidates measurements from the earlier RAM pass.
+		known = known && h.usage[id] != nil && !h.usage[id].measured.IsZero()
+		h.mu.Unlock()
 		if !known {
 			bytes, files, measureErr := h.measureOutput(filepath.Join(h.root, id))
 			if measureErr != nil {
@@ -424,8 +428,15 @@ func (h *HLS) enforceGlobalBudgetMeasured(ctx context.Context, measured map[stri
 			h.mu.Unlock()
 			continue
 		}
+		if h.cleaning == nil {
+			h.cleaning = map[string]bool{}
+		}
+		h.cleaning[c.id] = true
+		h.mu.Unlock()
 		retired := filepath.Join(h.root, ".evicted-"+c.id+"-"+strconv.FormatInt(time.Now().UnixNano(), 10))
-		err = os.Rename(filepath.Join(h.root, c.id), retired)
+		err = h.renameOutput(filepath.Join(h.root, c.id), retired)
+		h.mu.Lock()
+		delete(h.cleaning, c.id)
 		if err == nil {
 			delete(h.usage, c.id)
 			delete(h.reclaimed, c.id)

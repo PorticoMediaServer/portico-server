@@ -880,7 +880,9 @@ func run() (runErr error) {
 			return errors.New("container transcodes must use /transcode or /config/Transcode; clear the previous temporary-directory override")
 		}
 	}
-	conversionDirectory, memoryDirectory, conversionErr := storagepaths.TranscodeDirectories(conversionDirectory, filepath.Join(layout.Data, "Transcode"), startupMounts())
+	// The configured folder is always the disk target. A memory preference is
+	// independent of that folder and can always fall back or spill here.
+	conversionDirectory, _, conversionErr := storagepaths.TranscodeDirectories(conversionDirectory, filepath.Join(layout.Data, "Transcode"), startupMounts())
 	if conversionErr != nil {
 		log.Printf("Media conversion unavailable: %v", conversionErr)
 	}
@@ -895,11 +897,12 @@ func run() (runErr error) {
 		hls.SourceStorage = storeIO
 		hls.WindowInputs = subtitleRenderer
 		hls.ConfigureSettings(deliverySettings)
+		memoryDirectory := storagepaths.MemoryTranscodeDirectory(conversionDirectory, startupMounts())
 		if memoryDirectory != "" {
 			if err := hls.ConfigureMemory(memoryDirectory); err != nil {
 				log.Printf("Memory conversion storage unavailable; using disk: %v", err)
 			} else {
-				log.Printf("Conversions use memory at %s, spilling to %s", memoryDirectory, conversionDirectory)
+				log.Printf("Conversion storage: disk %s, memory candidate %s", conversionDirectory, memoryDirectory)
 			}
 		}
 		hls.ConfigureMemberCeiling(memberCeilingReader())

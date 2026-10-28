@@ -2,6 +2,7 @@ package storagepaths
 
 import (
 	"bufio"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -97,6 +98,31 @@ func TranscodeDirectories(requested, fallback string, mounts []Mount) (disk, mem
 		memory = requested
 	}
 	return fallback, memory, nil
+}
+
+// MemoryTranscodeDirectory never owns a shared tmpfs root. Each disk output
+// root gets its own private child; playback verifies its ownership before any
+// adoption or cleanup. Merely finding tmpfs does not authorize RAM placement:
+// playback also checks its kernel ceiling, the cap and the memory floor.
+func MemoryTranscodeDirectory(disk string, mounts []Mount) string {
+	if runtime.GOOS != "linux" {
+		return ""
+	}
+	canonical, err := filepath.EvalSymlinks(disk)
+	if err != nil {
+		return ""
+	}
+	canonical, err = filepath.Abs(canonical)
+	if err != nil {
+		return ""
+	}
+	identity := fmt.Sprintf("%x", sha256.Sum256([]byte(canonical)))[:16]
+	for _, base := range []string{"/memory-transcode", "/dev/shm"} {
+		if Filesystem(base, mounts) == "tmpfs" {
+			return filepath.Join(base, "portico-hls-"+identity)
+		}
+	}
+	return ""
 }
 
 var ErrCleanupUnavailable = errors.New("destructive cleanup cannot be confined to the owned filesystem")

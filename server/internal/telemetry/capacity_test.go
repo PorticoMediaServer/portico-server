@@ -190,3 +190,27 @@ func TestCapacityMemoryCapabilityIsNotAWarning(t *testing.T) {
 		}
 	}
 }
+
+func TestCapacityPublishesMemoryAdmissionForTheCurrentCap(t *testing.T) {
+	c := &Capacity{Run: workingReporter}
+	s := settingsFor(t)
+	s.MemoryCap = "quarter"
+	if c.Report(context.Background(), s, SessionCounts{}).TemporaryDirectory.MemoryAvailable {
+		t.Fatal("missing admission callback must mean unavailable")
+	}
+	for _, available := range []bool{false, true, false} {
+		calls := 0
+		c.MemoryAvailable = func(path, cap string) bool {
+			calls++
+			if path != memoryTranscodeDirectory() || cap != s.MemoryCap {
+				t.Fatalf("wrong admission inputs: %q %q", path, cap)
+			}
+			return available
+		}
+		report := c.Report(context.Background(), s, SessionCounts{})
+		if calls != 1 || report.TemporaryDirectory.MemoryAvailable != available || report.TemporaryDirectory.Memory != memoryTranscodeDirectory() {
+			t.Fatalf("admission must be fresh and preserve the candidate path: %+v (calls %d)", report.TemporaryDirectory, calls)
+		}
+		s.MemoryCap = "half"
+	}
+}

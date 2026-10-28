@@ -13,11 +13,11 @@ func TestPlatformDefaults(t *testing.T) {
 		o               Options
 		data, transcode string
 	}{
-		{Options{Platform: "linux", Home: "/home/owner"}, "/home/owner/.local/share/portico", "/home/owner/.cache/portico"},
-		{Options{Platform: "linux", Service: true}, "/var/lib/portico", "/var/cache/portico"},
-		{Options{Platform: "darwin", Home: "/Users/owner"}, "/Users/owner/Library/Application Support/Portico", "/Users/owner/Library/Caches/Portico Transcode"},
-		{Options{Platform: "windows", LocalAppData: `C:\Users\owner\AppData\Local`}, `C:\Users\owner\AppData\Local\Portico`, `C:\Users\owner\AppData\Local\Portico Transcode`},
-		{Options{Platform: "windows", Service: true}, `C:\ProgramData\Portico`, `C:\ProgramData\Portico Transcode`},
+		{Options{Platform: "linux", Home: "/home/owner"}, "/home/owner/.local/share/portico", "/home/owner/.local/share/portico/Transcode"},
+		{Options{Platform: "linux", Service: true}, "/var/lib/portico", "/var/lib/portico/Transcode"},
+		{Options{Platform: "darwin", Home: "/Users/owner"}, "/Users/owner/Library/Application Support/Portico", "/Users/owner/Library/Application Support/Portico/Transcode"},
+		{Options{Platform: "windows", LocalAppData: `C:\Users\owner\AppData\Local`}, `C:\Users\owner\AppData\Local\Portico`, `C:\Users\owner\AppData\Local\Portico\Transcode`},
+		{Options{Platform: "windows", Service: true}, `C:\ProgramData\Portico`, `C:\ProgramData\Portico\Transcode`},
 		{Options{Container: true, Mounts: []Mount{{"/transcode", "ext4"}}}, "/config", "/transcode"},
 		{Options{Container: true}, "/config", "/config/Transcode"},
 	}

@@ -58,6 +58,7 @@ type HLS struct {
 	memoryRoot       string
 	memoryOutputRoot *os.Root
 	inMemory         map[string]bool
+	diskOnly         map[string]bool
 	memoryFull       map[string]bool
 	moving           map[string]chan struct{}
 	memoryFacts      func(string) (memoryFacts, error)
@@ -107,6 +108,9 @@ type HLS struct {
 	// production, where measureDirectory runs; a test replaces it to count the
 	// walks a sweep actually performs. Nothing else writes it.
 	measure func(dir string) (int64, int, error)
+	// Filesystem seams are installed only before concurrent playback in tests.
+	outputOpen   func(*os.Root, string, string) (*os.File, error)
+	outputRename func(string, string) error
 	// execute replaces only converter execution in tests. Set before starting
 	// a session; nil uses the ordinary confined child-process executor.
 	execute func(context.Context, mediaexec.Job) (error, string)
@@ -399,6 +403,9 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 	h.selectOutputBackend(ctx, id, delivery)
 	dir, e := h.createStreamingOutput(ctx, id, delivery)
 	if e != nil {
+		if !errors.Is(e, ErrSegmentPreparing) && ctx.Err() == nil {
+			h.failed(ctx, id)
+		}
 		return
 	}
 	if _, e = h.producerWrite(ctx, id, dbwork.ClassEstablishedPlayback, `INSERT INTO playback_artifacts(session_id,directory,status) VALUES(?,?,'building') ON CONFLICT(session_id) DO UPDATE SET directory=excluded.directory,status='building',error=''`, id, dir); e != nil {
@@ -449,12 +456,12 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 			manifest = fragmentedManifest(manifest)
 		}
 		if e = publishRenditionManifests(dir, delivery, manifest); e != nil {
-			h.failed(ctx, id)
+			h.outputSetupFailed(ctx, id)
 			return
 		}
 	}
 	if e = writeNamedManifest(dir, "generation", []byte(strconv.Itoa(generation))); e != nil {
-		h.failed(ctx, id)
+		h.outputSetupFailed(ctx, id)
 		return
 	}
 	h.mu.Lock()
@@ -476,13 +483,16 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 		staging = filepath.Join(dir, "window-"+strconv.Itoa(from))
 		_ = os.RemoveAll(staging)
 		if e = os.MkdirAll(staging, 0700); e != nil {
-			h.failed(ctx, id)
+			h.outputSetupFailed(ctx, id)
 			return
 		}
 		defer os.RemoveAll(staging)
 	}
 	burn, cleanupBurn, burnErr := h.prepareBurnInput(ctx, id, dir, position, delivery, input, remoteInput)
 	if burnErr != nil {
+		if h.retryMemoryPathError(id, dir, burnErr) {
+			return
+		}
 		h.failedWith(ctx, id, FailureConverter, "subtitle input unavailable")
 		return
 	}
@@ -755,7 +765,7 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 	}
 	h.mu.Unlock()
 	if publicationError != nil {
-		h.fragmentedFailure(ctx, id, delivery, position, publicationError)
+		h.outputPublicationFailed(ctx, id, delivery, position, publicationError)
 		return
 	}
 	throttled := func() bool {
@@ -832,7 +842,7 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 		}
 		h.mu.Unlock()
 		if publicationError != nil {
-			h.fragmentedFailure(ctx, id, delivery, position, publicationError)
+			h.outputPublicationFailed(ctx, id, delivery, position, publicationError)
 			return
 		}
 		retryCancelled := ctx.Err() != nil || !currentWindow || processCtx.Err() != nil && !softwareThrottled
@@ -867,7 +877,7 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 			var promoteErr error
 			produced, promoteErr = promoteFMP4Segments(staging, dir, timeline, from, e == nil)
 			if promoteErr != nil {
-				h.fragmentedFailure(ctx, id, delivery, position, promoteErr)
+				h.outputPublicationFailed(ctx, id, delivery, position, promoteErr)
 				return
 			}
 		} else {
@@ -878,7 +888,7 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 			var publishErr error
 			produced, publishErr = promoteConvertedFragments(staging, dir, "init-"+strconv.Itoa(from)+".mp4", from, nil, fragmentClock)
 			if publishErr != nil {
-				h.fragmentedFailure(ctx, id, delivery, position, publishErr)
+				h.outputPublicationFailed(ctx, id, delivery, position, publishErr)
 				return
 			}
 		} else {
@@ -1139,9 +1149,10 @@ func (h *HLS) FileContext(ctx context.Context, grant, name string) (string, erro
 	}
 	stamp, stampErr := os.ReadFile(filepath.Join(h.outputDir(id), "generation"))
 	if stampErr != nil || string(stamp) != strconv.Itoa(generation) {
-		// Only a wholly evicted directory is recoverable here. An existing
-		// directory with a different generation must never become current.
-		if os.IsNotExist(stampErr) {
+		// Retire interrupted owned initial publication, then use the same absent
+		// output restart path as eviction. A valid different generation stays fenced.
+		h.retireIncompleteOutput(id)
+		if os.IsNotExist(stampErr) || !validOutputGeneration(h.outputDir(id)) {
 			if _, err := os.Stat(h.outputDir(id)); os.IsNotExist(err) {
 				from, segment := hlsSegmentIndex(name)
 				if !segment {
@@ -1359,7 +1370,11 @@ func (h *HLS) CleanupGenerated(ctx context.Context) error {
 			if e := os.RemoveAll(h.outputDir(id)); e != nil {
 				return e
 			}
+			if e := os.Remove(filepath.Join(h.root, diskPlacementPrefix+id)); e != nil && !os.IsNotExist(e) {
+				return e
+			}
 			h.mu.Lock()
+			delete(h.diskOnly, id)
 			delete(h.inMemory, id)
 			delete(h.memoryFull, id)
 			delete(h.usage, id)
