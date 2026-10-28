@@ -93,3 +93,16 @@ test('canonical hint delivery preserves server revision and preference address r
   h.hub.accept({...pref,id:'other-scope',data:{scope:'profile-server'}});await h.time.advance(1500);assert.equal(h.calls.length,second+1);
   h.dispose();
 });
+
+test('guide Retry-After remains binding when later hints switch server, live-source and channel groups', async () => {
+  const h=harness(),guideReads=()=>h.calls.filter(path=>path.startsWith('/v1/guide/sources?')).length;
+  h.guideFailure(Object.assign(new Error('guide wait'),{status:429,retryAfterSeconds:7200}));
+  h.owner.request('server');await h.time.advance(1000);assert.equal(guideReads(),1);
+  h.owner.request('liveSources');await h.time.advance(1000);assert.equal(guideReads(),1);
+  h.owner.request('libraryChannels');await h.time.advance(1000);assert.equal(guideReads(),1);
+  h.hub.setActive(false);h.owner.setRetained(true);h.owner.all();h.hub.resync();
+  h.hub.note('evict:'.repeat(100000));await h.time.advance(1000);h.hub.setActive(true);h.owner.all();
+  h.guideFailure(undefined);await h.time.advance(7_200_400-h.time.env.now()-1);assert.equal(guideReads(),1);
+  await h.time.advance(1);assert.equal(guideReads(),2,'all three groups coalesce at the original response-time floor');
+  assert.equal(h.counts().retired,0);h.dispose();assert.equal(h.time.pending(),0);
+});
