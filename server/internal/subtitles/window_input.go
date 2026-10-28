@@ -3,6 +3,8 @@ package subtitles
 import "context"
 
 type WindowCommand struct {
+	// Started observes only the converter, after successful process Start.
+	Started  func()
 	Args     []string
 	Hardware bool
 }

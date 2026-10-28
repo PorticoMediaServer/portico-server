@@ -104,6 +104,7 @@ internal/catalog/scalebench/ingest.go	ingestBatch	WithWriteTx	ClassBackgroundMed
 internal/catalog/scalebench/ingest.go	ingestScenarios	ExecWrite	ClassInteractive	-
 internal/catalog/scalebench/ingest.go	ingestScenarios	WithWriteTx	ClassInteractive	-
 internal/catalog/scalebench/main.go	run	WithWriteTx	ClassMaintenance	-
+internal/catalog/scalebench/playlist.go	seedPlaylist	WithWriteTx	ClassBackgroundMedia	-
 internal/catalog/scalebench/reference.go	seedReference	WithWriteTx	ClassBackgroundMedia	-
 internal/catalog/scalebench/trickle.go	exerciseTrickle	WithWriteTx	ClassBackgroundMedia	-
 internal/catalog/search_history.go	(*Service).ClearSearchHistory	ExecWrite	ClassFrom(s.Context(), dbwork.ClassInteractive)	-
