@@ -4,24 +4,26 @@ import {readFile} from 'node:fs/promises';
 import {transformSync} from 'rolldown/utils';
 import {createRenderer, tree, one} from '../helpers/interaction-harness.mjs';
 import {parseBrowseCapabilities, browseCapabilitiesPath} from '../../../packages/client-core/src/browse.ts';
+import {libraryTabs, readingTabModel} from '../../../packages/client-core/src/presentation/library-tabs.ts';
+import {loadFacetPage} from '../../src/screens/read/facets.ts';
 import {routePattern} from '../../../packages/contracts/src/routes.ts';
 
 // Execute the actual LiveReadingLibrary function with mocked ports; the small
 // hook harness models component wiring, not React scheduling or browser paint.
-async function loadActual(h) {
+async function loadActual(h, navigations) {
   const file = new URL('../../src/screens/browse/Library.route.tsx', import.meta.url);
   const result = transformSync(file.pathname, await readFile(file, 'utf8'), {jsx: {runtime: 'classic'}});
   if (result.errors.length) throw new Error(JSON.stringify(result.errors));
-  const tabs = [{id: 'discover', label: 'library.tab.discover'}];
   const modules = {
     react: h.react, '@i18n': {defaultI18n: {t: key => key}},
     '@core/browse.ts': {parseBrowseCapabilities, browseCapabilitiesPath},
-    '@core/presentation/library-tabs.ts': {readingTabModel: () => tabs, libraryTabs: () => tabs},
+    '@core/presentation/library-tabs.ts': {readingTabModel, libraryTabs},
     '../../shell/viewport': {useShellWidth: () => 1440}, './screen-preferences': {useScreenAppearance: () => ({libraryView: 'grid', showBackdrops: false})},
     '../read/useReadingMarkAll': {useReadingMarkAll: () => undefined},
-    '../read': {useReadLibrarySummary: () => ({wash: undefined, counts: undefined, libraryCounts: []}), ReadLibraryEntry: 'ReadLibraryEntry'},
+    '../read': {useReadLibrarySummary: () => ({wash: undefined, counts: undefined, libraryCounts: []}), ReadLibraryEntry: 'ReadLibraryEntry', FacetPage: 'FacetPage'},
     '../../kit/states': {Skeleton: 'Skeleton', StateView: 'StateView'}, './Library': {LibraryIdentity: 'LibraryIdentity'},
     '../read/ReadPeriodicalEntry': {ReadPeriodicalEntry: 'ReadPeriodicalEntry'},
+    '../../router': {router: {navigate: async value => {navigations.push(value);}}},
     '../../route-registry': {defineWebScreen: value => value}, './route-search': {parseLibraryScreenSearch: value => value},
   };
   const inert = new Proxy(function () {}, {get: (_, key) => key === 'then' ? undefined : inert, apply: () => undefined});
@@ -39,24 +41,33 @@ function caps(id = 'library', kind = 'book', pivot = 'magazines') {
     {id: 'discover', labelKey: 'library.discover', entityKinds: [], defaultSort: [], supportedViews: [], browsable: false},
     {id: pivot, labelKey: `library.${pivot}`, entityKinds: [], defaultSort: [], supportedViews: [], browsable: false,
       facetSource: {endpoint: routePattern('get_reading_periodical_groups'), field: 'publicationType'}},
+    {id: 'authors', labelKey: 'library.tab.authors', entityKinds: [], defaultSort: [], supportedViews: [], browsable: false,
+      facetSource: {endpoint: routePattern('get_library_facets'), field: 'author'}},
   ], resolvedPivot: null, fields: [], sorts: [], quickFilters: [], queryLimits: {maximumDepth: 5, maximumClauses: 40, maximumBytes: 65536, maximumSorts: 3, defaultLimit: 40, maximumLimit: 100, cursorTtlMs: 1800000}};
 }
 async function fixture({strict = false, holdPassive = false} = {}) {
-  const h = createRenderer(), calls = [], errors = [], passive = [];
+  const h = createRenderer(), calls = [], errors = [], passive = [], navigations = [];
   if (strict) {const effect = h.react.useLayoutEffect; h.react.useLayoutEffect = (run, deps) => effect(() => {const first = run(); first?.(); return run();}, deps);}
   // This harness flushes effects together. Holding passive setups explicitly models
   // the committed-layout-before-passive window, not React scheduling itself.
   if (holdPassive) {const effect = h.react.useEffect; h.react.useEffect = (run, deps) => effect(() => {passive.push(run);}, deps);}
-  const Component = await loadActual(h);
+  const Component = await loadActual(h, navigations);
   let active = true, library = {id: 'library', kind: 'book'}, search = {view: 'series', pivot: 'magazines'};
-  let captured = {context: {}}, context = {artwork: {}, identity: {libraries: []}, effects: {reportError: error => errors.push(error)}, isCurrent: () => active};
+  const rawCalls = [];
+  const api = {
+    request(path, method, body, signal) {const call = {...deferred(), path, method, body, signal}; calls.push(call); return call.promise;},
+    requestRaw(path, method, options) {const call = {...deferred(), path, method, options}; rawCalls.push(call); return call.promise;},
+  };
+  let captured = {context: {}}, context = {api, artwork: {}, identity: {libraries: []}, effects: {reportError: error => errors.push(error)}, isCurrent: () => active};
   let life = makeLife();
-  function makeLife() {return {current: () => active, api: {request(path, method, body, signal) {const call = {...deferred(), path, signal}; calls.push(call); return call.promise;}}};}
+  function makeLife() {return {current: () => active, api};}
   const render = () => tree(h.render(() => Component({captured, library, search, onMarked: () => {}, context, life})));
   const settle = () => {let result; for (let i = 0; i < 3; i++) result = render(); return result;};
-  return {calls, errors, settle, retry: () => one(settle(), 'StateView').props.primary.onPress,
+  return {calls, rawCalls, errors, navigations, settle, retry: () => one(settle(), 'StateView').props.primary.onPress,
     replace: (id = 'library', pivot = 'magazines') => {library = {id, kind: 'book'}; search = {view: 'series', pivot}; life = makeLife(); settle();},
     replaceContext: () => {captured = {context: {}}; context = {...context}; life = makeLife(); settle();},
+    openSeries: entityId => {search = {...search, entityId}; return settle();},
+    authors: () => {search = {view: 'authors'}; return settle();},
     discover: () => {search = {view: 'discover'}; life = makeLife(); return settle();},
     retire: () => {active = false;}, passive};
 }
@@ -134,4 +145,44 @@ test('leaving a periodical opening preserves the nonperiodical fallback', async 
   assert.equal(one(next, 'ReadLibraryEntry').props.view, 'discover');
   old.resolve(caps()); await Promise.resolve(); await Promise.resolve();
   assert.equal(one(f.settle(), 'ReadLibraryEntry').props.view, 'discover');
+});
+
+
+test('periodical drilldown keeps its series and tab actions use the published pivots', async () => {
+  const f = await fixture(); f.settle(); f.calls[0].resolve(caps());
+  await Promise.resolve(); await Promise.resolve();
+  const nodes = f.openSeries('series-opaque');
+  const periodical = one(nodes, 'ReadPeriodicalEntry');
+  assert.equal(periodical.props.libraryId, 'library');
+  assert.equal(periodical.props.kind, 'magazine');
+  assert.equal(periodical.props.seriesId, 'series-opaque');
+  const header = one(nodes, 'LibraryIdentity');
+  header.props.onPivot('magazines');
+  assert.deepEqual(f.navigations, [{to: '/library/$libraryId', params: {libraryId: 'library'}, search: {view: 'series', pivot: 'magazines'}}]);
+  f.retire(); header.props.onPivot('authors');
+  assert.equal(f.navigations.length, 1, 'a retired screen cannot navigate');
+});
+
+test('the sibling facet receives the raw API port and reads its wire envelope', async () => {
+  const f = await fixture(); f.settle(); f.calls[0].resolve(caps());
+  await Promise.resolve(); await Promise.resolve();
+  const facet = one(f.authors(), 'FacetPage');
+  const signal = new AbortController().signal;
+  const work = loadFacetPage(facet.props.request, {libraryId: facet.props.libraryId, field: facet.props.field, pivot: facet.props.pivot}, signal);
+  assert.equal(f.calls.length, 1, 'facet reads use the raw port, not the body-only capability port');
+  assert.equal(f.rawCalls.length, 1);
+  const call = f.rawCalls[0];
+  assert.match(call.path, /\/v1\/libraries\/library\/facets\?/);
+  assert.equal(call.method, 'GET');
+  assert.equal(call.options.signal.aborted, false);
+  assert.ok(call.options.signal instanceof AbortSignal);
+  const body = {field: 'author', total: 1, totalIsLowerBound: false, values: [{value: 'Ursula K. Le Guin', label: 'Ursula K. Le Guin', count: 2, countIsLowerBound: true}]};
+  call.resolve({status: 200, headers: {}, body});
+  const page = await work;
+  assert.deepEqual(page.values, body.values);
+  assert.equal(page.total, 1);
+  assert.equal(facet.props.request.isCurrent(), true);
+  f.retire();
+  await assert.rejects(loadFacetPage(facet.props.request, {libraryId: 'library', field: 'author', pivot: 'books'}, signal), {name: 'AbortError'});
+  assert.equal(f.rawCalls.length, 1, 'a retired route cannot start another raw read');
 });
