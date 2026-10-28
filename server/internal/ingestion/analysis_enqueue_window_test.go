@@ -138,8 +138,9 @@ func (f *loopFixture) markObjectsSettled(operations []string) {
 
 // newSonicCapableAnalysis gives the enqueue page a service whose
 // SonicCanAttempt is true without loading a model or running inference. The
-// objects in the sonic tests need work, so the page must select the 32-row
-// fallback budget but never call SonicCurrentTx.
+// budget subtests use it to check the 32-row selection while their objects
+// already need analysis; the currentness subtest uses it so a settled row's
+// SonicCurrentTx runs against the fixture database only.
 func newSonicCapableAnalysis(t *testing.T, db *sql.DB) *mediaanalysis.Service {
 	t.Helper()
 	root, err := filepath.EvalSymlinks(t.TempDir())
