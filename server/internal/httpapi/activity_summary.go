@@ -71,7 +71,7 @@ func registerActivitySummary(registry *apikit.Registry, d Dependencies) error {
 	if err := registerDashboardStatus(registry, d); err != nil {
 		return err
 	}
-	return apikit.Register(registry, apikit.Route[struct{}, ActivitySummary]{Metadata: apikit.Metadata{Admission: laneAdmin, ID: "get_admin_activity", Method: "GET", Path: "/v1/admin/activity", Summary: "Read the owner's bounded server activity summary", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (ActivitySummary, error) {
+	return apikit.Register(registry, apikit.Route[struct{}, ActivitySummary]{Metadata: apikit.Metadata{Audience: apikit.Integrations, Admission: laneAdmin, ID: "get_admin_activity", Method: "GET", Path: "/v1/admin/activity", Summary: "Read the owner's bounded server activity summary", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (ActivitySummary, error) {
 		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
 		p, e := d.ownerContext(ctx, r)
@@ -294,7 +294,7 @@ func (d Dependencies) activityMajorIssues(ctx context.Context, tx *sql.Tx, out *
 func (d Dependencies) dashboardSessions(ctx context.Context, r *http.Request, limit int, cursor string) (playbackv1.AdminSessionPage, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	metadata := apikit.Metadata{Access: apikit.Admin, Requires: apikit.ScopeAdmin, AdminScope: "playback"}
+	metadata := apikit.Metadata{Audience: apikit.Clients, Access: apikit.Admin, Requires: apikit.ScopeAdmin, AdminScope: "playback"}
 	admitted, err := d.v1Authorize(ctx, r, metadata)
 	if err != nil {
 		return playbackv1.AdminSessionPage{}, err

@@ -10,7 +10,7 @@ import (
 
 func registerStorageStatus(registry *apikit.Registry, d Dependencies) {
 	failures := []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "internal"}
-	v1Route(registry, apikit.Metadata{Admission: laneAdmin, ID: "get_storage_status", Method: "GET", Path: "/v1/admin/storage/status", Summary: "Read active storage destinations and reclaimable database space", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (persistence.StorageStatus, error) {
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, Admission: laneAdmin, ID: "get_storage_status", Method: "GET", Path: "/v1/admin/storage/status", Summary: "Read active storage destinations and reclaimable database space", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (persistence.StorageStatus, error) {
 		out, err := persistence.ReadStorageStatus(ctx, d.DB)
 		out.CacheDirectory = d.CacheDirectory
 		if d.Backups != nil {

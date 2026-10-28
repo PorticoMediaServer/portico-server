@@ -40,7 +40,7 @@ func rcloneConnectionFailure(err error) error {
 }
 
 func registerRcloneConnectionTest(registry *apikit.Registry, d Dependencies) {
-	v1Route(registry, apikit.Metadata{ID: "test_storage_source_rclone", Method: "POST", Path: "/v1/storage/sources/rclone/test", Summary: "Test an unsaved imported rclone source configuration", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdminLong, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "source_credentials_required", "administration_unavailable", "request_in_progress", "internal"}}, func(ctx context.Context, r *http.Request, in mounts.RcloneConnectionInput) (RcloneConnectionResponse, error) {
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, ID: "test_storage_source_rclone", Method: "POST", Path: "/v1/storage/sources/rclone/test", Summary: "Test an unsaved imported rclone source configuration", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdminLong, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "source_credentials_required", "administration_unavailable", "request_in_progress", "internal"}}, func(ctx context.Context, r *http.Request, in mounts.RcloneConnectionInput) (RcloneConnectionResponse, error) {
 		p, scope, err := d.storageOwner(r)
 		if err != nil {
 			return RcloneConnectionResponse{}, rcloneConnectionFailure(err)

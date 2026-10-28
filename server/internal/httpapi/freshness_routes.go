@@ -21,7 +21,7 @@ type derivationReport struct {
 }
 
 func registerFreshnessRoutes(registry *apikit.Registry, d Dependencies) {
-	err := apikit.Register(registry, apikit.Route[struct{}, derivationReport]{Metadata: apikit.Metadata{Admission: laneDefault, ID: "get_catalogue_failures", Method: "GET", Path: "/v1/admin/catalogue/failures", Summary: "Read titles set aside by catalogue workers", Access: apikit.Admin, Requires: apikit.ScopeAdmin, AdminScope: "library", Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Errors: []string{"unauthorized", "not_permitted", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (derivationReport, error) {
+	err := apikit.Register(registry, apikit.Route[struct{}, derivationReport]{Metadata: apikit.Metadata{Audience: apikit.Clients, Admission: laneDefault, ID: "get_catalogue_failures", Method: "GET", Path: "/v1/admin/catalogue/failures", Summary: "Read titles set aside by catalogue workers", Access: apikit.Admin, Requires: apikit.ScopeAdmin, AdminScope: "library", Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Errors: []string{"unauthorized", "not_permitted", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (derivationReport, error) {
 		out := derivationReport{Failures: []derivationFailure{}}
 		if _, err := d.owner(r); err != nil {
 			return out, foundationAuthError(err)

@@ -105,7 +105,7 @@ func driveOAuthActor(p identity.Principal, viewerFence string) (string, error) {
 }
 
 func registerDriveOAuth(registry *apikit.Registry, d Dependencies) {
-	v1Route(registry, apikit.Metadata{ID: "post_storage_source_drive_oauth_start", Method: "POST", Path: "/v1/storage/sources/rclone/drive/oauth/start", Summary: "Start the owner's own Google OAuth sign-in for a Drive source", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdminLong, Cost: apikit.Constant, BodyLimit: 8192, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "administration_unavailable", "internal"}}, func(_ context.Context, r *http.Request, in DriveOAuthStartInput) (DriveOAuthStartResponse, error) {
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, ID: "post_storage_source_drive_oauth_start", Method: "POST", Path: "/v1/storage/sources/rclone/drive/oauth/start", Summary: "Start the owner's own Google OAuth sign-in for a Drive source", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdminLong, Cost: apikit.Constant, BodyLimit: 8192, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "administration_unavailable", "internal"}}, func(_ context.Context, r *http.Request, in DriveOAuthStartInput) (DriveOAuthStartResponse, error) {
 		p, scope, err := d.storageOwner(r)
 		if err != nil {
 			return DriveOAuthStartResponse{}, rcloneConnectionFailure(err)
@@ -131,7 +131,7 @@ func registerDriveOAuth(registry *apikit.Registry, d Dependencies) {
 		}
 		return DriveOAuthStartResponse{Scope: scope, AuthorizationURL: authorizationURL, State: state}, nil
 	})
-	v1Route(registry, apikit.Metadata{ID: "post_storage_source_drive_oauth_paste", Method: "POST", Path: "/v1/storage/sources/rclone/drive/oauth/paste", Summary: "Take the code from the address Google ended on", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdminLong, Cost: apikit.Constant, BodyLimit: 8192, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "source_credentials_required", "administration_unavailable", "internal"}}, func(_ context.Context, r *http.Request, in DriveOAuthPasteInput) (DriveOAuthPasteResponse, error) {
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, ID: "post_storage_source_drive_oauth_paste", Method: "POST", Path: "/v1/storage/sources/rclone/drive/oauth/paste", Summary: "Take the code from the address Google ended on", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdminLong, Cost: apikit.Constant, BodyLimit: 8192, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "source_credentials_required", "administration_unavailable", "internal"}}, func(_ context.Context, r *http.Request, in DriveOAuthPasteInput) (DriveOAuthPasteResponse, error) {
 		p, scope, err := d.storageOwner(r)
 		if err != nil {
 			return DriveOAuthPasteResponse{}, rcloneConnectionFailure(err)
@@ -158,7 +158,7 @@ func registerDriveOAuth(registry *apikit.Registry, d Dependencies) {
 		}
 		return DriveOAuthPasteResponse{Scope: scope, Phase: driveoauth.Pending}, nil
 	})
-	v1Route(registry, apikit.Metadata{ID: "post_storage_source_drive_oauth_status", Method: "POST", Path: "/v1/storage/sources/rclone/drive/oauth/status", Summary: "Read the owner's Google sign-in and exchange its one code", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdminLong, Cost: apikit.Constant, BodyLimit: 8192, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "source_credentials_required", "administration_unavailable", "internal"}}, func(ctx context.Context, r *http.Request, in DriveOAuthStateInput) (DriveOAuthStatusResponse, error) {
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, ID: "post_storage_source_drive_oauth_status", Method: "POST", Path: "/v1/storage/sources/rclone/drive/oauth/status", Summary: "Read the owner's Google sign-in and exchange its one code", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdminLong, Cost: apikit.Constant, BodyLimit: 8192, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "source_credentials_required", "administration_unavailable", "internal"}}, func(ctx context.Context, r *http.Request, in DriveOAuthStateInput) (DriveOAuthStatusResponse, error) {
 		p, scope, err := d.storageOwner(r)
 		if err != nil {
 			return DriveOAuthStatusResponse{}, rcloneConnectionFailure(err)
@@ -187,7 +187,7 @@ func registerDriveOAuth(registry *apikit.Registry, d Dependencies) {
 		}
 		return DriveOAuthStatusResponse{Scope: scope, Phase: result.Phase, Token: result.Token}, nil
 	})
-	v1Route(registry, apikit.Metadata{ID: "post_storage_source_drive_oauth_cancel", Method: "POST", Path: "/v1/storage/sources/rclone/drive/oauth/cancel", Summary: "End the owner's Google sign-in session", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdminLong, Cost: apikit.Constant, BodyLimit: 8192, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "administration_unavailable", "internal"}}, func(_ context.Context, r *http.Request, in DriveOAuthStateInput) (DriveOAuthCancelResponse, error) {
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, ID: "post_storage_source_drive_oauth_cancel", Method: "POST", Path: "/v1/storage/sources/rclone/drive/oauth/cancel", Summary: "End the owner's Google sign-in session", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdminLong, Cost: apikit.Constant, BodyLimit: 8192, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "administration_unavailable", "internal"}}, func(_ context.Context, r *http.Request, in DriveOAuthStateInput) (DriveOAuthCancelResponse, error) {
 		p, scope, err := d.storageOwner(r)
 		if err != nil {
 			return DriveOAuthCancelResponse{}, rcloneConnectionFailure(err)

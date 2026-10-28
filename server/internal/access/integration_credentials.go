@@ -12,8 +12,7 @@ import (
 )
 
 // AppPasswordRequest is a native, owner-only grant. Its secret is recoverable
-// only by the owner;
-// the chosen account/profile and scopes are immutable until the grant is revoked.
+// only by the owner; the chosen account/profile and scopes are immutable until the grant is revoked.
 type AppPasswordRequest struct {
 	CredentialRequest
 	AccountID string `json:"accountId"`
@@ -87,7 +86,7 @@ func (s *Store) CreateAppPassword(ctx context.Context, auth Authorize, issuer *i
 			return e
 		}
 		var count int
-		if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM api_credentials WHERE kind='app_password' AND revoked_ms=0`).Scan(&count); e != nil {
+		if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM api_credentials WHERE kind='app_password' AND revoked_ms=0 AND (expires_ms=0 OR expires_ms>?)`, s.now()).Scan(&count); e != nil {
 			return e
 		}
 		if count >= MaxAPIKeys {
@@ -176,7 +175,7 @@ func (s *Store) MintIntegrationToken(ctx context.Context, issuer *identity.Servi
 			return identity.ErrUnauthorized
 		}
 		var count int
-		if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM api_credentials WHERE parent_id=? AND revoked_ms=0`, parentID).Scan(&count); e != nil {
+		if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM api_credentials WHERE parent_id=? AND revoked_ms=0 AND (expires_ms=0 OR expires_ms>?)`, parentID, s.now()).Scan(&count); e != nil {
 			return e
 		}
 		if count >= MaxAccessTokens {

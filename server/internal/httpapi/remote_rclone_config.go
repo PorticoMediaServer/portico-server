@@ -33,7 +33,7 @@ type RcloneConfigSourceInput struct {
 }
 
 func registerRcloneConfigSource(registry *apikit.Registry, d Dependencies) {
-	v1Route(registry, apikit.Metadata{ID: "get_storage_source_rclone_config", Method: "GET", Path: "/v1/storage/sources/rclone/config", Summary: "Read the server account's own rclone remotes by name and type", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneBrowsing, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "administration_unavailable", "internal"}}, func(_ context.Context, r *http.Request, _ struct{}) (RcloneConfigRemotesResponse, error) {
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_storage_source_rclone_config", Method: "GET", Path: "/v1/storage/sources/rclone/config", Summary: "Read the server account's own rclone remotes by name and type", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneBrowsing, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "administration_unavailable", "internal"}}, func(_ context.Context, r *http.Request, _ struct{}) (RcloneConfigRemotesResponse, error) {
 		_, scope, err := d.storageOwner(r)
 		if err != nil {
 			return RcloneConfigRemotesResponse{}, rcloneConnectionFailure(err)
@@ -56,7 +56,7 @@ func registerRcloneConfigSource(registry *apikit.Registry, d Dependencies) {
 		}
 		return RcloneConfigRemotesResponse{Scope: scope, Path: path, Remotes: remotes, Truncated: truncated}, nil
 	})
-	v1Route(registry, apikit.Metadata{ID: "create_storage_source_rclone_config", Method: "POST", Path: "/v1/storage/sources/rclone/config", Summary: "Save an imported source from the server account's own rclone configuration", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdminLong, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "not_found", "source_credentials_required", "administration_unavailable", "storage_command_conflict", "storage_operation_expired", "storage_command_capacity", "storage_allocation_recovery_required", "internal"}}, func(ctx context.Context, r *http.Request, in RcloneConfigSourceInput) (RcloneSourceResponse, error) {
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, ID: "create_storage_source_rclone_config", Method: "POST", Path: "/v1/storage/sources/rclone/config", Summary: "Save an imported source from the server account's own rclone configuration", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdminLong, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "not_found", "source_credentials_required", "administration_unavailable", "storage_command_conflict", "storage_operation_expired", "storage_command_capacity", "storage_allocation_recovery_required", "internal"}}, func(ctx context.Context, r *http.Request, in RcloneConfigSourceInput) (RcloneSourceResponse, error) {
 		p, scope, err := d.storageOwner(r)
 		if err != nil {
 			return RcloneSourceResponse{}, rcloneSourceFailure(err)

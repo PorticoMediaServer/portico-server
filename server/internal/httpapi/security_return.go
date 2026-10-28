@@ -178,7 +178,7 @@ func (d Dependencies) securityReturnRoutes(mux *http.ServeMux) {
 
 func registerSecurityReturnHTTPContracts(registry *apikit.Registry) error {
 	meta := func(id, path, summary string, status int) apikit.Metadata {
-		return apikit.Metadata{ID: id, Method: "POST", Path: path, Summary: summary, Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneSecurityFence, Cost: apikit.Constant, BodyLimit: 65536, Status: status, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "sign_in_kind_local", "portico_services_unavailable", "password_change_required", "factor_setup_required", "internal"}}
+		return apikit.Metadata{Audience: apikit.Clients, ID: id, Method: "POST", Path: path, Summary: summary, Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneSecurityFence, Cost: apikit.Constant, BodyLimit: 65536, Status: status, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "sign_in_kind_local", "portico_services_unavailable", "password_change_required", "factor_setup_required", "internal"}}
 	}
 	if e := apikit.RegisterHTTP[securityReturnPrepareRequest, serverreturn.SecuritySigned](registry, meta("post_direct_security_return_prepare", "/v1/direct/security-return/prepare", "Prepare only the original provider Security opening", 200)); e != nil {
 		return e

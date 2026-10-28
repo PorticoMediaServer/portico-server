@@ -50,7 +50,7 @@ func titleQueryError(err error) error {
 }
 
 func registerPlatformRoutes(registry *apikit.Registry, d Dependencies) error {
-	err := apikit.Register(registry, apikit.Route[struct{}, catalog.TitlePage]{Metadata: apikit.Metadata{Admission: laneBrowsing, ID: "query_titles", Method: "GET", Path: "/v1/titles", Summary: "List titles of one kind in one library, or find a title by its provider id",
+	err := apikit.Register(registry, apikit.Route[struct{}, catalog.TitlePage]{Metadata: apikit.Metadata{Audience: apikit.Integrations, Admission: laneBrowsing, ID: "query_titles", Method: "GET", Path: "/v1/titles", Summary: "List titles of one kind in one library, or find a title by its provider id",
 		// The library is a query parameter here, so the handler makes the
 		// library and restriction checks itself, inside the query.
 		Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200,
@@ -122,7 +122,7 @@ func registerPlatformRoutes(registry *apikit.Registry, d Dependencies) error {
 	if err != nil {
 		return err
 	}
-	return apikit.Register(registry, apikit.Route[PathsChangedRequest, ingestion.PathReport]{Metadata: apikit.Metadata{Admission: laneDefault, ID: "report_changed_paths", Method: "POST", Path: "/v1/libraries/paths-changed", Summary: "Report paths that were added, changed or removed, and scan only those folders",
+	return apikit.Register(registry, apikit.Route[PathsChangedRequest, ingestion.PathReport]{Metadata: apikit.Metadata{Audience: apikit.Integrations, Admission: laneDefault, ID: "report_changed_paths", Method: "POST", Path: "/v1/libraries/paths-changed", Summary: "Report paths that were added, changed or removed, and scan only those folders",
 		Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Cost: apikit.PageSized, BodyLimit: 1 << 20, Status: 202,
 		Errors: []string{"unauthorized", "not_permitted", "invalid_request", "body_too_large", "administration_unavailable", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, body PathsChangedRequest) (ingestion.PathReport, error) {

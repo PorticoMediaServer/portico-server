@@ -104,7 +104,7 @@ func registerCredentialRoutes(registry *apikit.Registry, d Dependencies) error {
 	makeErrors := []string{"unauthorized", "not_permitted", "session_required", "invalid_request", "idempotency_key_reused", "credential_limit", "credential_unavailable", "access_tokens_off", "administration_unavailable", "internal"}
 	endErrors := []string{"unauthorized", "not_permitted", "session_required", "invalid_request", "not_found", "administration_unavailable", "internal"}
 
-	err := apikit.Register(registry, apikit.Route[struct{}, CredentialOptions]{Metadata: apikit.Metadata{Admission: laneDefault, ID: "get_api_access_options", Method: "GET", Path: "/v1/me/api-access", Summary: "Read the scopes and limits for API keys and personal access tokens",
+	err := apikit.Register(registry, apikit.Route[struct{}, CredentialOptions]{Metadata: apikit.Metadata{Audience: apikit.Integrations, Admission: laneDefault, ID: "get_api_access_options", Method: "GET", Path: "/v1/me/api-access", Summary: "Read the scopes and limits for API keys and personal access tokens",
 		Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "session_required", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (CredentialOptions, error) {
 		p, err := d.foundationCaller(r)
@@ -119,7 +119,7 @@ func registerCredentialRoutes(registry *apikit.Registry, d Dependencies) error {
 	}
 
 	// ---- the owner's API keys
-	err = apikit.Register(registry, apikit.Route[struct{}, access.CredentialPage]{Metadata: apikit.Metadata{Admission: laneAdmin, ID: "list_api_keys", Method: "GET", Path: "/v1/admin/api-keys", Summary: "List this server's API keys",
+	err = apikit.Register(registry, apikit.Route[struct{}, access.CredentialPage]{Metadata: apikit.Metadata{Audience: apikit.Integrations, Admission: laneAdmin, ID: "list_api_keys", Method: "GET", Path: "/v1/admin/api-keys", Summary: "List this server's API keys",
 		Access: apikit.Owner, Requires: apikit.ScopeSession, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Query: []string{"cursor", "limit"}, Errors: listErrors,
 	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (access.CredentialPage, error) {
 		s, err := store()
@@ -136,7 +136,7 @@ func registerCredentialRoutes(registry *apikit.Registry, d Dependencies) error {
 	if err != nil {
 		return err
 	}
-	err = apikit.Register(registry, apikit.Route[access.CredentialRequest, access.IssuedCredential]{Metadata: apikit.Metadata{Admission: laneSecurityFence, ID: "create_api_key", Method: "POST", Path: "/v1/admin/api-keys", Summary: "Create an API key; its secret is shown once",
+	err = apikit.Register(registry, apikit.Route[access.CredentialRequest, access.IssuedCredential]{Metadata: apikit.Metadata{Audience: apikit.Integrations, Admission: laneSecurityFence, ID: "create_api_key", Method: "POST", Path: "/v1/admin/api-keys", Summary: "Create an API key; the owner may reveal it later",
 		Access: apikit.Owner, Requires: apikit.ScopeSession, Lane: apikit.Security, Cost: apikit.Constant, BodyLimit: 4096, Status: 201, Errors: makeErrors,
 	}, Handler: func(ctx context.Context, r *http.Request, body access.CredentialRequest) (access.IssuedCredential, error) {
 		s, err := store()
@@ -153,7 +153,7 @@ func registerCredentialRoutes(registry *apikit.Registry, d Dependencies) error {
 	if err != nil {
 		return err
 	}
-	err = apikit.Register(registry, apikit.Route[struct{}, access.Credential]{Metadata: apikit.Metadata{Admission: laneSecurityFence, ID: "revoke_api_key", Method: "DELETE", Path: "/v1/admin/api-keys/{id}", Summary: "Revoke an API key",
+	err = apikit.Register(registry, apikit.Route[struct{}, access.Credential]{Metadata: apikit.Metadata{Audience: apikit.Integrations, Admission: laneSecurityFence, ID: "revoke_api_key", Method: "DELETE", Path: "/v1/admin/api-keys/{id}", Summary: "Revoke an API key",
 		Access: apikit.Owner, Requires: apikit.ScopeSession, Lane: apikit.Security, Cost: apikit.Constant, Status: 200, Errors: endErrors,
 	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (access.Credential, error) {
 		s, err := store()
@@ -172,7 +172,7 @@ func registerCredentialRoutes(registry *apikit.Registry, d Dependencies) error {
 	}
 
 	// ---- a member's own tokens
-	err = apikit.Register(registry, apikit.Route[struct{}, access.CredentialPage]{Metadata: apikit.Metadata{Admission: laneDefault, ID: "list_access_tokens", Method: "GET", Path: "/v1/me/access-tokens", Summary: "List your personal access tokens",
+	err = apikit.Register(registry, apikit.Route[struct{}, access.CredentialPage]{Metadata: apikit.Metadata{Audience: apikit.Integrations, Admission: laneDefault, ID: "list_access_tokens", Method: "GET", Path: "/v1/me/access-tokens", Summary: "List your personal access tokens",
 		Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Query: []string{"cursor", "limit"}, Errors: listErrors,
 	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (access.CredentialPage, error) {
 		s, err := store()
@@ -189,7 +189,7 @@ func registerCredentialRoutes(registry *apikit.Registry, d Dependencies) error {
 	if err != nil {
 		return err
 	}
-	err = apikit.Register(registry, apikit.Route[access.CredentialRequest, access.IssuedCredential]{Metadata: apikit.Metadata{Admission: laneSecurityFence, ID: "create_access_token", Method: "POST", Path: "/v1/me/access-tokens", Summary: "Create a personal access token; its secret is shown once",
+	err = apikit.Register(registry, apikit.Route[access.CredentialRequest, access.IssuedCredential]{Metadata: apikit.Metadata{Audience: apikit.Integrations, Admission: laneSecurityFence, ID: "create_access_token", Method: "POST", Path: "/v1/me/access-tokens", Summary: "Create a personal access token; its secret is shown once",
 		Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Cost: apikit.Constant, BodyLimit: 4096, Status: 201, Errors: makeErrors,
 	}, Handler: func(ctx context.Context, r *http.Request, body access.CredentialRequest) (access.IssuedCredential, error) {
 		s, err := store()
@@ -213,7 +213,7 @@ func registerCredentialRoutes(registry *apikit.Registry, d Dependencies) error {
 	if err != nil {
 		return err
 	}
-	return apikit.Register(registry, apikit.Route[struct{}, access.Credential]{Metadata: apikit.Metadata{Admission: laneSecurityFence, ID: "revoke_access_token", Method: "DELETE", Path: "/v1/me/access-tokens/{id}", Summary: "Revoke one of your personal access tokens",
+	return apikit.Register(registry, apikit.Route[struct{}, access.Credential]{Metadata: apikit.Metadata{Audience: apikit.Integrations, Admission: laneSecurityFence, ID: "revoke_access_token", Method: "DELETE", Path: "/v1/me/access-tokens/{id}", Summary: "Revoke one of your personal access tokens",
 		Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Cost: apikit.Constant, Status: 200, Errors: endErrors,
 	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (access.Credential, error) {
 		s, err := store()

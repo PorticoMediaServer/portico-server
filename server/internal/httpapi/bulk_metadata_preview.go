@@ -17,7 +17,7 @@ import (
 // The preview shares the live administrator/metadata transaction guard with
 // POST metadata/bulk; a preview does not grant mutation authority.
 func registerBulkMetadataPreview(registry *apikit.Registry, d Dependencies) {
-	v1Route(registry, apikit.Metadata{Admission: laneBrowsing, ID: "post_metadata_bulk_preview", Method: "POST", Path: "/v1/metadata/bulk/preview", Summary: "Read shared and mixed metadata for an authorized selection", Access: apikit.Admin, AdminScope: "metadata", Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Cost: apikit.PageSized, BodyLimit: 524288, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "internal"}},
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, Admission: laneBrowsing, ID: "post_metadata_bulk_preview", Method: "POST", Path: "/v1/metadata/bulk/preview", Summary: "Read shared and mixed metadata for an authorized selection", Access: apikit.Admin, AdminScope: "metadata", Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Cost: apikit.PageSized, BodyLimit: 524288, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "internal"}},
 		func(ctx context.Context, r *http.Request, in catalog.BulkMetadataPreviewRequest) (out metadata.BulkMetadataPreview, err error) {
 			// Selection validation can originate in either service. Translate it
 			// at the HTTP boundary while retaining authentication and fault errors.

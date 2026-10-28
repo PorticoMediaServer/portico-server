@@ -30,7 +30,7 @@ func (v statusResponse) JSONSchemaForStatus(status int) map[string]any {
 
 func TestGenerateKeepsStatusShapesAndSharedResponseUnion(t *testing.T) {
 	definition := Definition{
-		Metadata: Metadata{ID: "status_reply", Method: "POST", Path: "/v1/status-reply", Summary: "Status response", Access: Public, Requires: ScopeOpen, Lane: Default, Cost: Constant, Status: 201, SuccessStatuses: []int{202}},
+		Metadata: Metadata{Audience: Clients, ID: "status_reply", Method: "POST", Path: "/v1/status-reply", Summary: "Status response", Access: Public, Requires: ScopeOpen, Lane: Default, Cost: Constant, Status: 201, SuccessStatuses: []int{202}},
 		Request:  reflect.TypeFor[struct{}](), Response: reflect.TypeFor[statusResponse](),
 	}
 	generated, err := Generate([]Definition{definition})

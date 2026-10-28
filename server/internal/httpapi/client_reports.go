@@ -31,7 +31,7 @@ func clientReportError(err error) error {
 func registerClientReports(registry *apikit.Registry, d Dependencies) error {
 	store := d.Access.ClientLogs
 	errs := []string{"unauthorized", "invalid_request", "device_session_required", "client_log_budget", "internal"}
-	err := apikit.Register(registry, apikit.Route[servicelog.ClientUploadRequest, servicelog.ClientUpload]{Metadata: apikit.Metadata{Admission: laneUpload, ID: "post_client_log", Method: "POST", Path: "/v1/diagnostics/client-logs", Summary: "Send a client report to this server", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: (servicelog.MaxClientUploadBytes * 6) + 4096, Status: 201, Errors: errs}, Handler: func(ctx context.Context, r *http.Request, body servicelog.ClientUploadRequest) (servicelog.ClientUpload, error) {
+	err := apikit.Register(registry, apikit.Route[servicelog.ClientUploadRequest, servicelog.ClientUpload]{Metadata: apikit.Metadata{Audience: apikit.Clients, Admission: laneUpload, ID: "post_client_log", Method: "POST", Path: "/v1/diagnostics/client-logs", Summary: "Send a client report to this server", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: (servicelog.MaxClientUploadBytes * 6) + 4096, Status: 201, Errors: errs}, Handler: func(ctx context.Context, r *http.Request, body servicelog.ClientUploadRequest) (servicelog.ClientUpload, error) {
 		if store == nil {
 			return servicelog.ClientUpload{}, &apierror.Error{Code: "internal"}
 		}
@@ -48,7 +48,7 @@ func registerClientReports(registry *apikit.Registry, d Dependencies) error {
 	if err != nil {
 		return err
 	}
-	err = apikit.Register(registry, apikit.Route[struct{}, servicelog.ClientUploadPage]{Metadata: apikit.Metadata{Admission: laneAdminHeavy, ID: "get_client_logs", Method: "GET", Path: "/v1/admin/diagnostics/client-logs", Summary: "List client reports", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.PageSized, Query: []string{"cursor", "limit"}, Status: 200, Errors: []string{"unauthorized", "invalid_request", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (servicelog.ClientUploadPage, error) {
+	err = apikit.Register(registry, apikit.Route[struct{}, servicelog.ClientUploadPage]{Metadata: apikit.Metadata{Audience: apikit.Clients, Admission: laneAdminHeavy, ID: "get_client_logs", Method: "GET", Path: "/v1/admin/diagnostics/client-logs", Summary: "List client reports", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.PageSized, Query: []string{"cursor", "limit"}, Status: 200, Errors: []string{"unauthorized", "invalid_request", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (servicelog.ClientUploadPage, error) {
 		if store == nil {
 			return servicelog.ClientUploadPage{}, &apierror.Error{Code: "internal"}
 		}
@@ -69,7 +69,7 @@ func registerClientReports(registry *apikit.Registry, d Dependencies) error {
 	if err != nil {
 		return err
 	}
-	err = apikit.Register(registry, apikit.Route[struct{}, servicelog.ClientUpload]{Metadata: apikit.Metadata{Admission: laneAdmin, ID: "get_client_log", Method: "GET", Path: "/v1/admin/diagnostics/client-logs/{id}", Summary: "Read a client report", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_found", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (servicelog.ClientUpload, error) {
+	err = apikit.Register(registry, apikit.Route[struct{}, servicelog.ClientUpload]{Metadata: apikit.Metadata{Audience: apikit.Clients, Admission: laneAdmin, ID: "get_client_log", Method: "GET", Path: "/v1/admin/diagnostics/client-logs/{id}", Summary: "Read a client report", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_found", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (servicelog.ClientUpload, error) {
 		if store == nil {
 			return servicelog.ClientUpload{}, &apierror.Error{Code: "internal"}
 		}
@@ -82,7 +82,7 @@ func registerClientReports(registry *apikit.Registry, d Dependencies) error {
 	if err != nil {
 		return err
 	}
-	err = apikit.Register(registry, apikit.Route[struct{}, struct{}]{Metadata: apikit.Metadata{Admission: laneAdmin, ID: "delete_client_log", Method: "DELETE", Path: "/v1/admin/diagnostics/client-logs/{id}", Summary: "Delete a client report", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_found", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (struct{}, error) {
+	err = apikit.Register(registry, apikit.Route[struct{}, struct{}]{Metadata: apikit.Metadata{Audience: apikit.Clients, Admission: laneAdmin, ID: "delete_client_log", Method: "DELETE", Path: "/v1/admin/diagnostics/client-logs/{id}", Summary: "Delete a client report", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_found", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (struct{}, error) {
 		if store == nil {
 			return struct{}{}, &apierror.Error{Code: "internal"}
 		}
@@ -94,7 +94,7 @@ func registerClientReports(registry *apikit.Registry, d Dependencies) error {
 	if err != nil {
 		return err
 	}
-	return apikit.RegisterRaw(registry, apikit.RawRoute[struct{}, servicelog.ClientUpload]{Metadata: apikit.Metadata{Admission: laneAdmin, ID: "download_client_log", Method: "GET", Path: "/v1/admin/diagnostics/client-logs/{id}/download", Summary: "Download a client report", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_found", "internal"}}, Serve: func(w http.ResponseWriter, r *http.Request) {
+	return apikit.RegisterRaw(registry, apikit.RawRoute[struct{}, servicelog.ClientUpload]{Metadata: apikit.Metadata{Audience: apikit.Clients, Admission: laneAdmin, ID: "download_client_log", Method: "GET", Path: "/v1/admin/diagnostics/client-logs/{id}/download", Summary: "Download a client report", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_found", "internal"}}, Serve: func(w http.ResponseWriter, r *http.Request) {
 		if store == nil {
 			registry.Errors().Write(w, "", &apierror.Error{Code: "internal"})
 			return

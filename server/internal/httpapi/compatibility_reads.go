@@ -3,7 +3,6 @@ package httpapi
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -39,6 +38,9 @@ func foreignMediaSources(value any) []any {
 			}
 			streams = append(streams, stream)
 		}
+		if codec := compatText(source["audioCodec"]); codec != "" {
+			streams = append(streams, map[string]any{"Type": "Audio", "Codec": codec})
+		}
 		out := map[string]any{"Id": source["id"], "MediaStreams": streams, "SupportsDirectPlay": false, "SupportsDirectStream": false, "SupportsTranscoding": false}
 		for native, foreign := range map[string]string{"container": "Container", "size": "Size", "path": "Path", "bitRate": "Bitrate", "width": "Width", "height": "Height"} {
 			if v, ok := source[native]; ok {
@@ -47,6 +49,8 @@ func foreignMediaSources(value any) []any {
 		}
 		if d := compatNumber(source["durationMs"]); d > 0 {
 			out["RunTimeTicks"] = int64(d * 10000)
+		} else if d := compatNumber(source["durationSeconds"]); d > 0 {
+			out["RunTimeTicks"] = int64(d * 10000000)
 		}
 		sources = append(sources, out)
 	}
@@ -69,7 +73,7 @@ func (d Dependencies) compatibilityItem(r *http.Request, item map[string]any) (m
 			providers[name] = value
 		}
 	}
-	out := map[string]any{"Id": id, "Name": item["title"], "Type": foreignKind, "IsFolder": kind == "show" || kind == "season" || kind == "album" || kind == "artist" || kind == "book", "ProviderIds": providers, "ImageTags": map[string]any{}, "MediaSources": foreignMediaSources(item["mediaSources"])}
+	out := map[string]any{"Id": id, "Name": item["title"], "Type": foreignKind, "IsFolder": kind == "show" || kind == "season" || kind == "album" || kind == "artist" || kind == "book", "ProviderIds": providers, "ImageTags": map[string]any{}, "MediaSources": d.compatibilitySources(r, compatText(item["id"]), item["mediaSources"], compatText(item["mediaSourcesNextCursor"]))}
 	if item["available"] == false {
 		out["LocationType"] = "Virtual"
 	} else {
@@ -108,6 +112,18 @@ func (d Dependencies) compatibilityItem(r *http.Request, item map[string]any) (m
 				return nil, err
 			}
 		}
+	}
+	if name := compatText(ep["showTitle"]); name != "" {
+		out["SeriesName"] = name
+	}
+	if season := compatObject(item["season"]); len(season) > 0 {
+		if show := compatText(season["showId"]); show != "" {
+			out["SeriesId"], err = d.compatibilityID(r, "item", show)
+			if err != nil {
+				return nil, err
+			}
+		}
+		out["IndexNumber"] = season["number"]
 	}
 	if v, ok := ep["number"]; ok {
 		out["IndexNumber"] = v
@@ -242,15 +258,28 @@ func (d Dependencies) compatibilityItems(w http.ResponseWriter, r *http.Request,
 		compatibilityFailure(w, err)
 		return
 	}
-	page, err := d.integrationCall(r, "GET", "/v1/integrations/items", native, nil)
+	d.compatibilityStream(w, r, q, native, "/v1/integrations/items", strings.Contains(mode, "latest"), start, limit, q.Get("limit") != "" || strings.Contains(mode, "latest"), func(row map[string]any) (any, error) {
+		return d.compatibilityItem(r, row)
+	})
+}
+
+// compatibilityStream retains one bounded native page at a time. A native
+// total permits early exit for a requested slice; otherwise traversal produces
+// the total. Failure after output has begun aborts the response rather than
+// publishing a plausible but incomplete successful document.
+func (d Dependencies) compatibilityStream(w http.ResponseWriter, r *http.Request, _ url.Values, native url.Values, path string, array bool, start, limit int, limited bool, translate func(map[string]any) (any, error)) {
+	fetch := func(q url.Values) (map[string]any, error) { return d.integrationCall(r, "GET", path, q, nil) }
+	compatibilityStreamPages(w, r, native, array, start, limit, limited, fetch, translate)
+}
+func compatibilityStreamPages(w http.ResponseWriter, r *http.Request, native url.Values, array bool, start, limit int, limited bool, fetch func(url.Values) (map[string]any, error), translate func(map[string]any) (any, error)) {
+	page, err := fetch(native)
 	if err != nil {
 		compatibilityFailure(w, err)
 		return
 	}
-	latest := strings.Contains(mode, "latest")
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
-	if latest {
+	if array {
 		_, err = ioWrite(w, "[")
 	} else {
 		_, err = ioWrite(w, `{"Items":[`)
@@ -263,8 +292,8 @@ func (d Dependencies) compatibilityItems(w http.ResponseWriter, r *http.Request,
 	hasTotal := page["total"] != nil
 	for {
 		for _, item := range compatObjects(page["items"]) {
-			if count >= start && (limit == 0 || emitted < limit) {
-				translated, e := d.compatibilityItem(r, item)
+			if count >= start && (!limited || emitted < limit) {
+				translated, e := translate(item)
 				if e != nil {
 					abortCompatibilityStream(w)
 					return
@@ -274,27 +303,27 @@ func (d Dependencies) compatibilityItems(w http.ResponseWriter, r *http.Request,
 						return
 					}
 				}
-				if e = json.NewEncoder(w).Encode(translated); e != nil {
+				if e = writeCompatibilityJSON(w, translated); e != nil {
+					abortCompatibilityStream(w)
 					return
 				}
 				emitted++
 			}
 			count++
 		}
-		if hasTotal && limit > 0 && emitted >= limit {
-			count = knownTotal
+		if limited && emitted >= limit && (hasTotal || array) {
 			break
 		}
 		cursor := compatText(page["nextCursor"])
 		if cursor == "" {
 			break
 		}
-		if err = r.Context().Err(); err != nil {
+		if cursor == native.Get("cursor") || r.Context().Err() != nil {
 			abortCompatibilityStream(w)
 			return
 		}
 		native.Set("cursor", cursor)
-		page, err = d.integrationCall(r, "GET", "/v1/integrations/items", native, nil)
+		page, err = fetch(native)
 		if err != nil {
 			abortCompatibilityStream(w)
 			return
@@ -303,11 +332,12 @@ func (d Dependencies) compatibilityItems(w http.ResponseWriter, r *http.Request,
 	if hasTotal {
 		count = knownTotal
 	}
-	if latest {
+	if array {
 		_, _ = ioWrite(w, "]")
 	} else {
 		_, _ = fmt.Fprintf(w, `],"StartIndex":%d,"TotalRecordCount":%d}`, start, count)
 	}
 }
+
 func ioWrite(w http.ResponseWriter, s string) (int, error) { return w.Write([]byte(s)) }
 func abortCompatibilityStream(_ http.ResponseWriter)       { panic(http.ErrAbortHandler) }

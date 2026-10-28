@@ -15,7 +15,7 @@ func TestHTTPContractPreservesHandlerSemanticsAndScope(t *testing.T) {
 		t.Fatal("HTTP handler must retain its own access check")
 		return nil
 	}, nil)
-	metadata := Metadata{ID: "http_contract", Method: "POST", Path: "/v1/upload/{id}", Summary: "Upload", Access: Owner, Requires: ScopeLibrary, Lane: Default, Cost: Constant, BodyLimit: 64, Status: 202}
+	metadata := Metadata{Audience: Clients, ID: "http_contract", Method: "POST", Path: "/v1/upload/{id}", Summary: "Upload", Access: Owner, Requires: ScopeLibrary, Lane: Default, Cost: Constant, BodyLimit: 64, Status: 202}
 	if err := RegisterHTTP[struct {
 		Name string `json:"name"`
 	}, struct {

@@ -298,7 +298,7 @@ func registerAccountMoveContracts(registry *apikit.Registry) error {
 		if method != http.MethodGet && method != http.MethodHead {
 			bodyLimit = 16384
 		}
-		return apikit.Metadata{ID: id, Method: method, Path: path, Summary: "Manage the server sign-in move", Access: apikit.Owner, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneSecurityFence, Cost: apikit.Constant, BodyLimit: bodyLimit, Status: status, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "revision_mismatch", "sign_in_kind_portico", "sign_in_kind_local", "move_collision", "move_confirmation", "move_code_invalid", "internal"}}
+		return apikit.Metadata{Audience: apikit.Clients, ID: id, Method: method, Path: path, Summary: "Manage the server sign-in move", Access: apikit.Owner, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneSecurityFence, Cost: apikit.Constant, BodyLimit: bodyLimit, Status: status, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "revision_mismatch", "sign_in_kind_portico", "sign_in_kind_local", "move_collision", "move_confirmation", "move_code_invalid", "internal"}}
 	}
 	if e := apikit.RegisterHTTP[struct{}, identity.SignInSettings](registry, owner("get_sign_in_settings", "GET", "/v1/admin/sign-in", 200)); e != nil {
 		return e

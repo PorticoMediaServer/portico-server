@@ -121,14 +121,14 @@ func registerResetFileHTTPContracts(registry *apikit.Registry) error {
 	if e := registerServerReturnHTTPContracts(registry); e != nil {
 		return e
 	}
-	if e := apikit.RegisterHTTP[completeAccountSetupRequest, identity.DirectSignIn](registry, apikit.Metadata{ID: "post_setup_account_complete", Method: "POST", Path: "/v1/setup/account/complete", Summary: "Complete account setup from its validated claim", Access: apikit.Public, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 16384, Status: 200, Headers: []string{"X-Portico-Installation-Id"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "rate_limited", "internal"}}); e != nil {
+	if e := apikit.RegisterHTTP[completeAccountSetupRequest, identity.DirectSignIn](registry, apikit.Metadata{Audience: apikit.Clients, ID: "post_setup_account_complete", Method: "POST", Path: "/v1/setup/account/complete", Summary: "Complete account setup from its validated claim", Access: apikit.Public, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 16384, Status: 200, Headers: []string{"X-Portico-Installation-Id"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "rate_limited", "internal"}}); e != nil {
 		return e
 	}
-	if e := apikit.RegisterHTTP[struct{}, hosted.ServicesReachability](registry, apikit.Metadata{ID: "get_auth_services_reachability", Method: "GET", Path: "/v1/auth/services-reachability", Summary: "Check whether Portico Services answers", Access: apikit.Public, Requires: apikit.ScopeOpen, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, Status: 200, Errors: []string{"internal"}}); e != nil {
+	if e := apikit.RegisterHTTP[struct{}, hosted.ServicesReachability](registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_auth_services_reachability", Method: "GET", Path: "/v1/auth/services-reachability", Summary: "Check whether Portico Services answers", Access: apikit.Public, Requires: apikit.ScopeOpen, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, Status: 200, Errors: []string{"internal"}}); e != nil {
 		return e
 	}
 	meta := func(id, path string, access apikit.Access) apikit.Metadata {
-		return apikit.Metadata{ID: id, Method: "POST", Path: path, Summary: "Reset account access", Access: access, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal", "rate_limited"}}
+		return apikit.Metadata{Audience: apikit.Clients, ID: id, Method: "POST", Path: path, Summary: "Reset account access", Access: access, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal", "rate_limited"}}
 	}
 	ownerRequest := meta("post_auth_owner_reset_request", "/v1/auth/owner-reset/request", apikit.Public)
 	ownerRequest.Errors = append(ownerRequest.Errors, "owner_reset_file_unavailable")

@@ -37,7 +37,7 @@ func scanLoopError(err error) error {
 }
 func registerScanLoop(registry *apikit.Registry, d Dependencies) {
 	failures := []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "revision_mismatch", "idempotency_key_reused", "internal"}
-	v1Route(registry, apikit.Metadata{Admission: laneAdmin, ID: "get_library_settings", Method: "GET", Path: "/v1/admin/libraries/{id}/settings", Summary: "Read a library's scanning and metadata settings", Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeLibrary, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (administration.LibraryDocument, error) {
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, Admission: laneAdmin, ID: "get_library_settings", Method: "GET", Path: "/v1/admin/libraries/{id}/settings", Summary: "Read a library's scanning and metadata settings", Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeLibrary, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (administration.LibraryDocument, error) {
 		p, err := d.libraryAdministrationRead(r, r.PathValue("id"))
 		if err != nil {
 			return administration.LibraryDocument{}, err
@@ -52,7 +52,7 @@ func registerScanLoop(registry *apikit.Registry, d Dependencies) {
 		_, err = d.libraryAdministrationRead(r, r.PathValue("id"))
 		return out, err
 	})
-	v1Route(registry, apikit.Metadata{Admission: laneAdmin, ID: "put_library_settings", Method: "PUT", Path: "/v1/admin/libraries/{id}/settings", Summary: "Save a library's scanning and metadata settings", Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeLibrary, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, BodyLimit: 64 << 10, Errors: failures}, func(ctx context.Context, r *http.Request, in administration.Change[administration.LibrarySettings]) (administration.LibraryDocument, error) {
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, Admission: laneAdmin, ID: "put_library_settings", Method: "PUT", Path: "/v1/admin/libraries/{id}/settings", Summary: "Save a library's scanning and metadata settings", Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeLibrary, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, BodyLimit: 64 << 10, Errors: failures}, func(ctx context.Context, r *http.Request, in administration.Change[administration.LibrarySettings]) (administration.LibraryDocument, error) {
 		p, err := d.libraryAdministrationRead(r, r.PathValue("id"))
 		if err != nil {
 			return administration.LibraryDocument{}, err
@@ -67,7 +67,7 @@ func registerScanLoop(registry *apikit.Registry, d Dependencies) {
 		_, err = d.libraryAdministrationRead(r, r.PathValue("id"))
 		return out, err
 	})
-	v1Route(registry, apikit.Metadata{Admission: laneBrowsing, ID: "get_scan_issues", Method: "GET", Path: "/v1/admin/libraries/{id}/scans/{job}/issues", Summary: "List files and folders skipped during a scan", Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, Query: []string{"after", "limit"}, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (ingestion.ScanIssues, error) {
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, Admission: laneBrowsing, ID: "get_scan_issues", Method: "GET", Path: "/v1/admin/libraries/{id}/scans/{job}/issues", Summary: "List files and folders skipped during a scan", Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, Query: []string{"after", "limit"}, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (ingestion.ScanIssues, error) {
 		if _, err := d.libraryAdministrationRead(r, r.PathValue("id")); err != nil {
 			return ingestion.ScanIssues{}, err
 		}
@@ -89,7 +89,7 @@ func registerScanLoop(registry *apikit.Registry, d Dependencies) {
 		_, err = d.libraryAdministrationRead(r, r.PathValue("id"))
 		return out, err
 	})
-	v1Route(registry, apikit.Metadata{Admission: laneAdmin, ID: "get_inventory_changes", Method: "GET", Path: "/v1/admin/libraries/{id}/sources/{source}/changes", Summary: "Read retained inventory changes and cursor expiry", Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, Query: []string{"after"}, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (catalog.InventoryChangesPage, error) {
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, Admission: laneAdmin, ID: "get_inventory_changes", Method: "GET", Path: "/v1/admin/libraries/{id}/sources/{source}/changes", Summary: "Read retained inventory changes and cursor expiry", Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, Query: []string{"after"}, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (catalog.InventoryChangesPage, error) {
 		if _, err := d.libraryAdministrationRead(r, r.PathValue("id")); err != nil {
 			return catalog.InventoryChangesPage{}, err
 		}

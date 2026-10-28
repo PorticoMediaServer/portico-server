@@ -21,7 +21,7 @@ func TestConversionAdmissionIsTypedRetryable(t *testing.T) {
 
 func TestPlaybackV1ConversionCapacityUsesRetryableEnvelope(t *testing.T) {
 	r := apikit.New(nil, v1Catalogue())
-	v1Route(r, apikit.Metadata{ID: "capacity", Method: "POST", Path: "/v1/capacity", Summary: "Capacity", Access: apikit.Public, Requires: apikit.ScopeOpen, Lane: apikit.Media, Admission: lanePlayback, Cost: apikit.Constant, BodyLimit: 1024, Status: 201, Errors: []string{"conversion_capacity"}}, func(context.Context, *http.Request, noBody) (noBody, error) {
+	v1Route(r, apikit.Metadata{Audience: apikit.Clients, ID: "capacity", Method: "POST", Path: "/v1/capacity", Summary: "Capacity", Access: apikit.Public, Requires: apikit.ScopeOpen, Lane: apikit.Media, Admission: lanePlayback, Cost: apikit.Constant, BodyLimit: 1024, Status: 201, Errors: []string{"conversion_capacity"}}, func(context.Context, *http.Request, noBody) (noBody, error) {
 		return noBody{}, fmt.Errorf("conversion admission: %w", playback.ErrConversionCapacity)
 	})
 	request := httptest.NewRequest("POST", "/v1/capacity", strings.NewReader("{}"))

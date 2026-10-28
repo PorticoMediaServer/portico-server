@@ -118,7 +118,7 @@ func (d Dependencies) readingSetMarkAll(rate *personalLimiter) http.HandlerFunc 
 	}
 }
 func registerReadingMarkAllHTTPContracts(registry *apikit.Registry) error {
-	m := apikit.Metadata{ID: "get_libraries_libraryId_reading_mark_all", Method: "GET", Path: "/v1/libraries/{libraryId}/reading/mark-all", Summary: "Read this profile's ready visible Reading mark-all target", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "stale_continuation", "internal"}}
+	m := apikit.Metadata{Audience: apikit.Clients, ID: "get_libraries_libraryId_reading_mark_all", Method: "GET", Path: "/v1/libraries/{libraryId}/reading/mark-all", Summary: "Read this profile's ready visible Reading mark-all target", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "stale_continuation", "internal"}}
 	if err := apikit.RegisterHTTP[struct{}, ReadingMarkAllProjection](registry, m); err != nil {
 		return err
 	}

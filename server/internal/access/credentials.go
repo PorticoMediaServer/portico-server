@@ -240,7 +240,7 @@ func (s *Store) CreateCredential(ctx context.Context, auth Authorize, issuer *id
 		}
 		if body != "" {
 			// A replay names the credential that was made. It cannot show the
-			// secret again: the server no longer has it.
+			// secret again through an issuance receipt. Owner recovery is explicit.
 			var made struct {
 				ID string `json:"id"`
 			}

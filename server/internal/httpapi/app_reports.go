@@ -150,7 +150,7 @@ func (d Dependencies) appReportActorTx(ctx context.Context, tx *sql.Tx, p identi
 
 func registerAppReports(registry *apikit.Registry, d Dependencies) {
 	failures := []string{"invalid_request", "unauthorized", "not_permitted", "revision_mismatch", "internal"}
-	v1Route(registry, apikit.Metadata{ID: "post_app_reports", Headers: []string{"Idempotency-Key"}, Method: "POST", Path: "/v1/app-reports", Summary: "Submit the current context’s explicit code-only app log", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: appReportMaxBodyBytes, Status: 201, Errors: failures}, func(ctx context.Context, r *http.Request, in AppReportRequest) (AppReportReceipt, error) {
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, ID: "post_app_reports", Headers: []string{"Idempotency-Key"}, Method: "POST", Path: "/v1/app-reports", Summary: "Submit the current context’s explicit code-only app log", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: appReportMaxBodyBytes, Status: 201, Errors: failures}, func(ctx context.Context, r *http.Request, in AppReportRequest) (AppReportReceipt, error) {
 		p, err := d.principal(r)
 		if err != nil {
 			return AppReportReceipt{}, err
@@ -255,7 +255,7 @@ func registerAppReports(registry *apikit.Registry, d Dependencies) {
 		receipt.Entries = nil
 		return receipt, nil
 	})
-	v1Route(registry, apikit.Metadata{ID: "get_app_report_recipient", Method: "GET", Path: "/v1/app-reports/recipient", Summary: "Read the recipient for an explicit app-log confirmation", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (AppReportRecipient, error) {
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_app_report_recipient", Method: "GET", Path: "/v1/app-reports/recipient", Summary: "Read the recipient for an explicit app-log confirmation", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (AppReportRecipient, error) {
 		p, err := d.principal(r)
 		if err != nil {
 			return AppReportRecipient{}, err
@@ -286,7 +286,7 @@ func registerAppReports(registry *apikit.Registry, d Dependencies) {
 		}
 		return out, nil
 	})
-	v1Route(registry, apikit.Metadata{ID: "get_app_reports", Method: "GET", Path: "/v1/app-reports", Summary: "Read the owner’s app-log receipts", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.PageSized, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) ([]AppReportReceipt, error) {
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, ID: "get_app_reports", Method: "GET", Path: "/v1/app-reports", Summary: "Read the owner’s app-log receipts", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.PageSized, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) ([]AppReportReceipt, error) {
 		p, err := d.principal(r)
 		if err != nil {
 			return nil, err

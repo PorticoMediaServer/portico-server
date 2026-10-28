@@ -41,7 +41,7 @@ var compatibilityRoutes = []compatibilityRoute{
 	{"GET", "/Library/VirtualFolders", "virtual_folders", apikit.ScopeRead, false},
 	{"POST", "/Library/Media/Updated", "media_updated", apikit.ScopeLibrary, false},
 	{"POST", "/Library/Refresh", "untargeted_refresh", apikit.ScopeLibrary, false},
-	{"POST", "/Notifications/Admin", "notify", apikit.ScopeLibrary, false},
+	{"POST", "/Notifications/Admin", "notify", apikit.ScopeAdmin, false},
 	{"GET", "/Items", "items", apikit.ScopeRead, false},
 	{"GET", "/Items/Latest", "latest", apikit.ScopeRead, false},
 	{"POST", "/Items/{id}/Refresh", "refresh_item", apikit.ScopeLibrary, false},
@@ -74,8 +74,7 @@ func registerCompatibilityRoutes(registry *apikit.Registry, d Dependencies) erro
 			if spec.method == "POST" {
 				body = 1 << 20
 			}
-			m := apikit.Metadata{ID: id, Method: spec.method, Path: path, Summary: "Integration compatibility: " + spec.id, Access: access, Requires: spec.scope, Lane: apikit.Default, Cost: apikit.PageSized, Admission: laneDefault, Status: 200, BodyLimit: body, Query: compatibilityQueries, Errors: []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "internal", "insufficient_scope", "session_required"}}
-			// Audience/Protocol are filled explicitly once the registry extension lands.
+			m := apikit.Metadata{Audience: apikit.Integrations, Protocol: apikit.ProtocolCompatibility, ID: id, Method: spec.method, Path: path, Summary: "Integration compatibility: " + spec.id, Access: access, Requires: spec.scope, Lane: apikit.Default, Cost: apikit.PageSized, Admission: laneDefault, Status: 200, BodyLimit: body, Query: compatibilityQueries, Errors: []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "internal", "insufficient_scope", "session_required"}}
 			if err := apikit.RegisterRaw[json.RawMessage, json.RawMessage](registry, apikit.RawRoute[json.RawMessage, json.RawMessage]{Metadata: m, Serve: func(w http.ResponseWriter, r *http.Request) { d.serveCompatibility(w, r, spec) }}); err != nil {
 				return err
 			}
@@ -259,24 +258,14 @@ func (d Dependencies) serveCompatibility(w http.ResponseWriter, r *http.Request,
 			var login map[string]any
 			login, err = d.integrationCall(r, "POST", "/v1/integrations/authenticate", nil, IntegrationLogin{Username: in.Username, Password: password, Name: "Integration"})
 			if err == nil {
-				var user map[string]any
-				user, err = d.integrationCallWithToken(r, compatText(login["token"]), "GET", "/v1/integrations/users", nil, nil)
+				rr := r.Clone(r.Context())
+				rr.Header.Set("Authorization", "Bearer "+compatText(login["token"]))
+				var selected map[string]any
+				selected, err = d.compatibilityNativeUser(rr, compatText(login["userId"]))
 				if err == nil {
-					users := compatObjects(user["items"])
-					var selected map[string]any
-					for _, candidate := range users {
-						if compatText(candidate["profileId"]) == compatText(login["userId"]) || compatText(candidate["id"]) == compatText(login["userId"]) {
-							selected = candidate
-							break
-						}
-					}
-					if selected == nil {
-						err = &apierror.Error{Code: "not_permitted"}
-					} else {
-						var translated map[string]any
-						rr := r.Clone(r.Context())
-						rr.Header.Set("Authorization", "Bearer "+compatText(login["token"]))
-						translated, err = d.compatibilityUser(rr, selected)
+					var translated map[string]any
+					translated, err = d.compatibilityUser(rr, selected)
+					if err == nil {
 						result = map[string]any{"AccessToken": login["token"], "User": translated, "ServerId": translated["ServerId"]}
 					}
 				}
@@ -298,43 +287,33 @@ func (d Dependencies) serveCompatibility(w http.ResponseWriter, r *http.Request,
 			}
 			result = map[string]any{"Items": items, "TotalRecordCount": len(items)}
 		}
-	case "users", "user", "display_preferences":
-		var users map[string]any
-		users, err = d.integrationCall(r, "GET", "/v1/integrations/users", nil, nil)
-		if err == nil {
-			items := []any{}
-			for _, u := range compatObjects(users["items"]) {
-				var user map[string]any
-				user, err = d.compatibilityUser(r, u)
-				if err != nil {
-					break
-				}
-				if spec.id == "users" {
-					items = append(items, user)
-				} else {
-					want := r.PathValue("id")
-					if strings.EqualFold(want, "me") || want == "" {
-						p, e := d.foundationCaller(r)
-						if e != nil {
-							err = foundationAuthError(e)
-							break
-						}
-						if compatText(u["profileId"]) == p.ProfileID || compatText(u["id"]) == p.ProfileID {
-							result = user
-						}
-					} else if user["Id"] == strings.ReplaceAll(want, "-", "") {
-						result = user
-					}
-				}
+	case "users":
+		d.compatibilityStream(w, r, nil, url.Values{"limit": {"100"}}, "/v1/integrations/users", true, 0, 0, false, func(row map[string]any) (any, error) { return d.compatibilityUser(r, row) })
+		return
+	case "user", "display_preferences":
+		want := r.PathValue("id")
+		if want == "" || strings.EqualFold(want, "me") {
+			var p identity.Principal
+			p, err = d.foundationCaller(r)
+			if err != nil {
+				err = foundationAuthError(err)
+				break
 			}
-			if spec.id == "users" {
-				result = items
-			} else if result == nil {
-				err = &apierror.Error{Code: "not_found"}
+			want = p.ProfileID
+		} else {
+			want, err = d.compatibilityNativeID(r, "user", want)
+			if err != nil {
+				break
 			}
 		}
+		var selected map[string]any
+		selected, err = d.compatibilityNativeUser(r, want)
+		if err == nil {
+			result, err = d.compatibilityUser(r, selected)
+		}
 	case "media_folders", "virtual_folders", "views":
-		result, err = d.compatibilityLibraries(r, spec.id)
+		d.compatibilityStream(w, r, nil, url.Values{"limit": {"100"}}, "/v1/integrations/libraries", spec.id == "virtual_folders", 0, 0, false, func(row map[string]any) (any, error) { return d.compatibilityLibrary(r, row, spec.id) })
+		return
 	case "items", "user_items", "latest", "user_latest":
 		d.compatibilityItems(w, r, q, spec.id)
 		return
@@ -354,9 +333,11 @@ func (d Dependencies) serveCompatibility(w http.ResponseWriter, r *http.Request,
 			}
 		}
 	case "seasons", "episodes":
-		result, err = d.compatibilityHierarchy(r, q, spec.id)
+		d.compatibilityHierarchy(w, r, q, spec.id)
+		return
 	case "sessions":
-		result, err = d.compatibilitySessions(r)
+		d.compatibilitySessions(w, r)
+		return
 	case "media_info":
 		var id string
 		id, err = d.compatibilityNativeID(r, "item", r.PathValue("id"))
@@ -364,7 +345,7 @@ func (d Dependencies) serveCompatibility(w http.ResponseWriter, r *http.Request,
 			var media map[string]any
 			media, err = d.integrationCall(r, "GET", "/v1/integrations/items/"+url.PathEscape(id)+"/media-info", nil, nil)
 			if err == nil {
-				result = map[string]any{"MediaSources": foreignMediaSources(media["mediaSources"])}
+				result = map[string]any{"MediaSources": d.compatibilitySources(r, id, media["mediaSources"], compatText(media["nextCursor"]))}
 			}
 		}
 	case "media_updated":
@@ -392,7 +373,7 @@ func (d Dependencies) serveCompatibility(w http.ResponseWriter, r *http.Request,
 				changes = append(changes, PathChange{Path: p.Path, Change: change})
 			}
 			if err == nil {
-				result, err = d.integrationCall(r, "POST", "/v1/libraries/paths-changed", nil, map[string]any{"paths": changes, "targetedOnly": true})
+				result, err = d.integrationCall(r, "POST", "/v1/libraries/paths-changed", nil, map[string]any{"paths": changes, "mode": "strict"})
 			}
 		}
 	case "untargeted_refresh":
@@ -404,7 +385,14 @@ func (d Dependencies) serveCompatibility(w http.ResponseWriter, r *http.Request,
 	case "plugins":
 		result = []any{}
 	case "notify":
-		err = &apierror.Error{Code: "not_found", Message: "This server has no native inbound administrator-message operation."}
+		var in struct {
+			Name        string
+			Description string
+			ImageUrl    string
+		}
+		if err = compatibilityDecode(w, r, &in); err == nil {
+			result, err = d.integrationCall(r, "POST", "/v1/admin/notifications/broadcast", nil, map[string]any{"operationId": "integration-" + identity.Token(), "audience": "account-admin", "severity": "info", "dedupeKey": "", "title": in.Name, "body": in.Description, "actions": []any{}, "expiresInDays": 1})
+		}
 	case "image", "indexed_image", "user_image":
 		d.compatibilityImage(w, r, q, spec.id)
 		return
@@ -418,48 +406,63 @@ func (d Dependencies) serveCompatibility(w http.ResponseWriter, r *http.Request,
 		compatibilityFailure(w, err)
 		return
 	}
-	write(w, 200, result)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	if err = writeCompatibilityJSON(w, result); err != nil {
+		abortCompatibilityStream(w)
+	}
 }
 func (d Dependencies) integrationCallWithToken(r *http.Request, token, method, path string, query url.Values, body any) (map[string]any, error) {
 	inner := r.Clone(r.Context())
 	inner.Header.Set("Authorization", "Bearer "+token)
 	return d.integrationCall(inner, method, path, query, body)
 }
-func (d Dependencies) compatibilityLibraries(r *http.Request, shape string) (any, error) {
-	page, err := d.integrationCall(r, "GET", "/v1/integrations/libraries", nil, nil)
-	if err != nil {
-		return nil, err
-	}
-	items := []any{}
-	for _, lib := range compatObjects(page["items"]) {
-		guid, err := d.compatibilityID(r, "library", compatText(lib["id"]))
+
+// Only the matching user is retained while walking bounded native pages.
+func (d Dependencies) compatibilityNativeUser(r *http.Request, id string) (map[string]any, error) {
+	q := url.Values{"limit": {"100"}}
+	for {
+		page, err := d.integrationCall(r, "GET", "/v1/integrations/users", q, nil)
 		if err != nil {
 			return nil, err
 		}
-		kind := compatText(lib["kind"])
-		collection := ""
-		switch kind {
-		case "movie", "movies":
-			collection = "movies"
-		case "tv", "show", "anime":
-			collection = "tvshows"
-		case "music":
-			collection = "music"
-		case "audiobook", "book":
-			collection = "books"
+		for _, u := range compatObjects(page["items"]) {
+			if compatText(u["profileId"]) == id || compatText(u["id"]) == id {
+				return u, nil
+			}
 		}
-		paths := lib["paths"]
-		if paths == nil {
-			paths = []string{}
+		cursor := compatText(page["nextCursor"])
+		if cursor == "" {
+			return nil, &apierror.Error{Code: "not_found"}
 		}
-		if shape == "virtual_folders" {
-			items = append(items, map[string]any{"ItemId": guid, "Name": lib["name"], "CollectionType": collection, "Locations": paths})
-		} else {
-			items = append(items, map[string]any{"Id": guid, "Name": lib["name"], "CollectionType": collection, "Type": "CollectionFolder", "IsFolder": true, "Locations": paths})
+		if cursor == q.Get("cursor") {
+			return nil, &apierror.Error{Code: "internal"}
 		}
+		q.Set("cursor", cursor)
+	}
+}
+func (d Dependencies) compatibilityLibrary(r *http.Request, lib map[string]any, shape string) (any, error) {
+	guid, err := d.compatibilityID(r, "library", compatText(lib["id"]))
+	if err != nil {
+		return nil, err
+	}
+	collection := ""
+	switch compatText(lib["kind"]) {
+	case "movie", "movies":
+		collection = "movies"
+	case "tv", "show", "anime":
+		collection = "tvshows"
+	case "music":
+		collection = "music"
+	case "audiobook", "book":
+		collection = "books"
+	}
+	paths := lib["paths"]
+	if paths == nil {
+		paths = []string{}
 	}
 	if shape == "virtual_folders" {
-		return items, nil
+		return map[string]any{"ItemId": guid, "Name": lib["name"], "CollectionType": collection, "Locations": paths}, nil
 	}
-	return map[string]any{"Items": items, "TotalRecordCount": len(items), "StartIndex": 0}, nil
+	return map[string]any{"Id": guid, "Name": lib["name"], "CollectionType": collection, "Type": "CollectionFolder", "IsFolder": true, "Locations": paths}, nil
 }

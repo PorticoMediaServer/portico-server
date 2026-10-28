@@ -10352,6 +10352,9 @@ export const schemas = {
           "home.communityActivityEnabled": {
             "type": "boolean"
           },
+          "integrations.compatibilityEnabled": {
+            "type": "boolean"
+          },
           "jobDays": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -10709,6 +10712,7 @@ export const schemas = {
           "jobDays",
           "playHistoryDays",
           "apiRequestsPerMinute",
+          "integrations.compatibilityEnabled",
           "home.communityActivityEnabled",
           "updates.releaseChannel",
           "updates.feedUrl",
@@ -10838,6 +10842,9 @@ export const schemas = {
                 "type": "string"
               },
               "home.communityActivityEnabled": {
+                "type": "boolean"
+              },
+              "integrations.compatibilityEnabled": {
                 "type": "boolean"
               },
               "jobDays": {
@@ -11197,6 +11204,7 @@ export const schemas = {
               "jobDays",
               "playHistoryDays",
               "apiRequestsPerMinute",
+              "integrations.compatibilityEnabled",
               "home.communityActivityEnabled",
               "updates.releaseChannel",
               "updates.feedUrl",
@@ -11344,6 +11352,9 @@ export const schemas = {
               "home.communityActivityEnabled": {
                 "type": "boolean"
               },
+              "integrations.compatibilityEnabled": {
+                "type": "boolean"
+              },
               "jobDays": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -11701,6 +11712,7 @@ export const schemas = {
               "jobDays",
               "playHistoryDays",
               "apiRequestsPerMinute",
+              "integrations.compatibilityEnabled",
               "home.communityActivityEnabled",
               "updates.releaseChannel",
               "updates.feedUrl",
@@ -14812,6 +14824,262 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "CompatAuthenticateLegacyLowerRequest": {},
+  "CompatAuthenticateLegacyLowerResponse": {},
+  "CompatAuthenticateLegacyRequest": {},
+  "CompatAuthenticateLegacyResponse": {},
+  "CompatAuthenticateLowerRequest": {},
+  "CompatAuthenticateLowerResponse": {},
+  "CompatAuthenticateRequest": {},
+  "CompatAuthenticateResponse": {},
+  "CompatCommandLegacyLowerRequest": {},
+  "CompatCommandLegacyLowerResponse": {},
+  "CompatCommandLegacyRequest": {},
+  "CompatCommandLegacyResponse": {},
+  "CompatCommandLowerRequest": {},
+  "CompatCommandLowerResponse": {},
+  "CompatCommandRequest": {},
+  "CompatCommandResponse": {},
+  "CompatConfigurationLegacyLowerRequest": {},
+  "CompatConfigurationLegacyLowerResponse": {},
+  "CompatConfigurationLegacyRequest": {},
+  "CompatConfigurationLegacyResponse": {},
+  "CompatConfigurationLowerRequest": {},
+  "CompatConfigurationLowerResponse": {},
+  "CompatConfigurationRequest": {},
+  "CompatConfigurationResponse": {},
+  "CompatDisplayPreferencesLegacyLowerRequest": {},
+  "CompatDisplayPreferencesLegacyLowerResponse": {},
+  "CompatDisplayPreferencesLegacyRequest": {},
+  "CompatDisplayPreferencesLegacyResponse": {},
+  "CompatDisplayPreferencesLowerRequest": {},
+  "CompatDisplayPreferencesLowerResponse": {},
+  "CompatDisplayPreferencesRequest": {},
+  "CompatDisplayPreferencesResponse": {},
+  "CompatEpisodesLegacyLowerRequest": {},
+  "CompatEpisodesLegacyLowerResponse": {},
+  "CompatEpisodesLegacyRequest": {},
+  "CompatEpisodesLegacyResponse": {},
+  "CompatEpisodesLowerRequest": {},
+  "CompatEpisodesLowerResponse": {},
+  "CompatEpisodesRequest": {},
+  "CompatEpisodesResponse": {},
+  "CompatImageLegacyLowerRequest": {},
+  "CompatImageLegacyLowerResponse": {},
+  "CompatImageLegacyRequest": {},
+  "CompatImageLegacyResponse": {},
+  "CompatImageLowerRequest": {},
+  "CompatImageLowerResponse": {},
+  "CompatImageRequest": {},
+  "CompatImageResponse": {},
+  "CompatIndexedImageLegacyLowerRequest": {},
+  "CompatIndexedImageLegacyLowerResponse": {},
+  "CompatIndexedImageLegacyRequest": {},
+  "CompatIndexedImageLegacyResponse": {},
+  "CompatIndexedImageLowerRequest": {},
+  "CompatIndexedImageLowerResponse": {},
+  "CompatIndexedImageRequest": {},
+  "CompatIndexedImageResponse": {},
+  "CompatInfoLegacyLowerRequest": {},
+  "CompatInfoLegacyLowerResponse": {},
+  "CompatInfoLegacyRequest": {},
+  "CompatInfoLegacyResponse": {},
+  "CompatInfoLowerRequest": {},
+  "CompatInfoLowerResponse": {},
+  "CompatInfoRequest": {},
+  "CompatInfoResponse": {},
+  "CompatItemsLegacyLowerRequest": {},
+  "CompatItemsLegacyLowerResponse": {},
+  "CompatItemsLegacyRequest": {},
+  "CompatItemsLegacyResponse": {},
+  "CompatItemsLowerRequest": {},
+  "CompatItemsLowerResponse": {},
+  "CompatItemsRequest": {},
+  "CompatItemsResponse": {},
+  "CompatKeysLegacyLowerRequest": {},
+  "CompatKeysLegacyLowerResponse": {},
+  "CompatKeysLegacyRequest": {},
+  "CompatKeysLegacyResponse": {},
+  "CompatKeysLowerRequest": {},
+  "CompatKeysLowerResponse": {},
+  "CompatKeysRequest": {},
+  "CompatKeysResponse": {},
+  "CompatLatestLegacyLowerRequest": {},
+  "CompatLatestLegacyLowerResponse": {},
+  "CompatLatestLegacyRequest": {},
+  "CompatLatestLegacyResponse": {},
+  "CompatLatestLowerRequest": {},
+  "CompatLatestLowerResponse": {},
+  "CompatLatestRequest": {},
+  "CompatLatestResponse": {},
+  "CompatMediaFoldersLegacyLowerRequest": {},
+  "CompatMediaFoldersLegacyLowerResponse": {},
+  "CompatMediaFoldersLegacyRequest": {},
+  "CompatMediaFoldersLegacyResponse": {},
+  "CompatMediaFoldersLowerRequest": {},
+  "CompatMediaFoldersLowerResponse": {},
+  "CompatMediaFoldersRequest": {},
+  "CompatMediaFoldersResponse": {},
+  "CompatMediaInfoLegacyLowerRequest": {},
+  "CompatMediaInfoLegacyLowerResponse": {},
+  "CompatMediaInfoLegacyRequest": {},
+  "CompatMediaInfoLegacyResponse": {},
+  "CompatMediaInfoLowerRequest": {},
+  "CompatMediaInfoLowerResponse": {},
+  "CompatMediaInfoRequest": {},
+  "CompatMediaInfoResponse": {},
+  "CompatMediaUpdatedLegacyLowerRequest": {},
+  "CompatMediaUpdatedLegacyLowerResponse": {},
+  "CompatMediaUpdatedLegacyRequest": {},
+  "CompatMediaUpdatedLegacyResponse": {},
+  "CompatMediaUpdatedLowerRequest": {},
+  "CompatMediaUpdatedLowerResponse": {},
+  "CompatMediaUpdatedRequest": {},
+  "CompatMediaUpdatedResponse": {},
+  "CompatMintKeyLegacyLowerRequest": {},
+  "CompatMintKeyLegacyLowerResponse": {},
+  "CompatMintKeyLegacyRequest": {},
+  "CompatMintKeyLegacyResponse": {},
+  "CompatMintKeyLowerRequest": {},
+  "CompatMintKeyLowerResponse": {},
+  "CompatMintKeyRequest": {},
+  "CompatMintKeyResponse": {},
+  "CompatNotifyLegacyLowerRequest": {},
+  "CompatNotifyLegacyLowerResponse": {},
+  "CompatNotifyLegacyRequest": {},
+  "CompatNotifyLegacyResponse": {},
+  "CompatNotifyLowerRequest": {},
+  "CompatNotifyLowerResponse": {},
+  "CompatNotifyRequest": {},
+  "CompatNotifyResponse": {},
+  "CompatPlayRequestLegacyLowerRequest": {},
+  "CompatPlayRequestLegacyLowerResponse": {},
+  "CompatPlayRequestLegacyRequest": {},
+  "CompatPlayRequestLegacyResponse": {},
+  "CompatPlayRequestLowerRequest": {},
+  "CompatPlayRequestLowerResponse": {},
+  "CompatPlayRequestRequest": {},
+  "CompatPlayRequestResponse": {},
+  "CompatPluginsLegacyLowerRequest": {},
+  "CompatPluginsLegacyLowerResponse": {},
+  "CompatPluginsLegacyRequest": {},
+  "CompatPluginsLegacyResponse": {},
+  "CompatPluginsLowerRequest": {},
+  "CompatPluginsLowerResponse": {},
+  "CompatPluginsRequest": {},
+  "CompatPluginsResponse": {},
+  "CompatPublicInfoLegacyLowerRequest": {},
+  "CompatPublicInfoLegacyLowerResponse": {},
+  "CompatPublicInfoLegacyRequest": {},
+  "CompatPublicInfoLegacyResponse": {},
+  "CompatPublicInfoLowerRequest": {},
+  "CompatPublicInfoLowerResponse": {},
+  "CompatPublicInfoRequest": {},
+  "CompatPublicInfoResponse": {},
+  "CompatRefreshItemLegacyLowerRequest": {},
+  "CompatRefreshItemLegacyLowerResponse": {},
+  "CompatRefreshItemLegacyRequest": {},
+  "CompatRefreshItemLegacyResponse": {},
+  "CompatRefreshItemLowerRequest": {},
+  "CompatRefreshItemLowerResponse": {},
+  "CompatRefreshItemRequest": {},
+  "CompatRefreshItemResponse": {},
+  "CompatSeasonsLegacyLowerRequest": {},
+  "CompatSeasonsLegacyLowerResponse": {},
+  "CompatSeasonsLegacyRequest": {},
+  "CompatSeasonsLegacyResponse": {},
+  "CompatSeasonsLowerRequest": {},
+  "CompatSeasonsLowerResponse": {},
+  "CompatSeasonsRequest": {},
+  "CompatSeasonsResponse": {},
+  "CompatSessionsLegacyLowerRequest": {},
+  "CompatSessionsLegacyLowerResponse": {},
+  "CompatSessionsLegacyRequest": {},
+  "CompatSessionsLegacyResponse": {},
+  "CompatSessionsLowerRequest": {},
+  "CompatSessionsLowerResponse": {},
+  "CompatSessionsRequest": {},
+  "CompatSessionsResponse": {},
+  "CompatTransportLegacyLowerRequest": {},
+  "CompatTransportLegacyLowerResponse": {},
+  "CompatTransportLegacyRequest": {},
+  "CompatTransportLegacyResponse": {},
+  "CompatTransportLowerRequest": {},
+  "CompatTransportLowerResponse": {},
+  "CompatTransportRequest": {},
+  "CompatTransportResponse": {},
+  "CompatUntargetedRefreshLegacyLowerRequest": {},
+  "CompatUntargetedRefreshLegacyLowerResponse": {},
+  "CompatUntargetedRefreshLegacyRequest": {},
+  "CompatUntargetedRefreshLegacyResponse": {},
+  "CompatUntargetedRefreshLowerRequest": {},
+  "CompatUntargetedRefreshLowerResponse": {},
+  "CompatUntargetedRefreshRequest": {},
+  "CompatUntargetedRefreshResponse": {},
+  "CompatUserImageLegacyLowerRequest": {},
+  "CompatUserImageLegacyLowerResponse": {},
+  "CompatUserImageLegacyRequest": {},
+  "CompatUserImageLegacyResponse": {},
+  "CompatUserImageLowerRequest": {},
+  "CompatUserImageLowerResponse": {},
+  "CompatUserImageRequest": {},
+  "CompatUserImageResponse": {},
+  "CompatUserItemLegacyLowerRequest": {},
+  "CompatUserItemLegacyLowerResponse": {},
+  "CompatUserItemLegacyRequest": {},
+  "CompatUserItemLegacyResponse": {},
+  "CompatUserItemLowerRequest": {},
+  "CompatUserItemLowerResponse": {},
+  "CompatUserItemRequest": {},
+  "CompatUserItemResponse": {},
+  "CompatUserItemsLegacyLowerRequest": {},
+  "CompatUserItemsLegacyLowerResponse": {},
+  "CompatUserItemsLegacyRequest": {},
+  "CompatUserItemsLegacyResponse": {},
+  "CompatUserItemsLowerRequest": {},
+  "CompatUserItemsLowerResponse": {},
+  "CompatUserItemsRequest": {},
+  "CompatUserItemsResponse": {},
+  "CompatUserLatestLegacyLowerRequest": {},
+  "CompatUserLatestLegacyLowerResponse": {},
+  "CompatUserLatestLegacyRequest": {},
+  "CompatUserLatestLegacyResponse": {},
+  "CompatUserLatestLowerRequest": {},
+  "CompatUserLatestLowerResponse": {},
+  "CompatUserLatestRequest": {},
+  "CompatUserLatestResponse": {},
+  "CompatUserLegacyLowerRequest": {},
+  "CompatUserLegacyLowerResponse": {},
+  "CompatUserLegacyRequest": {},
+  "CompatUserLegacyResponse": {},
+  "CompatUserLowerRequest": {},
+  "CompatUserLowerResponse": {},
+  "CompatUserRequest": {},
+  "CompatUserResponse": {},
+  "CompatUsersLegacyLowerRequest": {},
+  "CompatUsersLegacyLowerResponse": {},
+  "CompatUsersLegacyRequest": {},
+  "CompatUsersLegacyResponse": {},
+  "CompatUsersLowerRequest": {},
+  "CompatUsersLowerResponse": {},
+  "CompatUsersRequest": {},
+  "CompatUsersResponse": {},
+  "CompatViewsLegacyLowerRequest": {},
+  "CompatViewsLegacyLowerResponse": {},
+  "CompatViewsLegacyRequest": {},
+  "CompatViewsLegacyResponse": {},
+  "CompatViewsLowerRequest": {},
+  "CompatViewsLowerResponse": {},
+  "CompatViewsRequest": {},
+  "CompatViewsResponse": {},
+  "CompatVirtualFoldersLegacyLowerRequest": {},
+  "CompatVirtualFoldersLegacyLowerResponse": {},
+  "CompatVirtualFoldersLegacyRequest": {},
+  "CompatVirtualFoldersLegacyResponse": {},
+  "CompatVirtualFoldersLowerRequest": {},
+  "CompatVirtualFoldersLowerResponse": {},
+  "CompatVirtualFoldersRequest": {},
+  "CompatVirtualFoldersResponse": {},
   "ControlAdminSessionRequest": {
     "properties": {
       "action": {
@@ -15819,6 +16087,88 @@ export const schemas = {
       "failed",
       "paused",
       "items"
+    ],
+    "type": "object"
+  },
+  "CreateIntegrationAppPasswordRequest": {
+    "properties": {
+      "accountId": {
+        "type": "string"
+      },
+      "expiresAt": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "profileId": {
+        "type": "string"
+      },
+      "scopes": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "operationId",
+      "name",
+      "scopes",
+      "accountId",
+      "profileId"
+    ],
+    "type": "object"
+  },
+  "CreateIntegrationAppPasswordResponse": {
+    "properties": {
+      "appPassword": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "profileId": {
+            "type": "string"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "state": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "username",
+          "accountId",
+          "profileId",
+          "scopes",
+          "state"
+        ],
+        "type": "object"
+      },
+      "secret": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "appPassword"
     ],
     "type": "object"
   },
@@ -22818,6 +23168,48 @@ export const schemas = {
       "titles",
       "files",
       "more"
+    ],
+    "type": "object"
+  },
+  "ExchangeIntegrationAppPasswordRequest": {
+    "properties": {
+      "name": {
+        "type": "string"
+      },
+      "password": {
+        "type": "string"
+      },
+      "username": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "username",
+      "password",
+      "name"
+    ],
+    "type": "object"
+  },
+  "ExchangeIntegrationAppPasswordResponse": {
+    "properties": {
+      "accountId": {
+        "type": "string"
+      },
+      "token": {
+        "type": "string"
+      },
+      "userId": {
+        "type": "string"
+      },
+      "username": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "token",
+      "userId",
+      "username",
+      "accountId"
     ],
     "type": "object"
   },
@@ -40611,6 +41003,9 @@ export const schemas = {
               "home.communityActivityEnabled": {
                 "type": "boolean"
               },
+              "integrations.compatibilityEnabled": {
+                "type": "boolean"
+              },
               "jobDays": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -40968,6 +41363,7 @@ export const schemas = {
               "jobDays",
               "playHistoryDays",
               "apiRequestsPerMinute",
+              "integrations.compatibilityEnabled",
               "home.communityActivityEnabled",
               "updates.releaseChannel",
               "updates.feedUrl",
@@ -41115,6 +41511,9 @@ export const schemas = {
               "home.communityActivityEnabled": {
                 "type": "boolean"
               },
+              "integrations.compatibilityEnabled": {
+                "type": "boolean"
+              },
               "jobDays": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -41472,6 +41871,7 @@ export const schemas = {
               "jobDays",
               "playHistoryDays",
               "apiRequestsPerMinute",
+              "integrations.compatibilityEnabled",
               "home.communityActivityEnabled",
               "updates.releaseChannel",
               "updates.feedUrl",
@@ -78547,6 +78947,33 @@ export const schemas = {
       "hasMore",
       "nextCursor",
       "revision"
+    ],
+    "type": "object"
+  },
+  "GetIntegrationCompatibilityRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetIntegrationCompatibilityResponse": {
+    "properties": {
+      "enabled": {
+        "type": "boolean"
+      },
+      "players": {
+        "type": "boolean"
+      },
+      "profiles": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "enabled",
+      "profiles",
+      "players"
     ],
     "type": "object"
   },
@@ -194763,6 +195190,95 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "ListIntegrationAppPasswordsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "ListIntegrationAppPasswordsResponse": {
+    "properties": {
+      "items": {
+        "items": {
+          "properties": {
+            "accountId": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "profileId": {
+              "type": "string"
+            },
+            "scopes": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "state": {
+              "type": "string"
+            },
+            "username": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "username",
+            "accountId",
+            "profileId",
+            "scopes",
+            "state"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "items"
+    ],
+    "type": "object"
+  },
+  "ListIntegrationKeysRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "ListIntegrationKeysResponse": {
+    "properties": {
+      "items": {
+        "items": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "secret": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "id",
+            "secret"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "items"
+    ],
+    "type": "object"
+  },
   "ListLiveSourceChannelsRequest": {
     "properties": {},
     "required": [],
@@ -195589,6 +196105,99 @@ export const schemas = {
     },
     "required": [
       "itemId"
+    ],
+    "type": "object"
+  },
+  "MintIntegrationKeyRequest": {
+    "properties": {
+      "name": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "name"
+    ],
+    "type": "object"
+  },
+  "MintIntegrationKeyResponse": {
+    "properties": {
+      "credential": {
+        "properties": {
+          "createdAt": {
+            "type": "string"
+          },
+          "endedReason": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "hint": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "lastUsedAt": {
+            "type": "string"
+          },
+          "member": {
+            "properties": {
+              "accountId": {
+                "type": "string"
+              },
+              "profile": {
+                "type": "string"
+              },
+              "profileId": {
+                "type": "string"
+              },
+              "username": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "accountId",
+              "username",
+              "profileId",
+              "profile"
+            ],
+            "type": "object"
+          },
+          "name": {
+            "type": "string"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "scopes",
+          "hint",
+          "createdAt",
+          "state",
+          "member"
+        ],
+        "type": "object"
+      },
+      "secret": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "credential"
     ],
     "type": "object"
   },
@@ -249172,6 +249781,46 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "RevealApiKeyRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "RevealApiKeyResponse": {
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "secret": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "secret"
+    ],
+    "type": "object"
+  },
+  "RevealIntegrationAppPasswordRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "RevealIntegrationAppPasswordResponse": {
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "secret": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "secret"
+    ],
+    "type": "object"
+  },
   "RevokeAccessTokenRequest": {
     "properties": {},
     "required": [],
@@ -249555,6 +250204,49 @@ export const schemas = {
     },
     "required": [
       "results"
+    ],
+    "type": "object"
+  },
+  "RevokeIntegrationAppPasswordRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "RevokeIntegrationAppPasswordResponse": {
+    "properties": {
+      "accountId": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "profileId": {
+        "type": "string"
+      },
+      "scopes": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "state": {
+        "type": "string"
+      },
+      "username": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "name",
+      "username",
+      "accountId",
+      "profileId",
+      "scopes",
+      "state"
     ],
     "type": "object"
   },

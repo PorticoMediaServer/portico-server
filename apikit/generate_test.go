@@ -81,7 +81,7 @@ func TestSchemaRefusesWhatEncodingJSONWouldDropOrReplace(t *testing.T) {
 }
 
 func TestGenerateWithOptions(t *testing.T) {
-	plain := []Definition{{Metadata: Metadata{ID: "plain", Method: "GET", Path: "/v1/plain", Summary: "Plain.", Access: Public, Requires: ScopeOpen, Lane: Default, Cost: Constant, Status: 200}, Request: reflect.TypeFor[struct{}](), Response: reflect.TypeFor[testResponse]()}}
+	plain := []Definition{{Metadata: Metadata{Audience: Clients, ID: "plain", Method: "GET", Path: "/v1/plain", Summary: "Plain.", Access: Public, Requires: ScopeOpen, Lane: Default, Cost: Constant, Status: 200}, Request: reflect.TypeFor[struct{}](), Response: reflect.TypeFor[testResponse]()}}
 	server, err := Generate(plain)
 	if err != nil {
 		t.Fatal(err)
@@ -93,7 +93,7 @@ func TestGenerateWithOptions(t *testing.T) {
 	if !bytes.Contains(server.OpenAPI, []byte(`"title": "Portico API"`)) || !bytes.Equal(server.Runtime, runtimeTemplate) {
 		t.Error("server contract changed")
 	}
-	withAny := append(plain, Definition{Metadata: Metadata{ID: "free", Method: "GET", Path: "/v1/free", Summary: "Free.", Access: Public, Requires: ScopeOpen, Lane: Default, Cost: Constant, Status: 200}, Request: reflect.TypeFor[struct{}](), Response: reflect.TypeFor[wireOuter]()})
+	withAny := append(plain, Definition{Metadata: Metadata{Audience: Clients, ID: "free", Method: "GET", Path: "/v1/free", Summary: "Free.", Access: Public, Requires: ScopeOpen, Lane: Default, Cost: Constant, Status: 200}, Request: reflect.TypeFor[struct{}](), Response: reflect.TypeFor[wireOuter]()})
 	hosted, err := GenerateWith(withAny, Options{Title: "Portico Hosted API", Errors: []apierror.Definition{}})
 	if err != nil {
 		t.Fatal(err)
@@ -132,7 +132,7 @@ func TestNullablePointerMembers(t *testing.T) {
 	if got := tsType(s); got != `{ "maybe"?: string; "online": boolean; "seen": string | null }` {
 		t.Fatal(got)
 	}
-	with, err := GenerateWith([]Definition{{Metadata: Metadata{ID: "presence_get", Method: "GET", Path: "/p", Status: 200}, Request: reflect.TypeFor[struct{}](), Response: reflect.TypeFor[presence]()}}, Options{Errors: []apierror.Definition{}})
+	with, err := GenerateWith([]Definition{{Metadata: Metadata{Audience: Clients, ID: "presence_get", Method: "GET", Path: "/v1/p", Summary: "Schema presence fixture", Access: Public, Requires: ScopeOpen, Lane: Default, Cost: Constant, Status: 200}, Request: reflect.TypeFor[struct{}](), Response: reflect.TypeFor[presence]()}}, Options{Errors: []apierror.Definition{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +142,7 @@ func TestNullablePointerMembers(t *testing.T) {
 	type plain struct {
 		Online bool `json:"online"`
 	}
-	without, err := GenerateWith([]Definition{{Metadata: Metadata{ID: "plain_get", Method: "GET", Path: "/q", Status: 200}, Request: reflect.TypeFor[struct{}](), Response: reflect.TypeFor[plain]()}}, Options{Errors: []apierror.Definition{}})
+	without, err := GenerateWith([]Definition{{Metadata: Metadata{Audience: Clients, ID: "plain_get", Method: "GET", Path: "/v1/q", Summary: "Schema presence fixture", Access: Public, Requires: ScopeOpen, Lane: Default, Cost: Constant, Status: 200}, Request: reflect.TypeFor[struct{}](), Response: reflect.TypeFor[plain]()}}, Options{Errors: []apierror.Definition{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,7 @@ func TestNullablePointerMembers(t *testing.T) {
 }
 
 func TestGeneratedBinaryResponseUsesItsContentType(t *testing.T) {
-	definitions := []Definition{{Metadata: Metadata{ID: "subtitle_original", Method: "GET", Path: "/v1/media/{grant}/original", Summary: "Read original subtitle bytes", Access: Public, Requires: ScopeOpen, Lane: Media, Cost: Constant, Status: 200, ResponseContentType: "application/octet-stream"}, Request: reflect.TypeFor[struct{}](), Response: reflect.TypeFor[string]()}}
+	definitions := []Definition{{Metadata: Metadata{Audience: Clients, ID: "subtitle_original", Method: "GET", Path: "/v1/media/{grant}/original", Summary: "Read original subtitle bytes", Access: Public, Requires: ScopeOpen, Lane: Media, Cost: Constant, Status: 200, ResponseContentType: "application/octet-stream"}, Request: reflect.TypeFor[struct{}](), Response: reflect.TypeFor[string]()}}
 	out, e := Generate(definitions)
 	if e != nil {
 		t.Fatal(e)
@@ -181,7 +181,7 @@ func TestGeneratedBinaryResponseUsesItsContentType(t *testing.T) {
 }
 
 func TestHTTPDocumentationKeepsMultipartHeadersAndEmptyResponses(t *testing.T) {
-	definitions := []Definition{{Metadata: Metadata{ID: "upload", Method: "POST", Path: "/v1/files/{id}", Summary: "Upload a file", Access: Owner, Requires: ScopeLibrary, Lane: Default, Cost: Constant, Status: 202, BodyLimit: 64, RequestContentTypes: []string{"multipart/form-data"}, Headers: []string{"X-Installation"}, NoResponseBody: true}, Request: reflect.TypeFor[struct {
+	definitions := []Definition{{Metadata: Metadata{Audience: Clients, ID: "upload", Method: "POST", Path: "/v1/files/{id}", Summary: "Upload a file", Access: Owner, Requires: ScopeLibrary, Lane: Default, Cost: Constant, Status: 202, BodyLimit: 64, RequestContentTypes: []string{"multipart/form-data"}, Headers: []string{"X-Installation"}, NoResponseBody: true}, Request: reflect.TypeFor[struct {
 		File testBinary `json:"file"`
 	}](), Response: reflect.TypeFor[struct{}]()}}
 	generated, err := Generate(definitions)

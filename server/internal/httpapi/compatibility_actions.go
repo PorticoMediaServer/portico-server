@@ -10,34 +10,35 @@ import (
 	"portico.local/apikit/apierror"
 )
 
-func (d Dependencies) compatibilityHierarchy(r *http.Request, q url.Values, mode string) (any, error) {
+func (d Dependencies) compatibilityHierarchy(w http.ResponseWriter, r *http.Request, q url.Values, mode string) {
 	show, err := d.compatibilityNativeID(r, "item", r.PathValue("id"))
 	if err != nil {
-		return nil, &apierror.Error{Code: "not_found"}
+		compatibilityFailure(w, &apierror.Error{Code: "not_found"})
+		return
 	}
-	query := url.Values{}
-	for _, key := range []string{"cursor", "limit", "season"} {
-		if v := q.Get(key); v != "" {
-			query.Set(key, v)
-		}
+	query := url.Values{"limit": {"100"}}
+	if season := q.Get("season"); season != "" {
+		query.Set("season", season)
 	}
 	if season := q.Get("seasonid"); season != "" {
-		id, err := d.compatibilityNativeID(r, "item", season)
-		if err != nil {
-			return nil, &apierror.Error{Code: "not_found"}
+		id, e := d.compatibilityNativeID(r, "item", season)
+		if e != nil {
+			compatibilityFailure(w, &apierror.Error{Code: "not_found"})
+			return
 		}
 		query.Set("seasonId", id)
 	}
-	page, err := d.integrationCall(r, "GET", "/v1/integrations/shows/"+url.PathEscape(show)+"/"+mode, query, nil)
+	start, err := compatibilityInteger(q, "startindex", 0, 5000000)
 	if err != nil {
-		return nil, err
+		compatibilityFailure(w, err)
+		return
 	}
-	rows := compatObjects(page["items"])
-	if page["items"] == nil {
-		rows = compatObjects(page[mode])
+	limit, err := compatibilityInteger(q, "limit", 0, 5000000)
+	if err != nil {
+		compatibilityFailure(w, err)
+		return
 	}
-	items := []any{}
-	for _, row := range rows {
+	d.compatibilityStream(w, r, q, query, "/v1/integrations/shows/"+url.PathEscape(show)+"/"+mode, false, start, limit, q.Get("limit") != "", func(row map[string]any) (any, error) {
 		if row["kind"] == nil {
 			if mode == "seasons" {
 				row["kind"] = "season"
@@ -48,25 +49,11 @@ func (d Dependencies) compatibilityHierarchy(r *http.Request, q url.Values, mode
 		if row["title"] == nil {
 			row["title"] = row["name"]
 		}
-		translated, err := d.compatibilityItem(r, row)
-		if err != nil {
-			return nil, err
-		}
-		items = append(items, translated)
-	}
-	total := page["total"]
-	if total == nil {
-		total = len(items)
-	}
-	return map[string]any{"Items": items, "TotalRecordCount": total, "StartIndex": 0}, nil
+		return d.compatibilityItem(r, row)
+	})
 }
-func (d Dependencies) compatibilitySessions(r *http.Request) (any, error) {
-	page, err := d.integrationCall(r, "GET", "/v1/integrations/sessions", nil, nil)
-	if err != nil {
-		return nil, err
-	}
-	result := []any{}
-	for _, row := range compatObjects(page["items"]) {
+func (d Dependencies) compatibilitySessions(w http.ResponseWriter, r *http.Request) {
+	d.compatibilityStream(w, r, nil, url.Values{"limit": {"100"}}, "/v1/integrations/sessions", true, 0, 0, false, func(row map[string]any) (any, error) {
 		nativeID := compatText(row["id"])
 		if nativeID == "" {
 			nativeID = compatText(row["sessionId"])
@@ -127,9 +114,8 @@ func (d Dependencies) compatibilitySessions(r *http.Request) (any, error) {
 		if delivery := compatObject(row["delivery"]); len(delivery) > 0 {
 			playState["PlayMethod"] = delivery["method"]
 		}
-		result = append(result, out)
-	}
-	return result, nil
+		return out, nil
+	})
 }
 func (d Dependencies) compatibilityRefresh(r *http.Request, q url.Values) (any, error) {
 	// ValidationOnly is Bazarr's sidecar refresh; it never authorizes metadata

@@ -15,7 +15,7 @@ type EmptyDataCacheResponse struct {
 
 func registerDataStorage(registry *apikit.Registry, d Dependencies) {
 	failures := []string{"unauthorized", "not_permitted", "not_found", "internal"}
-	v1Route(registry, apikit.Metadata{Admission: laneAdmin, ID: "get_data_storage_usage", Method: "GET", Path: "/v1/admin/storage/usage", Summary: "Read data folder usage and storage notices", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (storagepaths.Usage, error) {
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, Admission: laneAdmin, ID: "get_data_storage_usage", Method: "GET", Path: "/v1/admin/storage/usage", Summary: "Read data folder usage and storage notices", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (storagepaths.Usage, error) {
 		if d.StorageLayout == nil {
 			return storagepaths.Usage{}, &apierror.Error{Code: "not_found"}
 		}
@@ -39,7 +39,7 @@ func registerDataStorage(registry *apikit.Registry, d Dependencies) {
 		}
 		return out, nil
 	})
-	v1Route(registry, apikit.Metadata{Admission: laneAdmin, ID: "post_empty_data_cache", Method: "POST", Path: "/v1/admin/storage/cache/empty", Summary: "Empty rebuildable cache on a graceful server restart", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 202, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (EmptyDataCacheResponse, error) {
+	v1Route(registry, apikit.Metadata{Audience: apikit.Clients, Admission: laneAdmin, ID: "post_empty_data_cache", Method: "POST", Path: "/v1/admin/storage/cache/empty", Summary: "Empty rebuildable cache on a graceful server restart", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 202, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (EmptyDataCacheResponse, error) {
 		if d.StorageLayout == nil || d.Restart == nil {
 			return EmptyDataCacheResponse{}, &apierror.Error{Code: "not_found"}
 		}

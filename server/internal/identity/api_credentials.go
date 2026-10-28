@@ -102,7 +102,8 @@ func admitBearer(ctx context.Context, bearer string) error {
 
 // IssuedCredential is the result of issuing a key or token.
 type IssuedCredential struct {
-	// Secret is shown to its maker once. Only its digest is stored.
+	// Secret is returned at issuance. Authentication uses its digest; native
+	// owner recovery stores the permitted credential secret separately.
 	Secret   string
 	FamilyID string
 	DeviceID string

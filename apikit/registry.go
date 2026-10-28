@@ -128,12 +128,29 @@ const (
 	SelectionAsync Cost = "selection_sized_async"
 )
 
+// Audience identifies the intended consumer in contracts and documentation.
+// It does not grant access or replace Requires, Access, or credential scopes.
+type Audience string
+
+const (
+	Integrations Audience = "Integrations"
+	Clients      Audience = "Clients"
+)
+
+// ProtocolCompatibility marks exact foreign protocol templates, whose handlers
+// translate into native integration operations. It confers no credential scope.
+const ProtocolCompatibility = "integration-compatibility"
+
 type Metadata struct {
-	ID      string `json:"id"`
-	Method  string `json:"method"`
-	Path    string `json:"path"`
-	Summary string `json:"summary"`
-	Access  Access `json:"access"`
+	// Audience is mandatory; the registry never supplies a default.
+	Audience Audience `json:"audience"`
+	// Protocol is empty for native routes, or ProtocolCompatibility for foreign ones.
+	Protocol string `json:"protocol,omitempty"`
+	ID       string `json:"id"`
+	Method   string `json:"method"`
+	Path     string `json:"path"`
+	Summary  string `json:"summary"`
+	Access   Access `json:"access"`
 	// AdminScope names the administrative area an Admin route belongs to.
 	AdminScope string `json:"adminScope,omitempty"`
 	// Requires is the scope an API key or personal access token needs. It is
@@ -554,8 +571,58 @@ func homeRowPathID(id string) bool {
 	return false
 }
 func (r *Registry) Freeze() { r.frozen = true }
+func exactCompatibilityPath(path string) bool {
+	if !strings.HasPrefix(path, "/") || path == "/" || strings.HasSuffix(path, "/") {
+		return false
+	}
+	names := map[string]bool{}
+	for index, part := range strings.Split(path[1:], "/") {
+		if part == "" || part == "." || part == ".." {
+			return false
+		}
+		if strings.HasPrefix(part, "{") && strings.HasSuffix(part, "}") {
+			name := part[1 : len(part)-1]
+			if index == 0 || name == "" || names[name] {
+				return false
+			}
+			for i, c := range name {
+				if !(c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || i > 0 && c >= '0' && c <= '9') {
+					return false
+				}
+			}
+			names[name] = true
+			continue
+		}
+		if strings.ContainsAny(part, "{}*?#\\%:$") {
+			return false
+		}
+		for _, c := range part {
+			if unicode.IsSpace(c) || unicode.IsControl(c) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func validate(m Metadata) error {
-	if m.ID == "" || m.Summary == "" || !(strings.HasPrefix(m.Path, "/v1/") || strings.HasPrefix(m.Path, "/health/")) || m.Status < 200 || m.Status >= 300 || m.BodyLimit < 0 || m.BodyLimit > 1<<30 {
+	if m.Audience != Integrations && m.Audience != Clients {
+		return errors.New("route audience must be Integrations or Clients")
+	}
+	nativePath := strings.HasPrefix(m.Path, "/v1/") || strings.HasPrefix(m.Path, "/health/")
+	switch m.Protocol {
+	case "":
+		if !nativePath {
+			return errors.New("foreign route requires the compatibility protocol marker")
+		}
+	case ProtocolCompatibility:
+		if m.Audience != Integrations || nativePath || !exactCompatibilityPath(m.Path) {
+			return errors.New("compatibility route requires Integrations and an exact foreign path template")
+		}
+	default:
+		return errors.New("unknown route protocol")
+	}
+	if m.ID == "" || m.Summary == "" || m.Status < 200 || m.Status >= 300 || m.BodyLimit < 0 || m.BodyLimit > 1<<30 {
 		return errors.New("route metadata incomplete")
 	}
 	// Reads take no body; a body limit on one would publish a request body

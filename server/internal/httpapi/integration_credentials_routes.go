@@ -58,7 +58,7 @@ type IntegrationTokenRequest struct {
 func registerIntegrationCredentials(registry *apikit.Registry, d Dependencies) error {
 	base := []string{"unauthorized", "not_permitted", "insufficient_scope", "session_required", "invalid_request", "not_found", "credential_limit", "internal"}
 	meta := func(id, method, path, summary string, access apikit.Access, scope apikit.Scope, status, body int) apikit.Metadata {
-		return apikit.Metadata{Admission: laneSecurityFence, ID: id, Method: method, Path: path, Summary: summary, Access: access, Requires: scope, Lane: apikit.Security, Cost: apikit.Constant, Status: status, BodyLimit: int64(body), Errors: base}
+		return apikit.Metadata{Audience: apikit.Integrations, Admission: laneSecurityFence, ID: id, Method: method, Path: path, Summary: summary, Access: access, Requires: scope, Lane: apikit.Security, Cost: apikit.Constant, Status: status, BodyLimit: int64(body), Errors: base}
 	}
 	if err := apikit.Register(registry, apikit.Route[struct{}, IntegrationStatus]{Metadata: meta("get_integration_compatibility", "GET", "/v1/integrations/compatibility", "Read integration compatibility capabilities", apikit.Owner, apikit.ScopeAdmin, 200, 0), Handler: func(ctx context.Context, r *http.Request, _ struct{}) (IntegrationStatus, error) {
 		enabled, err := d.integrationEnabled(ctx)
