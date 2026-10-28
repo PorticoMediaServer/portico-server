@@ -57,48 +57,18 @@ export function FilterBuilder({model, labels, platform = 'desktop', fields, open
     const state = fields[field.id];
     if (!state) throw new Error(`Missing controlled filter field: ${field.id}`);
     const open = openFields.includes(field.id), label = labels.field(field), contentId = `${id}-${field.id}`;
-    const canExclude = field.operators.includes('not-in') || field.operators.includes('not-equals');
     const change = (value: FilterFieldChange) => onFieldChange(field.id, value);
     if (platform === 'phone' && state.kind === 'toggle') return <div className={styles.phoneToggleField} key={field.id}><span>{label}</span>
       <Segmented variant="phone" aria-label={label} value={state.value === undefined ? 'any' : state.value ? 'yes' : 'no'}
         items={[{value: 'any', label: t('next.browse.any')}, {value: 'yes', label: t('next.browse.yes')}, {value: 'no', label: t('next.browse.no')}]}
         onValueChange={value => change({kind: 'toggle', value: value === 'any' ? undefined : value === 'yes'})}/></div>;
-    const heading = <div className={styles.expandedHeading}><button type="button" className={styles.expandedName} aria-expanded aria-controls={contentId} onClick={() => onFieldOpenChange(field.id, false)}>
-        {label}{state.summary && <span>{state.summary}</span>}<Icon name={platform === 'tv' ? 'i-down' : 'i-up'} size={16}/></button>
-        {platform === 'desktop' && active(state) && <Button variant="text" size="xs" onClick={() => change({kind: 'clear'})}>{t('next.browse.clear')}</Button>}</div>;
-    const content = <div className={styles.fieldContent} id={contentId}>
-        {state.kind === 'values' && <>
-          {platform === 'desktop' && <MatchMode value={state.match} allowAll={field.operators.includes('contains-all')} allowNone={canExclude} onValueChange={value => change({kind: 'match', value})}/>}
-          {(state.total === undefined || state.total > 10 || state.query) && platform !== 'tv' && <TextField variant="search" containerClassName={styles.facetFind} leadingIcon="i-search" value={state.query}
-            aria-label={t('next.browse.find', {field: label.toLocaleLowerCase()})} placeholder={t('next.browse.find', {field: label.toLocaleLowerCase()})}
-            onChange={event => onSearchChange(field.id, event.target.value)}/>}
-          {state.status === 'loading' && <div role="status" className={styles.fieldNotice}>{t('next.browse.loadingValues')}</div>}
-          {state.status === 'error' && <div className={styles.fieldNotice} role="alert">{state.error}{onRetry && <Button variant="text" size="small" onClick={() => onRetry(field.id)}>{t('next.browse.retry')}</Button>}</div>}
-          {(state.status !== 'error' || state.values.length > 0) &&
-            <>{platform === 'tv' && state.hint && <p className={styles.facetHelp}>{state.hint}</p>}<FacetChips values={state.values} included={state.included} excluded={state.excluded} cycleExclusion={platform === 'phone' && canExclude}
-              trailing={platform === 'phone' && state.total !== undefined && state.total > state.values.length && onShowAll ? <Button variant="text" size="xs" className={styles.inlineMore} onClick={() => onShowAll(field.id)}>{state.moreLabel ?? t('next.browse.showAll', {count: state.total, field: label.toLocaleLowerCase()})}</Button> : undefined}
-              onValueChange={(value, selection) => change({kind: 'facet', value, selection: state.match === 'none' && selection === 'include' ? 'exclude' : selection})}/>
-              {state.status !== 'loading' && state.values.length === 0 && <span className={styles.fieldNotice}>{t('next.browse.noValues')}</span>}
-              {platform !== 'phone' && state.total !== undefined && state.total > state.values.length && onShowAll && <Button variant="text" size="xs" className={styles.showAll} onClick={() => onShowAll(field.id)}>
-                {state.moreLabel ?? t('next.browse.showAll', {count: state.total, field: label.toLocaleLowerCase()})}<Icon name="i-down" size={14}/></Button>}</>}
-          {platform === 'phone' && canExclude && <p className={styles.facetHelp}>{t('next.browse.facetHelp')}</p>}
-        </>}
-        {state.kind === 'toggle' && <Segmented variant={platform === 'phone' ? 'phone' : 'browse'} value={state.value === undefined ? 'any' : state.value ? 'yes' : 'no'}
-          items={[{value: 'any', label: t('next.browse.any')}, {value: 'yes', label: t('next.browse.yes')}, {value: 'no', label: t('next.browse.no')}]}
-          onValueChange={value => change({kind: 'toggle', value: value === 'any' ? undefined : value === 'yes'})}/>}
-        {(state.kind === 'choice' || state.kind === 'range') && <div className={styles.facetChips}>
-          <button type="button" className={styles.facetChip} data-selected={state.value === undefined || undefined} aria-pressed={state.value === undefined} onClick={() => change({kind: 'choice', value: undefined})}>{t('next.browse.any')}</button>
-          {state.options.map(option => <button type="button" className={styles.facetChip} data-selected={state.value === option.value || undefined} aria-pressed={state.value === option.value} key={option.value}
-            onClick={() => change({kind: 'choice', value: option.value === state.value ? undefined : option.value})}>{option.label}</button>)}
-        </div>}
-        {state.kind === 'text' && <TextField variant="field" value={state.value} label={label} placeholder={state.placeholder} onChange={event => change({kind: 'text', value: event.target.value})}/>}
-      </div>;
+    const body = <FilterFieldBody field={field} state={state} label={label} platform={platform} contentId={contentId} onFieldOpenChange={onFieldOpenChange}
+      onFieldChange={onFieldChange} onSearchChange={onSearchChange} onShowAll={onShowAll} onRetry={onRetry}/>;
     // H10: on desktop a field opens as a menu-like popover anchored to its tile, so the grid never moves.
     if (platform === 'desktop') return <DesktopField key={field.id} label={label} summary={state.summary} active={active(state)} open={open} contentId={contentId}
-      onOpenChange={value => onFieldOpenChange(field.id, value)}>{heading}{content}</DesktopField>;
+      onOpenChange={value => onFieldOpenChange(field.id, value)}>{body}</DesktopField>;
     return <div className={open ? styles.expandedField : styles.collapsedField} key={field.id} data-active={active(state) || undefined}>
-      {open ? heading : <FieldTile label={label} summary={state.summary} active={active(state)} expanded={false} controls={contentId} onClick={() => onFieldOpenChange(field.id, true)}/>}
-      {open && content}
+      {open ? body : <FieldTile label={label} summary={state.summary} active={active(state)} expanded={false} controls={contentId} onClick={() => onFieldOpenChange(field.id, true)}/>}
     </div>;
   };
   return <div className={[styles.filterBuilder, className].filter(Boolean).join(' ')} data-platform={platform}>
@@ -118,6 +88,46 @@ export function FilterBuilder({model, labels, platform = 'desktop', fields, open
   </div>;
 }
 
+
+/** One field's heading and options: the desktop popover and the inline phone/TV field draw the same body. */
+export function FilterFieldBody({field, state, label, platform = 'desktop', contentId, onFieldOpenChange, onFieldChange, onSearchChange, onShowAll, onRetry}: Readonly<{
+  field: BrowseFieldCapability; state: FilterFieldState; label: string; platform?: BrowsePlatform; contentId: string;
+  onFieldOpenChange: FilterBuilderProps['onFieldOpenChange']; onFieldChange: FilterBuilderProps['onFieldChange']; onSearchChange: FilterBuilderProps['onSearchChange'];
+  onShowAll?: FilterBuilderProps['onShowAll']; onRetry?: FilterBuilderProps['onRetry'];}>) {
+  const canExclude = field.operators.includes('not-in') || field.operators.includes('not-equals');
+  const change = (value: FilterFieldChange) => onFieldChange(field.id, value);
+  const heading = <div className={styles.expandedHeading}><button type="button" className={styles.expandedName} aria-expanded aria-controls={contentId} onClick={() => onFieldOpenChange(field.id, false)}>
+      {label}{state.summary && <span>{state.summary}</span>}<Icon name={platform === 'tv' ? 'i-down' : 'i-up'} size={16}/></button>
+      {platform === 'desktop' && active(state) && <Button variant="text" size="xs" onClick={() => change({kind: 'clear'})}>{t('next.browse.clear')}</Button>}</div>;
+  const content = <div className={styles.fieldContent} id={contentId}>
+      {state.kind === 'values' && <>
+        {platform === 'desktop' && <MatchMode value={state.match} allowAll={field.operators.includes('contains-all')} allowNone={canExclude} onValueChange={value => change({kind: 'match', value})}/>}
+        {(state.total === undefined || state.total > 10 || state.query) && platform !== 'tv' && <TextField variant="search" containerClassName={styles.facetFind} leadingIcon="i-search" value={state.query}
+          aria-label={t('next.browse.find', {field: label.toLocaleLowerCase()})} placeholder={t('next.browse.find', {field: label.toLocaleLowerCase()})}
+          onChange={event => onSearchChange(field.id, event.target.value)}/>}
+        {state.status === 'loading' && <div role="status" className={styles.fieldNotice}>{t('next.browse.loadingValues')}</div>}
+        {state.status === 'error' && <div className={styles.fieldNotice} role="alert">{state.error}{onRetry && <Button variant="text" size="small" onClick={() => onRetry(field.id)}>{t('next.browse.retry')}</Button>}</div>}
+        {(state.status !== 'error' || state.values.length > 0) &&
+          <>{platform === 'tv' && state.hint && <p className={styles.facetHelp}>{state.hint}</p>}<FacetChips values={state.values} included={state.included} excluded={state.excluded} cycleExclusion={platform === 'phone' && canExclude}
+            trailing={platform === 'phone' && state.total !== undefined && state.total > state.values.length && onShowAll ? <Button variant="text" size="xs" className={styles.inlineMore} onClick={() => onShowAll(field.id)}>{state.moreLabel ?? t('next.browse.showAll', {count: state.total, field: label.toLocaleLowerCase()})}</Button> : undefined}
+            onValueChange={(value, selection) => change({kind: 'facet', value, selection: state.match === 'none' && selection === 'include' ? 'exclude' : selection})}/>
+            {state.status !== 'loading' && state.values.length === 0 && <span className={styles.fieldNotice}>{t('next.browse.noValues')}</span>}
+            {platform !== 'phone' && state.total !== undefined && state.total > state.values.length && onShowAll && <Button variant="text" size="xs" className={styles.showAll} onClick={() => onShowAll(field.id)}>
+              {state.moreLabel ?? t('next.browse.showAll', {count: state.total, field: label.toLocaleLowerCase()})}<Icon name="i-down" size={14}/></Button>}</>}
+        {platform === 'phone' && canExclude && <p className={styles.facetHelp}>{t('next.browse.facetHelp')}</p>}
+      </>}
+      {state.kind === 'toggle' && <Segmented variant={platform === 'phone' ? 'phone' : 'browse'} value={state.value === undefined ? 'any' : state.value ? 'yes' : 'no'}
+        items={[{value: 'any', label: t('next.browse.any')}, {value: 'yes', label: t('next.browse.yes')}, {value: 'no', label: t('next.browse.no')}]}
+        onValueChange={value => change({kind: 'toggle', value: value === 'any' ? undefined : value === 'yes'})}/>}
+      {(state.kind === 'choice' || state.kind === 'range') && <div className={styles.facetChips}>
+        <button type="button" className={styles.facetChip} data-selected={state.value === undefined || undefined} aria-pressed={state.value === undefined} onClick={() => change({kind: 'choice', value: undefined})}>{t('next.browse.any')}</button>
+        {state.options.map(option => <button type="button" className={styles.facetChip} data-selected={state.value === option.value || undefined} aria-pressed={state.value === option.value} key={option.value}
+          onClick={() => change({kind: 'choice', value: option.value === state.value ? undefined : option.value})}>{option.label}</button>)}
+      </div>}
+      {state.kind === 'text' && <TextField variant="field" value={state.value} label={label} placeholder={state.placeholder} onChange={event => change({kind: 'text', value: event.target.value})}/>}
+    </div>;
+  return <>{heading}{content}</>;
+}
 function DesktopField({label, summary, active, open, contentId, onOpenChange, children}: {label: string; summary?: ReactNode; active: boolean; open: boolean; contentId: string; onOpenChange: (open: boolean) => void; children: ReactNode}) {
   const tile = useRef<HTMLButtonElement>(null), [width, setWidth] = useState(360);
   return <div className={styles.collapsedField} data-active={active || undefined} data-open={open || undefined}>
