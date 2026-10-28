@@ -13,6 +13,8 @@ import {Artwork} from '../../kit/artwork';
 import {WindowedGrid} from '../../kit/layout';
 import {Skeleton} from '../../kit/states';
 import {Banner} from '../../kit/overlays';
+import {SearchResultStatus} from './SearchResultStatus';
+import {searchResultCount} from './result-status';
 import {SearchEmpty} from '../../kit/states/SearchEmpty';
 import {entryCard} from '../detail/model';
 import {dependsOn, titlesWithPersonalState} from '@core/freshness-hub.ts';
@@ -234,6 +236,7 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
       {compact && text.trim() && context.effects.openHome && <Button variant="text" size="small" className={styles.cancel}
         onClick={() => runScreenCommand(context, () => { context.effects.openHome?.(); })}>{t('action.cancel')}</Button>}
     </div>
+    <SearchResultStatus identity={`${snapshot.generation}:${text.trim()}:${group ?? ''}`} count={snapshot.phase === 'ready' && showing ? searchResultCount(groups) : undefined}/>
     {selection?.isActive() ? selection.toolbar : text.trim() && !(empty && !group) && <div className={styles.chips} role="group" aria-label={t('web.search.title')}>{SEARCH_CHIPS.map(value => {
       const capability = showing?.capabilities.groups.find(item => item.id === value.id), result = groups.find(item => item.id === value.id) ?? binding.summary().find(item => item.id === value.id);
       if (value.id !== 'all' && capability?.available === false) return null;

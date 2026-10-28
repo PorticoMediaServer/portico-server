@@ -10,7 +10,7 @@ function tests(directory) {
 }
 
 const result = spawnSync(process.execPath, [
-  '--experimental-transform-types', '--import', './test/register.mjs', '--test',
+  '--experimental-transform-types', '--import', './test/register.mjs', '--test', '--test-concurrency=2',
   ...tests('test'),
   ...['event-feed', 'freshness-hub', 'viewer-selection', 'route-connection'].map(name => `../packages/client-core/test/${name}.test.ts`),
 ], {stdio: 'inherit'});
