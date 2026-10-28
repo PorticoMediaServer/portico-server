@@ -210,7 +210,7 @@ func TestBackupPolicyDestinationSecretsAndSourceRotation(t *testing.T) {
 	snap, e := reopened.Snapshot(ctx)
 	assertDerivedSnapshot(t, snap, e, password)
 	// A source key rotation between database copy and file copy invalidates this run.
-	s.SetCopyScrubber(func(context.Context, string) error {
+	s.SetCopyScrubber(func(context.Context, *dbwork.Candidate) error {
 		return writeTestFile(filepath.Join(state, "Keys", "rotated.key"), []byte("new key"), 0600)
 	})
 	if _, e = s.Create(ctx, KindManual); !errors.Is(e, ErrIntegrity) {

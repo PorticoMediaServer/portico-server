@@ -27109,6 +27109,28 @@
               "reason": {
                 "type": "string"
               },
+              "recovery": {
+                "properties": {
+                  "damagedTables": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "indexesRebuilt": {
+                    "type": "boolean"
+                  },
+                  "removedRows": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "salvaged": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              },
               "schemaVersion": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -27158,6 +27180,28 @@
                       "integrity": {
                         "type": "string"
                       },
+                      "recovery": {
+                        "properties": {
+                          "damagedTables": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "indexesRebuilt": {
+                            "type": "boolean"
+                          },
+                          "removedRows": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "salvaged": {
+                            "type": "boolean"
+                          }
+                        },
+                        "type": "object"
+                      },
                       "schemaVersion": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -27202,12 +27246,16 @@
               "jobId": {
                 "type": "string"
               },
+              "kind": {
+                "type": "string"
+              },
               "phase": {
                 "type": "string"
               }
             },
             "required": [
               "jobId",
+              "kind",
               "phase",
               "bytesDone",
               "bytesTotal"
@@ -301382,6 +301430,28 @@
                         "reason": {
                           "type": "string"
                         },
+                        "recovery": {
+                          "properties": {
+                            "damagedTables": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "indexesRebuilt": {
+                              "type": "boolean"
+                            },
+                            "removedRows": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "salvaged": {
+                              "type": "boolean"
+                            }
+                          },
+                          "type": "object"
+                        },
                         "schemaVersion": {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
@@ -301431,6 +301501,28 @@
                                 "integrity": {
                                   "type": "string"
                                 },
+                                "recovery": {
+                                  "properties": {
+                                    "damagedTables": {
+                                      "items": {
+                                        "type": "string"
+                                      },
+                                      "type": "array"
+                                    },
+                                    "indexesRebuilt": {
+                                      "type": "boolean"
+                                    },
+                                    "removedRows": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "salvaged": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "type": "object"
+                                },
                                 "schemaVersion": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -301475,12 +301567,16 @@
                         "jobId": {
                           "type": "string"
                         },
+                        "kind": {
+                          "type": "string"
+                        },
                         "phase": {
                           "type": "string"
                         }
                       },
                       "required": [
                         "jobId",
+                        "kind",
                         "phase",
                         "bytesDone",
                         "bytesTotal"
