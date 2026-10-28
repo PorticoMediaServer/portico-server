@@ -309,6 +309,13 @@ func (s *Service) discRootObservation(ctx context.Context, source catalog.Librar
 	if relative == "" || relative == "." || source.Kind != "local" || !discRootOnPage(relative, page) {
 		return nil, nil
 	}
+	var kind string
+	if err := s.db.QueryRowContext(ctx, `SELECT kind FROM libraries WHERE id=?`, source.LibraryID).Scan(&kind); err != nil {
+		return nil, err
+	}
+	if !catalog.DiscFolderTitle(kind, source.Kind) {
+		return nil, nil
+	}
 	req := storage.InventoryRequest{Root: source.ResolvedPath, RelativePath: relative, RootIdentity: source.RootIdentity, FollowSymlinks: source.FollowSymlinks}
 	var v storage.Snapshot
 	var err error

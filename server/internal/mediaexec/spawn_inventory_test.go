@@ -29,7 +29,7 @@ var processSpawns = map[string]string{
 	"internal/storage/client.go:runWithStem":                                     "storage helper (server binary)",
 	"internal/storage/audio_tags.go:ReadAudioTags":                               "storage helper (server binary); reads tags with the server's own bounded reader, runs no tool",
 	"internal/storage/audio_cover.go:ReadAudioCover":                             "storage helper (server binary); reads the embedded picture with the server's own bounded reader, runs no tool",
-	"internal/storage/music_header.go:ReadScanAudioPrefix":                       "storage helper (server binary); reads at most one MiB from the admitted scan descriptor for the pure music header parser, runs no media tool",
+	"internal/storage/music_header.go:ReadScanPrefix":                            "storage helper (server binary); reads at most one MiB from the admitted scan descriptor for the pure music and container header parsers, runs no media tool",
 	"internal/storage/inventory_watch.go:WatchInventory":                         "storage helper (server binary) watching library folders for changes; opens no media",
 	"internal/storage/inventory_page.go:inventoryRequest":                        "storage helper (server binary)",
 	"internal/storage/disc_members.go:DiscMemberManifest":                        "storage helper (server binary) observing bounded disc member identities; runs no media tool",

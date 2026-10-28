@@ -114,7 +114,33 @@ func TestRealLocalAudioScanChaptersArtAndBookResume(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if state.Status == "complete" {
+			if state.Status == "complete" || state.Status == "complete_with_warnings" {
+				// Every non-file-list Music scan adds loudness and Sonic
+				// (musicLoudnessPolicy). This scanner has no deep-analysis
+				// worker, so each music file must warn exactly that and
+				// nothing else; any other library must finish clean.
+				rows, err := db.Query(`SELECT relative_path,reason FROM inventory_scan_issues WHERE job_id=? ORDER BY relative_path`, job.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var issues []string
+				for rows.Next() {
+					var path, reason string
+					if err = rows.Scan(&path, &reason); err != nil {
+						t.Fatal(err)
+					}
+					issues = append(issues, path+": "+reason)
+				}
+				if err = rows.Close(); err != nil {
+					t.Fatal(err)
+				}
+				var want []string
+				if kind == "music" {
+					want = []string{"Compilation/first.m4a: analysis_worker_unavailable", "Compilation/second.flac: analysis_worker_unavailable"}
+				}
+				if fmt.Sprint(issues) != fmt.Sprint(want) || (len(want) == 0) != (state.Status == "complete") {
+					t.Fatal(name, state.Status, issues)
+				}
 				catalogtest.New(t, db).Drain()
 				return lib
 			}
@@ -210,6 +236,10 @@ func TestRealLocalAudioScanChaptersArtAndBookResume(t *testing.T) {
 		t.Fatal("artist releases missing", albumProjection)
 	}
 
+	// Playback admission reads the person's stream limits from their account.
+	if _, err = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('owner','owner',x'00','profile',1)`); err != nil {
+		t.Fatal(err)
+	}
 	player := playback.New(db)
 	p := identity.Principal{Hash: "local-session", Viewer: identity.Viewer{AccountID: "owner", ProfileID: "profile", Role: "owner", Authority: "local"}}
 	first, err := player.Create(p, files[0].ID, "automatic", "first")

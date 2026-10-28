@@ -163,6 +163,10 @@ func TestRealMovieScanDiscoveryPaginationAndCollections(t *testing.T) {
 	if err != nil || len(filtered) != 10 || filtered[0].Year != 2009 {
 		t.Fatal(filtered, err)
 	}
+	// Playback admission reads the person's stream limits from their account.
+	if _, err = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('owner','owner',x'00','profile',1)`); err != nil {
+		t.Fatal(err)
+	}
 	player := playback.New(db)
 	p := identity.Principal{Hash: "session", Viewer: identity.Viewer{AccountID: "owner", ProfileID: "profile", Authority: "local", Role: "owner"}}
 	session, err := player.Create(p, first[0].ID, "automatic", "watch")

@@ -255,14 +255,13 @@ func (s *Service) commitInventoryPageTx(ctx context.Context, tx *sql.Tx, job str
 				pruneParent = true
 				// A title-bearing disc root belongs to the folder that holds
 				// BDMV or VIDEO_TS. The scan loop publishes that folder as one
-				// object after this page, if the host can admit a directory
-				// descriptor; otherwise the layout stays explicitly unsupported.
-				videoLibrary := libraryKind != "music" && libraryKind != "audiobook" && libraryKind != "book" && libraryKind != "comic"
-				if root := discs[0].Value.ParentPath; root != "" && root != "." && videoLibrary && source.Kind == "local" && storage.DirectoryDiscScanSupported() {
+				// object with this page, if DiscFolderTitle admits it; otherwise
+				// the layout stays explicitly unsupported.
+				if root := discs[0].Value.ParentPath; root != "" && root != "." && DiscFolderTitle(libraryKind, source.Kind) {
 					continue
 				}
 				reason := "unsupported_disc_layout"
-				if source.Kind == "remote" && videoLibrary {
+				if source.Kind == "remote" && videoLibrary(libraryKind) {
 					reason = "unsupported_remote_disc"
 				}
 				if _, e := s.observeInventoryTx(ctx, tx, job, source, child, v, reason, policy, movedOut); e != nil {
@@ -792,6 +791,18 @@ func (s *Service) commitInventoryDiscRootTx(ctx context.Context, tx *sql.Tx, job
 		return err
 	}
 	return nil
+}
+
+func videoLibrary(kind string) bool {
+	return kind != "music" && kind != "audiobook" && kind != "book" && kind != "comic"
+}
+
+// DiscFolderTitle reports whether a folder holding BDMV or VIDEO_TS becomes one
+// disc title: a local video folder, on a host that can mount an admitted
+// directory descriptor. Everywhere else the page records the layout as
+// unsupported, and the scan must not observe the folder as a second title.
+func DiscFolderTitle(libraryKind, sourceKind string) bool {
+	return videoLibrary(libraryKind) && sourceKind == "local" && storage.DirectoryDiscScanSupported()
 }
 
 // DiscStructureWitness is the object-evidence token for a folder disc: the

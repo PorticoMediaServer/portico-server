@@ -12,6 +12,7 @@ import (
 	"portico.local/server/internal/mediaanalysis"
 	"portico.local/server/internal/naming"
 	"portico.local/server/internal/persistence"
+	"portico.local/server/internal/storage"
 	"testing"
 	"time"
 )
@@ -155,11 +156,30 @@ func TestScanLoopExtrasBelongToOneTitleAndDiscsAreOneEntry(t *testing.T) {
 	if n := f.count(`SELECT count(*) FROM item_extras x JOIN catalog_entities e ON e.id=x.owner_id WHERE e.title='Alpha'`); n != 1 {
 		t.Fatal("loose trailer did not attach to its title")
 	}
-	if n := f.count(`SELECT count(*) FROM inventory_objects WHERE unsupported_reason='unsupported_disc_layout'`); n != 1 {
-		t.Fatal("disc folder was not one logical entry")
+	// A host that can mount a directory descriptor publishes the folder holding
+	// BDMV as one title; any other host keeps the layout explicitly unsupported.
+	disc, reason := "Disc Film (2002)", ""
+	if !storage.DirectoryDiscScanSupported() {
+		disc, reason = "Disc Film (2002)/BDMV", "unsupported_disc_layout"
+	}
+	if n := f.count(`SELECT count(*) FROM inventory_objects WHERE relative_path LIKE 'Disc Film (2002)%'`); n != 1 {
+		t.Fatalf("disc folder was not one logical entry: %d", n)
+	}
+	if n := f.count(`SELECT count(*) FROM inventory_objects WHERE relative_path=? AND unsupported_reason=?`, disc, reason); n != 1 {
+		t.Fatalf("disc entry is not %q with reason %q", disc, reason)
 	}
 	if n := f.count(`SELECT count(*) FROM inventory_objects WHERE relative_path LIKE '%STREAM%'`); n != 0 {
 		t.Fatal("disc streams became individual titles")
+	}
+}
+func TestScanLoopDiscFolderOutsideAVideoLibraryIsOneUnsupportedEntry(t *testing.T) {
+	f := newLoopFixture(t, "music", "Album/01.flac", "Concert (2002)/BDMV/STREAM/00001.m2ts")
+	f.finish(f.queue())
+	if n := f.count(`SELECT count(*) FROM inventory_objects WHERE relative_path LIKE 'Concert (2002)%'`); n != 1 {
+		t.Fatalf("disc folder was not one entry: %d", n)
+	}
+	if n := f.count(`SELECT count(*) FROM inventory_objects WHERE relative_path='Concert (2002)/BDMV' AND unsupported_reason='unsupported_disc_layout'`); n != 1 {
+		t.Fatal("disc layout in a music library was not recorded as unsupported")
 	}
 }
 func TestScanLoopToleratesDanglingAndEscapingLinks(t *testing.T) {

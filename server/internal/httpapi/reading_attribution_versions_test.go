@@ -67,7 +67,7 @@ func TestReadingPrivatePathPrimaryVersionAttribution(t *testing.T) {
 		author string
 	}{{firstAsset, "Author One"}, {secondAsset, "Author Two"}} {
 		var value string
-		if err := r.f.db.QueryRow(`SELECT text_value FROM reading_source_values WHERE item_id=? AND asset_id=? AND field='author' AND source='folder'`, entity, tc.asset).Scan(&value); err != nil || value != tc.author {
+		if err := r.f.db.QueryRow(`SELECT author FROM reading_path_head WHERE item_id=? AND asset_id=? AND author_source='folder'`, entity, tc.asset).Scan(&value); err != nil || value != tc.author {
 			t.Fatalf("version %d source fact: %q %v", tc.asset, value, err)
 		}
 	}
