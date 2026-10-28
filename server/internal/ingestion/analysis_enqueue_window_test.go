@@ -423,10 +423,12 @@ func TestAnalysisEnqueueRawWindowNeedsParity(t *testing.T) {
 	})
 }
 
-// The raw budget is 64 rows normally and 32 when a sonic fallback can run.
-// SonicCurrentTx is never called here: the objects already need analysis, so
-// the page must select the smaller window from policy + SonicCanAttempt alone.
-// A filtered raw row is still consumed but never currentness-checked or queued.
+// The raw budget is 64 rows normally and 32 whenever the policy configures
+// sonic, whether or not the runtime is currently available. The page's window
+// decision reads the policy only; availability is checked per row, because a
+// concurrent RetrySonic can install a new runtime after the writer is released
+// and before this page reaches its loop. A filtered raw row is still consumed
+// but never currentness-checked or queued.
 func TestAnalysisEnqueueSonicWindowSelection(t *testing.T) {
 	t.Run("non-sonic uses the raw window", func(t *testing.T) {
 		files := make([]string, 40)
@@ -443,6 +445,40 @@ func TestAnalysisEnqueueSonicWindowSelection(t *testing.T) {
 		}
 		if got := f.queued(job.ID); len(got) != 40 {
 			t.Fatalf("queued=%d, want 40", len(got))
+		}
+	})
+
+	t.Run("configured sonic with an unavailable runtime keeps 32", func(t *testing.T) {
+		files := make([]string, 41)
+		for i := range files {
+			files[i] = fmt.Sprintf("Film %03d (2000).mkv", i)
+		}
+		f := newLoopFixture(t, "movie", files...)
+		f.finish(f.queue())
+		f.exec(`UPDATE library_scan_policies SET tier='custom',operations_json='["probe","sonic"]' WHERE library_id=?`, f.library)
+		ids := objectIDs(t, f.db, f.source)
+		f.exec(`UPDATE inventory_objects SET state='missing' WHERE id=?`, ids[0])
+		// The fixture's service has no sonic runtime installed, while the policy
+		// configures sonic. That is the state RetrySonic leaves between its
+		// committed refresh and its runtime swap, so the page must still take the
+		// 32-row ceiling: a 64-row page would multiply the 4097-track binding
+		// read by rows that can start currentness-checking mid-page.
+		if f.s.DeepAnalysis.SonicCanAttempt() {
+			t.Fatal("fixture unexpectedly has an attemptable sonic runtime")
+		}
+		job := f.analysisOnlyJob()
+		phases, cursors := f.runEnqueue(t, job, 5)
+		if len(phases) != 2 {
+			t.Fatalf("pages=%d phases=%v, want two 32-row pages", len(phases), phases)
+		}
+		if phases[0] != "analysis_enqueue" || cursors[0] != ids[31] {
+			t.Fatalf("first page phase=%s cursor=%q, want 32 raw ids consumed", phases[0], cursors[0])
+		}
+		if phases[1] != "basic_pending" {
+			t.Fatalf("second page phase=%s", phases[1])
+		}
+		if got := f.queued(job.ID); len(got) != 40 {
+			t.Fatalf("queued=%d, want 40 eligible rows", len(got))
 		}
 	})
 
@@ -479,6 +515,35 @@ func TestAnalysisEnqueueSonicWindowSelection(t *testing.T) {
 			if id == ids[0] {
 				t.Fatal("a filtered row entered the queue")
 			}
+		}
+	})
+
+	t.Run("a settled row is currentness-checked once a runtime is installed", func(t *testing.T) {
+		// A settled row reaches the currentness check only when the policy allows
+		// sonic and the runtime can be attempted at that row. With no runtime the
+		// page must leave the row alone; after a RetrySonic-style swap the same
+		// settled row must be SonicCurrentTx'd and queued. That is the dynamic
+		// check the page may not cache once per page.
+		f := newLoopFixture(t, "movie", "One (2000).mkv", "Two (2001).mkv", "Three (2002).mkv")
+		f.finish(f.queue())
+		f.exec(`UPDATE library_scan_policies SET tier='custom',operations_json='["probe","sonic"]' WHERE library_id=?`, f.library)
+		f.markObjectsSettled([]string{"probe", "sonic", assets.PlaybackAnalysisRevision})
+		ids := objectIDs(t, f.db, f.source)
+		job := f.analysisOnlyJob()
+		if f.s.DeepAnalysis.SonicCanAttempt() {
+			t.Fatal("fixture unexpectedly has an attemptable sonic runtime")
+		}
+		if _, _ = f.runEnqueue(t, job, 2); len(f.queued(job.ID)) != 0 {
+			t.Fatalf("settled rows queued without a sonic runtime: %v", f.queued(job.ID))
+		}
+
+		// Same source, same settled rows, same policy; only the installed runtime
+		// changes, as RetrySonic's swap does. Every row must now be re-checked.
+		f.s.DeepAnalysis = newSonicCapableAnalysis(t, f.db)
+		f.exec(`UPDATE inventory_runs SET phase='analysis_enqueue',reconcile_cursor='' WHERE job_id=?`, job.ID)
+		f.runEnqueue(t, job, 2)
+		if got := f.queued(job.ID); !equalIDs(got, ids) {
+			t.Fatalf("queued=%v, want every settled row queued once the runtime is current %v", got, ids)
 		}
 	})
 }
@@ -554,4 +619,98 @@ func TestAnalysisEnqueueSidecarFenceAndFileListOnlyPaths(t *testing.T) {
 			t.Fatalf("file-list-only status=%s", state.Status)
 		}
 	})
+}
+
+// explainIssued asks SQLite for the plan of a statement the page actually
+// issued. The statement text comes from the run's own trace, so the plan cannot
+// drift away from production SQL. SQLite chooses a plan at prepare time from the
+// schema and statistics, before any parameter is bound, so placeholder binds are
+// the same plan the page got; the real values are exercised by the behavioural
+// regressions above.
+func explainIssued(t *testing.T, db *sql.DB, query string) string {
+	t.Helper()
+	args := make([]any, strings.Count(query, "?"))
+	rows, err := db.QueryContext(context.Background(), "EXPLAIN QUERY PLAN "+query, args...)
+	if err != nil {
+		t.Fatalf("explain issued statement: %v\n%s", err, query)
+	}
+	defer rows.Close()
+	lines := []string{}
+	for rows.Next() {
+		var id, parent, unused int
+		var detail string
+		if err = rows.Scan(&id, &parent, &unused, &detail); err != nil {
+			t.Fatal(err)
+		}
+		lines = append(lines, detail)
+	}
+	if err = rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return strings.Join(lines, " | ")
+}
+
+// The two statements the page issues are both bounded reads over the source's
+// own index: the raw window is a single range seek, and the needs statement
+// reaches inventory_objects only by id for the window's ids. Neither may become
+// a walk of the source or of the object table as the library grows.
+func TestAnalysisEnqueueWindowStatementsAreBounded(t *testing.T) {
+	files := make([]string, 300)
+	for i := range files {
+		files[i] = fmt.Sprintf("Film %03d (2000).mkv", i)
+	}
+	f := newLoopFixture(t, "movie", files...)
+	f.finish(f.queue())
+	f.exec(`UPDATE library_scan_policies SET tier='basic',operations_json='["probe","local_metadata"]' WHERE library_id=?`, f.library)
+	job := f.analysisOnlyJob()
+
+	ctx, trace := dbwork.TraceQueryPlans(context.Background())
+	if err := f.s.enqueueAnalysisPage(ctx, job.ID, f.librarySource()); err != nil {
+		t.Fatal(err)
+	}
+	raw, needs := "", ""
+	rawCount, needsCount := 0, 0
+	for _, query := range trace() {
+		switch {
+		case strings.HasPrefix(query, "SELECT o.id,o.revision FROM inventory_objects o INDEXED BY inventory_objects_source"):
+			raw, rawCount = query, rawCount+1
+		case strings.HasPrefix(query, "WITH batch AS MATERIALIZED ( SELECT o.* FROM inventory_objects o JOIN inventory_runs r ON"):
+			needs, needsCount = query, needsCount+1
+		}
+	}
+	if rawCount != 1 || needsCount != 1 {
+		t.Fatalf("raw-window statements=%d needs statements=%d, want exactly one of each", rawCount, needsCount)
+	}
+
+	// The window is one ordered range on (source_id, retired, id): the index
+	// supplies both the bound and the order.
+	rawPlan := explainIssued(t, f.db, raw)
+	if !strings.Contains(rawPlan, "SEARCH o USING INDEX inventory_objects_source (source_id=? AND retired=? AND id>?)") {
+		t.Fatalf("raw window is not an index range seek: %s", rawPlan)
+	}
+	if strings.Contains(rawPlan, "SCAN") || strings.Contains(rawPlan, "TEMP B-TREE") {
+		t.Fatalf("raw window walks or sorts instead of seeking: %s", rawPlan)
+	}
+
+	// The needs statement must stay restricted to the window ids: it may not
+	// carry the old cursor range, which is what made it a source walk.
+	if !strings.Contains(needs, "o.id IN (SELECT value FROM json_each(?))") || strings.Contains(needs, "o.id>r.reconcile_cursor") {
+		t.Fatalf("needs statement is not restricted to the window id set: %s", needs)
+	}
+	needsPlan := explainIssued(t, f.db, needs)
+	pointSet := "SEARCH o USING INDEX inventory_objects_source (source_id=? AND retired=? AND id=?)"
+	if !strings.Contains(needsPlan, pointSet) {
+		t.Fatalf("needs statement does not reach the source by id: %s", needsPlan)
+	}
+	if strings.Contains(needsPlan, "SCAN inventory_objects") || strings.Contains(needsPlan, "SCAN o USING INDEX inventory_objects_source") {
+		t.Fatalf("needs statement scans the object table: %s", needsPlan)
+	}
+	// Exactly one unindexed walk remains and it is the MATERIALIZED batch of at
+	// most 64 rows, which the plan reaches only after the base-table point read.
+	if strings.Count(needsPlan, "SCAN o") != 1 || strings.Index(needsPlan, "SCAN o") < strings.Index(needsPlan, pointSet) {
+		t.Fatalf("needs statement walks the source instead of the bounded batch: %s", needsPlan)
+	}
+	if !strings.Contains(needsPlan, "MATERIALIZE batch") {
+		t.Fatalf("bounded window batch is not materialized once: %s", needsPlan)
+	}
 }

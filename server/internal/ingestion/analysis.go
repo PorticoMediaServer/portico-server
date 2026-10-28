@@ -27,10 +27,12 @@ import (
 // One analysis-enqueue page holds the single SQLite writer for its whole
 // duration. The page is a bounded raw window over the source's existing
 // (source_id, retired, id) index, so a run of rows another phase ruled out
-// cannot hide unbounded work behind a LIMIT. A policy with an active sonic
-// fallback keeps the smaller window: one such row can run SonicCurrentTx, whose
-// inner binding read is already bounded at 4097 track rows, and that inner work
-// must not be multiplied by a larger outer page.
+// cannot hide unbounded work behind a LIMIT. A policy that configures sonic
+// keeps the smaller window: any row of such a page can run SonicCurrentTx,
+// whose inner binding read is already bounded at 4097 track rows, and that
+// inner work must not be multiplied by a larger outer page. The selection uses
+// the policy alone: the runtime's availability is checked per row, because it
+// can change while a page is being built.
 const (
 	analysisEnqueueRawPageSize   = 64
 	analysisEnqueueSonicPageSize = 32
@@ -90,9 +92,14 @@ func (s *Service) enqueueAnalysisPage(ctx context.Context, job string, source ca
 		required = switches.Filter(required)
 	}
 	requiredJSON, _ := json.Marshal(required)
-	sonicFallback := policy.Allows(catalog.SonicOperation) && s.DeepAnalysis.SonicCanAttempt()
+	// The configured policy decides the window, not the runtime's current
+	// availability. RetrySonic commits its refresh and releases the writer
+	// before it swaps the runtime (sonic_retry.go), so a page can start while
+	// an unavailable runtime is still installed and see the new one mid-page;
+	// caching availability here would skip SonicCurrentTx for the rest of the
+	// page. The check below stays per row, exactly as the 32-row page had it.
 	rawPageSize := analysisEnqueueRawPageSize
-	if sonicFallback {
+	if policy.Allows(catalog.SonicOperation) {
 		rawPageSize = analysisEnqueueSonicPageSize
 	}
 	var cursor string
@@ -168,7 +175,9 @@ func (s *Service) enqueueAnalysisPage(ctx context.Context, job string, source ca
 		}
 	}
 	for _, o := range batch {
-		if !o.needs && sonicFallback {
+		// Availability is re-read for every row: the runtime can be swapped by a
+		// concurrent RetrySonic while this page holds its window open.
+		if !o.needs && policy.Allows(catalog.SonicOperation) && s.DeepAnalysis.SonicCanAttempt() {
 			current, e := s.DeepAnalysis.SonicCurrentTx(ctx, tx, mediaanalysis.Request{JobID: job, ObjectID: o.id, SourceRevision: o.revision, PolicyRevision: policy.Revision})
 			if e != nil {
 				return e
