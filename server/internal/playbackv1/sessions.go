@@ -109,6 +109,7 @@ type Change struct {
 	Subtitles        *SubtitleRequest `json:"subtitles,omitempty"`
 	Quality          *Quality         `json:"quality,omitempty"`
 	Seek             *SeekRequest     `json:"seek,omitempty"`
+	SubtitleOffsetUS *string          `json:"subtitleOffsetUs,omitempty"`
 	SubtitleOffsetMs *int64           `json:"subtitleOffsetMs,omitempty"`
 	// PositionMs is where the player is now. A change that starts a new
 	// presentation starts it there; without it the last reported position is
@@ -190,6 +191,7 @@ type Lease struct {
 	ReportEveryMs int    `json:"reportEveryMs"`
 }
 type Presentation struct {
+	ChoiceRevision int `json:"choiceRevision,omitempty"`
 	// SeekID names the latest accepted seek of this session (VOD).
 	SeekID     string `json:"seekId,omitempty"`
 	Generation int    `json:"generation"`
@@ -391,6 +393,7 @@ type storedRequest struct {
 	Quality          Quality          `json:"quality"`
 	Audio            *AudioRequest    `json:"audio,omitempty"`
 	Subtitles        *SubtitleRequest `json:"subtitles,omitempty"`
+	SubtitleOffsetUS string           `json:"subtitleOffsetUs,omitempty"`
 	SubtitleOffsetMs int64            `json:"subtitleOffsetMs,omitempty"`
 	Network          string           `json:"network,omitempty"`
 	// Carry is the audio and subtitle choice this playback carries from the
@@ -512,6 +515,7 @@ func (s *Service) view(r row) SessionView {
 		v.Presentation.Subtitles = []SubtitleFile{}
 	}
 	v.Presentation.Generation = r.generation
+	v.Presentation.ChoiceRevision = r.choiceRevision()
 	if isChannel(r) {
 		v.Presentation = s.channelPresentation(r)
 	} else {
@@ -638,8 +642,10 @@ type presentationTarget struct {
 	subtitleOp string
 	// privateFor makes a private presentation (§18.2) of the given media
 	// session's prepared next item, until privateUntilMs.
-	privateFor     string
-	privateUntilMs int64
+	subtitleOffsetUS string
+	airPlay          bool
+	privateFor       string
+	privateUntilMs   int64
 	// throughputKbps is the connection estimate the request carried (0: none).
 	// Automatic changes only when the client asks for a step.
 	throughputKbps int
@@ -740,6 +746,13 @@ func resourceByID(resources []subtitles.Resource, id string) *subtitles.Resource
 	return nil
 }
 
+func firstOffset(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
+}
+
 // present creates a presentation (a playback_sessions row with its own grant)
 // and returns it with its view. It does not wait for production.
 //
@@ -767,7 +780,7 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 	if !video && request.Quality.Mode == QualityFixed || video && request.Quality.Mode == QualityCD {
 		return playback.Session{}, Presentation{}, &FieldError{Path: "quality"}
 	}
-	base := playback.V1Choice{AdminMaxVideoBitrateBPS: c.AdminMaxVideoBitrateBPS, Remote: c.Remote, PrivateFor: t.privateFor, PrivateUntilMs: t.privateUntilMs, PendingActivation: t.pendingActivation, UseStoredResume: t.useStoredResume && request.DiscTitle == nil, DiscTitle: discTitle}
+	base := playback.V1Choice{AdminMaxVideoBitrateBPS: c.AdminMaxVideoBitrateBPS, Remote: c.Remote, AirPlay: t.airPlay, PrivateFor: t.privateFor, PrivateUntilMs: t.privateUntilMs, PendingActivation: t.pendingActivation, UseStoredResume: t.useStoredResume && request.DiscTitle == nil, DiscTitle: discTitle}
 	request.Quality.apply(&base)
 	version := t.version
 	if t.disc == nil && version == "" && video && t.part == 0 {
@@ -829,6 +842,10 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 	// (the .ass with its fonts, the .sup, the .idx and .sub, the DVB packets),
 	// so an engine that draws the kind needs no burn-in beside a stream either.
 	choice.SubtitleBesideStream = chosen != nil && subtitles.RenderingFormat(chosen.Format) != "text"
+	if t.airPlay && chosen != nil && subtitle != nil && subtitle.Delivery == "burn" {
+		choice.SubtitleKind = playback.SubtitleBurnAlways
+		choice.SubtitleBesideStream = false
+	}
 
 	// Quality against the connection the client measured.
 	if t.throughputKbps > 0 && video && asset != "" && request.Quality.Mode != QualityAutomatic {
@@ -892,7 +909,7 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 	// A burn-in chosen with the start re-plans what was just planned, under the
 	// same admission.
 	admitted := playback.WithReplanCeilings(ctx, playback.ReplanCeilings{Remote: choice.Remote, MaxVideoBitrateBPS: choice.AdminMaxVideoBitrateBPS})
-	result, err := s.applySubtitles(admitted, c.Principal, t.item, media.ID, subtitle, request.SubtitleOffsetMs, t.startMs, t.subtitleOp, draws)
+	result, err := s.applySubtitles(admitted, c.Principal, t.item, media.ID, subtitle, request.SubtitleOffsetMs, t.startMs, t.subtitleOp, draws, firstOffset(t.subtitleOffsetUS, request.SubtitleOffsetUS))
 	if err != nil && request.Subtitles == nil {
 		// A carried choice that cannot be applied to this file is not the
 		// viewer's request: the title plays without it.
@@ -1575,6 +1592,9 @@ func (s *Service) endTxRaw(ctx context.Context, tx *sql.Tx, r row, now time.Time
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return nil
+	}
+	if err = s.retireAirPlayTx(ctx, tx, r.id); err != nil {
+		return err
 	}
 	r.ended, r.endReason, r.message, r.revision = now.UnixMilli(), reason, message, r.revision+1
 	if err = dbwork.AfterCommit(tx, func() { s.observations().retire(r.id) }); err != nil {

@@ -825,6 +825,7 @@ var routeLanes = map[string]string{
 	"POST /v1/playback/controls/{id}:stop":                                        "security-fence",
 	"POST /v1/playback/sessions":                                                  "playback",
 	"POST /v1/playback/sessions/{id}/observer":                                    "playback",
+	"POST /v1/playback/sessions/{id}/receivers/airplay":                           "playback",
 	"POST /v1/playlists":                                                          "default",
 	"POST /v1/playlists/{id}/entries":                                             "default",
 	"POST /v1/prepared-versions/{id}/delete":                                      "default",

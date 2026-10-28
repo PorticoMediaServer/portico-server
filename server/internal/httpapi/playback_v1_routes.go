@@ -500,6 +500,11 @@ func setSessionHeaders(ctx context.Context, v playbackv1.SessionView) {
 func registerPlaybackV1Sessions(r *apikit.Registry, d Dependencies) {
 	observationRate := newObservationLimiter()
 	sessionErrors := []string{"invalid_request", "unauthorized", "not_found", "session_ended", "revision_required", "revision_mismatch"}
+	v1Route(r, apikit.Metadata{Audience: apikit.Clients, Admission: lanePlayback, ID: "prepare_airplay_receiver", Method: "POST", Path: "/v1/playback/sessions/{id}/receivers/airplay", Summary: "Prepare the current choices as native HLS before wireless handoff", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 1024, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "session_ended", "revision_mismatch", "conversion_capacity", "transcode_not_allowed", "unsupported_media"}},
+		func(ctx context.Context, q *http.Request, in playbackv1.AirPlayPrepare) (playbackv1.AirPlayPresentation, error) {
+			return d.playbackV1().PrepareAirPlay(ctx, d.v1ServiceCaller(q, callerFrom(ctx)), q.PathValue("id"), in)
+		})
+
 	v1Route(r, apikit.Metadata{Audience: apikit.Clients, Admission: lanePlayback, ID: "start_playback_session", Method: "POST", Path: "/v1/playback/sessions", Summary: "Start playback (201), or report that it is being prepared (202)",
 		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 8 << 10, Status: 201, SuccessStatuses: []int{202},
 		Errors: []string{"invalid_request", "unauthorized", "not_found", "idempotency_key_required", "idempotency_key_reused", "stream_limit_reached", "conversion_capacity", "transcode_not_allowed", "source_unavailable", "unsupported_media", "connection_too_slow", "feature_restricted", "no_tuner_available", "queue_building"}},

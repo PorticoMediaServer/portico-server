@@ -782,6 +782,7 @@ export const routePaths = {
   "post_v1_items_itemId_subtitles_refresh": "/v1/items/{itemId}/subtitles/refresh",
   "post_v1_items_itemId_subtitles_remote": "/v1/items/{itemId}/subtitles/remote",
   "post_v1_items_itemId_subtitles_search": "/v1/items/{itemId}/subtitles/search",
+  "prepare_airplay_receiver": "/v1/playback/sessions/{id}/receivers/airplay",
   "prepare_disc_title": "/v1/items/{id}/disc-titles/prepare",
   "prepare_queue_next": "/v1/queues/{id}:prepare-next",
   "preview_delete_title_version": "/v1/admin/items/{id}/files/{fileId}/delete/preview",

@@ -42,6 +42,7 @@ import {listeningDiagnostic, type ListeningEffectsPort} from './listening-effect
 import type {DiscTitleRef, Session} from '@core/playback-v1/types.ts';
 import type {QueueSessionTransport} from '@core/playback-v1/v1-queue-player.ts';
 import {QueueSelectionRegistrations, type QueueSelectionRegistration} from '@core/playback-v1/selection-registration.ts';
+import type {AirPlaySource} from './airplay.ts';
 import {WebMediaPlayer, type HlsModule, type SubtitleTimeline, type VideoLike, type WebPlayerNotice, type WebPlayerTimers, type WebMediaPlayerOptions} from './web-media-player.ts';
 import type {WebPreparingStarts, WebStartRegistration} from './preparing-start';
 
@@ -53,6 +54,7 @@ export type PlaybackMediaPort = MediaPlayer & {
   /** Actual decoder frame command only. At execution the adapter must recheck its private
    * loaded entry/lifetime as well as this public generation, which can repeat across sessions.
    * Native readiness belongs to the adapter; ordinary observations supply the resulting clock. */
+  setAirPlaySource?(source: AirPlaySource | null): void;
   stepFrame?(direction: -1 | 1, generation: number): void | Promise<void>;
   /** Validated session/processing input. Native adapters serialize commands and fence by session+generation. */
   applyAudioEffects?(snapshot: PlaybackSnapshot): void;
@@ -187,6 +189,8 @@ export class PlayerSlot implements MediaPlayer {
     return () => { this.notices.delete(listener); };
   }
   dispose(): void { this.unmount(); this.listeners.clear(); this.notices.clear(); }
+
+  setAirPlaySource(source: AirPlaySource | null): void {if (!this.held) this.real?.setAirPlaySource?.(source);}
 
   get settling(): boolean { return !!this.real && !this.held && this.real.settling; }
   applyAudioEffects(snapshot: PlaybackSnapshot): void { this.real?.applyAudioEffects?.(snapshot); }

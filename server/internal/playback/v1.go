@@ -19,6 +19,8 @@ import (
 // their saved default for where the request comes from); the owner's ceilings,
 // the member's remote cap and the upload budget always narrow it.
 type V1Choice struct {
+	// AirPlay plans a separately owned native HLS rendition, never the page renderer.
+	AirPlay bool
 	// Process-private original POST borrow. Only Media's preparation factory
 	// can supply it; it is neither a wire choice nor a recoverable row proof.
 	discBorrow *discPlayBorrow
@@ -240,6 +242,10 @@ func (s *Service) ReadyWithin(ctx context.Context, out Session, d time.Duration)
 // StopV1 ends one presentation for the v1 layer, which has already decided who
 // may stop it (the session's device, an admin, a lease expiry, a transfer
 // commit). The grant is refused from the next media request on (invariant 4).
+// StopFencedV1 releases production after its media row was already stopped in the
+// caller's transaction. Commit callbacks must not acquire the writer gate again.
+func (s *Service) StopFencedV1(id string) { s.stopHLS(id) }
+
 func (s *Service) StopV1(ctx context.Context, id string) error {
 	gated, err := dbwork.Begin(ctx, s.db, dbwork.ClassEstablishedPlayback)
 	if err != nil {

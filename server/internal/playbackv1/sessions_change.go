@@ -13,6 +13,7 @@ import (
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/playback"
+	"portico.local/server/internal/subtitles"
 	"portico.local/server/internal/supervise"
 )
 
@@ -71,6 +72,14 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 	if change.PositionMs != nil && (*change.PositionMs < 0 || *change.PositionMs > maxStartPositionMs) {
 		return SessionView{}, &FieldError{Path: "positionMs"}
 	}
+	if change.SubtitleOffsetUS != nil {
+		if change.SubtitleOffsetMs != nil {
+			return SessionView{}, &FieldError{Path: "subtitleOffsetUs"}
+		}
+		if _, err := subtitles.Offset(*change.SubtitleOffsetUS); err != nil {
+			return SessionView{}, &FieldError{Path: "subtitleOffsetUs"}
+		}
+	}
 	if change.ThroughputKbps != nil && (*change.ThroughputKbps < 0 || *change.ThroughputKbps > 10_000_000) {
 		return SessionView{}, &FieldError{Path: "throughputKbps"}
 	}
@@ -108,7 +117,7 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 		c.Principal.Hash, c.DeviceID = hash, r.device
 		c.Remote = r.location == "remote" || r.location == "cellular"
 	}
-	if change.Subtitles != nil || change.SubtitleOffsetMs != nil {
+	if change.Subtitles != nil || change.SubtitleOffsetMs != nil || change.SubtitleOffsetUS != nil {
 		if view, private, err := s.privateSubtitlePatch(ctx, c, r, change); private || err != nil {
 			return view, discStartError(err)
 		}
@@ -177,8 +186,14 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 			bytes = true
 		}
 	}
+	if change.Subtitles != nil || change.SubtitleOffsetMs != nil {
+		next.SubtitleOffsetUS = ""
+	}
 	if change.SubtitleOffsetMs != nil {
 		next.SubtitleOffsetMs = *change.SubtitleOffsetMs
+	}
+	if change.SubtitleOffsetUS != nil {
+		next.SubtitleOffsetUS = *change.SubtitleOffsetUS
 	}
 	oldMediaGeneration := r.mediaGeneration
 	rMediaBefore := r.media
@@ -265,13 +280,13 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 		if plan, _ := s.Playback.SessionPlan(ctx, newMedia.ID); plan != nil {
 			next.VersionID = plan.SourceID
 		}
-	case change.Subtitles != nil || change.SubtitleOffsetMs != nil:
+	case change.Subtitles != nil || change.SubtitleOffsetMs != nil || change.SubtitleOffsetUS != nil:
 		// A sidecar switch keeps the bytes and the generation.
 		current, err := c.replanContext(ctx, r.id)
 		if err != nil {
 			return SessionView{}, err
 		}
-		result, err := s.applySubtitles(current, c.Principal, r.item, r.media, next.Subtitles, next.SubtitleOffsetMs, position, "v1-"+r.id+"-r"+strconv.Itoa(r.revision+1), false)
+		result, err := s.applySubtitles(current, c.Principal, r.item, r.media, next.Subtitles, next.SubtitleOffsetMs, position, "v1-"+r.id+"-r"+strconv.Itoa(r.revision+1), false, next.SubtitleOffsetUS)
 		if err != nil {
 			return SessionView{}, err
 		}
@@ -294,6 +309,9 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 		restartConversion = true
 		presentation.StartPositionMs = position
 		generation = r.generation + 1
+	}
+	if bytes || change.Subtitles != nil || change.SubtitleOffsetMs != nil || change.SubtitleOffsetUS != nil {
+		presentation.ChoiceRevision = r.choiceRevision() + 1
 	}
 	state := r.state
 	if change.State != "" && state != "preparing" {

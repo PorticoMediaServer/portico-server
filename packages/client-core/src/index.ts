@@ -1481,6 +1481,10 @@ export class PlaybackService {
     const itemId=this.snapshot.itemId,session=this.snapshot.session;
     if(!itemId||!session||this.snapshot.channel||this.lastPlay?.local||!this.queue?.changePlayback)return Promise.resolve();
     const {replan: _replan, ...remembered}=choices;
+    if (choices.subtitleTrackId !== undefined && choices.subtitleDelivery === undefined && this.lastPlay?.choices) {
+      const {subtitleDelivery: _oldDelivery, subtitleOffsetUs: _oldExactOffset, ...previous} = this.lastPlay.choices;
+      this.lastPlay = {...this.lastPlay, choices: previous};
+    }
     this.lastPlay={...(this.lastPlay?.itemId===itemId?this.lastPlay:{itemId}),choices:{...(this.lastPlay?.itemId===itemId?this.lastPlay.choices:undefined),...remembered}};
     return this.queue.changePlayback(choices);
   }

@@ -303,6 +303,13 @@ func (s *Service) planInputsTx(ctx context.Context, tx *sql.Tx, p identity.Princ
 		// over the ceiling is converted like any other file.
 		input.Target = narrowMemberTarget(input.Target, ceiling)
 	}
+	if v1.AirPlay {
+		input.Device = nil
+		input.Client = BaselineClientProfile()
+		input.Client.Transports = []ClientTransport{{Transport: TransportHLSTS, Containers: []string{"mpegts"}, Video: []string{"h264"}, Audio: []string{"aac"}}}
+		input.Client.SubtitleRendering = []string{SubtitleText}
+		input.Engine = EngineNative
+	}
 	return planInputs{input: input, cfg: cfg, values: values, ownerTranscoding: ownerTranscoding}, nil
 }
 
@@ -506,6 +513,10 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 	delivery, e := planDelivery(inputs.input)
 	if e != nil {
 		return Session{}, e
+	}
+	delivery.AirPlay = v1.AirPlay
+	if v1.AirPlay {
+		delivery.Renditions = nil
 	}
 	{
 		target := inputs.input.Target

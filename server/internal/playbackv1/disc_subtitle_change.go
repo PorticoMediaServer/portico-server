@@ -133,6 +133,7 @@ func (a *privateSubtitleAcceptance) AcceptTx(ctx context.Context, tx *sql.Tx, pl
 	view := r.presentationView()
 	result := subtitlePlanResult(plan, subtitleResult{files: []SubtitleFile{}})
 	view.Subtitles, view.Subtitle = result.files, result.shown
+	view.ChoiceRevision = r.choiceRevision() + 1
 	position := r.position
 	if a.change.PositionMs != nil {
 		position = *a.change.PositionMs
@@ -226,6 +227,12 @@ func (s *Service) privateSubtitlePatch(ctx context.Context, c Caller, r row, cha
 	if change.Subtitles != nil {
 		a.next.Subtitles = change.Subtitles
 	}
+	if change.Subtitles != nil || change.SubtitleOffsetMs != nil {
+		a.next.SubtitleOffsetUS = ""
+	}
+	if change.SubtitleOffsetUS != nil {
+		a.next.SubtitleOffsetUS = *change.SubtitleOffsetUS
+	}
 	if change.SubtitleOffsetMs != nil {
 		a.next.SubtitleOffsetMs = *change.SubtitleOffsetMs
 	}
@@ -269,6 +276,9 @@ func (s *Service) privateSubtitlePatch(ctx context.Context, c Caller, r row, cha
 		}
 		m.Mode, m.ResourceID, m.ResourceRevision = "track", chosen.ID, chosen.Revision
 		m.OffsetUS = strconv.FormatInt(a.next.SubtitleOffsetMs*1000, 10)
+		if a.next.SubtitleOffsetUS != "" {
+			m.OffsetUS = a.next.SubtitleOffsetUS
+		}
 	}
 	if _, err = s.Subtitles.SelectAccepting(current, c.Principal, r.item, r.media, m, a); err != nil {
 		return SessionView{}, true, err

@@ -4220,6 +4220,24 @@ CREATE TABLE artwork_compaction_failures(
  digest TEXT PRIMARY KEY REFERENCES artwork_sources(digest) ON DELETE CASCADE,
  reason TEXT NOT NULL,
  failed_at TEXT NOT NULL) WITHOUT ROWID, STRICT;
+-- One prepared receiver belongs to the exact live generation and current choices.
+CREATE TABLE playback_airplay_presentations(
+ session_id TEXT PRIMARY KEY REFERENCES playback_v1_sessions(id) ON DELETE CASCADE,
+ generation INTEGER NOT NULL,
+ choice_revision INTEGER NOT NULL,
+ media_session_id TEXT NOT NULL UNIQUE REFERENCES playback_sessions(id) ON DELETE CASCADE,
+ media_generation INTEGER NOT NULL,
+ presentation TEXT NOT NULL,
+ created_ms INTEGER NOT NULL
+) WITHOUT ROWID, STRICT;
+CREATE TRIGGER playback_airplay_renew AFTER UPDATE OF lease_expires_ms ON playback_v1_sessions
+WHEN NEW.ended_ms=0 AND NEW.lease_expires_ms>OLD.lease_expires_ms
+BEGIN
+ UPDATE playback_sessions SET expires_at=strftime('%Y-%m-%dT%H:%M:%SZ',NEW.lease_expires_ms/1000,'unixepoch')
+ WHERE id=(SELECT media_session_id FROM playback_airplay_presentations WHERE session_id=NEW.id);
+ UPDATE playback_private_presentations SET expires_ms=NEW.lease_expires_ms
+ WHERE session_id=(SELECT media_session_id FROM playback_airplay_presentations WHERE session_id=NEW.id);
+END;
 CREATE TABLE playback_private_presentations(
  session_id TEXT PRIMARY KEY REFERENCES playback_sessions(id) ON DELETE CASCADE,
  owner_session_id TEXT NOT NULL,
