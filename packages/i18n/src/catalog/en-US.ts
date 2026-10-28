@@ -989,7 +989,7 @@ export const enUS = {
   'profile.changePicture': 'Change picture…',
   'profile.removePicture': 'Remove picture',
   'profile.forgetDevices': 'Forget remembered devices',
-  'profile.pictureRejected': 'Choose a JPEG, PNG or WebP picture.',
+  'profile.pictureRejected': 'Choose a JPEG or PNG picture.',
   'profile.rename': 'Rename…',
   'profile.renameTitle': 'Rename {name}',
   'profile.setPin': 'Set a PIN…',
