@@ -1,5 +1,6 @@
 /** collections.html 34–36, desktop-app.html f7 and their drawn state frames. */
 export const savedMessages = {
+  'next.saved.reordering': 'Reordering',
   'next.saved.optional': 'Optional',
   'next.saved.sections': 'Saved sections',
   'next.saved.musicAndAudiobooks': 'Music and audiobooks',

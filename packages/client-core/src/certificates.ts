@@ -1,4 +1,5 @@
 import {readBoundedJson} from './bounded-json.ts';
+import type {MessageId} from '../../i18n/src/index.ts';
 
 export type CertificateConfig = Readonly<{enabled:boolean; publicAddress:string; publicPort:number; revision:string}>;
 export type CertificateStatus = Readonly<{
@@ -9,6 +10,31 @@ export type CertificateStatus = Readonly<{
 }>;
 export type CertificateAction='status'|'config'|'retry';
 export interface CertificateApi {requestCertificate<T>(action:CertificateAction,body:unknown,signal:AbortSignal):Promise<T>}
+
+// certificate_http.go's safeCertificateCode plus certificate_manager.go's local failures.
+const CERTIFICATE_FAILURES = new Set([
+ 'certificate_not_found','certificate_not_due','certificate_conflict','certificate_configuration_required','invalid_certificate_request',
+ 'acceptance_uncertain','authority_changed','creation_started','provider_rejected','provider_response_invalid','provider_order_invalid','dns_validation_failed',
+ 'coordinator_retry','cleanup_retry','revocation_retry','provider_retry','acme_account_configuration_or_retry','dns_or_issuer_configuration',
+ 'certificate_retry','local_certificate_invalid','certificate_response_invalid','issuer_environment_mismatch','public_trust_store_unavailable','local_tls_key_unavailable',
+]);
+
+/** Public reason only: provider text and unknown codes never become display text.
+ * TLS readiness is independent of the latest order: an old certificate may still serve. */
+export function certificateProblemMessage(status?:CertificateStatus):MessageId|undefined {
+ if(!status?.config.enabled)return undefined;
+ if(status.state==='expired')return 'web.connectivity.customCertExpired';
+ if(status.state==='invalid')return 'settings.server.secure.invalid';
+ if(status.errorCode){
+  if(!CERTIFICATE_FAILURES.has(status.errorCode))return 'settings.server.secure.problemUnknown';
+  if(status.tlsReady)return 'settings.server.secure.renewalFailed';
+  if(['local_certificate_invalid','certificate_response_invalid','public_trust_store_unavailable','local_tls_key_unavailable'].includes(status.errorCode))return 'settings.server.secure.invalid';
+  return 'settings.server.secure.obtainFailed';
+ }
+ if(status.routeErrorCode)return status.routeErrorCode==='route_name_retry'?'settings.server.secure.publishFailed':'settings.server.secure.problemUnknown';
+ return undefined;
+}
+
 const record=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const text=(v:unknown,max=256):v is string=>typeof v==='string'&&v.length<=max&&!/[\u0000-\u001f\u007f]/.test(v);
 const code=(v:unknown):v is string=>text(v,80)&&/^[a-z0-9_]*$/.test(v);
