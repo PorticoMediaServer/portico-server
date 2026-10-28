@@ -39,6 +39,7 @@ export class ListeningOwner {
   private dead = false;
   private port?: WebListeningPort;
   private settings?: ListeningLibrarySettings;
+  private readonly settingsAdmitted: boolean;
   private settingsTarget?: WebListeningTarget;
   private settingsFlight?:object;
   private dockToken?: object;
@@ -78,11 +79,14 @@ export class ListeningOwner {
     this.commands = Object.freeze({getSnapshot: this.read, onAction: runtime.onAction.bind(runtime)});
     this.state = Object.freeze({current: true, dockOpening: null, opening: null, panelOpening: null, panel: kind === 'music' ? 'queue' : 'chapters',panelVisible:false,focus:null,
       chapters: null, lyrics: null, queue: null, window: null, retainedWindow: null, queueError: false, settingsAvailable:false, policyBusy: false, save: null});
+    const identity = input.settings?.context.facts?.identity;
+    this.settingsAdmitted = identity?.viewer.role === 'owner' && identity.primaryProfile === true && identity.capabilities?.manageServer === true;
     const capture = runtime.captureListening.bind(runtime);
     const port = capture(this.fence, {signal: this.life.signal, isCurrent: this.current});
     if (this.dead) {port?.dispose();return;}this.port = port;
     this.settingsTarget=port?Object.freeze({...port.target}):undefined;
     this.settings=this.kind==='music'&&this.settingsTarget?captureLibrarySettings(input.settings,this.authority,this.settingsTarget.libraryId,{signal:this.life.signal,isCurrent:this.current}):undefined;
+    this.keep(input.settings?.context.factsSource?.subscribe(this.factsChanged) ?? (() => {}));
     this.keep(runtime.subscribe(this.observe));
     if (port) {
       this.keep(port.chapters.subscribe(this.observe));this.keep(port.lyrics.subscribe(this.observe));
@@ -110,7 +114,14 @@ export class ListeningOwner {
     if (this.dead) return;
     this.state = Object.freeze({...this.state, ...patch});for (const listener of [...this.listeners]) listener();
   }
-  private observe = () => {
+  private factsChanged = () => {
+    this.settings = undefined;this.settingsFlight = undefined;
+    if (!this.current()) return;
+    const target = this.settingsTarget;
+    this.settings = this.settingsAdmitted && this.kind === 'music' && target ? captureLibrarySettings(this.input.settings, this.authority, target.libraryId, {signal: this.life.signal, isCurrent: this.current}) : undefined;
+    this.observe(true);
+  };
+  private observe = (force = false) => {
     if (!this.current()) return;
     if (this.port && !this.port.isCurrent()) {this.dispose();return;}
     if (!this.current()) return;
@@ -125,7 +136,7 @@ export class ListeningOwner {
     const chapters = this.port?.chapters.getSnapshot() ?? null, lyrics = this.port?.lyrics.getSnapshot() ?? null;
     const queue = this.port?.queue?.list.getSnapshot() ?? null;
     if (!this.current()) return;
-    if (settingsAvailable!==this.state.settingsAvailable || optionsChanged || chapters !== this.state.chapters || lyrics !== this.state.lyrics || queue !== this.state.queue) this.publish({chapters, lyrics, queue,settingsAvailable});
+    if (force || settingsAvailable!==this.state.settingsAvailable || optionsChanged || chapters !== this.state.chapters || lyrics !== this.state.lyrics || queue !== this.state.queue) this.publish({chapters, lyrics, queue,settingsAvailable});
   };
   /** Detach every mutable slot before invoking an original external cleanup. */
   private detachEditor() {
@@ -271,6 +282,7 @@ export class ListeningOwner {
       &&!!this.panel&&shown.panelOpening===this.panel.token&&!!lyrics&&this.emptyLyrics(lyrics);
   }
   async openLibrarySettings(shown:ListeningState, lyrics:LyricsSnapshot, reportError:(error:unknown)=>void){
+    if (shown !== this.state) return;
     const lifetime=this.lifetime(shown,true),view=this.view,panel=this.panel,settings=this.settings,port=this.port,target=this.settingsTarget;
     const active=()=>!this.dead&&this.state.lyrics===lyrics&&this.emptyLyrics(lyrics)&&this.port===port&&this.settings===settings&&this.settingsTarget===target&&this.view===view&&this.panel===panel&&!!view&&!!panel&&!view.controller.signal.aborted&&!panel.controller.signal.aborted;
     const empty=()=>shown.panel==='lyrics'&&this.port===port&&!!port&&this.settings===settings&&!!settings&&settings.libraryId===this.settingsTarget?.libraryId

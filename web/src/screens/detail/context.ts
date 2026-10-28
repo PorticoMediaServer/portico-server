@@ -1,3 +1,4 @@
+import {useCallback, useSyncExternalStore} from 'react';
 import type {EntryMetadataEffect} from '../../shell/entry-metadata';
 import type {BrowserDownloadPort} from '../../platform/browser-download';
 import type {EntryActionTarget} from '../../shell/entry-actions';
@@ -19,6 +20,7 @@ export type ScreenContext = Readonly<{
   isCurrent: () => boolean;
   artwork: ShellArtwork;
   identity?: ShellIdentity;
+  subscribeIdentity?: (listener: () => void) => () => void;
   preferences: Readonly<{getSnapshot: () => PreferenceSnapshot; subscribe: (listener: () => void) => () => void}>;
   effects: Readonly<{
     openEntry: (entry: SearchEntry) => void;
@@ -70,4 +72,14 @@ export function screenLifetime(context: ScreenContext) {
     },
   };
   return {api, current, assert, signal, dispose: () => life.abort()};
+}
+
+/** Preserve the original command/currentness ports while forwarding display observations. */
+export function forwardIdentity<T extends Pick<ScreenContext, 'identity' | 'subscribeIdentity'>, E extends object>(context: T, extra: E): T & E {
+  return {...context, ...extra, get identity() {return context.identity;}, subscribeIdentity: context.subscribeIdentity} as T & E;
+}
+export function useScreenIdentity(context: Pick<ScreenContext, 'identity' | 'subscribeIdentity'> | undefined) {
+  const subscribe = useCallback((listener: () => void) => context?.subscribeIdentity?.(listener) ?? (() => {}), [context]);
+  const read = useCallback(() => context?.identity, [context]);
+  return useSyncExternalStore(subscribe, read, read);
 }

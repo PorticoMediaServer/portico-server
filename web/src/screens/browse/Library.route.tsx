@@ -1,3 +1,5 @@
+import {useRouteLibrary} from './route-library';
+import {useShellFacts} from '../../shell/fact-hooks';
 import {LibraryMetadataMenu} from '../metadata/LibraryMetadataMenu';
 import {ReadSeriesEntry} from '../read/ReadSeriesEntry';
 import {ReadPeriodicalEntry} from '../read/ReadPeriodicalEntry';
@@ -482,9 +484,11 @@ function CommittedLibrary({captured, library, search, readingMarkAll, frame, res
 function LibraryRouteScreen() {
   const [readingGeneration, setReadingGeneration] = useState(0);
   const captured = useProtectedWebScreenContext(), {libraryId} = useParams({from: '/library/$libraryId'});
+  useShellFacts(captured?.context);
   const search = parseLibraryScreenSearch(useSearch({from: '/library/$libraryId'}));
   const destination = useMusicLibrarySummary(captured, libraryId, search.section === 'mixes');
-  const library = search.section === 'mixes' ? destination.library : captured?.context.facts.identity.libraries.find(library => library.id === libraryId);
+  const routeLibrary = useRouteLibrary(captured?.context, libraryId);
+  const library = search.section === 'mixes' ? destination.library && {...destination.library, ...(routeLibrary ? {name: routeLibrary.name, kind: routeLibrary.kind} : {})} : routeLibrary;
   if (captured && search.section === 'mixes' && destination.phase === 'loading') return <Skeleton height={320}/>;
   if (captured && search.section === 'mixes' && destination.phase === 'error') return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
     primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: destination.retry}}/>;

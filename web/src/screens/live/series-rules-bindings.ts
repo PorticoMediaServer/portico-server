@@ -53,6 +53,7 @@ export function createSeriesRulesBindings(context: ScreenContext, env: Environme
   const life = screenLifetime(context), listeners = new Set<() => void>(), entries = new Map<string, RuleEntry>();
   const requestId = env.requestId ?? (async () => Array.from(crypto.getRandomValues(new Uint8Array(24)), value => value.toString(16).padStart(2, '0')).join(''));
   const now = env.now ?? Date.now;
+  let offIdentity: (() => void) | undefined;
   let closed = false, generation = 0, pending: Promise<void> | undefined, previewSerial = 0, previewClient: DVRClient | undefined;
   let page: DVRPage | undefined, summary: DVRSummary | undefined, storage: RecordingStorage | undefined, sources: GuideSourceSummaries | undefined;
   let state: SeriesRulesSnapshot = Object.freeze({phase: 'idle', loadingMore: false, mutating: false, previewLoading: false});
@@ -128,11 +129,12 @@ export function createSeriesRulesBindings(context: ScreenContext, env: Environme
   };
   function dispose(reason?: unknown) {
     if (closed) return;
-    closed = true;generation++;previewSerial++;life.dispose();for (const owner of clients) owner.dispose();clients.clear();entries.clear();
+    closed = true;offIdentity?.();generation++;previewSerial++;life.dispose();for (const owner of clients) owner.dispose();clients.clear();entries.clear();
     page = undefined;summary = undefined;storage = undefined;sources = undefined;
     state = Object.freeze({phase: 'retired', loadingMore: false, mutating: false, previewLoading: false, ...(reason === undefined ? {} : {error: reason})});
     try {for (const listener of [...listeners]) listener();} finally {listeners.clear();}
   }
+  offIdentity = context.subscribeIdentity?.(() => {if (current() && state.view) publish({view: project()});});
   return {getSnapshot: () => {if (!closed && !life.current()) dispose();return state;}, subscribe: (listener: () => void) => {if (closed) return () => {};listeners.add(listener);return () => {listeners.delete(listener);};},
     load: () => load(), more: () => load(true),
     save: (row: SeriesRule, settings: RuleSettings) => mutate(row, rule => client.saveRule(rule.id, rule.revision, editedRuleConfig(rule, settings))),

@@ -1,3 +1,4 @@
+import {forwardFacts} from '../../shell/fact-source';
 import {useLayoutEffect, useRef, useState} from 'react';
 import {useLocation, useParams} from '@tanstack/react-router';
 import {defineWebScreen} from '../../route-registry';
@@ -42,7 +43,7 @@ function ResolveItem({captured, context, itemId, artworkClaim}: {captured: Prote
     const held: ResolutionLease = {context, itemId, retry, live: true};
     const owns = () => held.live && active.current === held && context.isCurrent();
     active.current = held;
-    const reading = createReadBindings({...captured.context, isCurrent: owns}), request = new AbortController();
+    const reading = createReadBindings(forwardFacts(captured.context, {isCurrent: owns})), request = new AbortController();
     const current = () => owns() && reading.authority.isCurrent();
     const off = reading.authority.subscribe(() => {request.abort();});
     publish({lease: held, resolution: {phase: 'loading'}});
