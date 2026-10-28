@@ -1,5 +1,5 @@
 import {channelFieldLabel, channelFieldMessage, channelValueLabel} from '@core/server-admin/channel-catalogue.ts';
-import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
+import {useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n, type MessageId} from '@i18n';
 import type {Library} from '@core/index.ts';
 import type {ChannelApi} from '@core/channel-guide.ts';
@@ -34,13 +34,24 @@ function valid(tree: Conditions): boolean {
 }
 function ConditionsBody({source, query, locked, isCurrent, onChange}: Props & {source: ChannelFieldsSource}) {
   const state = useSyncExternalStore(source.subscribe, source.getSnapshot, source.getSnapshot);
-  const [initial] = useState(() => channelConditionsWithLegacy(query));
-  const [tree, setTree] = useState(initial), [authority] = useState(() => ({tree: initial}));
+  const {filter, genres, yearFrom, yearThrough} = query;
+  const incoming = useMemo(() => channelConditionsWithLegacy({filter, genres, yearFrom, yearThrough}), [filter, genres, yearFrom, yearThrough]);
+  const projection = JSON.stringify(channelConditionNode(incoming));
+  const [tree, setTree] = useState(incoming), [authority] = useState(() => ({tree: incoming, projection}));
+  useLayoutEffect(() => {
+    if (authority.projection === projection || !valid(authority.tree)) return;
+    authority.projection = projection;
+    // A local edit's accepted echo keeps its row keys and private child state.
+    // A different accepted producer tree replaces the old edit receipt at commit.
+    if (JSON.stringify(channelConditionNode(authority.tree)) !== projection) {
+      authority.tree = incoming;setTree(incoming);
+    }
+  }, [authority, incoming, projection]);
   const libraryKey = JSON.stringify(query.libraryIds);
   useEffect(() => {void source.select(JSON.parse(libraryKey) as string[]);}, [source, libraryKey]);
   const fields = state.fields.filter(entry => channelFieldMessage(entry.field) !== undefined);
   const update = (next: Conditions) => {
-    if (locked || !isCurrent() || authority.tree !== tree) return;
+    if (locked || !isCurrent() || authority.tree !== tree || authority.projection !== projection) return;
     if (!onChange(next, valid(next))) return;
     authority.tree = next;setTree(next);
   };
