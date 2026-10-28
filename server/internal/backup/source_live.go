@@ -35,9 +35,9 @@ func newSourceFileGuard(db *sql.DB) sourceFileGuard {
 
 func (g sourceFileGuard) files() ([]os.FileInfo, error) {
 	// Recovery can reuse the source-selection service after closing its live
-	// handle and applying a staged database. That closed handle holds no locks
-	// and cannot reopen; the replacement file is then a valid independent input.
-	if g.db != nil && closedDatabase(g.db) {
+	// handle and applying a staged database. Only a fully drained closed handle
+	// holds no locks: Close itself can leave borrowed connections alive.
+	if g.db != nil && closedDatabase(g.db) && dbwork.ConnectionsDrained(g.db) {
 		return nil, nil
 	}
 	if g.err != nil || g.path == "" {
