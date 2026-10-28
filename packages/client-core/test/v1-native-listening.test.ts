@@ -46,14 +46,26 @@ class ReferenceOwner implements NativeListeningV1Control {
     this.session = context.session;
     this.queue = context.queueId && context.queueRevision ? {id: context.queueId, revision: context.queueRevision} : null;
     this.seq = context.lastSeq;
+    this.epoch = undefined;
     this.intent = context.intent;
     this.root = undefined;
     await this.report('playing');
     this.emit();
   }
+  epoch?: string;
+  /** The owner's observation: it claims the session (naming the epoch JS handed over), then reports. */
   async report(state: 'playing' | 'paused' | 'ended', positionMs = 0) {
-    await this.http.send({method: 'POST', path: `/v1/playback/sessions/${this.session!.id}/timeline`, body: {seq: ++this.seq, generation: this.session!.presentation.generation, state, positionMs, rate: 1}});
+    const path = `/v1/playback/sessions/${this.session!.id}`;
+    if (!this.epoch) {
+      const replaces = this.contexts.at(-1)?.observerEpoch;
+      const grant = await this.http.send({method: 'POST', path: `${path}/observer`, body: {generation: this.session!.presentation.generation, ...(replaces ? {replaces} : {})}});
+      this.epoch = (grant.body as {epoch?: string} | undefined)?.epoch;
+      this.observed = 0;
+    }
+    ++this.seq;
+    await this.http.send({method: 'PUT', path: `${path}/observation`, body: {epoch: this.epoch, seq: ++this.observed, generation: this.session!.presentation.generation, state, positionMs, rate: 1, monotonicMs: this.observed * 1000, playClockMs: this.observed * 1000, seekSerial: 0}});
   }
+  private observed = 0;
   emit(extra: Partial<NativeListeningV1Event> = {}) {
     const event = {
       owner: 'owner-1', sequence: ++this.sequence, intent: this.intent, rate: 1, positionSeconds: 1, observed: true, ready: true, seeking: false, ended: false,
@@ -131,7 +143,7 @@ function setup(options: {nativeFor?: (kind: string) => boolean; refuse?: boolean
   if (options.refuse) owner.adopt = async () => { throw new Error('native owner closed'); };
   const player = new V1QueuePlayer({http, api, playback, viewer, key: () => `q${++serial}-key-000000`, pendingPollMs: 10, events: events as never, native: owner, nativeFor: options.nativeFor ?? (kind => kind === 'song')});
   const stop = player.connect();
-  const jsTimeline = () => log.filter(r => r.path.endsWith('/timeline')).length;
+  const jsTimeline = () => log.filter(r => r.path.endsWith('/observation')).length;
   return {server, api, playback, player, owner, log, stop, jsTimeline, ownerHttp, emitEvent};
 }
 
@@ -212,7 +224,7 @@ test('C3: leaving stops through the owner; JS neither reports nor deletes the se
   playback.leave();
   await settle();
   assert.deepEqual(owner.detached, [true]);
-  assert.equal(log.slice(before).filter(r => r.method === 'DELETE' || r.path.endsWith('/timeline')).length, 0);
+  assert.equal(log.slice(before).filter(r => r.method === 'DELETE' || r.path.endsWith('/observation')).length, 0);
   assert.equal(playback.isNativeListening(), false);
   stop();
 });
@@ -283,7 +295,7 @@ test('C3 §18: a lost commit answer is asked again and gets the same session (id
 });
 
 test('C3 gate: a kind the app hasn’t turned on stays on the JS path, even for audio', async () => {
-  const {playback, player, owner, stop, jsTimeline} = setup({nativeFor: () => false});
+  const {api, playback, player, owner, stop, jsTimeline} = setup({nativeFor: () => false});
   await player.playEntries(['song-1', 'song-2'].map(queueItemInput));
   assert.equal(owner.contexts.length, 0);
   assert.equal(playback.isNativeListening(), false);
@@ -293,8 +305,9 @@ test('C3 gate: a kind the app hasn’t turned on stays on the JS path, even for 
   if (s.pendingSeek) playback.seekApplied(s.intentId, s.pendingSeek.revision, s.pendingSeek.positionSeconds, 'playing');
   playback.fact(playback.getSnapshot().intentId, 5, 'playing');
   await settle();
-  assert.ok(jsTimeline() > 0, 'JS reports it, as before');
-  stop();
+  // These timers never fire: a stop sends the latest reading first, which shows JS reports it.
+  try { await api.stopPlayback(playback.getSnapshot().session!.id); assert.ok(jsTimeline() > 0, 'JS reports it, as before'); }
+  finally { stop(); }
 });
 
 test('C3: a native handover that fails leaves the session with JS, never ownerless', async () => {

@@ -210,7 +210,7 @@ test('an end already reported still advances to the next entry', async () => {
   await api.progressPlayback(first.id, {generation: first.generation, sequence: 1000, positionSeconds: playback.getSnapshot().duration, state: 'ended'});
   await settle(); await settle();
   assert.equal(playback.getSnapshot().itemId, 'b', 'advanced to the next entry');
-  const ends = log.filter(r => r.method === 'POST' && r.path.endsWith(`/${first.id}/timeline`) && (r.body as {state?: string} | undefined)?.state === 'ended');
+  const ends = log.filter(r => r.method === 'PUT' && r.path.endsWith(`/${first.id}/observation`) && (r.body as {state?: string} | undefined)?.state === 'ended');
   assert.equal(ends.length, 1, 'the end is reported once');
   stop();
 });
@@ -262,17 +262,18 @@ test('movedEntry finds the one entry a drag moved', () => {
   assert.equal(movedEntry(['a', 'b'], ['a', 'b']), undefined);
 });
 
-test('the bridge reports with its own rising seq, keeps a paused session alive, and stops at the last position', async () => {
+test('the bridge observes with its own rising seq, keeps a paused session alive, and stops at the last position', async () => {
   const {api, player, playback, log, timers, stop} = setup();
   await player.playItem('movie');
   const id = playback.getSnapshot().session!.id;
   await api.progressPlayback(id, {generation: 1, sequence: 1, positionSeconds: 12, state: 'paused'});
-  const keepalive = timers.at(-1)!;
-  keepalive.fn();
   await settle();
-  const reports = log.filter(r => r.path.endsWith('/timeline')).map(r => r.body as {seq: number; positionMs: number; state: string});
+  // The paused session is still sampled each tick: that is what keeps its lease.
+  for (let i = 0; i < 2; i++) { timers.at(-1)!.fn(); await settle(); }
+  const reports = log.filter(r => r.path.endsWith('/observation')).map(r => r.body as {seq: number; positionMs: number; state: string});
   assert.deepEqual(reports.map(r => r.seq), [1, 2]);
   assert.equal(reports[1]!.positionMs, 12_000);
+  assert.equal(reports[1]!.state, 'paused');
   await api.stopPlayback(id);
   const del = log.find(r => r.method === 'DELETE' && r.path === `/v1/playback/sessions/${id}`)!;
   assert.deepEqual(del.body, {positionMs: 12_000});
@@ -872,9 +873,9 @@ test('the player view preserves batched identity and display facts plus whole qu
 test('strict queue changes return the actual same session and occurrence without rebuilding or remembering a substitute',async()=>{
  const f=setup();try{
   await f.player.playItem('movie');const before=f.player.currentSession()!,queue=f.player.getSnapshot().view!.queue;
-  const reports=f.log.filter(r=>r.method==='POST'&&r.path.endsWith('/timeline')).length;
+  const reports=f.log.filter(r=>r.method==='PUT'&&r.path.endsWith('/observation')).length;
   const actual=await f.player.changePlayback({versionId:before.versionId,subtitleTrackId:'s1',subtitleDelivery:'burn',subtitleOffsetMs:-300.4},{recoverEnded:false,isCurrent:()=>true});
-  assert.equal(f.log.filter(r=>r.method==='POST'&&r.path.endsWith('/timeline')).length,reports,'strict replan must not start separate lease recovery through a forced timeline flush');
+  assert.equal(f.log.filter(r=>r.method==='PUT'&&r.path.endsWith('/observation')).length,reports,'strict replan must not send a separate observation first');
   assert.equal(actual,f.player.currentSession());assert.equal(actual!.id,before.id);assert.deepEqual(actual!.queue,before.queue);
   assert.ok(actual!.presentation.generation>before.presentation.generation);assert.equal(f.playback.getSnapshot().session!.generation,actual!.presentation.generation);
   assert.equal(f.player.getSnapshot().view!.queue.id,queue.id);

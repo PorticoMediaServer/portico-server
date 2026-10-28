@@ -44,13 +44,13 @@ export type ObservationSample = Readonly<{
 }>;
 
 export type ObserverGrant = Readonly<{epoch: string; everyMs: number; leaseUntil?: string}>;
-export type ObservationAck = Readonly<{acceptedSeq: number; leaseUntil?: string; viewTag?: string; session?: Session}>;
+export type ObservationAck<S = Session> = Readonly<{acceptedSeq: number; leaseUntil?: string; viewTag?: string; session?: S}>;
 
-export type ObservationReporterOptions = Readonly<{
+export type ObservationReporterOptions<S = Session> = Readonly<{
   claim: (body: Readonly<{generation: number; replaces?: string}>) => Promise<ObserverGrant>;
-  send: (sample: ObservationSample) => Promise<ObservationAck>;
+  send: (sample: ObservationSample) => Promise<ObservationAck<S>>;
   /** A channel's current view arrived with an ack (only when it changed). */
-  onView?: (session: Session) => void;
+  onView?: (session: S) => void;
   /** The durable lease the server last wrote. */
   onLease?: (leaseUntil: string) => void;
   onEnded?: () => void;
@@ -58,6 +58,10 @@ export type ObservationReporterOptions = Readonly<{
   onConnection?: (healthy: boolean) => void;
   /** No sample has been written for most of the lease: the controller may restart from here. */
   onLeaseRisk?: () => void;
+  /** A fixed cadence instead of the server's (hosts that pace their own samples, tests). */
+  everyMs?: number;
+  /** The epoch of the owner this one takes over from (a native owner handing back). */
+  replaces?: string;
   now?: () => number;
   setTimer?: (fn: () => void, ms: number) => unknown;
   clearTimer?: (timer: unknown) => void;
@@ -70,6 +74,8 @@ export type ObservationSnapshot = Readonly<{
   failures: number;
   healthy: boolean;
   stopped: boolean;
+  /** The state of the last sample the server accepted. */
+  lastAccepted?: ObservationState;
   playClockMs: number;
   seekSerial: number;
 }>;
@@ -89,7 +95,7 @@ function status(error: unknown): number | undefined {
 const unhealthyAfterMs = 10_000;
 const unhealthyAfterFailures = 5;
 
-export class ObservationReporter {
+export class ObservationReporter<S = Session> {
   private readonly gate = new GenerationGate();
   private latest?: PlayerObservation;
   private epoch?: string;
@@ -103,6 +109,7 @@ export class ObservationReporter {
   private pendingSkip?: ObservationSample['skipped'];
   private pendingError?: ObservationSample['error'];
   private viewTag?: string;
+  private lastAccepted?: ObservationState;
   private leaseUntil?: number;
   private failures = 0;
   private firstFailure?: number;
@@ -116,14 +123,20 @@ export class ObservationReporter {
   private readonly setTimer: (fn: () => void, ms: number) => unknown;
   private readonly clearTimer: (timer: unknown) => void;
 
-  constructor(private readonly o: ObservationReporterOptions) {
+  private readonly o: ObservationReporterOptions<S>;
+
+  constructor(o: ObservationReporterOptions<S>) {
+    this.o = o;
     this.now = o.now ?? (() => globalThis.performance?.now() ?? Date.now());
-    this.setTimer = o.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
+    if (o.everyMs !== undefined && Number.isFinite(o.everyMs) && o.everyMs > 0) this.everyMs = o.everyMs;
+    if (o.replaces) this.replaces = o.replaces;
+    // A reporter never keeps a process alive by itself (Node hosts, tests); browsers have no unref.
+    this.setTimer = o.setTimer ?? ((fn, ms) => { const t = setTimeout(fn, ms); (t as {unref?: () => void}).unref?.(); return t; });
     this.clearTimer = o.clearTimer ?? (t => clearTimeout(t as ReturnType<typeof setTimeout>));
   }
 
   snapshot(): ObservationSnapshot {
-    return Object.freeze({epoch: this.epoch, seq: this.seq, generation: this.gate.value, failures: this.failures, healthy: this.healthy, stopped: this.stopped, playClockMs: this.clock(), seekSerial: this.seekSerial});
+    return Object.freeze({epoch: this.epoch, seq: this.seq, generation: this.gate.value, failures: this.failures, healthy: this.healthy, stopped: this.stopped, ...(this.lastAccepted ? {lastAccepted: this.lastAccepted} : {}), playClockMs: this.clock(), seekSerial: this.seekSerial});
   }
 
   /** A new presentation is in force: forget readings of older ones. */
@@ -211,7 +224,7 @@ export class ObservationReporter {
         this.playClock = 0;
         if (this.playingSince !== undefined) this.playingSince = this.claimedAt;
         this.seq = 0;
-        if (Number.isSafeInteger(grant.everyMs) && grant.everyMs >= 250) this.everyMs = grant.everyMs;
+        if (this.o.everyMs === undefined && Number.isSafeInteger(grant.everyMs) && grant.everyMs >= 250) this.everyMs = grant.everyMs;
         this.lease(grant.leaseUntil);
       } catch (error) {
         this.failure(error, true);
@@ -262,6 +275,7 @@ export class ObservationReporter {
     try {
       const ack = await this.o.send(sample);
       if (this.stopped) return;
+      this.lastAccepted = sample.state;
       this.failures = 0;
       this.firstFailure = undefined;
       this.leaseWarned = false;
@@ -292,9 +306,12 @@ export class ObservationReporter {
       this.epoch = undefined;
       return;
     }
-    if (c === 'observation_owned' || c === 'session_ended' || s === 404 || s === 410) {
+    // Another process on this device still reports (a handover in progress): claim again on the
+    // next tick; the server grants it once that owner has been silent for a few seconds.
+    if (c === 'observation_owned') return;
+    if (c === 'session_ended' || s === 404 || s === 410) {
       this.stop();
-      if (c !== 'observation_owned') this.o.onEnded?.();
+      this.o.onEnded?.();
       return;
     }
     if (claiming && c === 'client_update_required') { this.stop(); return; }

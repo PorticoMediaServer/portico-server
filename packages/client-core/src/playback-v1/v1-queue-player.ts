@@ -104,7 +104,8 @@ export interface QueueSessionTransport {
   /** Bare id captures known absence only; adopted captures that returned object's original registration.
    * Omission or unknown ownership leaves selection cleanup closed. */
   selectionRegistration?(id: string, adopted?: PlaybackSession): QueueSelectionRegistration | undefined;
-  reportedSeq(id: string): number;
+  /** Stop reporting a session a native owner takes over; the epoch it held, for the owner's claim. */
+  handOverObserver(id: string): string | undefined;
   /** Re-plans a live session (quality, version, audio track): same session, next generation. */
   change?(id: string, change: SessionChange, durationSeconds: number, context?: SessionChangeContext): Promise<{session: Session; playback: PlaybackSession}>;
   /** Tells the queue player that a session it holds was re-planned behind it (a recovered player failure). */
@@ -797,19 +798,20 @@ export class V1QueuePlayer implements QueueController {
   /** Hands an audio session to the native owner, with the timeline `seq` reached so far. */
   private async adoptNative(session: Session, playback: PlaybackSession, intent: number) {
     const native = this.native!, epoch = ++this.nativeEpoch, header = this.header;
-    const lastSeq = this.api.reportedSeq(session.id), durationSeconds = playback.duration;
+    const durationSeconds = playback.duration;
     // INT T4: another playback began while this session's request was in flight. Nobody will own
     // it (the handover would be refused), so it ends now rather than lapsing with its lease.
     if (this.playback.getSnapshot().intentId !== intent) {
       await this.api.stopPlayback(session.id).catch(() => {});
       return;
     }
-    // From here on the owner reports this session; JS never does.
+    // From here on the owner reports this session; JS never does. It claims with the epoch JS held.
+    const observerEpoch = this.api.handOverObserver(session.id);
     this.api.forget(session.id);
     this.nativeSession = session.id;
     try {
       await this.playback.adoptNativeQueueSession(session.itemId ?? '', intent, native, () => native.adopt({
-        session, playbackRun:this.playback.getSnapshot().playbackRun, queueId: header?.id ?? null, queueRevision: header?.revision ?? null, durationSeconds, lastSeq,
+        session, playbackRun:this.playback.getSnapshot().playbackRun, queueId: header?.id ?? null, queueRevision: header?.revision ?? null, durationSeconds, lastSeq: 0, ...(observerEpoch ? {observerEpoch} : {}),
         leaseMs: Math.max(0, 120_000 - (Date.now() - this.sessionStartedAt)), transitions: this.transitions,
         intent: session.state === 'paused' ? 'paused' : 'playing',
       }, event => this.nativeEvent(epoch, event)));

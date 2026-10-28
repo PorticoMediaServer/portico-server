@@ -29,9 +29,13 @@ test('localV1Http: statuses, headers and bodies pass through HttpLocalApi unchan
   const s = await client.start({itemId: 'movie-1'}, {}, 'key_local_http_0001');
   assert.equal(sent[0]!.headers['idempotency-key'], 'key_local_http_0001');
   assert.equal(sent[0]!.headers.authorization, 'Bearer token');
-  // A timeline answer is 204 with Report-Every-Ms.
-  const every = await client.timeline(s.id, {seq: 1, generation: 1, state: 'playing', positionMs: 1000, rate: 1});
-  assert.equal(every.reportEveryMs, 10_000);
+  // Every request says this client reports with observations.
+  assert.equal(sent[0]!.headers['portico-playback'], '2');
+  // A claim answers the epoch; an observation answers its ack.
+  const grant = await client.claimObserver(s.id, {generation: 1});
+  const ack = await client.observe(s.id, {epoch: grant.epoch, seq: 1, generation: 1, state: 'playing', positionMs: 1000, rate: 1, monotonicMs: 1000, playClockMs: 1000, seekSerial: 0});
+  assert.equal(ack.acceptedSeq, 1);
+  assert.ok(ack.leaseUntil);
   // A stale If-Match is a 412 whose `current` survives the transport.
   await client.patch(s.id, s.revision, {state: 'paused'});
   await assert.rejects(client.patch(s.id, s.revision, {state: 'playing'}), (e: unknown) => e instanceof PlaybackApiError && e.status === 412 && (e.current as {revision?: string} | undefined)?.revision === '2');
@@ -54,4 +58,19 @@ test('localV1Http: a 401 renews the token once and resends', async () => {
   assert.equal(recovered, 1);
   assert.deepEqual(sent.map(r => r.headers.authorization), ['Bearer old', 'Bearer new']);
   assert.equal(sent[1]!.headers['idempotency-key'], 'key_local_http_0002', 'the same key on the resend');
+});
+
+test('localV1Http: a 401 on an observation is never resent, and starts the renewal', async () => {
+  const server = new FakePlaybackServer();
+  const ok = served(server);
+  const s = await new SessionsClient(localV1Http(new HttpLocalApi('https://portico.test', 'token', ok.fetcher))).start({itemId: 'movie-1'}, {}, 'key_local_http_0003');
+  const sent: Request[] = [];
+  const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => { const r = new Request(input, init); sent.push(r); return new Response(JSON.stringify({error: {code: 'unauthorized'}}), {status: 401, headers: {'Content-Type': 'application/json'}}); }) as typeof fetch;
+  const api = new HttpLocalApi('https://portico.test', 'old', fetcher);
+  let recovered = 0;
+  api.setAuthRecovery({token: async t => t, recover: async () => { recovered++; return 'new'; }});
+  await assert.rejects(new SessionsClient(localV1Http(api)).observe(s.id, {epoch: 'e'.repeat(22), seq: 1, generation: 1, state: 'playing', positionMs: 0, rate: 1, monotonicMs: 0, playClockMs: 0, seekSerial: 0}), (e: unknown) => e instanceof PlaybackApiError && e.status === 401);
+  assert.equal(sent.length, 1, 'one attempt');
+  await Promise.resolve();
+  assert.equal(recovered, 1, 'the renewal started for the next sample');
 });

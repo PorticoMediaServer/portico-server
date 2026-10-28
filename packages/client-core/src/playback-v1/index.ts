@@ -8,7 +8,6 @@ export type {LocalPlayerSource, LocalPlayerLoadContext, LocalPlayerLoadReceipt} 
 export {ServerClock, driftCorrection, timelinePosition, type ClockEstimate, type ClockSample, type DriftCorrection} from './clock.ts';
 export {GenerationGate} from './generation.ts';
 export {ObservationReporter, type ObservationAck, type ObservationReporterOptions, type ObservationSample, type ObservationSnapshot, type ObservationState, type ObserverGrant} from './observation.ts';
-export {TimelineReporter, type FailureKind, type MarkerType, type TimelineReport, type TimelineReporterOptions, type TimelineSend, type TimelineSnapshot, type TimelineState} from './timeline.ts';
 export {connectionTooSlow, musicQualityLadder, savedMusicQualities, savedMusicQualityRequest, type SavedMusicQuality, qualityLadder, qualityOptionRequest, qualityOptionSelected, requestInForce, sameQuality, savedQualities, savedQualityRequest, type QualityId, type QualityInForce, type QualityOption, type QualityRequest, type SavedQuality} from './quality.ts';
 export {PlaybackApiError, call, header, idempotencyKey, type RetryClass, type V1Http, type V1Request, type V1Response} from './http.ts';
 export {ShufflePermutation} from './shuffle.ts';

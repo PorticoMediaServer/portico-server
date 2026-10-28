@@ -26,13 +26,14 @@ class ChannelServer implements V1Http {
       return ok(this.s, 201);
     }
     const s = this.s;
-    if (r.method === 'GET') {
+    const ready = () => {
       if (++this.reads >= 1 && !s.presentation.url) {
         s.presentation.generation = 1; s.presentation.url = '/v2/media/linear/ps_1/1/tok/index.m3u8';
         Object.assign(s.presentation.linear, {windowStartMs: 0, windowEndMs: 60_000, liveEdgeMs: 60_000, state: 'active'});
       }
-      return ok(s);
-    }
+    };
+    if (r.method === 'GET') { ready(); return ok(s); }
+    if (r.method === 'POST' && r.path.endsWith('/observer')) return ok({epoch: 'channel-epoch-00000001', everyMs: 1000});
     if (r.method === 'PATCH') {
       if (r.headers?.['If-Match'] !== `"${s.revision}"`) return {status: 412, headers: {}, body: {error: {code: 'revision_mismatch', current: s}}};
       const b = r.body as any;
@@ -41,11 +42,15 @@ class ChannelServer implements V1Http {
       s.revision = String(Number(s.revision) + 1);
       return ok(s);
     }
-    if (r.method === 'POST' && r.path.endsWith('/timeline')) {
+    if (r.method === 'PUT' && r.path.endsWith('/observation')) {
+      // The ack carries the channel's current view, as the real server's does when it changed.
       const b = r.body as any, seek = s.presentation.linear.seek;
-      if (seek && Math.abs(b.positionMs - seek.positionMs) <= 1000) seek.acknowledged = true;
-      s.presentation.linear.confirmedPositionMs = b.positionMs;
-      return {status: 204, headers: {}};
+      if (b.generation === s.presentation.generation && s.presentation.url) {
+        if (seek && Math.abs(b.positionMs - seek.positionMs) <= 1000) seek.acknowledged = true;
+        s.presentation.linear.confirmedPositionMs = b.positionMs;
+      }
+      ready();
+      return ok({acceptedSeq: b.seq, viewTag: 'v' + this.reads, session: s});
     }
     if (r.method === 'DELETE') { s.state = 'ended'; return {status: 204, headers: {}}; }
     return {status: 404, headers: {}, body: {error: {code: 'not_found'}}};
@@ -82,7 +87,7 @@ test('v1 channels: a tune starts a channel session, joins at the live edge, and 
     await settle();
     s = playback.getSnapshot();
     assert.equal(s.pendingSeek, undefined);
-    assert.ok(server.log.some(r => r.path.endsWith('/timeline') && (r.body as any).positionMs === 60_000));
+    assert.ok(server.log.some(r => r.path.endsWith('/observation') && (r.body as any).positionMs === 60_000));
   } finally { playback.leave(); }
   await settle();
   assert.ok(server.log.some(r => r.method === 'DELETE'), 'leaving stops the session');
@@ -271,7 +276,8 @@ test('a channel retry-only 202 prepares the original start before any channel st
     assert.ok(states.length >= 1);
     assert.equal(states[0].playbackId, 'ps_1');
     assert.equal(states[0].linear.name, 'News');
-    await new Promise(resolve => setTimeout(resolve, 40)); await settle();
+    // The first samples' acks carry the view that turns ready; the join follows it.
+    for (let i = 0; i < 4 && clock.pending(); i++) { clock.fire(); await settle(); }
     assert.ok(server.log.some(request => request.method === 'PATCH' && (request.body as any).seek?.live === true), 'the honest generation-0/empty-URL 201 still joins');
   } finally { control.close(); await opening?.catch(() => {}); }
 });
@@ -447,7 +453,7 @@ test('the channel receipt issuer captures the actual original key and body befor
   const accepted = coldChannelBody('ps_original');
   const control = new V1ChannelControl({key: () => {keys++; return 'channel-original-key-0001';}, timers: clock.timers, pollMs: 10_000,
     http: {send: async request => {
-      if (request.method !== 'POST') return {status: 204, headers: {}};
+      if (request.method !== 'POST' || request.path !== '/v1/playback/sessions') return {status: 204, headers: {}};
       assert.equal(originals.length, 1, 'host custody exists before the first POST');
       sent.push(request);
       return sent.length === 1 ? {status: 202, headers: {}, body: {retryAfterMs: 500}}

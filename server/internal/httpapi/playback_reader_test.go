@@ -26,6 +26,12 @@ func TestMain(m *testing.M) {
 		}
 		os.Exit(0)
 	}
+	// Most of this package's playback tests still drive the retired timeline protocol (parked:
+	// REQUESTS.md, P2-21 test migration). They run with observations off; the observation routes
+	// have their own tests that turn them on.
+	if os.Getenv("PORTICO_PLAYBACK_OBSERVATIONS") == "" {
+		_ = os.Setenv("PORTICO_PLAYBACK_OBSERVATIONS", "0")
+	}
 	os.Exit(m.Run())
 }
 

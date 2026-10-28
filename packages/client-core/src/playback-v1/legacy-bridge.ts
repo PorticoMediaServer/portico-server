@@ -3,8 +3,8 @@
  * AVPlayer, Android). The web no longer uses this file: it runs on `PlaybackSessionController`
  * (see the web app's `playback-v1/web-playback.ts`), and this bridge goes when the native apps
  * make the same move. `V1PlaybackApi` is the `PlaybackApi` the
- * service calls for a session's progress and stop, spoken as v1: the timeline (with its own
- * monotonic `seq`, generation and a lease keepalive while paused) and `DELETE` with the last
+ * service calls for a session's progress and stop, spoken as v1: observations (one reporter per
+ * session: the latest reading once a second, never queued or resent) and `DELETE` with the last
  * position. `toPlaybackSession` turns a v1 session into the service's session shape.
  */
 import type {PlaybackApi, PlaybackSession} from '../index.ts';
@@ -13,23 +13,16 @@ import {PlaybackOptionsClient} from './options.ts';
 import {SessionsClient, type SessionChange, type StartContext, type StartOptions, type StartTarget, type Timers} from './sessions.ts';
 import {requireSessionChangeCurrent, type SessionChangeContext} from './change-context.ts';
 import type {PlayerFailureCode} from '../client-profile.ts';
-import type {TimelineReport, TimelineState} from './timeline.ts';
+import {ObservationReporter, type ObservationSample, type ObservationState} from './observation.ts';
 import {parseSessionEnd, type DiscTitleRef, type Session, type SessionEnd} from './types.ts';
 import {toPlaybackSession} from './session-shape.ts';
 import {QueueSelectionRegistrations, type QueueSelectionRegistration} from './selection-registration.ts';
 
 export {toPlaybackSession};
 
-type PendingReport = {seq?: number; body: Omit<TimelineReport, 'seq'>; at: number; promise: Promise<void>; resolve: () => void; reject: (error: unknown) => void};
-const MAX_PENDING_REPORT_FACTS = 64;
-
-type Tracked = {stopping?: boolean; stopPromise?: Promise<void>; ackEndGeneration?: number; retryUntil?: number; failures?: number; active?: PendingReport; pending?: PendingReport[]; reportAbort?: AbortController; seq: number; generation: number; positionMs: number; state: TimelineState; everyMs: number; timer?: unknown;
-  /** The last report actually sent: when, where and in which state (the §6 cadence). */
-  sentAt?: number; sentPositionMs?: number; sentState?: TimelineState; sentGeneration?: number;
+type Tracked = {reporter: ObservationReporter; stopping?: boolean; stopPromise?: Promise<void>; generation: number; positionMs: number; state: ObservationState;
   /** When `positionMs` was last set by the player. */
-  positionAt?: number;
-  /** A marker skip to carry on the next report (spec §4.2), sent once. */
-  skipped?: NonNullable<TimelineReport['skipped']>};
+  positionAt?: number};
 
 export class V1PlaybackApi implements PlaybackApi {
   readonly sessions: SessionsClient;
@@ -41,6 +34,9 @@ export class V1PlaybackApi implements PlaybackApi {
   private readonly clearTimer: (t: unknown) => void;
   private readonly key: () => string;
   private readonly now: () => number;
+  /** A clock and timers the caller supplied (tests); reporters otherwise keep their own. */
+  private readonly clock?: () => number;
+  private readonly timers?: Timers;
   private readonly random: () => number;
   private readonly endedListeners = new Set<(sessionId: string, end: SessionEnd) => void>();
   private readonly changedListeners = new Set<(session: Session) => void>();
@@ -50,6 +46,8 @@ export class V1PlaybackApi implements PlaybackApi {
 
   constructor(http: V1Http, options: {timers?: Timers; key?: () => string; now?: () => number; random?: () => number} = {}) {
     this.now = options.now ?? (() => Date.now());
+    this.clock = options.now;
+    this.timers = options.timers;
     this.random = options.random ?? Math.random;
     this.sessions = new SessionsClient(http, options.timers);
     this.optionsClient = new PlaybackOptionsClient(http);
@@ -81,14 +79,13 @@ export class V1PlaybackApi implements PlaybackApi {
   /** Tracks a session another request started (a queue create with startPlayback, an advance). */
   adopt(session: Session, durationSeconds: number): PlaybackSession {
     const prior = this.tracked.get(session.id);
-    // A presentation change keeps the same session and its accepted facts.
-    // Replacing this object would cancel a queued marker or end before its ack.
-    const tracked = prior ?? {seq: 0, generation: session.presentation.generation, positionMs: session.presentation.startPositionMs, state: 'playing' as TimelineState, everyMs: session.lease.reportEveryMs};
+    // A presentation change keeps the same session, its observer epoch and its pending skip.
+    const tracked = prior ?? {reporter: this.reporterFor(session.id), generation: session.presentation.generation, positionMs: session.presentation.startPositionMs, state: 'playing' as ObservationState};
     tracked.generation = session.presentation.generation;
     tracked.positionMs = session.presentation.startPositionMs;
     tracked.positionAt = this.now();
     tracked.state = session.state === 'paused' ? 'paused' : 'playing';
-    tracked.everyMs = session.lease.reportEveryMs;
+    tracked.reporter.setGeneration(session.presentation.generation);
     this.registrations.changed(session.id);
     this.tracked.set(session.id, tracked);
     const playback = toPlaybackSession(session, durationSeconds);
@@ -110,10 +107,8 @@ export class V1PlaybackApi implements PlaybackApi {
     // told first as well, so its record of the old presentation ends at the same place.
     const positionMs = change.positionMs ?? change.seek?.positionMs ?? t?.positionMs;
     const body: SessionChange = positionMs !== undefined && change.positionMs === undefined && change.seek === undefined ? {...change, positionMs: Math.max(0, Math.round(positionMs))} : change;
-    // A strict command carries the same measured position in PATCH; an extra timeline
-    // flush could independently invoke ended-session recovery before its guarded replan.
-    if (context?.recoverEnded !== false && t && !t.stopping && t.state !== 'ended') await this.report(id, t).catch(() => {});
-    requireSessionChangeCurrent(context);
+    // The PATCH carries the measured position, and the server writes the latest observation
+    // before applying any change, so nothing is sent ahead of it.
     const checkSession = (session: Session) => {
       requireSessionChangeCurrent(context);
       if (context && session.id !== id) throw new Error('Playback session changed during replan');
@@ -164,12 +159,10 @@ export class V1PlaybackApi implements PlaybackApi {
     if (!t) return this.sessions.stop(id, undefined, signal);
     if (t.stopPromise) return t.stopPromise;
     t.stopping = true;
-    if (t.timer !== undefined && !t.pending?.length) { this.clearTimer(t.timer); t.timer = undefined; }
-    // A normal stop must not overtake already accepted marker/end/state facts.
-    // Their retry queue survives the caller's cleanup deadline; explicit forget
-    // remains the cancellation boundary for a replaced viewer/session.
-    const facts = [t.active, ...(t.pending ?? [])].filter((p): p is PendingReport => !!p);
-    const work = Promise.all(facts.map(p => p.promise)).then(async () => {
+    // One last attempt for the newest reading (a skip it carries), then the reliable DELETE with
+    // the final position, which the server writes after the latest observation it holds.
+    const work = t.reporter.flush().catch(() => {}).then(async () => {
+      t.reporter.stop();
       if (this.tracked.get(id) !== t) return;
       await this.sessions.stop(id, t.positionMs, signal);
       if (this.tracked.get(id) === t) this.forget(id);
@@ -180,116 +173,47 @@ export class V1PlaybackApi implements PlaybackApi {
 
   async progressPlayback(id: string, payload: {generation: number; sequence: number; positionSeconds: number; state: 'playing' | 'paused' | 'ended'}): Promise<void> {
     if (this.retired.has(id)) return;
-    const t = this.tracked.get(id) ?? {seq: 0, generation: payload.generation, positionMs: 0, state: 'playing' as TimelineState, everyMs: 10_000};
-    if (!this.tracked.has(id)) this.registrations.changed(id);
-    this.tracked.set(id, t);
+    let t = this.tracked.get(id);
+    const first = !t;
+    if (!t) {
+      t = {reporter: this.reporterFor(id), generation: payload.generation, positionMs: 0, state: 'playing'};
+      t.reporter.setGeneration(payload.generation);
+      this.registrations.changed(id);
+      this.tracked.set(id, t);
+    }
     if (t.stopping) return;
+    const now = this.now(), positionMs = Math.max(0, Math.round(payload.positionSeconds * 1000));
+    // This bridge receives positions and states, not seek events: a position that no longer
+    // follows the clock is a jump, so it starts a new interval rather than claiming continuity.
+    const expected = t.positionMs + (t.state === 'playing' && t.positionAt !== undefined ? now - t.positionAt : 0);
+    const cause = first || payload.generation !== t.generation || payload.state !== t.state ? 'state' : Math.abs(positionMs - expected) > 2000 ? 'seeked' : 'time';
+    if (payload.generation > t.generation) t.reporter.setGeneration(payload.generation);
     t.generation = payload.generation;
-    t.positionMs = Math.max(0, Math.round(payload.positionSeconds * 1000));
-    t.positionAt = this.now();
-    // The end is reported once: a second "ended" for the same generation (the engine's own report,
-    // then the queue's completion check) would reach a session the first one already ended (410)
-    // and stall the queue on its way to the next entry.
+    t.positionMs = positionMs;
+    t.positionAt = now;
     t.state = payload.state;
-    if (payload.state === 'ended') {
-      const pendingEnd = [t.active, ...(t.pending ?? [])].find(r => r?.body.state === 'ended' && r.body.generation === payload.generation);
-      if (pendingEnd) return pendingEnd.promise;
-      if (t.ackEndGeneration === payload.generation) return;
-    }
-    // PERF-24, spec §6 cadence: while playing steadily, the report timer carries the latest
-    // position every `Report-Every-Ms` (10 s); a state or generation change, the first report and a
-    // seek (the position no longer follows the clock) are sent at once.
-    if (this.steady(t)) return;
-    try {
-      await this.report(id, t);
-    } catch (e) {
-      // An end the server already has (the session is over, 404/410) is confirmed, not a failure.
-      if (payload.state === 'ended' && e instanceof PlaybackApiError && (e.status === 404 || e.status === 410 || e.code === 'session_ended')) return;
-      throw e;
-    }
+    t.reporter.observe({generation: payload.generation, state: payload.state, positionMs, rate: payload.state === 'playing' ? 1 : 0}, cause);
+    if (payload.state !== 'ended') return;
+    // The queue advances on the end only once the server has it: one attempt now, and a
+    // retryable refusal the caller may repeat. An end the server already has is confirmed.
+    await t.reporter.flush();
+    const r = t.reporter.snapshot();
+    if (r.lastAccepted !== 'ended' && !r.stopped) throw new PlaybackApiError(503, 'timeline_unconfirmed', 'same_request');
   }
 
-  /** The viewer skipped a marker (spec §4.2): reported at once, with the session's next report. */
-  async markerSkipped(id: string, skipped: NonNullable<TimelineReport['skipped']>): Promise<void> {
+  /** The viewer skipped a marker (spec §4.2): carried by the session's samples until accepted. */
+  async markerSkipped(id: string, skipped: NonNullable<ObservationSample['skipped']>): Promise<void> {
     const t = this.tracked.get(id);
     if (!t || this.retired.has(id)) return;
-    if ((t.pending?.length ?? 0) + (t.active ? 1 : 0) >= MAX_PENDING_REPORT_FACTS) throw new PlaybackApiError(429, 'timeline_pending_full', 'same_request');
-    t.skipped = skipped;
-    await this.report(id, t);
+    t.reporter.skipped(skipped);
   }
 
-  private steady(t: Tracked): boolean {
-    const latest = t.pending?.at(-1) ?? t.active;
-    const at = latest?.at ?? t.sentAt;
-    const state = latest?.body.state ?? t.sentState;
-    const generation = latest?.body.generation ?? t.sentGeneration;
-    const position = latest?.body.positionMs ?? t.sentPositionMs ?? 0;
-    if (at === undefined || (!latest && t.timer === undefined) || state !== t.state || generation !== t.generation) return false;
-    const elapsed = this.now() - at;
-    if (elapsed >= t.everyMs) return false;
-    return Math.abs(t.positionMs - position - (t.state === 'playing' ? elapsed : 0)) <= 2000;
-  }
-
-  /** Keep timeline facts ordered while a slow server has one request outstanding.
-   * Steady progress stays in the tracked position and is carried by the cadence timer;
-   * state changes, seeks, generations and marker skips retain their own reports. */
-  private report(id: string, t: Tracked): Promise<void> {
-    if (this.tracked.get(id) !== t) return Promise.resolve();
-    if ((t.pending?.length ?? 0) + (t.active ? 1 : 0) >= MAX_PENDING_REPORT_FACTS) return Promise.reject(new PlaybackApiError(429, 'timeline_pending_full', 'same_request'));
-    if (t.timer !== undefined) this.clearTimer(t.timer);
-    t.timer = undefined;
-    const at = this.now();
-    const positionMs = t.positionMs + (t.state === 'playing' && t.positionAt !== undefined ? Math.max(0, Math.min(5000, at - t.positionAt)) : 0);
-    let resolve!: () => void, reject!: (error: unknown) => void;
-    const promise = new Promise<void>((yes, no) => { resolve = yes; reject = no; });
-    // This bridge receives positions and states, not an explicit seek observation. Omit seeked
-    // so the server withholds chapter intervals instead of treating a guessed false as evidence.
-    const body = {generation: t.generation, state: t.state, positionMs, rate: 1, ...(t.skipped ? {skipped: t.skipped} : {})};
-    t.skipped = undefined;
-    (t.pending ??= []).push({body, at, promise, resolve, reject});
-    this.drain(id, t);
-    return promise;
-  }
-
-  private drain(id: string, t: Tracked) {
-    if (t.active || this.tracked.get(id) !== t) return;
-    if (!t.pending?.length) return;
-    const wait = (t.retryUntil ?? 0) - this.now();
-    if (wait > 0) {
-      t.timer = this.setTimer(() => { t.timer = undefined; this.drain(id, t); }, Math.min(wait, 2147483647));
-      return;
-    }
-    const next = t.pending.shift()!;
-    t.active = next;
-    t.sentAt = next.at; t.sentPositionMs = next.body.positionMs; t.sentState = next.body.state; t.sentGeneration = next.body.generation;
-    const controller = new AbortController(); t.reportAbort = controller;
-    const deadline = this.setTimer(() => controller.abort(), 20000);
-    void this.sessions.timeline(id, {seq: next.seq ??= ++t.seq, ...next.body}, controller.signal).then(r => {
-      if (r.reportEveryMs) t.everyMs = r.reportEveryMs;
-      t.failures = 0; t.retryUntil = undefined;
-      if (next.body.state === 'ended') t.ackEndGeneration = next.body.generation;
-      next.resolve();
-    }, e => {
-      t.failures = (t.failures ?? 0) + 1;
-      const directed = e instanceof PlaybackApiError && Number.isFinite(e.retryAfterMs) && e.retryAfterMs! > 0 ? e.retryAfterMs! : 0;
-      const delay = Math.max(directed, Math.min(30000, 1000 * 2 ** Math.min(t.failures - 1, 5)));
-      t.retryUntil = this.now() + delay + Math.floor(delay * Math.max(0, Math.min(1, this.random())) * .2);
-      if (e instanceof PlaybackApiError && (e.status === 404 || e.status === 410 || e.code === 'session_ended') && this.tracked.get(id) === t) void this.learnEnd(id);
-      // A transient refusal did not acknowledge this fact. Retain the snapshot
-      // (including marker/end) ahead of newer facts until backoff permits retry.
-      if (this.tracked.get(id) === t && (!(e instanceof PlaybackApiError) || e.retry === 'same_request')) t.pending!.unshift(next);
-      else next.reject(e);
-    }).finally(() => {
-      this.clearTimer(deadline);
-      if (t.reportAbort === controller) t.reportAbort = undefined;
-      t.active = undefined;
-      if (this.tracked.get(id) !== t) return;
-      if (t.pending?.length) { this.drain(id, t); return; }
-      if (t.state === 'ended' || t.stopping) return;
-      t.timer = this.setTimer(() => {
-        t.timer = undefined;
-        if (this.tracked.get(id) === t) void this.report(id, t).catch(() => {});
-      }, Math.min(2147483647, Math.max(1000, t.everyMs, (t.retryUntil ?? 0) - this.now())));
+  private reporterFor(id: string): ObservationReporter {
+    return new ObservationReporter({
+      claim: body => this.sessions.claimObserver(id, body),
+      send: sample => this.sessions.observe(id, sample),
+      onEnded: () => { if (this.tracked.has(id)) void this.learnEnd(id); },
+      ...(this.timers?.setTimer ? {setTimer: this.timers.setTimer} : {}), ...(this.timers?.clearTimer ? {clearTimer: this.timers.clearTimer} : {}), ...(this.clock ? {now: this.clock} : {}),
     });
   }
 
@@ -354,17 +278,18 @@ export class V1PlaybackApi implements PlaybackApi {
     if (this.tracked.get(id) !== original) return false;
     // Remove only this registration before callbacks can re-register the id.
     this.tracked.delete(id); this.registrations.changed(id);
-    if (original?.timer !== undefined) this.clearTimer(original.timer);
-    original?.reportAbort?.abort();
-    for (const pending of original?.pending ?? []) pending.resolve();
-    if (original) original.pending = [];
+    original?.reporter.stop();
     return true;
   }
 
-  /** The highest timeline `seq` sent for a session (0 when none): a native owner that takes the
-   * session over continues from it (plan §9.3 C3). */
-  reportedSeq(id: string): number {
-    return this.tracked.get(id)?.seq ?? 0;
+  /** Hand a session's observations to a native owner (plan §9.3 C3): this reporter stops, and
+   * the epoch it held is returned for the owner to claim with (`replaces`). */
+  handOverObserver(id: string): string | undefined {
+    const t = this.tracked.get(id);
+    if (!t) return undefined;
+    const epoch = t.reporter.snapshot().epoch;
+    t.reporter.stop();
+    return epoch;
   }
 
   /** The last position the service reported for a session, in ms. */

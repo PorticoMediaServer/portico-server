@@ -21,6 +21,7 @@ import {channelMessage} from '../playback/linear-protocol.ts';
 import {PlaybackApiError, call, enc, idempotencyKey, type V1Http} from './http.ts';
 import {serviceText} from '../presentation/service-text.ts';
 import {SessionsClient, type StartContext, type StartPreparation, type Timers} from './sessions.ts';
+import {ObservationReporter} from './observation.ts';
 
 export type V1ChannelOptions = Readonly<{http: V1Http; key?: () => string; now?: () => number; pollMs?: number; timers?: Timers}>;
 
@@ -137,7 +138,7 @@ export function channelView(s: Session, channel: ChannelReference): ChannelView 
   return Object.freeze({playbackId: s.id, status: l?.state === 'recoverable' ? 'recoverable' : undefined, linear});
 }
 
-type Active = {serial: number; channel: ChannelReference; startAbort: AbortController; id?: string; session?: Session; joined: boolean; seq: number; lastReport: number; timer?: ReturnType<typeof setTimeout>; tail: Promise<unknown>; closed: boolean};
+type Active = {serial: number; channel: ChannelReference; startAbort: AbortController; id?: string; session?: Session; joined: boolean; reporter?: ObservationReporter<Session>; tail: Promise<unknown>; closed: boolean};
 
 const message = (e: unknown): string => {
   if (e instanceof PlaybackApiError) {
@@ -163,7 +164,8 @@ export class V1ChannelControl implements ChannelPlayback {
   private readonly sessions: SessionsClient;
   private readonly key: () => string;
   private readonly now: () => number;
-  private readonly pollMs: number;
+  private readonly timers?: Timers;
+  private readonly pollMs?: number;
   private serial = 0;
   private active?: Active;
   private sink?: ChannelViewSink;
@@ -175,7 +177,8 @@ export class V1ChannelControl implements ChannelPlayback {
     this.sessions = new SessionsClient(options.http, options.timers);
     this.key = options.key ?? (() => idempotencyKey());
     this.now = options.now ?? Date.now;
-    this.pollMs = options.pollMs ?? 1000;
+    this.timers = options.timers;
+    this.pollMs = options.pollMs;
   }
 
   /** Nothing to recover: a v1 session a crash left behind lapses with its lease. */
@@ -200,7 +203,7 @@ export class V1ChannelControl implements ChannelPlayback {
     if (!starting() || this.serial !== entered + 1) return;
     this.sink = sink;
     this.wanted = state;
-    const a: Active = {serial: ++this.serial, channel: originalChannel, startAbort: new AbortController(), joined: false, seq: 0, lastReport: 0, tail: Promise.resolve(), closed: false};
+    const a: Active = {serial: ++this.serial, channel: originalChannel, startAbort: new AbortController(), joined: false, tail: Promise.resolve(), closed: false};
     this.active = a;
     const currentStart = () => this.current(a) && starting() && this.current(a);
     let admitted = currentStart, finish: ChannelStartReceipt['finish'] | undefined;
@@ -239,8 +242,8 @@ export class V1ChannelControl implements ChannelPlayback {
       try {if (claimInstall) install = claimInstall(Object.freeze({id: s.id, generation: s.presentation.generation})) === true;} catch { /* A host refusal cannot install or downgrade its cleanup proof. */ }
       if (!install || !admitted()) {retireLate(result);cancel();return;}
       a.id = s.id;
+      a.reporter = this.reporterFor(a, s.id);
       this.accept(a, s);
-      this.schedule(a);
     } catch (e) {
       if (!admitted()) {cancel();return;}
       if (this.current(a)) {
@@ -268,6 +271,12 @@ export class V1ChannelControl implements ChannelPlayback {
       void this.patch(a, {state: this.wanted, seek: {id: this.key(), positionMs: 0, live: true}});
       return;
     }
+    // The engine's readings are the observations; until it has one, the confirmed position keeps
+    // the samples (and so the lease and this view) coming once a second.
+    if (a.reporter && a.reporter.snapshot().generation !== s.presentation.generation) {
+      a.reporter.setGeneration(s.presentation.generation);
+      a.reporter.observe({generation: s.presentation.generation, state: this.wanted, positionMs: s.presentation.linear?.confirmedPositionMs ?? 0, rate: this.wanted === 'playing' ? 1 : 0}, 'state');
+    }
     this.sink?.state(channelView(s, a.channel));
   }
 
@@ -277,25 +286,18 @@ export class V1ChannelControl implements ChannelPlayback {
     this.accept(a, parseChannelSession(r.body));
   }
 
-  private schedule(a: Active) {
-    if (!this.current(a)) return;
-    a.timer = setTimeout(() => void this.tick(a), this.pollMs);
-    (a.timer as {unref?: () => void} | undefined)?.unref?.();
-  }
-
-  private async tick(a: Active) {
-    if (!this.current(a)) return;
-    await this.enqueue(a, async () => {
-      try {
-        await this.read(a);
-        // The lease: report even when the engine is quiet (paused, preparing).
-        const every = a.session?.state === 'paused' ? 30_000 : 10_000;
-        if (this.now() - a.lastReport >= every) await this.report(a, undefined);
-      } catch (e) {
-        if (this.current(a)) { this.sink?.error(message(e), terminal(e)); if (terminal(e)) this.active = undefined; }
-      }
+  /** One sample a second carries the lease, and its ack the current channel view when it
+   * changed: no second request a second. A failed sample is replaced by the next one. */
+  private reporterFor(a: Active, id: string): ObservationReporter<Session> {
+    return new ObservationReporter<Session>({
+      claim: body => this.sessions.claimObserver(id, body),
+      send: sample => this.sessions.observe(id, sample, undefined, body => parseChannelSession(body, this.now)),
+      onView: session => { if (this.current(a)) this.accept(a, session); },
+      onEnded: () => { if (this.current(a)) void this.read(a).catch(e => { if (this.current(a)) { this.sink?.error(message(e), true); this.active = undefined; } }); },
+      onConnection: healthy => { if (!healthy && this.current(a)) this.sink?.error(message(undefined), false); },
+      ...(this.timers?.setTimer ? {setTimer: this.timers.setTimer} : {}), ...(this.timers?.clearTimer ? {clearTimer: this.timers.clearTimer} : {}),
+      ...(this.pollMs !== undefined ? {everyMs: this.pollMs} : {}),
     });
-    this.schedule(a);
   }
 
   private async patch(a: Active, body: Record<string, unknown>) {
@@ -322,15 +324,6 @@ export class V1ChannelControl implements ChannelPlayback {
     });
   }
 
-  private async report(a: Active, positionSeconds: number | undefined): Promise<boolean> {
-    if (!a.id || !a.session || !this.current(a)) return false;
-    const s = a.session;
-    const position = positionSeconds ?? (s.presentation.linear?.confirmedPositionMs ?? 0) / 1000;
-    a.lastReport = this.now();
-    await call(this.http, {method: 'POST', path: encodedRoutePath("report_playback_timeline", {"id": enc(a.id)}), body: {seq: ++a.seq, generation: s.presentation.generation, state: this.wanted, positionMs: Math.max(0, Math.round(position * 1000))}});
-    return true;
-  }
-
   pause() { this.wanted = 'paused'; const a = this.active; if (a) void this.patch(a, {state: 'paused'}); }
   resume() { this.wanted = 'playing'; const a = this.active; if (a) void this.patch(a, {state: 'playing'}); }
   seek(seconds: number) {
@@ -346,22 +339,15 @@ export class V1ChannelControl implements ChannelPlayback {
   /** Play on a failed source is the server's retry. */
   retry() { const a = this.active; if (a) void this.patch(a, {state: 'playing'}); }
 
-  /** Where the engine is (a seek it reached, or ordinary progress); coalesced to one a second. */
-  observe(seconds: number, seekId: string | null = null, _errorCode: string | null = null): Promise<boolean> {
-    const a = this.active;
-    if (!a?.id || !a.session || !this.current(a) || !Number.isFinite(seconds)) return Promise.resolve(false);
-    if (!seekId && this.now() - a.lastReport < 1000) return Promise.resolve(false);
-    return this.enqueue(a, async () => {
-      if (!this.current(a) || seekId && a.session?.presentation.linear?.seek?.id !== seekId) return false;
-      try {
-        const ok = await this.report(a, seconds);
-        if (seekId) await this.read(a);
-        return ok;
-      } catch (e) {
-        if (this.current(a) && seekId) this.sink?.error(message(e), terminal(e));
-        return false;
-      }
-    });
+  /** Where the engine is (a seek it reached, or ordinary progress). The latest wins: the next
+   * sample (within a second) carries it, and a reached seek is sent at once. */
+  async observe(seconds: number, seekId: string | null = null, _errorCode: string | null = null): Promise<boolean> {
+    const a = this.active, s = a?.session;
+    if (!a?.id || !s || !a.reporter || !this.current(a) || !Number.isFinite(seconds)) return false;
+    if (seekId && s.presentation.linear?.seek?.id !== seekId) return false;
+    a.reporter.observe({generation: s.presentation.generation, state: this.wanted, positionMs: Math.max(0, Math.round(seconds * 1000)), rate: this.wanted === 'playing' ? 1 : 0}, seekId ? 'seeked' : 'time');
+    if (seekId) await a.reporter.flush();
+    return this.current(a);
   }
 
   private stop(id: string): Promise<unknown> {
@@ -378,7 +364,7 @@ export class V1ChannelControl implements ChannelPlayback {
     a.closed = true;
     a.startAbort.abort();
     sink?.preparation?.(undefined);
-    if (a.timer) clearTimeout(a.timer);
+    a.reporter?.stop();
     if (a.id) void this.stop(a.id);
   }
 }

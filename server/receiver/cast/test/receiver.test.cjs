@@ -52,7 +52,9 @@ async function harness(fixture={}){
    if(fixture.retireAfterAccepted){const stream=accepted.body;Object.defineProperty(accepted,'body',{value:{getReader(){const reader=stream.getReader();return {read:()=>reader.read(),releaseLock(){reader.releaseLock();queueMicrotask(()=>queueMicrotask(()=>fixture.retireAfterAccepted()));}}}}});}
    return accepted;
   }
-  if(path.endsWith('/timeline')){if(fixture.timelineDown)throw new Error('network down');if(fixture.revoked)return reply({error:{code:'unauthorized'}},401);if(fixture.expired&&!expired){expired=true;return reply({error:{code:'unauthorized'}},401)};return reply({},204);}
+  if(path.endsWith('/observer')||path.endsWith('/observation')){if(fixture.timelineDown)throw new Error('network down');if(fixture.revoked)return reply({error:{code:'unauthorized'}},401);if(fixture.expired&&!expired){expired=true;return reply({error:{code:'unauthorized'}},401)};
+   if(path.endsWith('/observer'))return reply({epoch:'receiver-epoch-00000001',everyMs:1000,leaseUntil:'2099-01-01T00:00:00Z'});
+   return reply({acceptedSeq:body.seq,leaseUntil:'2099-01-01T00:00:00Z'});}
   if(path==='/v1/playback/sessions/ps_1'&&options.method==='PATCH'){
    if(fixture.patchWait){fixture.patchCalled?.();await fixture.patchWait;}
    if(fixture.patchFailure)return reply({error:{code:fixture.patchFailure}},422);
@@ -93,17 +95,19 @@ test('a direct file gets its container’s type; a preparing session is asked ag
  const starts=h.calls.filter(c=>c.url.endsWith('/v1/playback/sessions'));assert.equal(starts.length,2);assert.equal(starts[0].headers['Idempotency-Key'],starts[1].headers['Idempotency-Key']);
  assert.equal(starts[0].body.startFrom,'resume');assert.equal(h.loads[0].media.contentType,'video/mp4');assert.equal(h.resolved(h.loads[0]),'/v1/media/grant');
 });
-test('the timeline reports state and renews through the device token; pause is the player’s own',async()=>{
+test('observations report state once a second and renew through the device token; pause is the player’s own',async()=>{
  const h=await harness({expired:true});await h.receiver.redeem('ABCD');await h.receiver.startPlayback('movie',0);
- await fireAll(h,0);
- const timeline=h.calls.filter(c=>c.url.endsWith('/v1/playback/sessions/ps_1/timeline'));assert.equal(timeline.length,2);assert.deepEqual(timeline[0].body,timeline[1].body);
- assert.equal(timeline[0].body.seq,1);assert.equal(timeline[0].body.generation,1);assert.equal(timeline[0].body.state,'playing');
+ await fireAll(h,0);await settle();await fireAll(h,1000);
+ // The expired bearer's 401 is never resent: it starts the renewal, and the next sample claims and reports.
  const reconnect=h.calls.find(c=>c.url.endsWith('/v1/cast/reconnect'));assert(reconnect);assert.match(reconnect.body.deviceId,/^cast-/);
- assert(h.timers.size>0&&[...h.timers.values()].some(t=>t.ms===10000),'next report in 10 s while playing');
+ const timeline=h.calls.filter(c=>c.url.endsWith('/v1/playback/sessions/ps_1/observation'));assert(timeline.length>=1);
+ assert.equal(timeline[0].body.seq,1);assert.equal(timeline[0].body.generation,1);assert.equal(timeline[0].body.state,'playing');assert.equal(timeline[0].body.epoch,'receiver-epoch-00000001');
+ assert(timeline.every((c,i)=>i===0||c.body.seq>timeline[i-1].body.seq),'no sample is ever resent');
+ assert(h.timers.size>0&&[...h.timers.values()].some(t=>t.ms===1000),'next sample in a second');
  const pause=await h.interceptors.PAUSE({});assert(pause);assert(!h.calls.some(c=>c.method==='PATCH'));
  h.manager.pause();h.events.PAUSE();await fireAll(h,0);
- const last=h.calls.filter(c=>c.url.endsWith('/timeline')).pop();assert.equal(last.body.state,'paused');assert.equal(last.body.seq,2);
- assert([...h.timers.values()].some(t=>t.ms===30000),'next report in 30 s while paused');
+ const last=h.calls.filter(c=>c.url.endsWith('/observation')).pop();assert.equal(last.body.state,'paused');assert(last.body.seq>timeline.at(-1).body.seq);
+ assert([...h.timers.values()].some(t=>t.ms===1000),'paused still samples once a second (the lease)');
  await h.interceptors.STOP({});assert.equal(h.receiver.state().playbackId,null);
  const stop=h.calls.find(c=>c.method==='DELETE');assert(stop&&stop.url.endsWith('/v1/playback/sessions/ps_1'));assert.equal(typeof stop.body.positionMs,'number');
 });
@@ -114,7 +118,7 @@ test('a seek is local for copied streams and goes through the server for transco
  assert.equal(await h.interceptors.SEEK({senderId:'phone',currentTime:600}),null);await settle0();
  const patch=h.calls.find(c=>c.method==='PATCH');assert(patch);assert.equal(patch.headers['If-Match'],'1');assert.equal(patch.headers['Content-Type'],'application/merge-patch+json');assert.equal(patch.body.seek.positionMs,600000);
  assert.equal(h.loads.length,2);assert.equal(h.loads[1].currentTime,600);
- await fireAll(h,0);assert.equal(h.calls.filter(c=>c.url.endsWith('/timeline')).pop().body.generation,2);
+ await fireAll(h,0);assert.equal(h.calls.filter(c=>c.url.endsWith('/observation')).pop().body.generation,2);
 });
 test('loading another title replaces the session in the same request',async()=>{
  const h=await harness();await h.receiver.redeem('ABCD');await h.receiver.startPlayback('movie',0);await h.receiver.startPlayback('other',0);
@@ -201,9 +205,9 @@ test('the TV keeps playing when the last sender disconnects; Stop and the end of
  assert.equal(h.manager.getPlayerState(),'PLAYING');assert.equal(h.uiState(),'playing');
  assert(!h.calls.some(c=>c.method==='DELETE'),'the playback session is kept');
  // The receiver goes on reporting progress by itself.
- const before=h.calls.filter(c=>c.url.endsWith('/timeline')).length;
- await fireAll(h,0);await fireAll(h,10000);
- assert(h.calls.filter(c=>c.url.endsWith('/timeline')).length>before,'progress is still reported');
+ const before=h.calls.filter(c=>c.url.endsWith('/observation')).length;
+ await fireAll(h,0);await fireAll(h,1000);
+ assert(h.calls.filter(c=>c.url.endsWith('/observation')).length>before,'progress is still reported');
  // The title finishing ends the session, so the idle timeout can close the app.
  h.finish();await settle();
  assert.equal(h.receiver.state().playbackId,null);assert.equal(h.uiState(),'idle');
@@ -233,16 +237,16 @@ test('a receiver whose pairing was revoked stops playing; one that only lost the
  await h.message('phone',{type:'pair',code:'ABCD',origin:''});await h.message('phone',{type:'load',itemId:'movie'});await settle();
  h.senders.length=0;h.ctxEvents.disconnect({senderId:'phone'});await settle();
  // The network drops: nothing is known about the pairing, so the film goes on and the report is retried.
- fixture.timelineDown=true;await fireAll(h,0);await fireAll(h,10000);
+ fixture.timelineDown=true;await fireAll(h,0);await fireAll(h,1000);
  assert.equal(h.receiver.state().playbackId,'ps_1');assert.equal(h.uiState(),'playing');
  assert([...h.timers.values()].some(t=>t.ms===1000),'retrying soon');
  // The network returns, and the server says this TV's pairing is over.
  fixture.timelineDown=false;fixture.revoked=true;await fireAll(h,1000);
  assert.equal(h.receiver.state().playbackId,null,'a revoked pairing is an answer, not something to retry');
  assert.equal(h.uiState(),'idle');assert.equal(h.manager.getPlayerState(),'IDLE');
- const reports=h.calls.filter(c=>c.url.endsWith('/timeline')).length;
+ const reports=h.calls.filter(c=>c.url.endsWith('/observation')).length;
  await fireAll(h);await settle();
- assert.equal(h.calls.filter(c=>c.url.endsWith('/timeline')).length,reports,'and nothing goes on reporting');
+ assert.equal(h.calls.filter(c=>c.url.endsWith('/observation')).length,reports,'and nothing goes on reporting');
 });
 
 test('a returning controller can recover the same playing session and an unpaired sender cannot load through CAF',async()=>{
@@ -332,8 +336,8 @@ test('real progressive completion adopts only the server ordinary advance result
  assert.equal(h.receiver.state().playbackId,'ps_2');assert.equal(h.loads.length,2);assert.equal(h.loads[1].media.contentType,'audio/flac');assert.equal(h.loads[1].media.metadata,undefined,'the next item never inherits the old identity');
  const advance=h.calls.find(c=>c.url.endsWith(':advance'));assert(advance);assert.equal(advance.headers['If-Match'],'1');assert.deepEqual(advance.body,{reason:'completion',completionSessionId:'ps_1',completionGeneration:1});assert(advance.headers['Idempotency-Key']);
  assert(!h.calls.some(c=>c.url.endsWith(':prepare-next')||c.url.endsWith(':commit-next')));
- assert(!h.calls.some(c=>c.url.endsWith('/timeline')&&c.body.state==='ended'),'the transition transaction owns the end of the old occurrence');
- await fireAll(h,0);assert(h.calls.some(c=>c.url==='/v1/playback/sessions/ps_2/timeline'&&c.body.seq===1));
+ assert(!h.calls.some(c=>c.url.endsWith('/observation')&&c.body.state==='ended'),'the transition transaction owns the end of the old occurrence');
+ await fireAll(h,0);assert(h.calls.some(c=>c.url==='/v1/playback/sessions/ps_2/observation'&&c.body.seq===1));
  assert(!JSON.stringify(h.sent).includes('/v1/media/'));
 });
 test('progressive completion has no boundary wait and duplicate events cannot advance twice',async()=>{
@@ -345,7 +349,7 @@ test('progressive completion has no boundary wait and duplicate events cannot ad
 test('end of the actual server queue ends the occurrence without preparing another slot',async()=>{
  const h=await harness({queue:true,queueEnd:true,direct:true,audioOnly:true,container:'mp3'});await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song-1',0,null,null,{queueId:'q-1',entryId:'entry-1'});
  h.finish();await settle();
- assert.equal(h.receiver.state().playbackId,null);assert(h.calls.some(c=>c.url.endsWith('/timeline')&&c.body.state==='ended'));
+ assert.equal(h.receiver.state().playbackId,null);assert(h.calls.some(c=>c.url.endsWith('/observation')&&c.body.state==='ended'));
  assert(h.calls.some(c=>c.url==='/v1/playback/sessions/ps_1'&&c.method==='DELETE'));assert(!h.calls.some(c=>c.url.endsWith(':advance')));
 });
 test('non-finished events and a rejected ordinary advance cannot fabricate a next session',async()=>{

@@ -344,14 +344,15 @@ test('a start loads where the server says to resume, plays, and reports a full t
   assert.equal(s.positionSeconds, 100);
   t.video.advance(104);
   await settle();
+  t.clock.advance(1000); await settle();
   const reports = t.server.session(s.session!.id)!.reports;
   assert.ok(reports.length >= 1);
   const last = reports.at(-1)!;
   assert.equal(last.generation, s.session!.generation);
   assert.equal(typeof last.rate, 'number');
-  assert.ok('volume' in last && 'muted' in last, 'the report carries what the owner’s Now Playing shows');
+  assert.ok(typeof last.monotonicMs === 'number' && typeof last.playClockMs === 'number' && (last.playClockMs as number) <= (last.monotonicMs as number), 'each observation carries the device’s own clocks');
   assert.ok(reports.every(r => (r.positionMs as number) >= 100_000), 'no position before the resume point is ever reported');
-  assert.equal(t.log.some(r => r.path.endsWith('/progress')), false, 'only the protocol’s timeline is spoken');
+  assert.equal(t.log.some(r => r.path.endsWith('/progress')), false, 'only the protocol’s observations are spoken');
 });
 
 test('a session adopted before the player screen exists loads when the element is mounted', async ctx => {

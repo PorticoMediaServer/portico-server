@@ -29,6 +29,8 @@ type Session = {
   /** Player failures reported on this session (each re-plans it another way). */
   failures?: number;
   lastSeq: number; lastActivity: number; ended: boolean; reports: Record<string, unknown>[];
+  /** The current observer epoch, and the highest sample seq accepted under it. */
+  epoch?: string; observedSeq?: number;
   queue?: {queueId: string; entryId: string}; transferId?: string; startedAt: number; terminatedMessage?: string; endReason?: string;
 };
 /** A range of one snapshot's keys: `snapshot.first + local` is the entry id's ordinal, so a
@@ -200,9 +202,10 @@ export class FakePlaybackServer {
     if ((match = /^\/v1\/items\/([^/]+)\/playback-options$/.exec(pathOnly)) && m === 'GET') return {status: 200, headers: {}, body: this.options(decodeURIComponent(match[1]!), q)};
     if (m === 'POST' && pathOnly === routePath("start_playback_session")) return this.start(h('Idempotency-Key'), body);
     if ((match = /^\/v1\/playback\/sessions\/([^/]+)\/transfers$/.exec(pathOnly)) && m === 'POST') return this.offer(decodeURIComponent(match[1]!), body);
-    if ((match = /^\/v1\/playback\/sessions\/([^/]+)(\/timeline)?$/.exec(pathOnly))) {
+    if ((match = /^\/v1\/playback\/sessions\/([^/]+)(\/observer|\/observation)?$/.exec(pathOnly))) {
       const s = this.sessions.get(decodeURIComponent(match[1]!));
-      if (match[2]) return this.timeline(s, body);
+      if (match[2] === '/observer' && m === 'POST') return this.claim(s);
+      if (match[2] === '/observation' && m === 'PUT') return this.observation(s, body);
       if (m === 'PATCH') return this.patch(s, h('If-Match'), body);
       if (m === 'DELETE') return this.stop(s, body);
       if (m === 'GET') return s ? {status: 200, headers: {ETag: etag(s.revision)}, body: this.view(s)} : this.error(404, 'session_not_found');
@@ -440,14 +443,27 @@ export class FakePlaybackServer {
     this.publish('session.updated', {kind: 'session', id: s.id}, String(s.revision));
   }
 
-  private timeline(s: Session | undefined, body: Record<string, unknown>): FakeResponse {
+  private epochs = 0;
+  private claim(s: Session | undefined): FakeResponse {
     if (!s) return this.error(404, 'session_not_found');
     this.expire(s);
     if (s.ended) return this.error(410, 'session_ended');
+    s.epoch = `fake-epoch-${String(++this.epochs).padStart(11, '0')}`;
+    s.observedSeq = 0;
+    return {status: 200, headers: {}, body: {epoch: s.epoch, everyMs: 1000, leaseUntil: new Date(this.now() + 120_000).toISOString()}};
+  }
+
+  /** One observation: the latest wins and is applied at once (the real server writes it in batches). */
+  private observation(s: Session | undefined, body: Record<string, unknown>): FakeResponse {
+    if (!s) return this.error(404, 'session_not_found');
+    this.expire(s);
+    if (s.ended) return this.error(410, 'session_ended');
+    if (body.epoch !== s.epoch) return this.error(409, 'observation_epoch_changed');
     s.lastActivity = this.now();
     s.reports.push(body);
-    if (typeof body.seq === 'number' && body.seq > s.lastSeq && body.generation === s.generation) {
-      s.lastSeq = body.seq;
+    if (typeof body.seq === 'number' && body.seq > (s.observedSeq ?? 0) && body.generation === s.generation) {
+      s.observedSeq = body.seq;
+      s.lastSeq++;
       if (typeof body.positionMs === 'number') s.positionMs = body.positionMs;
       if (body.state === 'playing' || body.state === 'paused') s.state = body.state;
       if (body.state === 'ended') this.end(s);
@@ -457,7 +473,7 @@ export class FakePlaybackServer {
         if (t && !t.committed) { t.committed = true; const src = this.sessions.get(t.sourceId); if (src) this.end(src, 'transferred'); }
       }
     }
-    return {status: 204, headers: {'Report-Every-Ms': String(this.o.reportEveryMs)}};
+    return {status: 200, headers: {}, body: {acceptedSeq: s.observedSeq ?? 0, leaseUntil: new Date(this.now() + 120_000).toISOString()}};
   }
 
   private stop(s: Session | undefined, body: Record<string, unknown>): FakeResponse {

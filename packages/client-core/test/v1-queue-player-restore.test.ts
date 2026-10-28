@@ -25,7 +25,10 @@ function setup(t: TestContext, quality?: () => QualityRequest | undefined, retai
       return await intercept(request, response);
     } finally { pending--; }
   }};
-  const api = new V1PlaybackApi(http, {timers: {setTimer: () => 0, clearTimer: () => {}}, key: () => `session-${++serial}-key`});
+  // Observation ticks wait here until a test lets one run (`tick`); nothing fires by itself.
+  const ticks: (() => void)[] = [];
+  const api = new V1PlaybackApi(http, {timers: {setTimer: fn => { ticks.push(fn); return ticks.length; }, clearTimer: () => {}}, key: () => `session-${++serial}-key`});
+  const tick = () => { for (const fn of ticks.splice(0)) fn(); };
   const playback = new PlaybackService(api, () => `intent-${++serial}`, {deferRecovery: true, beforeFreshPlayback: async () => { resets++; if (beforeFreshPlayback) await beforeFreshPlayback(); }});
   const player = new V1QueuePlayer({http, api, playback, viewer, quality, retainQueueIds, key: () => `queue-${++serial}-key`});
   player.connect();
@@ -49,7 +52,7 @@ function setup(t: TestContext, quality?: () => QualityRequest | undefined, retai
     }
     throw new Error('playback fixture did not settle');
   };
-  return {server, http, log, player, playback, seed, settle, resets: () => resets, intercept: (fn: Intercept) => { intercept = fn; }};
+  return {server, http, log, player, playback, seed, settle, tick, resets: () => resets, intercept: (fn: Intercept) => { intercept = fn; }};
 }
 function gate() {
   let release!: () => void, entered!: () => void;
@@ -312,7 +315,7 @@ test('restorePaused never publishes ready for a server response that names playi
 
 test('restorePaused rejects invalid input before disturbing current playback', async t => {
   const f = setup(t), saved = await f.seed(), session = f.playback.getSnapshot().session!.id;
-  await f.settle();
+  await f.settle(); f.tick(); await f.settle();
   assert.equal(f.server.session(session)!.reports.at(-1)!.positionMs, 37250, 'the seeded progress report completed before the invalid operation');
   const before = f.log.length;
   for (const position of [-1, NaN, Infinity, 1e9 + 1]) await assert.rejects(f.player.restorePaused(saved.queueId, saved.entryId, position));

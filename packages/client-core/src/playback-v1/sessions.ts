@@ -24,7 +24,7 @@ const observationDeadlineMs = 1500;
 import type {MediaPlayer, PlayerEvent, PlayerObservation} from './port.ts';
 import type {QualityRequest} from './quality.ts';
 import type {PlayerFailureCode} from '../client-profile.ts';
-import {TimelineReporter, type TimelineReport, type TimelineReporterOptions} from './timeline.ts';
+import {ObservationReporter, type ObservationReporterOptions} from './observation.ts';
 import {ContractError, id, parseDiscTitleRef, parseSession, parseSessionEnd, type DiscTitleRef, type Session, type SessionEnd} from './types.ts';
 import {requireSessionChangeCurrent, sessionChangeCurrent, type SessionChangeContext} from './change-context.ts';
 export type {SessionChangeContext} from './change-context.ts';
@@ -256,18 +256,12 @@ export class SessionsClient {
   }
 
   /** One observation: a single attempt with a short deadline. A failed one is replaced by the next. */
-  async observe(id: string, sample: ObservationSample, signal?: AbortSignal): Promise<ObservationAck> {
+  async observe<S = Session>(id: string, sample: ObservationSample, signal?: AbortSignal, parse: (body: unknown) => S = parseSession as (body: unknown) => S): Promise<ObservationAck<S>> {
     const v = (await callOnce(this.http, {method: 'PUT', path: encodedRoutePath("put_playback_observation", {"id": enc(id)}), body: sample, deadlineMs: observationDeadlineMs, singleAttempt: true, ...(signal ? {signal} : {})})).body as Record<string, unknown> | undefined;
     if (!v || typeof v.acceptedSeq !== 'number') throw new ContractError('observation ack');
-    let session: Session | undefined;
-    if (v.session !== undefined) { try { session = parseSession(v.session); } catch { session = undefined; } }
+    let session: S | undefined;
+    if (v.session !== undefined) { try { session = parse(v.session); } catch { session = undefined; } }
     return Object.freeze({acceptedSeq: v.acceptedSeq, ...(typeof v.leaseUntil === 'string' ? {leaseUntil: v.leaseUntil} : {}), ...(typeof v.viewTag === 'string' ? {viewTag: v.viewTag} : {}), ...(session ? {session} : {})});
-  }
-
-  async timeline(id: string, report: TimelineReport, signal?: AbortSignal): Promise<{reportEveryMs?: number}> {
-    const r = await call(this.http, {method: 'POST', path: encodedRoutePath("report_playback_timeline", {"id": enc(id)}), body: report, ...(signal ? {signal} : {})});
-    const every = Number(header(r, 'Report-Every-Ms'));
-    return Number.isFinite(every) && every > 0 ? {reportEveryMs: every} : {};
   }
 }
 
@@ -294,9 +288,12 @@ export type ControllerOptions = Readonly<{
   player: MediaPlayer;
   timers?: Timers;
   key?: () => string;
-  reporter?: Partial<Omit<TimelineReporterOptions, 'send' | 'onEnded' | 'onLeaseRisk'>>;
+  reporter?: Partial<Omit<ObservationReporterOptions, 'claim' | 'send' | 'onEnded' | 'onLeaseRisk' | 'now' | 'setTimer' | 'clearTimer'>>;
   /** Called when the server ended the session (transfer committed, admin terminate, stop elsewhere). */
   onServerEnded?: (session: Session, end: SessionEnd) => void;
+  /** A pause or play asked elsewhere (RN-09). The host's own playback owner applies it; without
+   * one the player is paused or played directly. */
+  onRemoteControl?: (state: 'playing' | 'paused') => void;
   /**
    * The lease lapsed while this device could not report (a sleeping laptop, a long outage). The
    * owner starts the title again at `positionMs` (a queue restarts its entry). Without it the
@@ -331,10 +328,13 @@ export class PlaybackSessionController {
   private readonly timers: Timers;
   private readonly reporterOptions: ControllerOptions['reporter'];
   private readonly onServerEnded?: (session: Session, end: SessionEnd) => void;
+  private readonly onRemoteControl?: (state: 'playing' | 'paused') => void;
   private readonly onLeaseExpired?: (session: Session, positionMs: number) => void;
   private readonly serverSeek: (session: Session) => boolean;
   private readonly wantsPlaying?: () => boolean;
-  private reporter?: TimelineReporter;
+  private reporter?: ObservationReporter;
+  /** The newest command revision (RN-09) this controller has applied, per session. */
+  private appliedControl?: Readonly<{sessionId: string; revision: number}>;
   private state: ControllerSnapshot = Object.freeze({phase: 'idle', changing: false});
   private listeners = new Set<() => void>();
   private offPlayer: () => void;
@@ -354,6 +354,7 @@ export class PlaybackSessionController {
     this.timers = o.timers ?? {};
     this.reporterOptions = o.reporter;
     this.onServerEnded = o.onServerEnded;
+    this.onRemoteControl = o.onRemoteControl;
     this.onLeaseExpired = o.onLeaseExpired;
     this.serverSeek = o.serverSeek ?? seekNeedsServer;
     this.wantsPlaying = o.wantsPlaying;
@@ -466,6 +467,19 @@ export class PlaybackSessionController {
     const fresh = this.gate.advance(session.presentation.generation);
     if (!this.reporter) this.reporter = this.newReporter(session.id);
     this.publish({session, phase: 'active', ended: undefined});
+    const control = session.control ? Number(session.control.revision) : undefined;
+    const applied = this.appliedControl?.sessionId === session.id ? this.appliedControl.revision : undefined;
+    if (control !== undefined && (applied === undefined || control > applied)) {
+      this.appliedControl = Object.freeze({sessionId: session.id, revision: control});
+      // A newer command revision on the same presentation is a pause or play asked elsewhere (an
+      // administrator, another device). This player's own reports never move it, so applying it
+      // once cannot undo a newer local choice.
+      if (!fresh && applied !== undefined && session.control) {
+        const state = session.control.state;
+        if (this.onRemoteControl) this.onRemoteControl(state);
+        else if (state === 'paused') this.player.pause(); else this.player.play();
+      }
+    }
     if (!fresh) return;
     this.reporter.setGeneration(session.presentation.generation);
     this.loadMedia(session, autoplay, startPositionMs);
@@ -481,11 +495,12 @@ export class PlaybackSessionController {
     });
   }
 
-  private newReporter(sessionId: string): TimelineReporter {
-    return new TimelineReporter({
+  private newReporter(sessionId: string): ObservationReporter {
+    return new ObservationReporter({
       ...this.reporterOptions,
       now: this.timers.now, setTimer: this.timers.setTimer, clearTimer: this.timers.clearTimer,
-      send: report => this.client.timeline(sessionId, report),
+      claim: body => this.client.claimObserver(sessionId, body),
+      send: sample => this.client.observe(sessionId, sample),
       onLeaseRisk: () => { if (this.state.session?.id === sessionId) this.leaseAtRisk = true; },
       onEnded: () => { if (this.state.session?.id === sessionId) void this.serverEnded(); },
     });
@@ -545,7 +560,7 @@ export class PlaybackSessionController {
     if (!reporter) return;
     await reporter.flush();
     const t = reporter.snapshot();
-    if (t.lastSentState !== 'ended' && !t.stopped) throw new PlaybackApiError(503, 'timeline_unconfirmed', 'same_request');
+    if (t.lastAccepted !== 'ended' && !t.stopped) throw new PlaybackApiError(503, 'timeline_unconfirmed', 'same_request');
   }
 
   /** A marker skip the caller performed itself (it seeks): evidence for the next report (spec §4.2). */
@@ -555,6 +570,15 @@ export class PlaybackSessionController {
 
   /** Send the newest reading now (the page is being hidden or closed). */
   flush(): Promise<void> { return this.reporter?.flush() ?? Promise.resolve(); }
+
+  /** Hand this session's observations to a native owner: this controller stops reporting it and
+   * returns the epoch the owner claims with (`replaces`), so the server lets it take over at once. */
+  handOverObserver(sessionId: string): string | undefined {
+    if (this.state.session?.id !== sessionId || !this.reporter) return undefined;
+    const epoch = this.reporter.snapshot().epoch;
+    this.retireReporter();
+    return epoch;
+  }
 
   private playerEvent(e: PlayerEvent) {
     const o = e.observation;

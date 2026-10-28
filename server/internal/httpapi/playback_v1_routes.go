@@ -50,8 +50,9 @@ func newPlaybackV1(d Dependencies) *playbackv1.Service {
 	if s == nil {
 		return nil
 	}
-	// The observation protocol stays off until every client speaks it.
-	s.ObservationsEnabled = os.Getenv("PORTICO_PLAYBACK_OBSERVATIONS") == "1"
+	// Every client reports with observations (P2-21), and a client that doesn't is refused at
+	// start. PORTICO_PLAYBACK_OBSERVATIONS=0 is the off switch the older HTTP tests still use.
+	s.ObservationsEnabled = os.Getenv("PORTICO_PLAYBACK_OBSERVATIONS") != "0"
 	s.StopAuthorityTx = func(ctx context.Context, tx *sql.Tx, c playbackv1.Caller) error {
 		if d.Identity == nil || tx == nil || dbwork.Snapshot(ctx) != tx || c.DeviceID == "" {
 			return identity.ErrForbidden

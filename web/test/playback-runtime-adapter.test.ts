@@ -207,7 +207,7 @@ class ChannelPort {
           linear: {name: 'channel', originMs: 1000, windowStartMs: this.windowStartMs, windowEndMs: 120000, liveEdgeMs: 60000, state: 'active'}}};
       this.sessions.set(id, session); return response(session, 201);
     }
-    const match = /^\/v1\/playback\/sessions\/(live_session_\d+)(?:\/timeline)?$/.exec(request.path), session = match ? this.sessions.get(match[1]!) : undefined;
+    const match = /^\/v1\/playback\/sessions\/(live_session_\d+)(?:\/observer|\/observation)?$/.exec(request.path), session = match ? this.sessions.get(match[1]!) : undefined;
     if (!session) return;
     if (request.method === 'GET') return response(session);
     if (request.method === 'PATCH') {
@@ -216,10 +216,11 @@ class ChannelPort {
       session.revision = String(Number(session.revision) + 1); return response(session);
     }
     if (request.method === 'DELETE') { session.state = 'ended'; return response(undefined, 204); }
-    if (request.method === 'POST' && request.path.endsWith('/timeline')) {
+    if (request.method === 'POST' && request.path.endsWith('/observer')) return response({epoch: 'live-epoch-000000000001', everyMs: 1000});
+    if (request.method === 'PUT' && request.path.endsWith('/observation')) {
       const linear = session.presentation.linear;
       if (linear.seek && Math.abs(body!.positionMs! - linear.seek.positionMs) <= 1000) linear.seek.acknowledged = true;
-      linear.confirmedPositionMs = body!.positionMs; return response(undefined, 204);
+      linear.confirmedPositionMs = body!.positionMs; return response({acceptedSeq: (body as {seq?: number}).seq ?? 0, viewTag: JSON.stringify(linear).length.toString(), session});
     }
     return;
   }
@@ -319,7 +320,7 @@ test('policy actions execute only the rendered marker and record a real manual s
   assert.notEqual(f.runtime.getSnapshot().playback.positionSeconds, 79, 'the UI does not fabricate a seek landing');
   f.video.land(79); await settle(); f.clock.advance(10000); await settle();
   assert.equal(f.runtime.getSnapshot().playback.positionSeconds, 79);
-  assert.ok(f.log.some(request => request.path.endsWith('/timeline') && JSON.stringify(request.body).includes('"skipped":{"markerId":"intro","mode":"manual","positionMs":40000}')));
+  assert.ok(f.log.some(request => request.path.endsWith('/observation') && JSON.stringify(request.body).includes('"skipped":{"markerId":"intro","mode":"manual","positionMs":40000}')));
   await assert.rejects(f.runtime.policyAction(fence, {kind: 'skip', markerId: 'intro'}), /playback_policy_unavailable/);
 });
 
@@ -386,7 +387,7 @@ test('Skip credits on an actual up-next offer uses its marker and never advances
   assert.equal(f.log.some(request=>request.path.endsWith(':advance')),false,'Skip credits is not Play now');
   f.video.land(7150);await settle();f.clock.advance(10000);await settle();
   assert.equal(f.runtime.getSnapshot().playback.positionSeconds,7150);
-  assert.ok(f.log.some(request=>request.path.endsWith('/timeline')&&JSON.stringify(request.body).includes('"skipped":{"markerId":"credits","mode":"manual","positionMs":7110000}')));
+  assert.ok(f.log.some(request=>request.path.endsWith('/observation')&&JSON.stringify(request.body).includes('"skipped":{"markerId":"credits","mode":"manual","positionMs":7110000}')));
   await assert.rejects(f.runtime.policyAction(fence,{kind:'skip',markerId:credits.id}),/playback_policy_unavailable/);
 });
 
@@ -1014,12 +1015,9 @@ test('runtime Home play reaches the actual queue/service/element and publishes t
   assert.equal(f.runtime.getSnapshot().presentation!.positionSeconds, 18.5);
   const session = f.server.session(fence.sessionId);
   assert.ok(session);
-  // A media reading updates the presentation immediately; ordinary timeline progress uses
-  // the server's 10-second cadence on the injected clock, not the media element's clock.
-  assert.equal(session.reports.some(report => report.positionMs === 18500), false);
-  f.clock.advance(9999); await settle();
-  assert.equal(session.reports.some(report => report.positionMs === 18500), false);
-  f.clock.advance(1); await settle();
+  // A media reading updates the presentation immediately; the server hears the latest reading
+  // on the next observation, within a second on the injected clock.
+  f.clock.advance(1000); await settle();
   assert.ok(session.reports.some(report => report.positionMs === 18500 && report.generation === fence.generation && report.state === 'playing'));
 });
 
@@ -1048,7 +1046,7 @@ test('dock completion waits for the actual end receipt and Replay restarts the f
   const f = setup(t); await f.runtime.play('movie', 20); await f.arrive();
   const fence = f.runtime.getSnapshot().fence!, queue = f.runtime.getSnapshot().session!.queue!, held = deferred();
   f.intercept(async (request, response) => {
-    if (request.path.endsWith('/timeline') && (request.body as {state?: string})?.state === 'ended') await held.hold();
+    if (request.path.endsWith('/observation') && (request.body as {state?: string})?.state === 'ended') await held.hold();
     return response;
   });
   f.video.finish(); await held.started;
@@ -1147,7 +1145,7 @@ test('dock completion restores the actual parked listening queue paused only aft
   await f.runtime.play('movie', 20); await f.arrive();
   const held = deferred();
   f.intercept(async (request, response) => {
-    if (request.path.endsWith('/timeline') && (request.body as {state?: string})?.state === 'ended') await held.hold();
+    if (request.path.endsWith('/observation') && (request.body as {state?: string})?.state === 'ended') await held.hold();
     return response;
   });
   f.video.finish(); await held.started;
@@ -1183,7 +1181,7 @@ test('dock completion ignores an old confirmed end after replacement and authori
   const f = setup(t); await f.runtime.play('movie', 20); await f.arrive();
   const held = deferred();
   f.intercept(async (request, response) => {
-    if (request.path.endsWith('/timeline') && (request.body as {state?: string})?.state === 'ended') await held.hold();
+    if (request.path.endsWith('/observation') && (request.body as {state?: string})?.state === 'ended') await held.hold();
     return response;
   });
   f.video.finish(); await held.started;
@@ -1238,7 +1236,7 @@ test('dock completion actual renderer Replay dispatches through the shell presen
 
 test('dock completion cannot publish Finished when the actual end report fails', async t => {
   const f = setup(t); await f.runtime.play('movie', 20); await f.arrive();
-  f.intercept(async (request, response) => request.path.endsWith('/timeline') && (request.body as {state?: string})?.state === 'ended'
+  f.intercept(async (request, response) => request.path.endsWith('/observation') && (request.body as {state?: string})?.state === 'ended'
     ? {status: 503, headers: {}, body: {error: {code: 'temporarily_unavailable'}}} : response);
   f.video.finish(); await settle();
   assert.equal(f.runtime.getSnapshot().playback.phase, 'ended');

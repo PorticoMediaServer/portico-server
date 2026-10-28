@@ -189,8 +189,9 @@ test('controller: seek is local for direct play and goes through the server once
   ctl.setSubtitles('s4');
   await settle();
   assert.deepEqual(player.sidecar, ['s4']);
+  await c.advance(1000);
   const reports = server.session(ctl.getSnapshot().session!.id)!.reports;
-  assert.equal(reports.length, sent + 1, 'the local switch is reported at once');
+  assert.equal(reports.length, sent + 1, 'the local switch is in the next sample');
   assert.equal(reports.at(-1)!.subtitleTrackId, 's4');
   await ctl.setSubtitles('s3');
   assert.equal(player.loads.length, loads + 2);
@@ -430,6 +431,7 @@ test('attach: a session another request made is taken over, loads at the viewer�
   assert.equal(player.loads[0]!.autoplay, false, 'the viewer’s intent decides, not the server’s default');
   player.state = 'playing'; player.positionMs = 43_000; player.emit('state');
   await settle();
+  await c.advance(1000);
   assert.equal(server.session(first.id)!.reports.at(-1)!.positionMs, 43_000);
   // The same session again loads nothing; another session replaces it without stopping it here.
   ctl.attach(first);
@@ -486,11 +488,12 @@ test('readings from an engine outside the port are reported, and the end is conf
   ctl.attach(s, {autoplay: false});
   ctl.observe({state: 'playing', positionMs: 12_345, rate: 1.25}, 'state');
   await settle();
+  await c.advance(1000);
   const report = server.session(s.id)!.reports.at(-1)!;
   assert.deepEqual({state: report.state, positionMs: report.positionMs, rate: report.rate, generation: report.generation}, {state: 'playing', positionMs: 12_345, rate: 1.25, generation: s.presentation.generation});
   ctl.noteSkip({markerId: 'm1', mode: 'manual', positionMs: 13_000});
-  await settle();
-  assert.deepEqual(server.session(s.id)!.reports.at(-1)!.skipped, {markerId: 'm1', mode: 'manual', positionMs: 13_000});
+  await c.advance(1000); await settle(); await c.advance(1000); await settle();
+  assert.ok(server.session(s.id)!.reports.some(r => JSON.stringify(r.skipped) === JSON.stringify({markerId: 'm1', mode: 'manual', positionMs: 13_000})), 'the skip rode a sample');
   // The end cannot be confirmed while the server cannot be reached…
   server.failNext('offline');
   ctl.observe({state: 'ended', positionMs: 180_000}, 'state');
@@ -599,8 +602,8 @@ test('WEB-03: reloading media for the same session preserves timeline sequence a
   player.positionMs=42000;player.emit('state');await settle();await c.advance(11000);
   const before=server.session(session.id)!.reports.at(-1)!;assert.ok(Number(before.seq)>=2);
   ctl.reloadMedia({autoplay:false});assert.equal(player.loads.length,2);assert.equal(player.loads[1].generation,session.presentation.generation);assert.equal(player.loads[1].startPositionMs,42000);assert.equal(player.loads[1].autoplay,false);
-  player.emit('state');await settle();const after=server.session(session.id)!.reports.at(-1)!;
-  assert.ok(Number(after.seq)>Number(before.seq));assert.equal(after.positionMs,42000);assert.equal(after.state,'paused');assert.equal(server.session(session.id)!.lastSeq,after.seq);
+  player.emit('state');await settle();await c.advance(1000);await settle();await c.advance(1000);await settle();const after=server.session(session.id)!.reports.at(-1)!;
+  assert.ok(Number(after.seq)>Number(before.seq));assert.equal(after.epoch,before.epoch,'the same observer epoch');assert.equal(after.positionMs,42000);assert.equal(after.state,'paused');assert.equal(server.session(session.id)!.observedSeq,after.seq);
   ctl.detach();ctl.reloadMedia();assert.equal(player.loads.length,2,'a detached session cannot be reloaded');
  }finally{ctl.dispose();}
 });

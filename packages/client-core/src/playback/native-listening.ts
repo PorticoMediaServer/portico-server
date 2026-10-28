@@ -74,8 +74,10 @@ export type NativeListeningV1Context=Readonly<{
  session:Session;
  queueId:string|null; queueRevision:string|null;
  durationSeconds:number;
- /** The highest timeline `seq` already sent for this session (0 when none). */
+ /** Retired with the timeline: always 0. */
  lastSeq:number;
+ /** The observer epoch JS reported under; the owner claims with it (`replaces`) to take over at once. */
+ observerEpoch?:string;
  /** How much of the server's 120 s lease is left, as JS last knew it. */
  leaseMs:number;
  /** The server offers §18 queue transitions (`features.queueTransitions`). */

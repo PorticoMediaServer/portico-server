@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {parseObservedPlayback} from '../src/playback-v1/observed-playback.ts';
-import {TimelineReporter, type TimelineReport} from '../src/playback-v1/timeline.ts';
+import {ObservationReporter, type ObservationSample} from '../src/playback-v1/observation.ts';
 
 const measured = {video: {width: 1920, height: 1080, frameRateHz: 23.976}, audio: {channels: 2, sampleRate: 44100}};
 test('output measurements stay sparse, immutable and free of bridge URLs and capabilities', () => {
@@ -21,9 +21,9 @@ test('output values cannot be quality ceilings, guessed handling or unbounded/pr
     assert.throws(() => parseObservedPlayback(invalid), /Invalid playback observation/);
   }
 });
-test('timeline carries only the current generation output and explicit clears, without inheriting a prior reading', async () => {
-  const sent: TimelineReport[] = [];
-  const reporter = new TimelineReporter({send: async report => {sent.push(report);}, setTimer: () => 1, clearTimer: () => {}});
+test('observations carry only the current generation output and explicit clears, without inheriting a prior reading', async () => {
+  const sent: ObservationSample[] = [];
+  const reporter = new ObservationReporter({claim: async () => ({epoch: 'e'.repeat(22), everyMs: 1000}), send: async sample => {sent.push(sample); return {acceptedSeq: sample.seq};}, setTimer: () => 1, clearTimer: () => {}});
   reporter.setGeneration(1);
   const reading = {generation: 1, state: 'playing' as const, positionMs: 1000, rate: 1};
   reporter.observe({...reading, observedPlayback: measured}); await reporter.flush();

@@ -266,7 +266,7 @@
     localRequests.add(request);manager.sendLocalMediaRequest(request);
   }
 
-  var reportTimer = null, reportSeq = 0, reportFailures = 0, recoveries = 0, recovering = null, networkRetries = 0, networkRetryPosition = 0, bufferingTimer = null;
+  var observer = null, reportTimer = null, reportFailures = 0, recoveries = 0, recovering = null, networkRetries = 0, networkRetryPosition = 0, bufferingTimer = null;
   var commands = Promise.resolve();
   function serial(work) { var result = commands.then(work); commands = result.catch(function () {}); return result; }
   function token(bytes) { var a = new Uint8Array(bytes || 24); window.crypto.getRandomValues(a); return Array.from(a, function (x) { return x.toString(16).padStart(2, '0'); }).join(''); }
@@ -365,9 +365,10 @@
    * {code, status, current} otherwise (`current` is a 412's session). */
   async function request(path, options) {
     if(shuttingDown)throw new Error('receiver_shutdown');
-    var headers = Object.assign({'Content-Type': 'application/json'}, options.headers || {});
+    // This receiver reports playback with observations; the server refuses playback to one that doesn't.
+    var headers = Object.assign({'Content-Type': 'application/json', 'Portico-Playback': '2'}, options.headers || {});
     if (options.bearer) headers.Authorization = 'Bearer ' + options.bearer;
-    var abort = new AbortController(), timer = setTimeout(function () { abort.abort(); }, 15000);
+    var abort = new AbortController(), timer = setTimeout(function () { abort.abort(); }, options.timeoutMs || 15000);
     var active={abort:abort,timer:timer};activeRequests.add(active);
     try {
       var response = await fetch((options.origin === undefined ? base : options.origin) + path, {method: options.method || 'POST', headers: headers, signal: abort.signal, body: options.body === undefined ? undefined : JSON.stringify(options.body)});
@@ -447,6 +448,9 @@
     catch(e){
       if(e.retired)throw e;
       requireLease(lease);requirePairInstallation(installation,true);
+      // A single attempt (an observation) is never sent twice: its 401 starts the renewal the
+      // next one uses, and any other failure is simply replaced by the next sample.
+      if(options.single){if(e.status===401&&originalToken&&!installation&&!options.noRenew){try{await renewReceiver(credential,origin,originalScope,originalToken);}catch(renewal){if(renewal&&renewal.pairingEnded)throw renewal;}}throw e;}
       // Never replay a command captured under the retired bearer. A fresh
       // command can follow the correlated renewal acknowledgment.
       if(e.status===401&&originalToken&&!installation&&!options.noRenew){
@@ -935,7 +939,7 @@
 
     playback = track(started);
     if(attempt){attempt.owner=playback;attempt.owned=ownedStart;attempt.witness=cleanupWitness;attempt.contentId=load.media.contentId;}
-    reportSeq = 0; reportFailures = 0;
+    observer = null; reportFailures = 0;
     return load;
   }
   function startPlayback(itemId,startSeconds,identity,subtitleTrackId,queue,lease,pending,versionId,audioTrackId) { return commandQueue(lease,async function(){
@@ -965,7 +969,7 @@
     var answer = await api(queuePath(owner.queue.queueId) + ':advance',{body:{reason:'completion',completionSessionId:owner.id,completionGeneration:owner.generation},headers:{'If-Match':head.revision,'Idempotency-Key':token(16)}});
     if (playback !== owner || !answer.body.session) return false;
     var current=answer.body.session;
-    playback=track(current);meta=null;reportSeq=0;reportFailures=0;recoveries=0;networkRetries=0;
+    playback=track(current);meta=null;observer=null;reportFailures=0;recoveries=0;networkRetries=0;
     showLoading(null); // Never label the new occurrence with the old title or artwork.
     var load;
     try { load=loadRequest(current,'',true);await loadMedia(load); }
@@ -973,19 +977,35 @@
     showPlaying();scheduleReport(0);refreshCatalogueDisplay(current,load.media.contentId);broadcast();return true;
   }
 
-  // --- Timeline: progress, lease renewal and observation in one report -------
+  // --- Observations: the latest state once a second, never queued or resent -------
 
   function timelineState() {
     var s = manager ? manager.getPlayerState() : 'IDLE';
     return s === 'PLAYING' ? 'playing' : s === 'BUFFERING' ? 'buffering' : 'paused';
   }
+  function clock() { return typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now(); }
+  /** A seek the receiver performed or saw: the next sample says the position jumped. */
+  function observedSeek() { if (observer) observer.seek++; }
+  /** One sample. The first claims the session's observer epoch (again, naming the old one, after
+   * the server restarted); the device's own clocks start at the claim. One attempt, 1.5 s. */
   async function report(state) {
     if (!playback) return;
-    var id = playback.id;
+    var id = playback.id, generation = playback.generation, now = clock();
+    if (!observer || observer.id !== id) observer = {id: id, epoch: null, replaces: null, seq: 0, at: now, play: 0, since: null, seek: 0};
+    var o = observer, s = state || timelineState();
+    if (o.since !== null) { o.play += now - o.since; o.since = null; }
+    if (s === 'playing') o.since = now;
     try {
-      await api(sessionPath(id) + '/timeline', {body: {seq: ++reportSeq, generation: playback.generation, state: state || timelineState(), positionMs: Math.round(Math.max(0, position()) * 1000), rate: 1}});
+      if (!o.epoch) {
+        var grant = (await api(sessionPath(id) + '/observer', {body: o.replaces ? {generation: generation, replaces: o.replaces} : {generation: generation}, single: true, timeoutMs: 5000})).body;
+        if (observer !== o || !grant || typeof grant.epoch !== 'string') return;
+        o.epoch = grant.epoch; o.replaces = null; o.seq = 0; o.at = clock(); o.play = 0; if (o.since !== null) o.since = o.at;
+      }
+      var mono = Math.max(0, Math.floor(clock() - o.at)), played = Math.floor(o.play + (o.since !== null ? clock() - o.since : 0));
+      await api(sessionPath(id) + '/observation', {method: 'PUT', single: true, timeoutMs: 1500, body: {epoch: o.epoch, seq: ++o.seq, generation: generation, state: s, positionMs: Math.round(Math.max(0, position()) * 1000), rate: s === 'playing' ? 1 : 0, monotonicMs: mono, playClockMs: Math.min(mono, played), seekSerial: o.seek}});
       reportFailures = 0; notice('');
     } catch (e) {
+      if (e.code === 'observation_epoch_changed') { if (observer === o) { o.replaces = o.epoch; o.epoch = null; } return; }
       // The server no longer has this session (stopped elsewhere, moved, ended by an administrator),
       // or no longer accepts this TV's pairing: with no sender connected, nothing else would stop it.
       if (e.status === 404 || e.status === 410 || e.code === 'session_ended' || e.pairingEnded) { if (playback && playback.id === id) { playback = null; meta = null; if (manager) mediaCommand('STOP'); showIdle(); broadcast(); } return; }
@@ -993,12 +1013,17 @@
       throw e;
     }
   }
-  /** The next report: 10 s while playing, 30 s paused, sooner after a failure (the lease is 120 s). */
+  /** The next sample: once a second, whatever happened to the last one. Samples never wait in
+   * the command queue: a command does not wait behind a sample, nor a sample behind a command. */
+  var reporting = null;
   function scheduleReport(ms) {
     clearTimeout(reportTimer);
     if (!playback) return;
-    if (ms === undefined) ms = reportFailures ? [1000, 2000, 5000, 10000][Math.min(reportFailures, 4) - 1] : paused() ? 30000 : 10000;
-    reportTimer = setTimeout(function () { serial(function () { return report(); }).catch(function () {}).finally(function () { scheduleReport(); }); }, ms);
+    if (ms === undefined) ms = 1000;
+    reportTimer = setTimeout(function () {
+      if (!reporting) reporting = report().catch(function () {}).finally(function () { reporting = null; });
+      reporting.finally(function () { scheduleReport(); });
+    }, ms);
   }
   /** Reload the media after the server produced a new presentation (a server seek, a recovery). */
   async function adoptPresentation(updated, autoplay,lease,expected,recovery) {
@@ -1348,7 +1373,7 @@
       seekTo(request.currentTime,lease).catch(function(){if(leaseCurrent(lease))notice(copy('notice.seekFailed'), 5000);});
       return null;
     });
-    manager.setMessageInterceptor(types.STOP,function(request){if(request&&localRequests.has(request))return request;return serial(stopPlayback).then(function(){return request;}).catch(function(){return null;});});
+    manager.setMessageInterceptor(types.STOP,function(request){if(request&&localRequests.has(request))return request;return serial(function(){return stopPlayback();}).then(function(){return request;}).catch(function(){return null;});});
     // A Cast device has no keyboard, so the sender delivers the pairing code it was issued
     // and then drives playback over this channel. What plays is always the library of the
     // person who paired, and only they drive it.
@@ -1498,7 +1523,7 @@
     [events.LOADED_DATA,events.PLAYING].filter(Boolean).forEach(function(name){manager.addEventListener(name,function(){restoreTracks(platformOccurrence);pictureReady=true;viewLoading=false;stopPreparing();playingView(name===events.PLAYING);scheduleReport(0);broadcast();});});
     if(events.PLAYER_LOAD_COMPLETE)manager.addEventListener(events.PLAYER_LOAD_COMPLETE,function(){restoreTracks(platformOccurrence);});
     // A state change or a completed seek is reported at once.
-    [events.PAUSE,events.SEEKED].filter(Boolean).forEach(function(name){manager.addEventListener(name,function(){playingView(true);scheduleReport(0);broadcast();});});
+    [events.PAUSE,events.SEEKED].filter(Boolean).forEach(function(name){manager.addEventListener(name,function(){if(name===events.SEEKED)observedSeek();playingView(true);scheduleReport(0);broadcast();});});
     [events.TIME_UPDATE,events.DURATION_CHANGE,events.MEDIA_STATUS].filter(Boolean).forEach(function(name){manager.addEventListener(name,function(){if(name===events.TIME_UPDATE&&networkRetries&&position()>networkRetryPosition)networkRetries=0;playingView();});});
     context.addEventListener(cast.framework.system.EventType.SENDER_CONNECTED,function(e){if(e&&e.senderId){bumpConnection(e.senderId);disconnectedSenders.delete(e.senderId);if(e.senderId===controllerSender)controllerPresent=false;}});
     context.addEventListener(cast.framework.system.EventType.SENDER_DISCONNECTED,function(e){

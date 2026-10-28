@@ -181,6 +181,7 @@ test('driven by PlaybackSessionController against the fake server', async () => 
   assert.equal(engine.last.binding.sessionId, s.id, 'the session id is the binding identity');
   engine.fact('ready');
   await settle();
+  await ctl.flush();
   assert.ok(server.session(s.id)!.reports.some(r => r.state === 'playing'));
   await ctl.setAudio('a2');
   await settle();

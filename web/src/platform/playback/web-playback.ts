@@ -319,6 +319,9 @@ export class WebPlayback implements PlaybackAdapter {
       wantsPlaying: () => this.service?.getSnapshot().intent === 'playing',
       onServerEnded: (session, end) => this.serverEnded(session.id, end),
       onLeaseExpired: (session, positionMs) => void this.leaseExpired(session, positionMs),
+      // A pause or play from another device or an administrator goes through the service, which
+      // owns the viewer's intent, so the player and the intent stay one (RN-09).
+      onRemoteControl: state => { const service = this.service; if (!service) return; if (state === 'paused') service.pause(); else service.resume(); },
     });
     this.startRegistration = host.preparingStarts?.attach(id => this.controller.getSnapshot().session?.id === id || this.service?.getSnapshot().session?.id === id);
     this.transport = this.makeTransport();
@@ -891,7 +894,7 @@ export class WebPlayback implements PlaybackAdapter {
       },
       retire(id: string) { self.retired.add(id); if (self.retired.size > 64) self.retired.delete(self.retired.values().next().value!); self.dropped(id); },
       forget(id: string) { self.dropped(id); },
-      reportedSeq: () => 0,
+      handOverObserver: () => undefined,
       session: (id: string) => self.known.get(id),
       async change(id: string, change: SessionChange, durationSeconds: number, context?: SessionChangeContext) {
         requireSessionChangeCurrent(context);

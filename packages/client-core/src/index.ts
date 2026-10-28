@@ -392,6 +392,9 @@ export class HttpLocalApi {
   setAppLanguage(value: string) { setDeliveryContext({appLanguage: value}); }
   private deliveryHeaders(): Record<string, string> {
     return {
+      // This client reports playback with observations (claim, then the latest once a second).
+      // The server refuses to start playback for a client that does not say so.
+      'Portico-Playback': '2',
       ...deliveryContextHeaders(),
       ...(this.transportClass === 'unknown' ? {} : { [transportClassHeader]: this.transportClass }),
       ...(this.deviceClass ? { [deviceClassHeader]: this.deviceClass } : {}),
