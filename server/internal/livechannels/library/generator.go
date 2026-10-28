@@ -41,10 +41,13 @@ func loadGeneration(ctx context.Context, tx *sql.Tx, id string) (generation, err
 	return g, nil
 }
 
-// RunBatch performs at most one bounded candidate/copy batch or EntryBatch
-// schedule slots. All external playback/IO remains outside this database worker.
+// RunBatch performs at most one bounded candidate/copy batch, or up to
+// EntryBatch schedule slots within scheduleQuantum, each committed on its own.
+// All external playback/IO remains outside this database worker, which is
+// background work.
 func (s *Store) RunBatch(ctx context.Context) (bool, error) {
-	gated, e := dbwork.Begin(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive))
+	class := dbwork.ClassFrom(ctx, dbwork.ClassBackgroundMedia)
+	gated, e := dbwork.Begin(ctx, s.db, class)
 	if e != nil {
 		return false, unavailable(e)
 	}
@@ -93,12 +96,12 @@ func (s *Store) RunBatch(ctx context.Context) (bool, error) {
 	case "candidates":
 		e = snapshotCandidates(ctx, tx, &g)
 	case "scheduling":
-		for n := 0; n < EntryBatch && g.Phase == "scheduling"; n++ {
-			e = scheduleOne(ctx, tx, &g)
-			if e != nil {
-				break
-			}
+		// This transaction only takes the lease: each slot reads outside the
+		// writer and commits on its own (scheduleSlots).
+		if e = gated.Commit(); e != nil {
+			return true, unavailable(e)
 		}
+		return true, s.scheduleSlots(ctx, class, &g, token)
 	case "validating":
 		e = publishGeneration(ctx, tx, &g, now)
 	default:
@@ -223,9 +226,11 @@ func snapshotCandidates(ctx context.Context, tx *sql.Tx, g *generation) error {
 		return nil
 	}
 	r := g.Config.Rules[g.Rule]
-	var count int64
-	if cause := tx.QueryRowContext(ctx, `SELECT count(*) FROM lc_candidates WHERE generation_id=? AND rule_id=?`, g.ID, r.ID).Scan(&count); cause != nil {
-		return unavailable(cause)
+	// Ordinals are dense from 0, so the next one is also the rule's count so far:
+	// one seek on UNIQUE(generation_id,rule_id,ordinal), not a recount per page.
+	count, e := poolSize(ctx, tx, g.ID, r.ID)
+	if e != nil {
+		return e
 	}
 	limit := CandidateBatch
 	if r.Query.Limit > 0 && int64(r.Query.Limit)-count < int64(limit) {
@@ -362,9 +367,109 @@ const inOrderHeadsSQL = ` AND (c.show_id=0 OR c.item_id IN (SELECT (SELECT h.ite
 // history window, never the size of the candidate pool.
 const historySQL = `SELECT e.item_id,COALESCE((SELECT c.show_id FROM lc_candidates c WHERE c.generation_id=e.generation_id AND c.item_id=e.item_id ORDER BY c.rule_id LIMIT 1),0) FROM lc_entries e WHERE e.generation_id=? ORDER BY e.start_ms DESC LIMIT ?`
 
-func selectCandidate(ctx context.Context, tx *sql.Tx, g *generation, r Rule, block ResolvedBlock, remaining int64) (Candidate, bool, error) {
-	q := g.statements(tx)
-	cursor, e := readRuleCursor(ctx, q, g.ID, r.ID)
+// slotWrites is what one schedule slot changes. Planning a slot only reads, so
+// the generator plans on a read snapshot and commits the slot in a short write
+// that first checks the generation has not moved (scheduleSlot).
+type slotWrites struct {
+	cursors map[string]ruleCursor
+	used    *usedMark
+	entry   *Entry
+	cursor  int64
+	phase   string
+}
+
+type usedMark struct {
+	rule        string
+	item, cycle int64
+}
+
+// ruleCursor is a rule's cursor as the slot leaves it so far: a fallback that
+// names the slot's own rule sees what the first selection decided.
+func (w *slotWrites) ruleCursor(ctx context.Context, q querier, gen, rule string) (ruleCursor, error) {
+	if c, ok := w.cursors[rule]; ok {
+		return c, nil
+	}
+	return readRuleCursor(ctx, q, gen, rule)
+}
+
+// poolSize is how many candidates a rule has. Ordinals are dense from 0, so it
+// is one seek on UNIQUE(generation_id,rule_id,ordinal).
+func poolSize(ctx context.Context, q querier, gen, rule string) (int64, error) {
+	var last int64
+	e := q.QueryRowContext(ctx, `SELECT ordinal FROM lc_candidates WHERE generation_id=? AND rule_id=? ORDER BY ordinal DESC LIMIT 1`, gen, rule).Scan(&last)
+	if errors.Is(e, sql.ErrNoRows) {
+		return 0, nil
+	}
+	if e != nil {
+		return 0, unavailable(e)
+	}
+	return last + 1, nil
+}
+
+// maxWeight bounds a rule's candidate weights: 1 unless the owner set more.
+func maxWeight(r Rule) float64 {
+	top := 1.0
+	for _, w := range r.Weights {
+		top = max(top, w.Weight)
+	}
+	return top
+}
+
+// A random draw proposes candidates by ordinal. Ordinals are dense from 0, so a
+// uniformly random one is a uniformly random candidate, found with one seek.
+// Proposals are tested in order and the first eligible one is taken; a weighted
+// rule accepts a proposal with probability weight/maxWeight. That is rejection
+// sampling: the pick has exactly the distribution of a draw over the eligible
+// set (uniform, or by weight) without counting that set, so a draw costs about
+// the same in a pool of a hundred or a million. drawProposals go to SQLite per
+// statement, for up to drawRounds statements; where eligible candidates are
+// rarer than that (the end of a bag, a narrow fit) the draw counts them instead.
+const (
+	drawProposals = 64
+	drawRounds    = 8
+)
+
+// proposalSQL tests a statement's proposals, [ordinal, threshold] pairs, in
+// order. CROSS JOIN keeps the proposals outermost, so each is one seek.
+const proposalSQL = `SELECT ` + candidateColumns + ` FROM json_each(?) j CROSS JOIN lc_candidates c ON c.ordinal=j.value->>0 AND c.weight>j.value->>1 WHERE `
+
+func proposeCandidate(ctx context.Context, q querier, g *generation, r Rule, key string, draw int64, where string, args []any) (Candidate, bool, error) {
+	n, e := poolSize(ctx, q, g.ID, r.ID)
+	if e != nil || n == 0 {
+		return Candidate{}, false, e
+	}
+	top := 0.0
+	if r.Mode == "weighted-random" {
+		top = maxWeight(r)
+	}
+	query := proposalSQL + where + ` ORDER BY j.key LIMIT 1`
+	var proposals strings.Builder
+	for round := 0; round < drawRounds; round++ {
+		proposals.Reset()
+		proposals.WriteByte('[')
+		for i := 0; i < drawProposals; i++ {
+			b, _ := hex.DecodeString(digest(key, strconv.FormatInt(draw, 10), strconv.Itoa(round*drawProposals+i))[:32])
+			ordinal := int64(float64(binary.BigEndian.Uint64(b[:8])>>11) / float64(uint64(1)<<53) * float64(n))
+			threshold := float64(binary.BigEndian.Uint64(b[8:])>>11) / float64(uint64(1)<<53) * top
+			if i > 0 {
+				proposals.WriteByte(',')
+			}
+			fmt.Fprintf(&proposals, "[%d,%s]", ordinal, strconv.FormatFloat(threshold, 'g', -1, 64))
+		}
+		proposals.WriteByte(']')
+		c, e := scanCandidate(q.QueryRowContext(ctx, query, append([]any{proposals.String()}, args...)...))
+		if e == nil {
+			return c, true, nil
+		}
+		if !errors.Is(e, sql.ErrNoRows) {
+			return c, false, unavailable(e)
+		}
+	}
+	return Candidate{}, false, nil
+}
+
+func selectCandidate(ctx context.Context, q querier, g *generation, w *slotWrites, r Rule, block ResolvedBlock, remaining int64) (Candidate, bool, error) {
+	cursor, e := w.ruleCursor(ctx, q, g.ID, r.ID)
 	if e != nil {
 		return Candidate{}, false, e
 	}
@@ -444,62 +549,37 @@ func selectCandidate(ctx context.Context, tx *sql.Tx, g *generation, r Rule, blo
 			where += " AND c.duration_ms<=?"
 			args = append(args, remaining)
 		}
-		if inOrder && sequential {
-			// Walked in order and stopped at the first match, so only the candidates
-			// before it are checked against their show's earlier episodes.
-			where += inOrderWalkSQL
-			args = append(args, cursor.Cycle)
-		} else if inOrder {
-			// A draw counts every eligible candidate: only each show's next unused
-			// episode qualifies, so find those heads once per statement (one ordered
-			// seek per show) instead of checking every candidate against all of its
-			// show's earlier episodes. Same set as the sequential form above.
-			where += inOrderHeadsSQL
-			args = append(args, cursor.Cycle, g.ID, r.ID)
+		// One candidate at a time (an ordered walk, a show probe, a proposal), the
+		// in-order rule checks it against its show's earlier episodes; a count of
+		// the eligible set finds each show's next episode once instead
+		// (countedDraw). Both forms admit the same candidates.
+		walk, walkArgs := where, append([]any{}, args...)
+		if inOrder {
+			walk += inOrderWalkSQL
+			walkArgs = append(walkArgs, cursor.Cycle)
 		}
 		if sequential {
-			where += " AND c.sort_key>?"
-			args = append(args, cursor.LastSort)
+			walk += " AND c.sort_key>?"
+			walkArgs = append(walkArgs, cursor.LastSort)
 		}
+		key := g.Seed + ":" + r.ID + ":" + cursor.LastBlock
+		var c Candidate
+		e = sql.ErrNoRows
 		lastShowID, _ := strconv.ParseInt(cursor.LastShow, 10, 64)
 		if r.EpisodeMode == "marathon" && lastShowID != 0 && !(lastGroup == lastShowID && consecutive >= r.MaxConsecutive) {
-			var count int
-			probeArgs := append(append([]any{}, args...), lastShowID)
-			if cause := q.QueryRowContext(ctx, `SELECT count(*) FROM lc_candidates c WHERE `+where+` AND c.show_id=?`, probeArgs...).Scan(&count); cause != nil {
-				return Candidate{}, false, unavailable(cause)
-			}
-			if count > 0 {
-				where += " AND c.show_id=?"
-				args = probeArgs
-			}
+			// A marathon stays with its show while the show has an eligible episode.
+			// Episodes play in order, so that is only ever the show's next one, and a
+			// draw among the show's candidates has that one outcome.
+			c, e = scanCandidate(q.QueryRowContext(ctx, `SELECT `+candidateColumns+` FROM lc_candidates c WHERE `+walk+` AND c.show_id=? ORDER BY c.sort_key,c.item_id LIMIT 1`, append(append([]any{}, walkArgs...), lastShowID)...))
 		}
-		var c Candidate
-		if sequential {
-			c, e = scanCandidate(q.QueryRowContext(ctx, `SELECT `+candidateColumns+` FROM lc_candidates c WHERE `+where+` ORDER BY c.sort_key,c.item_id LIMIT 1`, args...))
-		} else if r.Mode == "weighted-random" {
-			var total sql.NullFloat64
-			if cause := q.QueryRowContext(ctx, `SELECT SUM(c.weight) FROM lc_candidates c WHERE `+where, args...).Scan(&total); cause != nil {
-				return c, false, unavailable(cause)
-			}
-			if !total.Valid || total.Float64 <= 0 {
-				e = sql.ErrNoRows
+		if errors.Is(e, sql.ErrNoRows) {
+			if sequential {
+				c, e = scanCandidate(q.QueryRowContext(ctx, `SELECT `+candidateColumns+` FROM lc_candidates c WHERE `+walk+` ORDER BY c.sort_key,c.item_id LIMIT 1`, walkArgs...))
 			} else {
-				// SQLite's ordered window is disk-backed when needed. Only the selected row
-				// crosses the DB boundary; candidate enumeration remains resumable/paged.
-				ticket := randomUnit(g.Seed+":"+r.ID+":"+cursor.LastBlock, cursor.Draw) * total.Float64
-				query := `SELECT item_id,library_id,asset_id,source_fence,duration_ms,title,show_id,season,episode,weight,sort_key,ordinal,item_entity_id,show_entity_id FROM (SELECT ` + candidateColumns + `,SUM(c.weight) OVER (ORDER BY c.ordinal ROWS UNBOUNDED PRECEDING) AS running FROM lc_candidates c WHERE ` + where + `) WHERE running>? ORDER BY ordinal LIMIT 1`
-				c, e = scanCandidate(q.QueryRowContext(ctx, query, append(args, ticket)...))
-			}
-		} else {
-			var count int64
-			if cause := q.QueryRowContext(ctx, `SELECT count(*) FROM lc_candidates c WHERE `+where, args...).Scan(&count); cause != nil {
-				return c, false, unavailable(cause)
-			}
-			if count == 0 {
-				e = sql.ErrNoRows
-			} else {
-				offset := int64(randomUnit(g.Seed+":"+r.ID+":"+cursor.LastBlock, cursor.Draw) * float64(count))
-				c, e = scanCandidate(q.QueryRowContext(ctx, `SELECT `+candidateColumns+` FROM lc_candidates c WHERE `+where+` ORDER BY c.ordinal LIMIT 1 OFFSET ?`, append(args, offset)...))
+				var found bool
+				if c, found, e = proposeCandidate(ctx, q, g, r, key, cursor.Draw, walk, walkArgs); e == nil && !found {
+					c, e = countedDraw(ctx, q, g, r, inOrder, key, cursor, where, args)
+				}
 			}
 		}
 		if e == nil {
@@ -510,12 +590,8 @@ func selectCandidate(ctx context.Context, tx *sql.Tx, g *generation, r Rule, blo
 				cursor.LastShow = strconv.FormatInt(c.showEntityID, 10)
 			}
 			cursor.LastBlock = block.ID
-			if e = saveRuleCursor(ctx, q, g.ID, r.ID, cursor); e != nil {
-				return c, false, e
-			}
-			if _, e = q.ExecContext(ctx, `INSERT INTO lc_used VALUES(?,?,?,?) ON CONFLICT(generation_id,rule_id,item_id) DO UPDATE SET cycle=excluded.cycle`, g.ID, r.ID, c.itemEntityID, cursor.Cycle); e != nil {
-				return c, false, unavailable(e)
-			}
+			w.cursors[r.ID] = cursor
+			w.used = &usedMark{rule: r.ID, item: c.itemEntityID, cycle: cursor.Cycle}
 			return c, true, nil
 		}
 		if !errors.Is(e, sql.ErrNoRows) {
@@ -523,11 +599,11 @@ func selectCandidate(ctx context.Context, tx *sql.Tx, g *generation, r Rule, blo
 		}
 		// A loop resets at most once. Impossible constraints become an explicit slate
 		// and can never spin the worker indefinitely.
-		var remainingCandidates int
-		if cause := q.QueryRowContext(ctx, `SELECT count(*) FROM lc_candidates c WHERE c.generation_id=? AND c.rule_id=? AND NOT EXISTS(SELECT 1 FROM lc_used u WHERE u.generation_id=c.generation_id AND u.rule_id=c.rule_id AND u.item_id=c.item_id AND u.cycle=?)`, g.ID, r.ID, cursor.Cycle).Scan(&remainingCandidates); cause != nil {
+		var unused bool
+		if cause := q.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM lc_candidates c WHERE c.generation_id=? AND c.rule_id=? AND NOT EXISTS(SELECT 1 FROM lc_used u WHERE u.generation_id=c.generation_id AND u.rule_id=c.rule_id AND u.item_id=c.item_id AND u.cycle=?))`, g.ID, r.ID, cursor.Cycle).Scan(&unused); cause != nil {
 			return Candidate{}, false, unavailable(cause)
 		}
-		if remainingCandidates > 0 {
+		if unused {
 			break
 		} // Fit/dedup constraints are not exhaustion.
 		if r.Exhaustion == "slate" {
@@ -538,7 +614,44 @@ func selectCandidate(ctx context.Context, tx *sql.Tx, g *generation, r Rule, blo
 		cursor.LastSort = ""
 		cursor.LastShow = ""
 	}
-	return Candidate{}, false, saveRuleCursor(ctx, q, g.ID, r.ID, cursor)
+	w.cursors[r.ID] = cursor
+	return Candidate{}, false, nil
+}
+
+// countedDraw is the exact draw over the eligible set, for when proposals find
+// nothing: it counts that set (or sums its weights) and walks to the pick.
+func countedDraw(ctx context.Context, q querier, g *generation, r Rule, inOrder bool, key string, cursor ruleCursor, where string, args []any) (Candidate, error) {
+	args = append([]any{}, args...)
+	if inOrder {
+		// Only each show's next unused episode qualifies, so find those heads once
+		// per statement (one ordered seek per show) instead of checking every
+		// candidate against all of its show's earlier episodes.
+		where += inOrderHeadsSQL
+		args = append(args, cursor.Cycle, g.ID, r.ID)
+	}
+	if r.Mode == "weighted-random" {
+		var total sql.NullFloat64
+		if cause := q.QueryRowContext(ctx, `SELECT SUM(c.weight) FROM lc_candidates c WHERE `+where, args...).Scan(&total); cause != nil {
+			return Candidate{}, unavailable(cause)
+		}
+		if !total.Valid || total.Float64 <= 0 {
+			return Candidate{}, sql.ErrNoRows
+		}
+		// SQLite's ordered window is disk-backed when needed. Only the selected row
+		// crosses the DB boundary.
+		ticket := randomUnit(key, cursor.Draw) * total.Float64
+		query := `SELECT item_id,library_id,asset_id,source_fence,duration_ms,title,show_id,season,episode,weight,sort_key,ordinal,item_entity_id,show_entity_id FROM (SELECT ` + candidateColumns + `,SUM(c.weight) OVER (ORDER BY c.ordinal ROWS UNBOUNDED PRECEDING) AS running FROM lc_candidates c WHERE ` + where + `) WHERE running>? ORDER BY ordinal LIMIT 1`
+		return scanCandidate(q.QueryRowContext(ctx, query, append(args, ticket)...))
+	}
+	var count int64
+	if cause := q.QueryRowContext(ctx, `SELECT count(*) FROM lc_candidates c WHERE `+where, args...).Scan(&count); cause != nil {
+		return Candidate{}, unavailable(cause)
+	}
+	if count == 0 {
+		return Candidate{}, sql.ErrNoRows
+	}
+	offset := int64(randomUnit(key, cursor.Draw) * float64(count))
+	return scanCandidate(q.QueryRowContext(ctx, `SELECT `+candidateColumns+` FROM lc_candidates c WHERE `+where+` ORDER BY c.ordinal LIMIT 1 OFFSET ?`, append(args, offset)...))
 }
 func slotAt(c Config, blocks []ResolvedBlock, at, end int64) ResolvedBlock {
 	defaultSlot := func(instant int64) ResolvedBlock {
@@ -573,9 +686,13 @@ func slotAt(c Config, blocks []ResolvedBlock, at, end int64) ResolvedBlock {
 	selected.Interval.End.UTC = time.UnixMilli(next)
 	return selected
 }
-func scheduleOne(ctx context.Context, tx *sql.Tx, g *generation) error {
+
+// planSlot works out the next slot of g's schedule without writing anything:
+// what plays, and the rows that records (w).
+func planSlot(ctx context.Context, q querier, g *generation, w *slotWrites) error {
+	*w = slotWrites{cursors: map[string]ruleCursor{}, cursor: g.Cursor, phase: g.Phase}
 	if g.Cursor >= g.End {
-		g.Phase = "validating"
+		w.phase = "validating"
 		return nil
 	}
 	blocks, e := resolvedBlocks(g.Config, time.UnixMilli(g.Start), time.UnixMilli(g.End))
@@ -591,13 +708,13 @@ func scheduleOne(ctx context.Context, tx *sql.Tx, g *generation) error {
 	if !ok {
 		return ErrInvalid
 	}
-	selected, found, e := selectCandidate(ctx, tx, g, r, slot, slot.Interval.End.UTC.UnixMilli()-g.Cursor)
+	selected, found, e := selectCandidate(ctx, q, g, w, r, slot, slot.Interval.End.UTC.UnixMilli()-g.Cursor)
 	if e != nil {
 		return e
 	}
 	if !found && slot.Fallback != "" {
 		r = rules[slot.Fallback]
-		selected, found, e = selectCandidate(ctx, tx, g, r, slot, slot.Interval.End.UTC.UnixMilli()-g.Cursor)
+		selected, found, e = selectCandidate(ctx, q, g, w, r, slot, slot.Interval.End.UTC.UnixMilli()-g.Cursor)
 		if e != nil {
 			return e
 		}
@@ -622,12 +739,118 @@ func scheduleOne(ctx context.Context, tx *sql.Tx, g *generation) error {
 		return ErrInvalid
 	}
 	v.ID = digest(g.ChannelID, r.ID, fmt.Sprint(v.StartMS), fmt.Sprint(v.EndMS), v.ItemID, v.SourceFence)[:48]
-	if e = insertEntry(ctx, g.statements(tx), g.ID, v); e != nil {
+	w.entry = &v
+	w.cursor = v.EndMS
+	if w.cursor >= g.End {
+		w.phase = "validating"
+	}
+	return nil
+}
+
+// applySlot writes a planned slot and moves g past it.
+func applySlot(ctx context.Context, q querier, g *generation, w *slotWrites) error {
+	rules := make([]string, 0, len(w.cursors))
+	for id := range w.cursors {
+		rules = append(rules, id)
+	}
+	sort.Strings(rules)
+	for _, id := range rules {
+		if e := saveRuleCursor(ctx, q, g.ID, id, w.cursors[id]); e != nil {
+			return e
+		}
+	}
+	if w.used != nil {
+		if _, e := q.ExecContext(ctx, `INSERT INTO lc_used VALUES(?,?,?,?) ON CONFLICT(generation_id,rule_id,item_id) DO UPDATE SET cycle=excluded.cycle`, g.ID, w.used.rule, w.used.item, w.used.cycle); e != nil {
+			return unavailable(e)
+		}
+	}
+	if w.entry != nil {
+		if e := insertEntry(ctx, q, g.ID, *w.entry); e != nil {
+			return e
+		}
+	}
+	g.Cursor, g.Phase = w.cursor, w.phase
+	return nil
+}
+
+// scheduleOne plans and writes one slot in tx (the builder preview's first day).
+func scheduleOne(ctx context.Context, tx *sql.Tx, g *generation) error {
+	var w slotWrites
+	q := g.statements(tx)
+	if e := planSlot(ctx, q, g, &w); e != nil {
 		return e
 	}
-	g.Cursor = v.EndMS
-	if g.Cursor >= g.End {
-		g.Phase = "validating"
+	return applySlot(ctx, q, g, &w)
+}
+
+// scheduleQuantum bounds one pass over a generation's slots. Each slot commits
+// on its own, so a pass that runs out of time keeps every slot it made.
+const scheduleQuantum = time.Second
+
+// errMoved ends a pass whose generation changed under it: superseded, or taken
+// over once its lease lapsed. That is not a failure of the pass.
+var errMoved = errors.New("librarychannels: generation moved")
+
+// scheduleSlots schedules up to EntryBatch slots of g within scheduleQuantum
+// under the lease token, then hands the lease back.
+func (s *Store) scheduleSlots(ctx context.Context, class dbwork.Class, g *generation, token string) error {
+	started := time.Now()
+	var e error
+	for n := 0; n < EntryBatch && g.Phase == "scheduling"; n++ {
+		if n > 0 && (time.Since(started) >= scheduleQuantum || !dbwork.Yield(ctx)) {
+			break
+		}
+		if e = s.scheduleSlot(ctx, class, g, token); e != nil {
+			break
+		}
+	}
+	if errors.Is(e, errMoved) {
+		e = nil
+	}
+	// Hand the lease back so the next pass need not wait for it to lapse, also
+	// when this one ended at its deadline.
+	release, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
+	defer cancel()
+	if _, cause := dbwork.ExecWrite(release, s.db, class, `UPDATE lc_generations SET lease_until_ms=0,lease_token='' WHERE id=? AND lease_token=?`, g.ID, token); cause != nil {
+		e = errors.Join(e, unavailable(cause))
+	}
+	return e
+}
+
+// scheduleSlot plans one slot on a read snapshot, outside the writer, then
+// commits it. The plan reads only the generation's own rows, which change only
+// under its lease, and every slot moves cursor_ms or the phase; so the write
+// first checks the lease is still this pass's and the cursor and phase are
+// where the plan found them.
+func (s *Store) scheduleSlot(ctx context.Context, class dbwork.Class, g *generation, token string) error {
+	var w slotWrites
+	read, done, e := dbwork.BeginRead(ctx, s.db)
+	if e != nil {
+		return unavailable(e)
+	}
+	e = planSlot(ctx, g.statements(read), g, &w)
+	done()
+	if e != nil {
+		return e
+	}
+	gated, e := dbwork.Begin(ctx, s.db, class)
+	if e != nil {
+		return unavailable(e)
+	}
+	defer gated.Rollback()
+	tx := gated.Tx()
+	result, e := tx.ExecContext(ctx, `UPDATE lc_generations SET cursor_ms=?,phase=? WHERE id=? AND status='pending' AND phase='scheduling' AND lease_token=? AND cursor_ms=?`, w.cursor, w.phase, g.ID, token, g.Cursor)
+	if e != nil {
+		return unavailable(e)
+	}
+	if n, cause := result.RowsAffected(); cause != nil || n != 1 {
+		return errors.Join(errMoved, cause)
+	}
+	if e = applySlot(ctx, g.statements(tx), g, &w); e != nil {
+		return e
+	}
+	if e = gated.Commit(); e != nil {
+		return unavailable(e)
 	}
 	return nil
 }
@@ -672,7 +895,7 @@ func publishGeneration(ctx context.Context, tx *sql.Tx, g *generation, now time.
 // Maintain queues stale/cancelled catalog work and tail extensions, without
 // rewriting already committed current entries or running playback references.
 func (s *Store) Maintain(ctx context.Context) error {
-	gated2, e := dbwork.Begin(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive))
+	gated2, e := dbwork.Begin(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassBackgroundMedia))
 	if e != nil {
 		return unavailable(e)
 	}
