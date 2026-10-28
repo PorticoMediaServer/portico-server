@@ -8,11 +8,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/supervise"
 )
 
 // G03 large playlist. A playlist is a resource with its own stored order and
@@ -476,28 +478,13 @@ func exercisePlaylistReorder(ctx context.Context, db *sql.DB, s *catalog.Service
 	if err := db.QueryRowContext(ctx, `SELECT revision FROM catalog_playlists WHERE token=? AND deleted=0`, id).Scan(&revision); err != nil {
 		return out, err
 	}
-	stop := make(chan struct{})
-	type readCount struct{ n, stale int }
-	results := make(chan readCount, max(1, playlistExercise.readers))
-	readCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	for reader := 0; reader < max(1, playlistExercise.readers); reader++ {
-		go func() {
-			count := readCount{}
-			for {
-				select {
-				case <-stop:
-					results <- count
-					return
-				default:
-				}
-				if _, err := readPlaylistPage(readCtx, db, s, viewer, id, "position", "asc", playlistExercise.limit, ""); err != nil {
-					count.stale++
-				}
-				count.n++
-			}
-		}()
-	}
+	stopReaders := startPlaylistReorderReaders(ctx, playlistExercise.readers, func(readCtx context.Context) error {
+		_, err := readPlaylistPage(readCtx, db, s, viewer, id, "position", "asc", playlistExercise.limit, "")
+		return err
+	})
+	// Writers can return early on cancellation or mutation failure. Readers
+	// must retire before the caller closes the fixture database in every case.
+	defer func() { _, _ = stopReaders() }()
 	for write := 0; write < playlistExercise.reorders; write++ {
 		index := (write * 2) % min(200, len(expected)-1)
 		// Ask for the two occurrences in reverse order: the reorder assigns their
@@ -522,11 +509,10 @@ func exercisePlaylistReorder(ctx context.Context, db *sql.DB, s *catalog.Service
 		expected[index], expected[index+1] = expected[index+1], expected[index]
 		out.Writes++
 	}
-	close(stop)
-	for reader := 0; reader < max(1, playlistExercise.readers); reader++ {
-		count := <-results
-		out.Reads += count.n
-		out.StaleRestarts += count.stale
+	reads, err := stopReaders()
+	out.Reads, out.StaleRestarts = reads.n, reads.stale
+	if err != nil {
+		return out, err
 	}
 	stored, err := playlistTokens(ctx, db, id)
 	if err != nil {
@@ -544,6 +530,60 @@ func exercisePlaylistReorder(ctx context.Context, db *sql.DB, s *catalog.Service
 		return out, errors.New("concurrent reorder did not leave the applied order")
 	}
 	return out, nil
+}
+
+// Each reader owns only transient page work. Recover and end a failed reader;
+// never restart it and accidentally qualify a partial concurrent exercise.
+type playlistReadCount struct{ n, stale int }
+
+func startPlaylistReorderReaders(ctx context.Context, readers int, read func(context.Context) error) func() (playlistReadCount, error) {
+	readCtx, cancel := context.WithCancel(ctx)
+	type result struct {
+		count playlistReadCount
+		clean bool
+	}
+	count := max(1, readers)
+	results := make(chan result, count)
+	for range count {
+		supervise.Go("scalebench playlist reorder reader", func() {
+			done := result{}
+			// Report even on panic, before supervise contains it, so joining
+			// cannot hang and a failed reader never becomes a successful run.
+			defer func() { results <- done }()
+			for {
+				if readCtx.Err() != nil {
+					done.clean = true
+					return
+				}
+				err := read(readCtx)
+				done.count.n++ // Page attempts, as in the existing report.
+				if err != nil {
+					if readCtx.Err() != nil {
+						done.clean = true
+						return
+					}
+					done.count.stale++
+				}
+			}
+		})
+	}
+	var once sync.Once
+	var total playlistReadCount
+	var failure error
+	return func() (playlistReadCount, error) {
+		once.Do(func() {
+			cancel()
+			for range count {
+				done := <-results
+				total.n += done.count.n
+				total.stale += done.count.stale
+				if !done.clean {
+					failure = errors.New("playlist reorder reader ended unexpectedly")
+				}
+			}
+		})
+		return total, failure
+	}
 }
 
 func writeJSONFile(path string, value any) error {
