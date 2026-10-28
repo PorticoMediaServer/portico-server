@@ -434,7 +434,10 @@ func TestFacetRuntimeGenericPrefixSourceUsesFullGrantVectorAndBoundedRegistry(t 
 		t.Fatal("source replacement allowed", err)
 	}
 	ids := []int64{}
-	for _, grants := range []string{`["films"]`, `["films","other-lifetime:2"]`} {
+	for _, grants := range []string{
+		fmt.Sprintf(`[{"id":%d,"library":"films"}]`, f.scope.LibraryID),
+		fmt.Sprintf(`[{"id":%d,"library":"films"},{"id":1000,"library":"other-lifetime:2"}]`, f.scope.LibraryID),
+	} {
 		scope := f.scope
 		scope.Source = "search-video-genre-v1:" + grants
 		if _, err := f.r.Demand(context.Background(), scope); !errors.Is(err, compactcatalog.ErrBuilding) {
