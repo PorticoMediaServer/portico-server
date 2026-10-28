@@ -10,7 +10,13 @@ import (
 
 type changeKey struct{}
 type changeSet struct {
-	mu      sync.Mutex
+	mu sync.Mutex
+	// tables keys are every general root the transaction named, exactly as
+	// before. The value says whether any named statement was eligible to wake an
+	// exact subscriber: true for a real or unproven write, false only for a
+	// plain read (statementHead.plainSelect). A false-valued key is still a root,
+	// so general subscribers, dependency expansion and unknown broadcasts see
+	// precisely what they saw before.
 	tables  map[string]bool
 	unknown bool
 }
@@ -33,12 +39,18 @@ func (s *changeSet) note(statement string) {
 		if s.tables == nil {
 			s.tables = map[string]bool{}
 		}
-		s.tables[table] = true
+		// Reads insert the key but never clear it: a real write to the same root,
+		// before or after the read, keeps the exact wake.
+		s.tables[table] = s.tables[table] || !head.plainSelect
 	}
 }
 
-// known is every table a write in the set named, even when the set also holds
-// a write whose scope couldn't be proven.
+// known is the exact-wake set: every table a statement in the set named, except
+// roots only a plain read named. A named root whose statement's scope couldn't
+// be proven is still eligible — for example `WITH x AS (SELECT 1) UPDATE
+// accounts …` wakes the accounts subscriber today and still does. The values are
+// conservative: an unreadable read shape counts as a write, so this is not a
+// complete SQL write parser.
 func (s *changeSet) known() map[string]bool {
 	if s == nil {
 		return nil
@@ -46,12 +58,17 @@ func (s *changeSet) known() map[string]bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := map[string]bool{}
-	for table := range s.tables {
-		out[table] = true
+	for table, exact := range s.tables {
+		if exact {
+			out[table] = true
+		}
 	}
 	return out
 }
 
+// roots is the general set: every key, whatever its value, so a read still
+// expands trigger and foreign-key dependencies and unknown shapes still
+// broadcast exactly as before this change.
 func (s *changeSet) roots() map[string]bool {
 	if s == nil {
 		return nil

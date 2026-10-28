@@ -921,7 +921,10 @@ func finishScanTx(ctx context.Context, tx *sql.Tx, job, source string) error {
 	if _, err := tx.ExecContext(ctx, `UPDATE inventory_runs SET phase=(SELECT status FROM jobs WHERE id=?),finished_at=?,pause_reason='' WHERE job_id=?`, job, now, job); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE library_sources SET health=CASE WHEN (SELECT warnings FROM inventory_runs WHERE job_id=?)>0 OR `+attention+` THEN 'degraded' ELSE 'healthy' END,last_progress_at=? WHERE id=?`, job, source, now, source); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE library_sources SET health=CASE WHEN (SELECT warnings FROM inventory_runs WHERE job_id=?)>0 OR `+attention+` THEN 'degraded' ELSE 'healthy' END WHERE id=?`, job, source, source); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO library_source_progress(source_id,last_progress_at) SELECT id,? FROM library_sources WHERE id=? ON CONFLICT(source_id) DO UPDATE SET last_progress_at=excluded.last_progress_at`, now, source); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM inventory_source_active WHERE job_id=?`, job); err != nil {

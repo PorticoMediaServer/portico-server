@@ -369,7 +369,7 @@ func (s *Service) commitInventoryPageTx(ctx context.Context, tx *sql.Tx, job str
 	if _, err = tx.ExecContext(ctx, `UPDATE jobs SET processed=processed+? WHERE id=?`, discovered, job); err != nil {
 		return false, err
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE library_sources SET last_progress_at=? WHERE id=?`, time.Now().UTC().Format(time.RFC3339Nano), source.ID); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO library_source_progress(source_id,last_progress_at) SELECT id,? FROM library_sources WHERE id=? ON CONFLICT(source_id) DO UPDATE SET last_progress_at=excluded.last_progress_at`, time.Now().UTC().Format(time.RFC3339Nano), source.ID); err != nil {
 		return false, err
 	}
 	return true, nil

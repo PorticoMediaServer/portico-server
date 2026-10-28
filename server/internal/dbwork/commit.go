@@ -94,18 +94,24 @@ func WakeOnDirectWrites(signal *worker.Signal, tables ...string) func() {
 	}
 }
 
-// exactWakes are subscribers woken only by a write that names one of their
-// tables directly, in a transaction or an autocommit ExecWrite: never by a
-// write whose scope couldn't be proven, nor by a trigger or foreign-key
-// neighbour. A loop whose idle state must cost nothing (no wake, no query)
-// uses it, and keeps its own bounded poll while it has work in flight.
+// exactWakes are subscribers woken only by a committed statement whose head
+// names one of their tables directly: in a transaction or an autocommit
+// ExecWrite; never by a trigger or foreign-key neighbour, and never by a plain
+// read that names a root. A statement whose scope couldn't be proven still
+// counts when it named a root — `WITH x AS (SELECT 1) UPDATE accounts …` wakes
+// the accounts subscriber, as it always has — so this is "the head named it",
+// not "the write was proven". A loop whose idle state must cost nothing (no
+// wake, no query) uses it, and keeps its own bounded poll while it has work in
+// flight.
 var exactWakes struct {
 	mu      sync.Mutex
 	signals []commitSubscription
 }
 
-// WakeOnTableWrites wakes signal only when a committed write names one of
-// tables directly (see exactWakes).
+// WakeOnTableWrites wakes signal only when a committed statement's head names
+// one of tables directly (see exactWakes): not for a trigger or foreign-key
+// neighbour, and not for a read that names the table. An unproven statement that
+// still named a root does wake it.
 func WakeOnTableWrites(signal *worker.Signal, tables ...string) func() {
 	if signal == nil || len(tables) == 0 {
 		return func() {}
