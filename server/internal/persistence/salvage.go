@@ -272,7 +272,7 @@ func copyTable(ctx context.Context, db *dbwork.Candidate, table salvageTable) (b
 		var err error
 		last, faulted, err = c.run(ctx, last, nil, false)
 		if err != nil || !faulted {
-			return whole, err
+			return whole && !c.rejected, err
 		}
 		whole = false
 		if c.keyed {
@@ -310,6 +310,8 @@ type tableCopy struct {
 	key    string
 	slots  string
 	insert string
+	// rejected is set when the schema refused a readable row.
+	rejected bool
 }
 
 func newTableCopy(db *dbwork.Candidate, table salvageTable) *tableCopy {
@@ -410,8 +412,11 @@ func (c *tableCopy) write(ctx context.Context, rows [][]any) error {
 			if c.keyed {
 				args = row[c.keys:]
 			}
-			if _, err = statement.ExecContext(ctx, args...); err != nil && !constraintFailure(err) {
-				return err
+			if _, err = statement.ExecContext(ctx, args...); err != nil {
+				if !constraintFailure(err) {
+					return err
+				}
+				c.rejected = true
 			}
 		}
 		return nil
