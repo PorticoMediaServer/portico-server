@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log"
 	"net/http"
 	"os"
 	"portico.local/server/internal/progressio"
@@ -172,6 +173,12 @@ func (s *Service) Run(ctx context.Context) {
 			}
 		}
 		batchStarted := time.Now()
+		if err := s.LookupFanoutStep(ctx); err != nil && ctx.Err() == nil {
+			log.Printf("warning: [metadata] global lookup invalidation: %v", err)
+		}
+		if !dbwork.Yield(ctx) {
+			return 0
+		}
 		_ = s.ScreenFanoutStep(ctx)
 		var batch sync.WaitGroup
 		for i := 0; i < dbwork.BackgroundConcurrency(ctx); i++ {

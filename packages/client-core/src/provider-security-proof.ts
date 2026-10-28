@@ -27,12 +27,13 @@ export type ProviderReconfirmation = Readonly<{
 const failed = () => new CodedError('provider_reconfirm_failed', 'The sign-in service did not confirm this account. Try again.');
 
 /** Leave for the provider and come back, for exactly this intent on this session. */
-export async function reconfirmWithProvider(client: HostedAccountClient, input: {provider: IdentityProvider; intent: SecurityIntent; nativeApple: boolean; accountOrigin: string},
+export async function reconfirmWithProvider(client: HostedAccountClient, input: {provider: IdentityProvider; intent: SecurityIntent; nativeApple: boolean; accountOrigin: string; expectedIdentity?: Readonly<{id: string; revision: string}>},
   token: string, ports: ProviderProofPorts, signal?: AbortSignal): Promise<ProviderReconfirmation> {
   const {provider, nativeApple, accountOrigin} = input, intent = Object.freeze({...input.intent});
   if (client.mode !== 'native' || !securityPurposeNeedsProof(intent.purpose) || nativeApple && (provider !== 'apple' || !ports.signInApple)) throw failed();
+  const expectedIdentity = input.expectedIdentity ? Object.freeze({...input.expectedIdentity}) : undefined;
   const requestId = await ports.newRequestId();
-  const start = await client.start(provider, {mode: 'reauthenticate', requestId, intent, nativeApple, ...(!nativeApple ? {completion: 'code' as const} : {})}, signal, token);
+  const start = await client.start(provider, {mode: 'reauthenticate', requestId, intent, nativeApple, ...(expectedIdentity ? {expectedIdentity} : {}), ...(!nativeApple ? {completion: 'code' as const} : {})}, signal, token);
   if (start.mode !== 'reauthenticate') throw failed();
   let completionCode: string | undefined;
   if (nativeApple) {

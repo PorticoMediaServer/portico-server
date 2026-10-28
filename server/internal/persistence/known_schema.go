@@ -1283,6 +1283,7 @@ table metadata_discovery_refresh
 table metadata_document_freshness
 table metadata_jobs
 table metadata_kept_files
+table metadata_lookup_fanout
 table metadata_movie_candidates
 table metadata_movie_selections
 table metadata_operation_identities
