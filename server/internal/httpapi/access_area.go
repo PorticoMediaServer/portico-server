@@ -146,10 +146,12 @@ func accessFailure(w http.ResponseWriter, e error) {
 		status, code, message = 404, "not_found", publicErrorMessage("not_found")
 	case errors.Is(e, errFeatureRestricted):
 		status, code, message = 403, "feature_restricted", publicErrorMessage("feature_restricted")
-	case requestinput.Is(e), errors.Is(e, identity.ErrDirectInput), errors.Is(e, access.ErrInvalid), errors.Is(e, servicelog.ErrClientUpload):
+	case requestinput.Is(e), errors.Is(e, identity.ErrDirectInput), errors.Is(e, identity.ErrRestrictionInput), errors.Is(e, access.ErrInvalid), errors.Is(e, servicelog.ErrClientUpload):
 		status, code, message = 400, "invalid_request", "Check the submitted fields and their limits."
 	case errors.Is(e, access.ErrIdempotencyKeyReused):
 		status, code, message = 409, "idempotency_key_reused", "This request conflicts with an earlier request."
+	case errors.Is(e, identity.ErrProfileChanged), errors.Is(e, identity.ErrRestrictionChanged):
+		status, code, message = 409, "revision_mismatch", publicErrorMessage("administration_conflict")
 	case errors.Is(e, access.ErrConflict):
 		status, code, message = 409, "administration_conflict", publicErrorMessage("administration_conflict")
 	case errors.Is(e, access.ErrExpired):

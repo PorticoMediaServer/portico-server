@@ -6,6 +6,7 @@ import (
 	administration "portico.local/server/internal/administration"
 	"portico.local/server/internal/catalog"
 	diagnostics "portico.local/server/internal/diagnostics"
+	"portico.local/server/internal/identity"
 	"portico.local/server/internal/mediaanalysis"
 	operations "portico.local/server/internal/operations"
 	persistence "portico.local/server/internal/persistence"
@@ -54,6 +55,18 @@ func registerAdministrationHTTPContracts(registry *apikit.Registry) error {
 	}
 	// internal/httpapi/admin_access.go:71
 	if err := apikit.RegisterHTTP[access.LimitsChange, access.LimitsDocument](registry, apikit.Metadata{ID: "put_admin_access_members_id_limits", Method: "PUT", Path: "/v1/admin/access/members/{id}/limits", Summary: "Save server access members limits", Access: apikit.Admin, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, AdminScope: "access", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+		return err
+	}
+	if err := apikit.RegisterHTTP[struct{}, identity.MemberProfiles](registry, apikit.Metadata{ID: "get_admin_access_members_id_profiles", Method: "GET", Path: "/v1/admin/access/members/{id}/profiles", Summary: "Read another person's profiles to manage them", Access: apikit.Admin, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 0, Status: 200, AdminScope: "access", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+		return err
+	}
+	if err := apikit.RegisterHTTP[identity.MemberProfileEdit, identity.MemberProfile](registry, apikit.Metadata{ID: "patch_admin_access_members_id_profiles_profile", Method: "PATCH", Path: "/v1/admin/access/members/{id}/profiles/{profileId}", Summary: "Rename or recolour another person's profile", Access: apikit.Admin, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, AdminScope: "access", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "internal"}}); err != nil {
+		return err
+	}
+	if err := apikit.RegisterHTTP[identity.ProfileRestrictionEdit, identity.MemberProfile](registry, apikit.Metadata{ID: "put_admin_access_members_id_profiles_profile_restrictions", Method: "PUT", Path: "/v1/admin/access/members/{id}/profiles/{profileId}/restrictions", Summary: "Replace another person's profile restrictions", Access: apikit.Admin, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 32768, Status: 200, AdminScope: "access", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "internal"}}); err != nil {
+		return err
+	}
+	if err := apikit.RegisterHTTP[identity.MemberProfilePINReset, identity.MemberProfile](registry, apikit.Metadata{ID: "post_admin_access_members_id_profiles_profile_pin_reset", Method: "POST", Path: "/v1/admin/access/members/{id}/profiles/{profileId}/pin-reset", Summary: "Clear the PIN on another person's profile", Access: apikit.Admin, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, AdminScope: "access", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/admin_access.go:89

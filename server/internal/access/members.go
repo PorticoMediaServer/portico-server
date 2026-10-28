@@ -411,3 +411,56 @@ func (s *Store) PeopleDevice(ctx context.Context, auth Authorize, actor identity
 	})
 	return
 }
+
+// MemberProfiles reads another person's profiles for People. auth proves, in
+// the read, that the caller's tier manages that person's.
+func (s *Store) MemberProfiles(ctx context.Context, auth Authorize, account string) (out identity.MemberProfiles, err error) {
+	if !validID(account) {
+		return out, invalid("accountId")
+	}
+	err = s.snapshot(ctx, auth, func(tx *sql.Tx) error {
+		var e error
+		out, e = identity.MemberProfilesTx(ctx, tx, account)
+		return e
+	})
+	return
+}
+
+// EditMemberProfile renames or recolours one of another person's profiles.
+func (s *Store) EditMemberProfile(ctx context.Context, auth Authorize, account, profile string, q identity.MemberProfileEdit) (out identity.MemberProfile, err error) {
+	if !validID(account) {
+		return out, invalid("accountId")
+	}
+	err = s.transaction(ctx, auth, func(tx *sql.Tx) error {
+		var e error
+		out, e = identity.EditMemberProfileTx(ctx, tx, account, profile, q)
+		return e
+	})
+	return
+}
+
+// SetMemberProfileRestrictions replaces one of another person's profile restrictions.
+func (s *Store) SetMemberProfileRestrictions(ctx context.Context, auth Authorize, account, profile string, q identity.ProfileRestrictionEdit) (out identity.MemberProfile, err error) {
+	if !validID(account) {
+		return out, invalid("accountId")
+	}
+	err = s.transaction(ctx, auth, func(tx *sql.Tx) error {
+		var e error
+		out, e = identity.SetMemberProfileRestrictionsTx(ctx, tx, account, profile, q)
+		return e
+	})
+	return
+}
+
+// ClearMemberProfilePIN removes the PIN from one of another person's profiles.
+func (s *Store) ClearMemberProfilePIN(ctx context.Context, auth Authorize, ids *identity.Service, account, profile string, q identity.MemberProfilePINReset) (out identity.MemberProfile, err error) {
+	if !validID(account) || ids == nil {
+		return out, invalid("accountId")
+	}
+	err = s.transaction(ctx, auth, func(tx *sql.Tx) error {
+		var e error
+		out, e = ids.ClearMemberProfilePINTx(ctx, tx, account, profile, q)
+		return e
+	})
+	return
+}

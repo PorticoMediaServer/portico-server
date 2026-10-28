@@ -1785,6 +1785,28 @@ export const routes = [
     "admission": "admin"
   },
   {
+    "id": "get_admin_access_members_id_profiles",
+    "method": "GET",
+    "path": "/v1/admin/access/members/{id}/profiles",
+    "summary": "Read another person's profiles to manage them",
+    "access": "admin_scope",
+    "adminScope": "access",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
     "id": "get_admin_activity",
     "method": "GET",
     "path": "/v1/admin/activity",
@@ -10607,6 +10629,30 @@ export const routes = [
     "admission": "default"
   },
   {
+    "id": "patch_admin_access_members_id_profiles_profile",
+    "method": "PATCH",
+    "path": "/v1/admin/access/members/{id}/profiles/{profileId}",
+    "summary": "Rename or recolour another person's profile",
+    "access": "admin_scope",
+    "adminScope": "access",
+    "requires": "admin",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_mismatch",
+      "internal",
+      "writer_capacity"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
     "id": "patch_admin_dvr_recording_root",
     "method": "PATCH",
     "path": "/v1/admin/dvr/recording-root",
@@ -11140,6 +11186,30 @@ export const routes = [
     "status": 200,
     "http": true,
     "admission": "security-fence"
+  },
+  {
+    "id": "post_admin_access_members_id_profiles_profile_pin_reset",
+    "method": "POST",
+    "path": "/v1/admin/access/members/{id}/profiles/{profileId}/pin-reset",
+    "summary": "Clear the PIN on another person's profile",
+    "access": "admin_scope",
+    "adminScope": "access",
+    "requires": "admin",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_mismatch",
+      "internal",
+      "writer_capacity"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
   },
   {
     "id": "post_admin_background_pause",
@@ -15754,6 +15824,30 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
+      "internal",
+      "writer_capacity"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "put_admin_access_members_id_profiles_profile_restrictions",
+    "method": "PUT",
+    "path": "/v1/admin/access/members/{id}/profiles/{profileId}/restrictions",
+    "summary": "Replace another person's profile restrictions",
+    "access": "admin_scope",
+    "adminScope": "access",
+    "requires": "admin",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 32768,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_mismatch",
       "internal",
       "writer_capacity"
     ],

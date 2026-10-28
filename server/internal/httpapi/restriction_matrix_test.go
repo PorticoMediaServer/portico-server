@@ -561,6 +561,7 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/admin/dashboard/report":                        exempt(reasonAdmin),
 		"GET /v1/admin/dashboard/status":                        exempt(reasonAdmin),
 		"GET /v1/admin/access/members/{id}/limits":              exempt(reasonAdmin),
+		"GET /v1/admin/access/members/{id}/profiles":            exempt(reasonAdmin),
 		"GET /v1/admin/analysis-operations":                     exempt(reasonAdmin),
 		"GET /v1/admin/backups":                                 exempt(reasonAdmin),
 		"GET /v1/admin/backups/settings":                        static("/v1/admin/backups/settings"),

@@ -25861,6 +25861,136 @@
         ],
         "type": "object"
       },
+      "GetAdminAccessMembersIdProfilesRequest": {
+        "properties": {},
+        "type": "object"
+      },
+      "GetAdminAccessMembersIdProfilesResponse": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "properties": {
+                "allowedLibraries": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "art": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "pinRequired": {
+                  "type": "boolean"
+                },
+                "pinRevision": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "position": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "primary": {
+                  "type": "boolean"
+                },
+                "restrictions": {
+                  "properties": {
+                    "allowDownloads": {
+                      "type": "boolean"
+                    },
+                    "allowDvr": {
+                      "type": "boolean"
+                    },
+                    "allowLiveTv": {
+                      "type": "boolean"
+                    },
+                    "allowUnrated": {
+                      "type": "boolean"
+                    },
+                    "allowWatchTogether": {
+                      "type": "boolean"
+                    },
+                    "blockedLabels": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "maximumAge": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "maximumAgeRating": {
+                      "type": "string"
+                    },
+                    "profileId": {
+                      "type": "string"
+                    },
+                    "ratingSystem": {
+                      "type": "string"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "profileId",
+                    "ratingSystem",
+                    "maximumAgeRating",
+                    "maximumAge",
+                    "allowUnrated",
+                    "blockedLabels",
+                    "allowDownloads",
+                    "allowLiveTv",
+                    "allowDvr",
+                    "allowWatchTogether",
+                    "revision"
+                  ],
+                  "type": "object"
+                },
+                "revision": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "primary",
+                "position",
+                "art",
+                "revision",
+                "pinRevision",
+                "pinRequired",
+                "allowedLibraries",
+                "restrictions"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "accountId",
+          "items"
+        ],
+        "type": "object"
+      },
       "GetAdminAccessMembersRequest": {
         "properties": {},
         "type": "object"
@@ -205983,6 +206113,136 @@
         ],
         "type": "object"
       },
+      "PatchAdminAccessMembersIdProfilesProfileRequest": {
+        "properties": {
+          "art": {
+            "type": "string"
+          },
+          "expectedRevision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "expectedRevision"
+        ],
+        "type": "object"
+      },
+      "PatchAdminAccessMembersIdProfilesProfileResponse": {
+        "properties": {
+          "allowedLibraries": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "art": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pinRequired": {
+            "type": "boolean"
+          },
+          "pinRevision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "position": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "primary": {
+            "type": "boolean"
+          },
+          "restrictions": {
+            "properties": {
+              "allowDownloads": {
+                "type": "boolean"
+              },
+              "allowDvr": {
+                "type": "boolean"
+              },
+              "allowLiveTv": {
+                "type": "boolean"
+              },
+              "allowUnrated": {
+                "type": "boolean"
+              },
+              "allowWatchTogether": {
+                "type": "boolean"
+              },
+              "blockedLabels": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "maximumAge": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maximumAgeRating": {
+                "type": "string"
+              },
+              "profileId": {
+                "type": "string"
+              },
+              "ratingSystem": {
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "profileId",
+              "ratingSystem",
+              "maximumAgeRating",
+              "maximumAge",
+              "allowUnrated",
+              "blockedLabels",
+              "allowDownloads",
+              "allowLiveTv",
+              "allowDvr",
+              "allowWatchTogether",
+              "revision"
+            ],
+            "type": "object"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "primary",
+          "position",
+          "art",
+          "revision",
+          "pinRevision",
+          "pinRequired",
+          "allowedLibraries",
+          "restrictions"
+        ],
+        "type": "object"
+      },
       "PatchAdminDvrRecordingRootRequest": {
         "additionalProperties": false,
         "properties": {
@@ -210020,6 +210280,130 @@
         "required": [
           "accountIds",
           "action"
+        ],
+        "type": "object"
+      },
+      "PostAdminAccessMembersIdProfilesProfilePinResetRequest": {
+        "properties": {
+          "expectedRevision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expectedRevision"
+        ],
+        "type": "object"
+      },
+      "PostAdminAccessMembersIdProfilesProfilePinResetResponse": {
+        "properties": {
+          "allowedLibraries": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "art": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pinRequired": {
+            "type": "boolean"
+          },
+          "pinRevision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "position": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "primary": {
+            "type": "boolean"
+          },
+          "restrictions": {
+            "properties": {
+              "allowDownloads": {
+                "type": "boolean"
+              },
+              "allowDvr": {
+                "type": "boolean"
+              },
+              "allowLiveTv": {
+                "type": "boolean"
+              },
+              "allowUnrated": {
+                "type": "boolean"
+              },
+              "allowWatchTogether": {
+                "type": "boolean"
+              },
+              "blockedLabels": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "maximumAge": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maximumAgeRating": {
+                "type": "string"
+              },
+              "profileId": {
+                "type": "string"
+              },
+              "ratingSystem": {
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "profileId",
+              "ratingSystem",
+              "maximumAgeRating",
+              "maximumAge",
+              "allowUnrated",
+              "blockedLabels",
+              "allowDownloads",
+              "allowLiveTv",
+              "allowDvr",
+              "allowWatchTogether",
+              "revision"
+            ],
+            "type": "object"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "primary",
+          "position",
+          "art",
+          "revision",
+          "pinRevision",
+          "pinRequired",
+          "allowedLibraries",
+          "restrictions"
         ],
         "type": "object"
       },
@@ -242215,6 +242599,165 @@
           "limits",
           "serverMaxStreams",
           "effectiveMaxStreams"
+        ],
+        "type": "object"
+      },
+      "PutAdminAccessMembersIdProfilesProfileRestrictionsRequest": {
+        "properties": {
+          "allowDownloads": {
+            "type": "boolean"
+          },
+          "allowDvr": {
+            "type": "boolean"
+          },
+          "allowLiveTv": {
+            "type": "boolean"
+          },
+          "allowUnrated": {
+            "type": "boolean"
+          },
+          "allowWatchTogether": {
+            "type": "boolean"
+          },
+          "blockedLabels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "expectedRevision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "maximumAgeRating": {
+            "type": "string"
+          },
+          "ratingSystem": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "expectedRevision",
+          "ratingSystem",
+          "maximumAgeRating",
+          "allowUnrated",
+          "blockedLabels",
+          "allowDownloads",
+          "allowLiveTv",
+          "allowDvr",
+          "allowWatchTogether"
+        ],
+        "type": "object"
+      },
+      "PutAdminAccessMembersIdProfilesProfileRestrictionsResponse": {
+        "properties": {
+          "allowedLibraries": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "art": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pinRequired": {
+            "type": "boolean"
+          },
+          "pinRevision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "position": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "primary": {
+            "type": "boolean"
+          },
+          "restrictions": {
+            "properties": {
+              "allowDownloads": {
+                "type": "boolean"
+              },
+              "allowDvr": {
+                "type": "boolean"
+              },
+              "allowLiveTv": {
+                "type": "boolean"
+              },
+              "allowUnrated": {
+                "type": "boolean"
+              },
+              "allowWatchTogether": {
+                "type": "boolean"
+              },
+              "blockedLabels": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "maximumAge": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maximumAgeRating": {
+                "type": "string"
+              },
+              "profileId": {
+                "type": "string"
+              },
+              "ratingSystem": {
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "profileId",
+              "ratingSystem",
+              "maximumAgeRating",
+              "maximumAge",
+              "allowUnrated",
+              "blockedLabels",
+              "allowDownloads",
+              "allowLiveTv",
+              "allowDvr",
+              "allowWatchTogether",
+              "revision"
+            ],
+            "type": "object"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "primary",
+          "position",
+          "art",
+          "revision",
+          "pinRevision",
+          "pinRequired",
+          "allowedLibraries",
+          "restrictions"
         ],
         "type": "object"
       },
@@ -285598,6 +286141,867 @@
         ],
         "x-lane": "security",
         "x-max-body-bytes": 8192,
+        "x-scope": "admin"
+      }
+    },
+    "/v1/admin/access/members/{id}/profiles": {
+      "get": {
+        "operationId": "get_admin_access_members_id_profiles",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "accountId": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "items": {
+                        "properties": {
+                          "allowedLibraries": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "art": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "pinRequired": {
+                            "type": "boolean"
+                          },
+                          "pinRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "position": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "primary": {
+                            "type": "boolean"
+                          },
+                          "restrictions": {
+                            "properties": {
+                              "allowDownloads": {
+                                "type": "boolean"
+                              },
+                              "allowDvr": {
+                                "type": "boolean"
+                              },
+                              "allowLiveTv": {
+                                "type": "boolean"
+                              },
+                              "allowUnrated": {
+                                "type": "boolean"
+                              },
+                              "allowWatchTogether": {
+                                "type": "boolean"
+                              },
+                              "blockedLabels": {
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              },
+                              "maximumAge": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "maximumAgeRating": {
+                                "type": "string"
+                              },
+                              "profileId": {
+                                "type": "string"
+                              },
+                              "ratingSystem": {
+                                "type": "string"
+                              },
+                              "revision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "profileId",
+                              "ratingSystem",
+                              "maximumAgeRating",
+                              "maximumAge",
+                              "allowUnrated",
+                              "blockedLabels",
+                              "allowDownloads",
+                              "allowLiveTv",
+                              "allowDvr",
+                              "allowWatchTogether",
+                              "revision"
+                            ],
+                            "type": "object"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "primary",
+                          "position",
+                          "art",
+                          "revision",
+                          "pinRevision",
+                          "pinRequired",
+                          "allowedLibraries",
+                          "restrictions"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "accountId",
+                    "items"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read another person's profiles to manage them",
+        "x-access": "admin_scope",
+        "x-admission": "admin",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "internal"
+        ],
+        "x-lane": "default",
+        "x-scope": "admin"
+      }
+    },
+    "/v1/admin/access/members/{id}/profiles/{profileId}": {
+      "patch": {
+        "operationId": "patch_admin_access_members_id_profiles_profile",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "profileId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "art": {
+                    "type": "string"
+                  },
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "expectedRevision"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "allowedLibraries": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "art": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "pinRequired": {
+                      "type": "boolean"
+                    },
+                    "pinRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "position": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "primary": {
+                      "type": "boolean"
+                    },
+                    "restrictions": {
+                      "properties": {
+                        "allowDownloads": {
+                          "type": "boolean"
+                        },
+                        "allowDvr": {
+                          "type": "boolean"
+                        },
+                        "allowLiveTv": {
+                          "type": "boolean"
+                        },
+                        "allowUnrated": {
+                          "type": "boolean"
+                        },
+                        "allowWatchTogether": {
+                          "type": "boolean"
+                        },
+                        "blockedLabels": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "maximumAge": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "maximumAgeRating": {
+                          "type": "string"
+                        },
+                        "profileId": {
+                          "type": "string"
+                        },
+                        "ratingSystem": {
+                          "type": "string"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "profileId",
+                        "ratingSystem",
+                        "maximumAgeRating",
+                        "maximumAge",
+                        "allowUnrated",
+                        "blockedLabels",
+                        "allowDownloads",
+                        "allowLiveTv",
+                        "allowDvr",
+                        "allowWatchTogether",
+                        "revision"
+                      ],
+                      "type": "object"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "primary",
+                    "position",
+                    "art",
+                    "revision",
+                    "pinRevision",
+                    "pinRequired",
+                    "allowedLibraries",
+                    "restrictions"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Rename or recolour another person's profile",
+        "x-access": "admin_scope",
+        "x-admission": "admin",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "revision_mismatch",
+          "internal",
+          "writer_capacity"
+        ],
+        "x-lane": "security",
+        "x-max-body-bytes": 4096,
+        "x-scope": "admin"
+      }
+    },
+    "/v1/admin/access/members/{id}/profiles/{profileId}/pin-reset": {
+      "post": {
+        "operationId": "post_admin_access_members_id_profiles_profile_pin_reset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "profileId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "expectedRevision"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "allowedLibraries": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "art": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "pinRequired": {
+                      "type": "boolean"
+                    },
+                    "pinRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "position": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "primary": {
+                      "type": "boolean"
+                    },
+                    "restrictions": {
+                      "properties": {
+                        "allowDownloads": {
+                          "type": "boolean"
+                        },
+                        "allowDvr": {
+                          "type": "boolean"
+                        },
+                        "allowLiveTv": {
+                          "type": "boolean"
+                        },
+                        "allowUnrated": {
+                          "type": "boolean"
+                        },
+                        "allowWatchTogether": {
+                          "type": "boolean"
+                        },
+                        "blockedLabels": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "maximumAge": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "maximumAgeRating": {
+                          "type": "string"
+                        },
+                        "profileId": {
+                          "type": "string"
+                        },
+                        "ratingSystem": {
+                          "type": "string"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "profileId",
+                        "ratingSystem",
+                        "maximumAgeRating",
+                        "maximumAge",
+                        "allowUnrated",
+                        "blockedLabels",
+                        "allowDownloads",
+                        "allowLiveTv",
+                        "allowDvr",
+                        "allowWatchTogether",
+                        "revision"
+                      ],
+                      "type": "object"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "primary",
+                    "position",
+                    "art",
+                    "revision",
+                    "pinRevision",
+                    "pinRequired",
+                    "allowedLibraries",
+                    "restrictions"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Clear the PIN on another person's profile",
+        "x-access": "admin_scope",
+        "x-admission": "admin",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "revision_mismatch",
+          "internal",
+          "writer_capacity"
+        ],
+        "x-lane": "security",
+        "x-max-body-bytes": 4096,
+        "x-scope": "admin"
+      }
+    },
+    "/v1/admin/access/members/{id}/profiles/{profileId}/restrictions": {
+      "put": {
+        "operationId": "put_admin_access_members_id_profiles_profile_restrictions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "profileId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "allowDownloads": {
+                    "type": "boolean"
+                  },
+                  "allowDvr": {
+                    "type": "boolean"
+                  },
+                  "allowLiveTv": {
+                    "type": "boolean"
+                  },
+                  "allowUnrated": {
+                    "type": "boolean"
+                  },
+                  "allowWatchTogether": {
+                    "type": "boolean"
+                  },
+                  "blockedLabels": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "maximumAgeRating": {
+                    "type": "string"
+                  },
+                  "ratingSystem": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "expectedRevision",
+                  "ratingSystem",
+                  "maximumAgeRating",
+                  "allowUnrated",
+                  "blockedLabels",
+                  "allowDownloads",
+                  "allowLiveTv",
+                  "allowDvr",
+                  "allowWatchTogether"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "allowedLibraries": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "art": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "pinRequired": {
+                      "type": "boolean"
+                    },
+                    "pinRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "position": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "primary": {
+                      "type": "boolean"
+                    },
+                    "restrictions": {
+                      "properties": {
+                        "allowDownloads": {
+                          "type": "boolean"
+                        },
+                        "allowDvr": {
+                          "type": "boolean"
+                        },
+                        "allowLiveTv": {
+                          "type": "boolean"
+                        },
+                        "allowUnrated": {
+                          "type": "boolean"
+                        },
+                        "allowWatchTogether": {
+                          "type": "boolean"
+                        },
+                        "blockedLabels": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "maximumAge": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "maximumAgeRating": {
+                          "type": "string"
+                        },
+                        "profileId": {
+                          "type": "string"
+                        },
+                        "ratingSystem": {
+                          "type": "string"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "profileId",
+                        "ratingSystem",
+                        "maximumAgeRating",
+                        "maximumAge",
+                        "allowUnrated",
+                        "blockedLabels",
+                        "allowDownloads",
+                        "allowLiveTv",
+                        "allowDvr",
+                        "allowWatchTogether",
+                        "revision"
+                      ],
+                      "type": "object"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "primary",
+                    "position",
+                    "art",
+                    "revision",
+                    "pinRevision",
+                    "pinRequired",
+                    "allowedLibraries",
+                    "restrictions"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Replace another person's profile restrictions",
+        "x-access": "admin_scope",
+        "x-admission": "admin",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "revision_mismatch",
+          "internal",
+          "writer_capacity"
+        ],
+        "x-lane": "security",
+        "x-max-body-bytes": 32768,
         "x-scope": "admin"
       }
     },

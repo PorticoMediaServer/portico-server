@@ -13,6 +13,8 @@ import type {SettingsViewerScope} from '../../platform/settings-platform';
 import type {SettingsInvitations} from './invitations';
 import {InvitationShortCodeDialog} from '../../kit/accounts';
 import {randomId} from '@core/random-id.ts';
+import {PeopleMemberProfiles} from './PeopleMemberProfiles';
+import type {PeopleMemberProfilesApi} from './people-member-profiles-api';
 import {InviteAttempts, defaultInviteChoices, inviteBody, inviteChoicesOf, type InviteAttempt, type InviteChoices} from './people-invite';
 import {PeopleInviteForm} from './people-invite-form';
 import {PeopleInvitations} from './PeopleInvitations';
@@ -64,6 +66,8 @@ export type PeopleBindings = Readonly<{
   /** The owner's default role for a new invitation, in the dialog's own words
    * (member or admin), read when a form opens and kept for that invitation. */
   inviteRole?: () => 'member' | 'admin' | undefined;
+  /** Another person's profiles for the Profiles tab's Manage. */
+  memberProfiles?: PeopleMemberProfilesApi;
   streamLimits?: PeopleStreamLimits; invitations?: SettingsInvitations; invite?: (opener: HTMLElement) => void; signIn?: 'local' | 'portico'; openHome: () => void; reportError: (error: unknown) => void;
 }>;
 
@@ -256,7 +260,9 @@ function PeopleWorkspace({bindings, initialStatus, rowActions, advancedRows}: {b
       const before = person;
       void run(async () => {const saved = await client.limits(before, {...before.limits, tagPolicy: {deniedLabels}}); setPerson(current => current?.accountId === before.accountId ? {...before, limits: saved.limits, limitsRevision: saved.revision} : current);});
     }} />;
-    if (row.id === 'people.profiles') return <>{person.profileNames?.map((name, index) => <Row key={index} label={name}><span /></Row>)}</>;
+    if (row.id === 'people.profiles') return bindings.memberProfiles && managesTier(bindings.actor.role, person.role) && person.accountId !== bindings.actor.accountId
+      ? <PeopleMemberProfiles api={bindings.memberProfiles} accountId={person.accountId} canEdit={canEdit} />
+      : <>{person.profileNames?.map((name, index) => <Row key={index} label={name}><span /></Row>)}</>;
     if (row.control.type === 'readonly') return <span>{values[row.id] as string}</span>;
     if (row.id === personMemberResetCodeRow.id) {
       if (row.control.type !== 'action' || !resetView?.present) return null;

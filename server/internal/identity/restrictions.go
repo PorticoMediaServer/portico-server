@@ -272,21 +272,11 @@ func (s *Service) ProfileRestrictions(ctx context.Context, bearer, profile strin
 // The change applies live. The profile's devices stay signed in; what they may
 // see changes on their next request.
 func (s *Service) SetProfileRestrictions(ctx context.Context, bearer, profile string, edit ProfileRestrictionEdit) (ProfileRestrictions, error) {
-	if !validFamilyID(profile) || edit.ExpectedRevision < 1 {
+	if !validFamilyID(profile) {
 		return ProfileRestrictions{}, ErrRestrictionInput
 	}
-	labels, ok := normalizeLabels(edit.BlockedLabels)
-	if !ok {
-		return ProfileRestrictions{}, ErrRestrictionInput
-	}
-	system := strings.TrimSpace(edit.RatingSystem)
-	code := strings.TrimSpace(edit.MaximumAgeRating)
-	if code == "" {
-		system = ""
-	}
-	ceiling, ok := RatingCeiling(system, code)
-	if !ok {
-		return ProfileRestrictions{}, ErrRestrictionInput
+	if e := edit.normalize(); e != nil {
+		return ProfileRestrictions{}, e
 	}
 	gated2, e := dbwork.Begin(ctx, s.db, dbwork.ClassSecurityFence)
 	if e != nil {
@@ -298,8 +288,42 @@ func (s *Service) SetProfileRestrictions(ctx context.Context, bearer, profile st
 	if e != nil {
 		return ProfileRestrictions{}, e
 	}
+	out, e := writeRestrictionsTx(ctx, tx, c.account.ID, profile, edit)
+	if e != nil {
+		return out, e
+	}
+	return out, gated2.Commit()
+}
+
+// normalize checks an edit and puts it in its stored spelling.
+func (edit *ProfileRestrictionEdit) normalize() error {
+	if edit.ExpectedRevision < 1 {
+		return ErrRestrictionInput
+	}
+	labels, ok := normalizeLabels(edit.BlockedLabels)
+	if !ok {
+		return ErrRestrictionInput
+	}
+	edit.BlockedLabels = labels
+	edit.RatingSystem, edit.MaximumAgeRating = strings.TrimSpace(edit.RatingSystem), strings.TrimSpace(edit.MaximumAgeRating)
+	if edit.MaximumAgeRating == "" {
+		edit.RatingSystem = ""
+	}
+	if _, ok = RatingCeiling(edit.RatingSystem, edit.MaximumAgeRating); !ok {
+		return ErrRestrictionInput
+	}
+	return nil
+}
+
+// writeRestrictionsTx replaces one live profile's restrictions for the account
+// that owns it. The caller has normalized edit and proved its authority over
+// account in tx.
+//
+// The change applies live. The profile's devices stay signed in; what they may
+// see changes on their next request.
+func writeRestrictionsTx(ctx context.Context, tx *sql.Tx, account, profile string, edit ProfileRestrictionEdit) (ProfileRestrictions, error) {
 	var deleted int
-	if e = tx.QueryRowContext(ctx, `SELECT deleted FROM direct_profiles WHERE account_id=? AND id=?`, c.account.ID, profile).Scan(&deleted); e != nil || deleted != 0 {
+	if e := tx.QueryRowContext(ctx, `SELECT deleted FROM direct_profiles WHERE account_id=? AND id=?`, account, profile).Scan(&deleted); e != nil || deleted != 0 {
 		return ProfileRestrictions{}, ErrNotVisible
 	}
 	current, e := RestrictionsTx(ctx, tx, profile)
@@ -309,21 +333,18 @@ func (s *Service) SetProfileRestrictions(ctx context.Context, bearer, profile st
 	if current.Revision != edit.ExpectedRevision {
 		return ProfileRestrictions{}, ErrRestrictionChanged
 	}
-	raw, _ := json.Marshal(labels)
+	ceiling, _ := RatingCeiling(edit.RatingSystem, edit.MaximumAgeRating)
+	raw, _ := json.Marshal(edit.BlockedLabels)
 	if _, e = tx.ExecContext(ctx, `INSERT INTO profile_restrictions(profile_id,rating_system,maximum_age_rating,maximum_age,allow_unrated,blocked_labels,allow_downloads,allow_live_tv,allow_dvr,allow_watch_together,revision) VALUES(?,?,?,?,?,?,?,?,?,?,?)
  ON CONFLICT(profile_id) DO UPDATE SET rating_system=excluded.rating_system,maximum_age_rating=excluded.maximum_age_rating,maximum_age=excluded.maximum_age,allow_unrated=excluded.allow_unrated,blocked_labels=excluded.blocked_labels,allow_downloads=excluded.allow_downloads,allow_live_tv=excluded.allow_live_tv,allow_dvr=excluded.allow_dvr,allow_watch_together=excluded.allow_watch_together,revision=profile_restrictions.revision+1`,
-		profile, system, code, ceiling, edit.AllowUnrated, string(raw), edit.AllowDownloads, edit.AllowLiveTV, edit.AllowDVR, edit.AllowWatchTogether, current.Revision+1); e != nil {
+		profile, edit.RatingSystem, edit.MaximumAgeRating, ceiling, edit.AllowUnrated, string(raw), edit.AllowDownloads, edit.AllowLiveTV, edit.AllowDVR, edit.AllowWatchTogether, current.Revision+1); e != nil {
 		return ProfileRestrictions{}, e
 	}
 	// Nobody is signed out. The new restrictions apply to the profile's next
 	// request: every catalogue read and every playback start reads this row,
 	// and its revision is part of the fence that expires open pages, cursors
 	// and cached counts (catalog.RestrictionFence).
-	out, e := RestrictionsTx(ctx, tx, profile)
-	if e != nil {
-		return out, e
-	}
-	return out, gated2.Commit()
+	return RestrictionsTx(ctx, tx, profile)
 }
 
 // ErrContentRestricted is the single refusal a restricted viewer sees, whether the

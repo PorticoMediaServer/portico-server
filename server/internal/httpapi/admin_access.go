@@ -128,6 +128,76 @@ func (d Dependencies) accessRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
+	// Another person's profiles, as People's Manage edits them. Every route
+	// proves, inside its own transaction, that the caller's tier manages the
+	// person's; the owner's own profiles are managed from Profile & account.
+	d.httpHandle(mux, "GET /v1/admin/access/members/{id}/profiles", func(w http.ResponseWriter, r *http.Request) {
+		p, e := d.administrator(r)
+		if e != nil {
+			accessFailure(w, e)
+			return
+		}
+		out, e := store.MemberProfiles(r.Context(), d.accessTargetAuthority(p, r.PathValue("id"), false), r.PathValue("id"))
+		if e != nil {
+			accessFailure(w, e)
+			return
+		}
+		write(w, 200, out)
+	})
+	d.httpHandle(mux, "PATCH /v1/admin/access/members/{id}/profiles/{profileId}", func(w http.ResponseWriter, r *http.Request) {
+		p, e := d.administrator(r)
+		if e != nil {
+			accessFailure(w, e)
+			return
+		}
+		var body identity.MemberProfileEdit
+		if e = decode(w, r, &body); e != nil {
+			accessFailure(w, e)
+			return
+		}
+		out, e := store.EditMemberProfile(r.Context(), d.accessTargetAuthority(p, r.PathValue("id"), false), r.PathValue("id"), r.PathValue("profileId"), body)
+		if e != nil {
+			accessFailure(w, e)
+			return
+		}
+		write(w, 200, out)
+	})
+	d.httpHandle(mux, "PUT /v1/admin/access/members/{id}/profiles/{profileId}/restrictions", func(w http.ResponseWriter, r *http.Request) {
+		p, e := d.administrator(r)
+		if e != nil {
+			accessFailure(w, e)
+			return
+		}
+		var body identity.ProfileRestrictionEdit
+		if e = decode(w, r, &body); e != nil {
+			accessFailure(w, e)
+			return
+		}
+		out, e := store.SetMemberProfileRestrictions(r.Context(), d.accessTargetAuthority(p, r.PathValue("id"), false), r.PathValue("id"), r.PathValue("profileId"), body)
+		if e != nil {
+			accessFailure(w, e)
+			return
+		}
+		write(w, 200, out)
+	})
+	d.httpHandle(mux, "POST /v1/admin/access/members/{id}/profiles/{profileId}/pin-reset", func(w http.ResponseWriter, r *http.Request) {
+		p, e := d.administrator(r)
+		if e != nil {
+			accessFailure(w, e)
+			return
+		}
+		var body identity.MemberProfilePINReset
+		if e = decode(w, r, &body); e != nil {
+			accessFailure(w, e)
+			return
+		}
+		out, e := store.ClearMemberProfilePIN(r.Context(), d.accessTargetAuthority(p, r.PathValue("id"), false), d.Identity, r.PathValue("id"), r.PathValue("profileId"), body)
+		if e != nil {
+			accessFailure(w, e)
+			return
+		}
+		write(w, 200, out)
+	})
 	d.httpHandle(mux, "GET /v1/admin/access/invitations", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.administrator(r)
 		if e != nil {

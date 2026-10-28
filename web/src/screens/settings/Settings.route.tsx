@@ -55,6 +55,7 @@ import {readingSettingsAdapter} from './reading-adapter';
 import {hasWebPreferenceEffect} from './effects';
 import {createPrivacySettingsSurfaces} from './privacy-controls';
 import {PeopleScreen, type PeopleBindings} from './People';
+import {createPeopleMemberProfilesApi} from './people-member-profiles-api';
 import {createPeopleDevicesApi} from './people-devices-api';
 import {SignInSettingsSource} from './signin-source';
 import {LocalOwnerTransferSource} from './local-owner-transfer';
@@ -376,7 +377,7 @@ export function SettingsEntry() {
       }) : undefined;
     const people: PeopleBindings | undefined = route.section === 'people' && identity.primaryProfile === true && identity.capabilities?.managePeople === true &&
       (role === 'owner' || role === 'admin') && (viewer.authority === 'local' || viewer.authority === 'hosted') ? {
-        client: new SettingsPeopleClient(api, current), devices: createPeopleDevicesApi(api, current), serverName: context.facts.serverName, libraries: identity.libraries, memberResetCodes,
+        client: new SettingsPeopleClient(api, current), devices: createPeopleDevicesApi(api, current), memberProfiles: createPeopleMemberProfilesApi(api, current), serverName: context.facts.serverName, libraries: identity.libraries, memberResetCodes,
         actor: {accountId: viewer.accountId, role}, streamLimits: peopleStreamLimits,
         invitations: new SettingsInvitations(api, current, api.baseUrl, viewer.serverId), signIn: identity.signIn, openHome, reportError,
         // The owner's invite expiry, in whole days on the server and hours in the
