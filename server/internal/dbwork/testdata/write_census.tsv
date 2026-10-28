@@ -507,6 +507,7 @@ internal/playback/hls.go	(*HLS).CleanupGenerated	Begin	ClassPlaybackStart	-
 internal/playback/hls.go	(*HLS).observeConversion	WithWriteTx	ClassEstablishedPlayback	-	×2
 internal/playback/hls.go	NewHLS	ExecWrite	ClassEstablishedPlayback	-
 internal/playback/hls_copy_timeline.go	storeCopyTimeline	ExecWrite	ClassEstablishedPlayback	-
+internal/playback/hls_memory.go	(*HLS).spillMemory	ExecWrite	ClassEstablishedPlayback	-
 internal/playback/hls_produce_support.go	(*HLS).downgradeCopyPlan	Begin	ClassEstablishedPlayback	-
 internal/playback/hls_restart.go	(*HLS).restart	ExecWrite	ClassEstablishedPlayback	-
 internal/playback/occurrence_io.go	(*HLS).producerWrite	ExecWrite	class	-

@@ -74,6 +74,8 @@ const bindings:Readonly<Record<string,SettingsBinding>>={
  'streaming.convertAhead':{form:'runtime',key:'throttleBufferMs',scale:1000,codec:'number-choice'},
  'streaming.rewindKeep':{form:'runtime',key:'playedRetentionMs',scale:1000,codec:'number-choice'},
  'streaming.sessionSpace':{form:'runtime',key:'sessionStorageMiB',codec:'number-choice'},
+ 'streaming.transcodeLocation':{form:'runtime',key:'transcodeLocation'},
+ 'streaming.memoryCap':{form:'runtime',key:'memoryCap'},
  'streaming.maxConversions':{form:'runtime',key:'maxConcurrentSessions',codec:'unlimited'},
  'streaming.maxHardwareConversions':{form:'runtime',key:'maxHardwareSessions',codec:'unlimited'},
  'streaming.maxSoftwareConversions':{form:'runtime',key:'maxSoftwareSessions',codec:'unlimited'},

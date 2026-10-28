@@ -2,14 +2,23 @@
 
 package telemetry
 
-// memoryTranscodeDirectory names the RAM file system a conversion directory can
-// use when the host has one this server can write to. Only a real mounted
-// RAM-backed file system counts: /dev/shm is the standard one, and a host that
-// does not mount it gets no memory choice rather than one that would fill RAM.
+import "syscall"
+
+// memoryTranscodeDirectory names the same preferred tmpfs mount as startup.
+// A writable candidate can still be unavailable: playback checks its kernel
+// ceiling, the configured cap and the host/cgroup memory floor separately.
 func memoryTranscodeDirectory() string {
-	const sharedMemory = "/dev/shm"
-	if !writable(sharedMemory) {
-		return ""
+	return memoryTranscodeCandidate(func(path string) bool {
+		var fs syscall.Statfs_t
+		return syscall.Statfs(path, &fs) == nil && fs.Type == 0x01021994 && writable(path)
+	})
+}
+
+func memoryTranscodeCandidate(usable func(string) bool) string {
+	for _, path := range []string{"/memory-transcode", "/dev/shm"} {
+		if usable(path) {
+			return path
+		}
 	}
-	return sharedMemory
+	return ""
 }

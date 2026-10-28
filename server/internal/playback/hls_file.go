@@ -17,15 +17,50 @@ func (s *Service) OpenHLSFileContext(ctx context.Context, grant, name string) (*
 	if err != nil {
 		return nil, err
 	}
-	relative, err := filepath.Rel(s.hls.root, path)
-	if err != nil || !filepath.IsLocal(relative) || filepath.Base(relative) != name {
+	return s.hls.openOutputPath(ctx, path, name)
+}
+
+// A path returned before a spill may name the retired root. Resolve its already
+// authorized session against current placement while holding the move fence.
+func (h *HLS) openOutputPath(ctx context.Context, path, name string) (*os.File, error) {
+	id := filepath.Base(filepath.Dir(path))
+	if !generatedDirectoryID.MatchString(id) || filepath.Base(path) != name {
 		return nil, ErrHLSArtifactUnavailable
 	}
-	file, err := openHLSOutput(s.hls.outputRoot, filepath.Dir(relative), name)
-	if err != nil {
-		return nil, ErrHLSArtifactUnavailable
+	for {
+		if err := h.waitOutputMove(ctx, id); err != nil {
+			return nil, err
+		}
+		h.mu.Lock()
+		if h.moving[id] != nil {
+			h.mu.Unlock()
+			continue
+		}
+		if path != filepath.Join(h.root, id, name) && path != filepath.Join(h.memoryRoot, id, name) {
+			h.mu.Unlock()
+			return nil, ErrHLSArtifactUnavailable
+		}
+		if h.cleaning[id] {
+			h.mu.Unlock()
+			return nil, ErrHLSArtifactUnavailable
+		}
+		root := h.outputRootLocked(id)
+		if h.outputBusy == nil {
+			h.outputBusy = map[string]int{}
+		}
+		h.outputBusy[id]++
+		h.mu.Unlock()
+		open := h.outputOpen
+		if open == nil {
+			open = openHLSOutput
+		}
+		file, err := open(root, id, name)
+		h.releaseOutput(id)
+		if err != nil {
+			return nil, ErrHLSArtifactUnavailable
+		}
+		return file, nil
 	}
-	return file, nil
 }
 
 func openHLSOutput(root *os.Root, session, name string) (*os.File, error) {

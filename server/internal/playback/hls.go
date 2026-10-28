@@ -51,17 +51,29 @@ type HLS struct {
 	SourceStorage *storage.Client
 	// memberCeiling reads what a member is allowed now, for a re-plan that no
 	// request asked for. See ConfigureMemberCeiling.
-	memberCeiling MemberCeilingReader
-	db            *sql.DB
-	root, binary  string
-	outputRoot    *os.Root
-	mu            sync.Mutex
-	occurrences   occurrenceRegistry
-	cleanupMu     sync.Mutex
-	cleaning      map[string]bool
-	active        map[string]context.CancelFunc
-	activeRuns    map[string]*occurrenceRun
-	windows       map[string]*hlsWindow
+	memberCeiling    MemberCeilingReader
+	db               *sql.DB
+	root, binary     string
+	outputRoot       *os.Root
+	memoryRoot       string
+	memoryOutputRoot *os.Root
+	inMemory         map[string]bool
+	diskOnly         map[string]bool
+	memoryFull       map[string]bool
+	moving           map[string]chan struct{}
+	memoryFacts      func(string) (memoryFacts, error)
+	memoryCheck      func(string) error
+	memorySpills     atomic.Uint64
+	memoryRefused    atomic.Uint64
+	memorySweepMu    sync.Mutex
+	outputBusy       map[string]int
+	mu               sync.Mutex
+	occurrences      occurrenceRegistry
+	cleanupMu        sync.Mutex
+	cleaning         map[string]bool
+	active           map[string]context.CancelFunc
+	activeRuns       map[string]*occurrenceRun
+	windows          map[string]*hlsWindow
 	// restarts bounds how often one session may restart its producer, and
 	// segmentWaits shares one wait between every request for the same segment.
 	// Both exist for clients on bad networks; see hls_bad_network.go.
@@ -87,14 +99,18 @@ type HLS struct {
 	// usage is the measured footprint of each generated session and when a viewer
 	// last saw a segment of it. It is what makes the per-second sweep cheap and
 	// what orders eviction under the global byte budget; see hls_sweep.go.
-	usage       map[string]*hlsUsage
-	budgetSwept time.Time
-	orphanMu    sync.Mutex
-	orphanDir   *os.File
+	usage           map[string]*hlsUsage
+	budgetSwept     time.Time
+	orphanMu        sync.Mutex
+	orphanDir       *os.File
+	orphanMemoryDir *os.File
 	// measure is the sweep's directory-measurement seam. It is nil in
 	// production, where measureDirectory runs; a test replaces it to count the
 	// walks a sweep actually performs. Nothing else writes it.
 	measure func(dir string) (int64, int, error)
+	// Filesystem seams are installed only before concurrent playback in tests.
+	outputOpen   func(*os.Root, string, string) (*os.File, error)
+	outputRename func(string, string) error
 	// execute replaces only converter execution in tests. Set before starting
 	// a session; nil uses the ordinary confined child-process executor.
 	execute func(context.Context, mediaexec.Job) (error, string)
@@ -228,6 +244,9 @@ func (h *HLS) startGeneration(ctx context.Context, id string, from, expected int
 	if h.ctx.Err() != nil {
 		return h.ctx.Err()
 	}
+	if h.moving[id] != nil || h.memoryFull[id] {
+		return ErrSegmentPreparing
+	}
 	if h.cleaning[id] {
 		return errors.New("playback output is being reclaimed")
 	}
@@ -333,6 +352,9 @@ func (h *HLS) Shutdown(ctx context.Context) error {
 	h.cancelAll()
 	h.closeOrphanDirectory()
 	var closeErr error
+	if h.memoryOutputRoot != nil {
+		closeErr = h.memoryOutputRoot.Close()
+	}
 	if h.outputRoot != nil {
 		closeErr = h.outputRoot.Close()
 	}
@@ -368,13 +390,6 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 		return
 	}
 	ctx = h.occurrenceContext(withProducerGeneration(ctx, generation), id, entry, ownedRun)
-	dir := filepath.Join(h.root, id)
-	if e = os.MkdirAll(dir, 0700); e != nil {
-		return
-	}
-	if _, e = h.producerWrite(ctx, id, dbwork.ClassEstablishedPlayback, `INSERT INTO playback_artifacts(session_id,directory,status) VALUES(?,?,'building') ON CONFLICT(session_id) DO UPDATE SET status='building',error=''`, id, dir); e != nil {
-		return
-	}
 	delivery, e := loadDeliveryPlan(ctx, h.db, id)
 	if e != nil {
 		h.failed(ctx, id)
@@ -386,6 +401,16 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 	}
 	h.mu.Unlock()
 	h.selectOutputBackend(ctx, id, delivery)
+	dir, e := h.createStreamingOutput(ctx, id, delivery)
+	if e != nil {
+		if !errors.Is(e, ErrSegmentPreparing) && ctx.Err() == nil {
+			h.failed(ctx, id)
+		}
+		return
+	}
+	if _, e = h.producerWrite(ctx, id, dbwork.ClassEstablishedPlayback, `INSERT INTO playback_artifacts(session_id,directory,status) VALUES(?,?,'building') ON CONFLICT(session_id) DO UPDATE SET directory=excluded.directory,status='building',error=''`, id, dir); e != nil {
+		return
+	}
 	input, remoteInput, e := h.openWindowInput(ctx, id, delivery)
 	if e != nil {
 		h.failed(ctx, id)
@@ -431,12 +456,12 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 			manifest = fragmentedManifest(manifest)
 		}
 		if e = publishRenditionManifests(dir, delivery, manifest); e != nil {
-			h.failed(ctx, id)
+			h.outputSetupFailed(ctx, id)
 			return
 		}
 	}
 	if e = writeNamedManifest(dir, "generation", []byte(strconv.Itoa(generation))); e != nil {
-		h.failed(ctx, id)
+		h.outputSetupFailed(ctx, id)
 		return
 	}
 	h.mu.Lock()
@@ -458,13 +483,16 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 		staging = filepath.Join(dir, "window-"+strconv.Itoa(from))
 		_ = os.RemoveAll(staging)
 		if e = os.MkdirAll(staging, 0700); e != nil {
-			h.failed(ctx, id)
+			h.outputSetupFailed(ctx, id)
 			return
 		}
 		defer os.RemoveAll(staging)
 	}
 	burn, cleanupBurn, burnErr := h.prepareBurnInput(ctx, id, dir, position, delivery, input, remoteInput)
 	if burnErr != nil {
+		if h.retryMemoryPathError(id, dir, burnErr) {
+			return
+		}
 		h.failedWith(ctx, id, FailureConverter, "subtitle input unavailable")
 		return
 	}
@@ -656,12 +684,12 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 				return subtitles.WindowCommand{Args: args, Hardware: conversionJobHardware(plan, stages)}, err
 			})
 			releaseRemote()
-			return err, windowConverterDiagnostic(err, path, h.root)
+			return err, windowConverterDiagnostic(err, path, h.root, h.memoryRoot)
 		}
 
 		args, stages, err := build(plan)
 		if err != nil {
-			return err, sanitizeConverterOutput(err.Error(), h.root)
+			return err, sanitizeConverterOutput(err.Error(), h.root, h.memoryRoot)
 		}
 		if len(stages) > 0 {
 			h.recordStages(ctx, id, plan, stages)
@@ -725,7 +753,7 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 		if err == nil && input.Validate != nil {
 			err = validateOwnedInput(processCtx, input.Validate)
 		}
-		return err, sanitizeConverterOutput(tail.String(), input.Argument, h.root)
+		return err, sanitizeConverterOutput(tail.String(), input.Argument, h.root, h.memoryRoot)
 	}
 	e, diagnostic := run(delivery)
 	stopWatch()
@@ -737,7 +765,7 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 	}
 	h.mu.Unlock()
 	if publicationError != nil {
-		h.fragmentedFailure(ctx, id, delivery, position, publicationError)
+		h.outputPublicationFailed(ctx, id, delivery, position, publicationError)
 		return
 	}
 	throttled := func() bool {
@@ -814,7 +842,7 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 		}
 		h.mu.Unlock()
 		if publicationError != nil {
-			h.fragmentedFailure(ctx, id, delivery, position, publicationError)
+			h.outputPublicationFailed(ctx, id, delivery, position, publicationError)
 			return
 		}
 		retryCancelled := ctx.Err() != nil || !currentWindow || processCtx.Err() != nil && !softwareThrottled
@@ -849,7 +877,7 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 			var promoteErr error
 			produced, promoteErr = promoteFMP4Segments(staging, dir, timeline, from, e == nil)
 			if promoteErr != nil {
-				h.fragmentedFailure(ctx, id, delivery, position, promoteErr)
+				h.outputPublicationFailed(ctx, id, delivery, position, promoteErr)
 				return
 			}
 		} else {
@@ -860,7 +888,7 @@ func (h *HLS) produce(ctx context.Context, id string, from, generation int, owne
 			var publishErr error
 			produced, publishErr = promoteConvertedFragments(staging, dir, "init-"+strconv.Itoa(from)+".mp4", from, nil, fragmentClock)
 			if publishErr != nil {
-				h.fragmentedFailure(ctx, id, delivery, position, publishErr)
+				h.outputPublicationFailed(ctx, id, delivery, position, publishErr)
 				return
 			}
 		} else {
@@ -1017,7 +1045,13 @@ func withProducerGeneration(ctx context.Context, generation int) context.Context
 // failed fails the session's conversion, and reports whether it did: a
 // producer whose generation has been replaced fails nothing.
 func (h *HLS) failed(ctx context.Context, id string) bool {
-	if failureDuringClaim(ctx) {
+	h.mu.Lock()
+	moving := h.moving[id] != nil
+	if owner, _ := ctx.Value(occurrenceOwnerKey{}).(*occurrenceOwner); owner != nil && owner.run != nil {
+		moving = moving || owner.run.spillCancelled
+	}
+	h.mu.Unlock()
+	if moving || failureDuringClaim(ctx) || h.memoryOutputPressure(id) {
 		return false
 	}
 	write, cancel := persist(ctx)
@@ -1070,8 +1104,8 @@ func (h *HLS) Ready(ctx context.Context, id string) error {
 		if status == "failed" {
 			return errors.New("media conversion failed")
 		}
-		if info, e := os.Stat(filepath.Join(h.root, id, "master.m3u8")); e == nil && info.Size() > 0 {
-			stamp, err := os.ReadFile(filepath.Join(h.root, id, "generation"))
+		if info, e := os.Stat(filepath.Join(h.outputDir(id), "master.m3u8")); e == nil && info.Size() > 0 {
+			stamp, err := os.ReadFile(filepath.Join(h.outputDir(id), "generation"))
 			if err == nil && string(stamp) == strconv.Itoa(generation) {
 				return nil
 			}
@@ -1106,16 +1140,20 @@ func (h *HLS) FileContext(ctx context.Context, grant, name string) (string, erro
 	if e != nil {
 		return "", e
 	}
+	if err := h.waitOutputMove(ctx, id); err != nil {
+		return "", err
+	}
 	index, segment := hlsSegmentIndex(name)
 	if strings.HasPrefix(name, "segment-") && !segment {
 		return "", errors.New("unknown stream artifact")
 	}
-	stamp, stampErr := os.ReadFile(filepath.Join(h.root, id, "generation"))
+	stamp, stampErr := os.ReadFile(filepath.Join(h.outputDir(id), "generation"))
 	if stampErr != nil || string(stamp) != strconv.Itoa(generation) {
-		// Only a wholly evicted directory is recoverable here. An existing
-		// directory with a different generation must never become current.
-		if os.IsNotExist(stampErr) {
-			if _, err := os.Stat(filepath.Join(h.root, id)); os.IsNotExist(err) {
+		// Retire interrupted owned initial publication, then use the same absent
+		// output restart path as eviction. A valid different generation stays fenced.
+		h.retireIncompleteOutput(id)
+		if os.IsNotExist(stampErr) || !validOutputGeneration(h.outputDir(id)) {
+			if _, err := os.Stat(h.outputDir(id)); os.IsNotExist(err) {
 				from, segment := hlsSegmentIndex(name)
 				if !segment {
 					from = 0
@@ -1140,7 +1178,7 @@ func (h *HLS) FileContext(ctx context.Context, grant, name string) (string, erro
 		}
 		return h.renditionFile(ctx, id, name, delivery)
 	}
-	path := filepath.Join(h.root, id, name)
+	path := filepath.Join(h.outputDir(id), name)
 	if name == "init.mp4" {
 		return h.awaitSegment(ctx, id, -1, func(ctx context.Context) (string, error) {
 			wait, cancel := context.WithTimeout(ctx, 20*time.Second)
@@ -1148,6 +1186,13 @@ func (h *HLS) FileContext(ctx context.Context, grant, name string) (string, erro
 			tick := time.NewTicker(100 * time.Millisecond)
 			defer tick.Stop()
 			for {
+				current := filepath.Join(h.outputDir(id), name)
+				if current != path {
+					path = current
+					if err := h.start(ctx, id, 0); err != nil {
+						return "", err
+					}
+				}
 				if segmentReady(path) {
 					return path, nil
 				}
@@ -1195,6 +1240,13 @@ func (h *HLS) FileContext(ctx context.Context, grant, name string) (string, erro
 			if status == "failed" {
 				return "", errors.New("media conversion failed")
 			}
+			current := filepath.Join(h.outputDir(id), name)
+			if current != path {
+				path = current
+				if err := h.start(ctx, id, index); err != nil {
+					return "", err
+				}
+			}
 			if segmentReady(path) {
 				h.noteServed(ctx, id, index, cfg)
 				return path, nil
@@ -1221,11 +1273,20 @@ func (h *HLS) noteServed(ctx context.Context, id string, index int, cfg Delivery
 		restart = window.throttled
 	}
 	from := h.reclaimed[id]
+	moving := h.moving[id] != nil
 	h.mu.Unlock()
+	if moving {
+		return
+	}
 	write, cancel := persist(ctx)
 	defer cancel()
 	_, _ = h.producerWrite(write, id, dbwork.ClassEstablishedPlayback, `INSERT INTO playback_hls_demand(session_id,highest_served,throttled) VALUES(?,?,0) ON CONFLICT(session_id) DO UPDATE SET highest_served=max(playback_hls_demand.highest_served,excluded.highest_served),throttled=0`, id, index)
-	if _, reclaimed := prunePlayedSegments(filepath.Join(h.root, id), from, index, cfg.PlayedRetentionSeconds); reclaimed > from {
+	dir, release := h.retainOutput(id)
+	if release == nil {
+		return
+	}
+	defer release()
+	if _, reclaimed := prunePlayedSegments(dir, from, index, cfg.PlayedRetentionSeconds); reclaimed > from {
 		h.mu.Lock()
 		if h.reclaimed[id] < reclaimed {
 			h.reclaimed[id] = reclaimed
@@ -1246,7 +1307,7 @@ func (h *HLS) Run(ctx context.Context) {
 	worker.Run(ctx, "playback.hls-maintenance", wake, func(ctx context.Context) time.Duration {
 		h.sweep(ctx)
 		cleanupErr := h.CleanupGenerated(ctx)
-		if cleanupErr != nil || len(h.activeSnapshot()) > 0 {
+		if cleanupErr != nil || len(h.activeSnapshot()) > 0 || h.hasMemoryOutput() {
 			return time.Second
 		}
 		return 0
@@ -1286,7 +1347,7 @@ func (h *HLS) CleanupGenerated(ctx context.Context) error {
 			return errors.New("invalid generated artifact identity")
 		}
 		h.mu.Lock()
-		if h.sessionActiveLocked(id) {
+		if h.sessionActiveLocked(id) || h.moving[id] != nil || h.cleaning[id] || h.outputBusy[id] > 0 {
 			h.mu.Unlock()
 			continue
 		}
@@ -1306,9 +1367,18 @@ func (h *HLS) CleanupGenerated(ctx context.Context) error {
 			}
 			// RemoveAll does not follow a directory symlink. The root is configured by
 			// the server and id has no separators/dot segments; source files are excluded.
-			if e := os.RemoveAll(filepath.Join(h.root, id)); e != nil {
+			if e := os.RemoveAll(h.outputDir(id)); e != nil {
 				return e
 			}
+			if e := os.Remove(filepath.Join(h.root, diskPlacementPrefix+id)); e != nil && !os.IsNotExist(e) {
+				return e
+			}
+			h.mu.Lock()
+			delete(h.diskOnly, id)
+			delete(h.inMemory, id)
+			delete(h.memoryFull, id)
+			delete(h.usage, id)
+			h.mu.Unlock()
 			gated, e := dbwork.Begin(ctx, h.db, dbwork.ClassPlaybackStart)
 			if e != nil {
 				return e

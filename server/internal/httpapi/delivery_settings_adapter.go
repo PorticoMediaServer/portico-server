@@ -34,6 +34,8 @@ func deliveryFromSettings(s telemetry.TranscodeSettings, bitrate int) playback.D
 		ConversionMode: s.ConversionMode, OutputFormat: s.OutputFormat, DownloadMaxQuality: s.DownloadMaxQuality, MaxMusicQuality: s.MaxMusicQuality,
 		MaxVideoBitrateBPS:     bitrate,
 		SessionStorageMiB:      s.SessionStorageMiB,
+		MemoryCap:              s.MemoryCap,
+		TranscodeLocation:      s.TranscodeLocation,
 		HardwareBackend:        s.HardwareBackend,
 		HardwareDevice:         s.HardwareDevice,
 		HardwareSelection:      s.HardwareSelection,

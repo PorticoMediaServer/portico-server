@@ -44,7 +44,31 @@ func (h *HLS) restart(ctx context.Context, id string, positionSeconds float64) {
 	for _, done := range waits {
 		<-done
 	}
-	dir := filepath.Join(h.root, id)
+	if err := h.waitOutputMove(ctx, id); err != nil {
+		return
+	}
+	h.mu.Lock()
+	if h.moving[id] != nil || h.cleaning[id] {
+		h.mu.Unlock()
+		return
+	}
+	if h.cleaning == nil {
+		h.cleaning = map[string]bool{}
+	}
+	h.cleaning[id] = true
+	dir := h.outputDirLocked(id)
+	h.mu.Unlock()
+	cleared := false
+	clear := func() {
+		if cleared {
+			return
+		}
+		cleared = true
+		h.mu.Lock()
+		delete(h.cleaning, id)
+		h.mu.Unlock()
+	}
+	defer clear()
 	entries, err := os.ReadDir(dir)
 	if err != nil && !os.IsNotExist(err) {
 		return
@@ -60,5 +84,6 @@ func (h *HLS) restart(ctx context.Context, id string, positionSeconds float64) {
 	write, done := persist(ctx)
 	defer done()
 	_, _ = dbwork.ExecWrite(write, h.db, dbwork.ClassEstablishedPlayback, `DELETE FROM playback_hls_demand WHERE session_id=?`, id)
+	clear()
 	_ = h.start(ctx, id, index)
 }

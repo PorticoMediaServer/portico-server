@@ -23,8 +23,10 @@ type DeliveryDiagnostics struct {
 	OutputPolicy             string `json:"outputPolicy"`
 	// HostConversionCapacity is the host-derived ceiling on simultaneous
 	// converters, and ConversionsRefused how many starts it has turned away.
-	HostConversionCapacity int    `json:"hostConversionCapacity"`
-	ConversionsRefused     uint64 `json:"conversionsRefused"`
+	HostConversionCapacity  int    `json:"hostConversionCapacity"`
+	MemorySpills            uint64 `json:"memorySpills"`
+	MemoryPlacementsRefused uint64 `json:"memoryPlacementsRefused"`
+	ConversionsRefused      uint64 `json:"conversionsRefused"`
 	// HardwareFallbacks counts conversions whose hardware encoder failed on a
 	// real source and were run again in software.
 	HardwareFallbacks uint64 `json:"hardwareFallbacks"`
@@ -94,6 +96,8 @@ func (s *Service) DeliveryDiagnostics(ctx context.Context) (DeliveryDiagnostics,
 		out.ConversionSessionLimit = &out.HostConversionCapacity
 	}
 	out.ConversionsRefused = h.conversionsRefused.Load()
+	out.MemorySpills = h.memorySpills.Load()
+	out.MemoryPlacementsRefused = h.memoryRefused.Load()
 	out.HardwareFallbacks = h.hardwareFailures.Load()
 	out.FragmentedOutput = h.fragmentedOutput()
 	out.RecentFailures = []ConversionFailureRecord{}

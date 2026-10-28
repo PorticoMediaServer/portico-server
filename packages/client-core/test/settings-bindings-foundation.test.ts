@@ -91,3 +91,15 @@ test('chapter labels toggle writes the real runtime boolean',()=>{
  assert.deepEqual(patch,{form:'runtime',values:{'segments.useChapterNames':false}});
  assert.equal(readSettingsBinding(binding,{forms:{runtime:patch.values}})?.current,false);
 });
+
+test('conversion preference and its disk folder have independent runtime bindings',()=>{
+ const location=settingsBinding('streaming.transcodeLocation')!,folder=settingsBinding('streaming.transcodeFolder')!;
+ assert.deepEqual(location,{form:'runtime',key:'transcodeLocation'});
+ assert.equal(folder.key,'temporaryDirectory');
+ const sources={forms:{runtime:{transcodeLocation:'memory',temporaryDirectory:'/transcode'}}};
+ assert.equal(readSettingsBinding(location,sources)?.current,'memory');
+ assert.equal(readSettingsBinding(folder,sources)?.current,'/transcode');
+ assert.deepEqual(settingsBindingPatch(location,'disk'),{form:'runtime',values:{transcodeLocation:'disk'}});
+ assert.deepEqual(settingsBindingPatch(location,'memory'),{form:'runtime',values:{transcodeLocation:'memory'}});
+ assert.deepEqual(settingsBindingPatch(folder,'/disk'),{form:'runtime',values:{temporaryDirectory:'/disk'}});
+});

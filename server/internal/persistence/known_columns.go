@@ -5883,6 +5883,7 @@ server_settings.maxConcurrentSessions
 server_settings.maxHardwareSessions
 server_settings.maxSoftwareSessions
 server_settings.memberTokenScope
+server_settings.memoryCap
 server_settings.musicAwayQuality
 server_settings.notificationDays
 server_settings.outputFormat
@@ -5913,6 +5914,7 @@ server_settings.subtitleTrackLimit
 server_settings.temporaryDirectory
 server_settings.throttleBufferMs
 server_settings.tokensPerMember
+server_settings.transcodeLocation
 server_settings.updated_ms
 server_settings.updates.feedUrl
 server_settings.updates.releaseChannel

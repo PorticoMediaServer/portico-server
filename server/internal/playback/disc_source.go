@@ -359,7 +359,7 @@ func (h *HLS) openDiscInput(ctx context.Context, id string) (*assets.PlaybackInp
 	if err != nil {
 		return failed(err)
 	}
-	dir := filepath.Join(h.root, id)
+	dir := h.outputDir(id)
 	if err = os.MkdirAll(dir, 0700); err != nil {
 		return failed(err)
 	}
