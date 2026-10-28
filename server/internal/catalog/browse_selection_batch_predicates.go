@@ -17,6 +17,7 @@ import (
 // to that exact source key and only joins unique keys. Negative predicates
 // complement at source EOF, not after an arbitrary candidate cap.
 type selectionBatchTest struct {
+	search                                     *selectionBatchSearch
 	rangeShow                                  string
 	rangeStart                                 int64
 	global                                     bool
@@ -44,6 +45,9 @@ func (t selectionBatchTest) bytes() int {
 	}
 	for _, stream := range t.streams {
 		n += stream.bytes()
+	}
+	if t.search != nil {
+		n += t.search.bytes()
 	}
 	return n + len(t.rangeShow) + len(t.value) + len(t.sizeSQL) + len(t.scalar) + len(t.table) + len(t.owner) + len(t.keys) + len(t.guard) + len(t.join) + len(t.condition) + selectionArgsBytes(t.args) + selectionArgsBytes(t.profileArgs) + selectionArgsBytes(t.keyZero)
 }
@@ -148,10 +152,11 @@ func selectionBatchCompileTest(node BrowseNode, profile string, groupSearch bool
 		if err != nil {
 			return test, err
 		}
-		// Only the existing exact per-entity prefix projection is qualified. FTS5
-		// may expand an unbounded global prefix vocabulary even with rowid equality.
+		// Follow the ORIGINAL compiler's branch, including unqualified MATCH's
+		// kind column and raw CJK post-check. Rowid-correlated FTS is not bounded.
 		if _, indexed := facettext.IndexedSearchTerms(normalized); !groupSearch || !indexed {
-			return test, ErrSelectionBatchSearchUnsupported
+			test.search, err = newSelectionBatchSearch(normalized)
+			return test, err
 		}
 		c.groupSearch = true
 		test.scalar, err = c.entityPredicate(field, node)
@@ -643,8 +648,12 @@ func selectionBatchSearchQualified(node *BrowseNode) error {
 			return nil
 		}
 		if n.Field == "search" {
-			if _, err := selectionBatchCompileTest(*n, "", grouped); err != nil {
+			test, err := selectionBatchCompileTest(*n, "", grouped)
+			if err != nil {
 				return err
+			}
+			if test.search != nil && !selectionBatchLocalSearchEnabled {
+				return fmt.Errorf("%w: local search consumer qualification pending", ErrSelectionBatchUnsupported)
 			}
 		}
 		for i := range n.All {
