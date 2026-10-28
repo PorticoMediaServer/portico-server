@@ -169,6 +169,8 @@ func TestCastReceiverCallsRegisteredRoutes(t *testing.T) {
 		"/v1/playback/sessions/":              {"PATCH", "DELETE"},
 		"/v1/items/":                          {"GET"},
 		"/v1/queues/":                         {"GET"},
+		"/v1/user-mutations/":                 {"GET"},
+		"/v1/user-mutations/policy":           {"GET"},
 		// A pairing the television took and then could not use: it undoes its own.
 		"/v1/cast/devices/": {"DELETE"},
 	}
