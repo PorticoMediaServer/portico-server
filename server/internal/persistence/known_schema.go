@@ -943,6 +943,8 @@ table catalog_browse_memberships
 table catalog_browse_memberships_previous
 table catalog_browse_metric_cursors
 table catalog_browse_predicate_epoch
+table catalog_browse_row_keys
+table catalog_browse_row_work
 table catalog_browse_rows
 table catalog_browse_rows_previous
 table catalog_collection_members
@@ -1000,6 +1002,7 @@ table catalog_item_attribute_edges
 table catalog_item_availability
 table catalog_item_availability_previous
 table catalog_item_details
+table catalog_item_metric_jobs
 table catalog_item_version_counts
 table catalog_kept_apart
 table catalog_kinds
@@ -2082,6 +2085,8 @@ trigger catalog_browse_member_metrics_retain_update
 trigger catalog_browse_memberships_retain_delete
 trigger catalog_browse_memberships_retain_insert
 trigger catalog_browse_memberships_retain_update
+trigger catalog_browse_metric_links_delete
+trigger catalog_browse_metric_links_insert
 trigger catalog_browse_rows_retain_delete
 trigger catalog_browse_rows_retain_insert
 trigger catalog_browse_rows_retain_update

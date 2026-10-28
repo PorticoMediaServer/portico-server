@@ -829,6 +829,8 @@ CREATE TABLE catalog_browse_counted_rows(
  rating_bucket TEXT NOT NULL DEFAULT '') STRICT;
 CREATE TABLE catalog_browse_item_metrics(
  item_id INTEGER PRIMARY KEY,
+ available_links INTEGER NOT NULL DEFAULT 0,
+ unavailable_links INTEGER NOT NULL DEFAULT 0,
  duration REAL,
  rating REAL,
  added TEXT) STRICT;
@@ -836,6 +838,8 @@ CREATE TABLE catalog_browse_member_metrics(
  entity_id INTEGER NOT NULL,
  item_id INTEGER NOT NULL,
  source INTEGER NOT NULL,
+ available_links INTEGER NOT NULL DEFAULT 0,
+ unavailable_links INTEGER NOT NULL DEFAULT 0,
  duration REAL,
  rating REAL,
  added TEXT,
@@ -921,6 +925,7 @@ CREATE INDEX catalog_personal_sort_member_entity ON catalog_personal_sort_member
 CREATE INDEX catalog_personal_sort_member_rating ON catalog_personal_sort_members(profile_id,entity_id,rating DESC) WHERE rating IS NOT NULL;
 CREATE INDEX catalog_personal_sort_member_last ON catalog_personal_sort_members(profile_id,entity_id,last_played_at DESC);
 CREATE TABLE compact_visibility_classes(
+ source_revision INTEGER NOT NULL DEFAULT 0,source_target INTEGER NOT NULL DEFAULT 0,captured_sequence INTEGER NOT NULL DEFAULT 0,
  id INTEGER PRIMARY KEY,class_key TEXT NOT NULL UNIQUE,
  library_id INTEGER NOT NULL REFERENCES catalog_libraries(id),policy_json TEXT NOT NULL,
  active_generation INTEGER NOT NULL,catalog_revision INTEGER NOT NULL,
@@ -6111,78 +6116,94 @@ CREATE TRIGGER catalog_people_names_delete AFTER DELETE ON catalog_people BEGIN
  DELETE FROM catalog_people_names WHERE rowid=OLD.id;
 END;
 CREATE TABLE compact_visibility_dirty(
+ first_sequence INTEGER NOT NULL DEFAULT 0,
  class_id INTEGER NOT NULL REFERENCES compact_visibility_classes(id) ON DELETE CASCADE,
  entity_id INTEGER NOT NULL,
  PRIMARY KEY(class_id,entity_id)) WITHOUT ROWID, STRICT;
 CREATE TRIGGER compact_visibility_dirty_row_insert AFTER INSERT ON catalog_browse_rows BEGIN
- INSERT INTO compact_visibility_dirty SELECT c.id,NEW.entity_id FROM compact_visibility_classes c WHERE c.library_id=NEW.library_id AND c.retired=0 ON CONFLICT DO NOTHING;
+ UPDATE compact_visibility_source_state SET sequence=sequence+1 WHERE id=1;
+ INSERT INTO compact_visibility_source_jobs(kind,library_id,subject_id,sequence,first_pending) VALUES(1,NEW.library_id,NEW.entity_id,(SELECT sequence FROM compact_visibility_source_state WHERE id=1),(SELECT sequence FROM compact_visibility_source_state WHERE id=1))
+ ON CONFLICT(kind,library_id,subject_id,subject_text) DO UPDATE SET sequence=excluded.sequence,first_pending=min(first_pending,excluded.first_pending),rerun_first=CASE WHEN pass_sequence=0 THEN rerun_first WHEN rerun_first=0 THEN excluded.first_pending ELSE min(rerun_first,excluded.first_pending) END;
 END;
-CREATE TRIGGER compact_visibility_dirty_row_update AFTER UPDATE ON catalog_browse_rows BEGIN
- INSERT INTO compact_visibility_dirty SELECT c.id,OLD.entity_id FROM compact_visibility_classes c WHERE c.library_id IN(OLD.library_id,NEW.library_id) AND c.retired=0 ON CONFLICT DO NOTHING;
+CREATE TRIGGER compact_visibility_dirty_row_update AFTER UPDATE OF library_id,entity_id,kind,sort_key,head,year,added_text,duration_max,rating_max,recent_text,random_key,availability_state,available,rating_key,label_key ON catalog_browse_rows
+ WHEN OLD.library_id IS NOT NEW.library_id OR OLD.entity_id IS NOT NEW.entity_id OR OLD.kind IS NOT NEW.kind OR OLD.sort_key IS NOT NEW.sort_key OR OLD.head IS NOT NEW.head OR OLD.year IS NOT NEW.year OR OLD.added_text IS NOT NEW.added_text OR OLD.duration_max IS NOT NEW.duration_max OR OLD.rating_max IS NOT NEW.rating_max OR OLD.recent_text IS NOT NEW.recent_text OR OLD.random_key IS NOT NEW.random_key OR OLD.availability_state IS NOT NEW.availability_state OR OLD.available IS NOT NEW.available OR OLD.rating_key IS NOT NEW.rating_key OR OLD.label_key IS NOT NEW.label_key BEGIN
+ UPDATE compact_visibility_source_state SET sequence=sequence+1 WHERE id=1;
+ INSERT INTO compact_visibility_source_jobs(kind,library_id,subject_id,sequence,first_pending) VALUES(1,OLD.library_id,OLD.entity_id,(SELECT sequence FROM compact_visibility_source_state WHERE id=1),(SELECT sequence FROM compact_visibility_source_state WHERE id=1))
+ ON CONFLICT(kind,library_id,subject_id,subject_text) DO UPDATE SET sequence=excluded.sequence,first_pending=min(first_pending,excluded.first_pending),rerun_first=CASE WHEN pass_sequence=0 THEN rerun_first WHEN rerun_first=0 THEN excluded.first_pending ELSE min(rerun_first,excluded.first_pending) END;
+ INSERT INTO compact_visibility_source_jobs(kind,library_id,subject_id,sequence,first_pending) SELECT 1,NEW.library_id,NEW.entity_id,(SELECT sequence FROM compact_visibility_source_state WHERE id=1),(SELECT sequence FROM compact_visibility_source_state WHERE id=1)
+  WHERE NEW.library_id<>OLD.library_id OR NEW.entity_id<>OLD.entity_id
+ ON CONFLICT(kind,library_id,subject_id,subject_text) DO UPDATE SET sequence=excluded.sequence,first_pending=min(first_pending,excluded.first_pending),rerun_first=CASE WHEN pass_sequence=0 THEN rerun_first WHEN rerun_first=0 THEN excluded.first_pending ELSE min(rerun_first,excluded.first_pending) END;
 END;
 CREATE TRIGGER compact_visibility_dirty_row_delete AFTER DELETE ON catalog_browse_rows BEGIN
- INSERT INTO compact_visibility_dirty SELECT c.id,OLD.entity_id FROM compact_visibility_classes c WHERE c.library_id=OLD.library_id AND c.retired=0 ON CONFLICT DO NOTHING;
+ UPDATE compact_visibility_source_state SET sequence=sequence+1 WHERE id=1;
+ INSERT INTO compact_visibility_source_jobs(kind,library_id,subject_id,sequence,first_pending) VALUES(1,OLD.library_id,OLD.entity_id,(SELECT sequence FROM compact_visibility_source_state WHERE id=1),(SELECT sequence FROM compact_visibility_source_state WHERE id=1))
+ ON CONFLICT(kind,library_id,subject_id,subject_text) DO UPDATE SET sequence=excluded.sequence,first_pending=min(first_pending,excluded.first_pending),rerun_first=CASE WHEN pass_sequence=0 THEN rerun_first WHEN rerun_first=0 THEN excluded.first_pending ELSE min(rerun_first,excluded.first_pending) END;
 END;
 CREATE TRIGGER compact_visibility_dirty_member_insert AFTER INSERT ON catalog_browse_memberships BEGIN
- INSERT INTO compact_visibility_dirty SELECT c.id,r.entity_id FROM catalog_browse_rows r JOIN compact_visibility_classes c ON c.library_id=r.library_id AND c.retired=0
-  WHERE r.entity_id=NEW.entity_id ON CONFLICT DO NOTHING;
+ UPDATE compact_visibility_source_state SET sequence=sequence+1 WHERE id=1;
+ INSERT INTO compact_visibility_source_jobs(kind,library_id,subject_id,sequence,first_pending)
+ SELECT 1,r.library_id,r.entity_id,(SELECT sequence FROM compact_visibility_source_state WHERE id=1),(SELECT sequence FROM compact_visibility_source_state WHERE id=1) FROM catalog_browse_rows r WHERE r.entity_id=NEW.entity_id
+ ON CONFLICT(kind,library_id,subject_id,subject_text) DO UPDATE SET sequence=excluded.sequence,first_pending=min(first_pending,excluded.first_pending),rerun_first=CASE WHEN pass_sequence=0 THEN rerun_first WHEN rerun_first=0 THEN excluded.first_pending ELSE min(rerun_first,excluded.first_pending) END;
 END;
 CREATE TRIGGER compact_visibility_dirty_member_delete AFTER DELETE ON catalog_browse_memberships BEGIN
- INSERT INTO compact_visibility_dirty SELECT c.id,r.entity_id FROM catalog_browse_rows r JOIN compact_visibility_classes c ON c.library_id=r.library_id AND c.retired=0
-  WHERE r.entity_id=OLD.entity_id ON CONFLICT DO NOTHING;
+ UPDATE compact_visibility_source_state SET sequence=sequence+1 WHERE id=1;
+ INSERT INTO compact_visibility_source_jobs(kind,library_id,subject_id,sequence,first_pending)
+ SELECT 1,r.library_id,r.entity_id,(SELECT sequence FROM compact_visibility_source_state WHERE id=1),(SELECT sequence FROM compact_visibility_source_state WHERE id=1) FROM catalog_browse_rows r WHERE r.entity_id=OLD.entity_id
+ ON CONFLICT(kind,library_id,subject_id,subject_text) DO UPDATE SET sequence=excluded.sequence,first_pending=min(first_pending,excluded.first_pending),rerun_first=CASE WHEN pass_sequence=0 THEN rerun_first WHEN rerun_first=0 THEN excluded.first_pending ELSE min(rerun_first,excluded.first_pending) END;
 END;
 CREATE TRIGGER compact_visibility_dirty_attribute_insert AFTER INSERT ON catalog_item_attribute_edges
  WHEN (SELECT f.field FROM catalog_attribute_terms t JOIN catalog_attribute_fields f ON f.id=t.field_id WHERE t.id=NEW.term_id) IN('contentRating','label') BEGIN
- INSERT INTO compact_visibility_dirty SELECT c.id,r.entity_id FROM catalog_browse_memberships m JOIN catalog_browse_rows r ON r.entity_id=m.entity_id
-  JOIN compact_visibility_classes c ON c.library_id=r.library_id AND c.retired=0 WHERE m.item_id=NEW.item_id ON CONFLICT DO NOTHING;
+ UPDATE compact_visibility_source_state SET sequence=sequence+1 WHERE id=1;
+ INSERT INTO compact_visibility_source_jobs(kind,subject_id,sequence,first_pending) VALUES(2,NEW.item_id,(SELECT sequence FROM compact_visibility_source_state WHERE id=1),(SELECT sequence FROM compact_visibility_source_state WHERE id=1))
+ ON CONFLICT(kind,library_id,subject_id,subject_text) DO UPDATE SET sequence=excluded.sequence,first_pending=min(first_pending,excluded.first_pending),rerun_first=CASE WHEN pass_sequence=0 THEN rerun_first WHEN rerun_first=0 THEN excluded.first_pending ELSE min(rerun_first,excluded.first_pending) END;
 END;
 CREATE TRIGGER compact_visibility_dirty_attribute_delete AFTER DELETE ON catalog_item_attribute_edges
  WHEN (SELECT f.field FROM catalog_attribute_terms t JOIN catalog_attribute_fields f ON f.id=t.field_id WHERE t.id=OLD.term_id) IN('contentRating','label') BEGIN
- INSERT INTO compact_visibility_dirty SELECT c.id,r.entity_id FROM catalog_browse_memberships m JOIN catalog_browse_rows r ON r.entity_id=m.entity_id
-  JOIN compact_visibility_classes c ON c.library_id=r.library_id AND c.retired=0 WHERE m.item_id=OLD.item_id ON CONFLICT DO NOTHING;
+ UPDATE compact_visibility_source_state SET sequence=sequence+1 WHERE id=1;
+ INSERT INTO compact_visibility_source_jobs(kind,subject_id,sequence,first_pending) VALUES(2,OLD.item_id,(SELECT sequence FROM compact_visibility_source_state WHERE id=1),(SELECT sequence FROM compact_visibility_source_state WHERE id=1))
+ ON CONFLICT(kind,library_id,subject_id,subject_text) DO UPDATE SET sequence=excluded.sequence,first_pending=min(first_pending,excluded.first_pending),rerun_first=CASE WHEN pass_sequence=0 THEN rerun_first WHEN rerun_first=0 THEN excluded.first_pending ELSE min(rerun_first,excluded.first_pending) END;
 END;
 CREATE TRIGGER compact_visibility_dirty_rating_age_insert AFTER INSERT ON content_rating_ages BEGIN
- INSERT INTO compact_visibility_dirty SELECT c.id,r.entity_id FROM catalog_attribute_fields f
-  JOIN catalog_attribute_terms t ON t.field_id=f.id AND t.value_key=NEW.value_key
-  JOIN catalog_item_attribute_edges e ON e.term_id=t.id JOIN catalog_browse_memberships m ON m.item_id=e.item_id
-  JOIN catalog_browse_rows r ON r.entity_id=m.entity_id JOIN compact_visibility_classes c ON c.library_id=r.library_id AND c.retired=0
-  WHERE f.field='contentRating' ON CONFLICT DO NOTHING;
+ UPDATE compact_visibility_source_state SET sequence=sequence+1 WHERE id=1;
+ INSERT INTO compact_visibility_source_jobs(kind,subject_text,sequence,first_pending) VALUES(4,NEW.value_key,(SELECT sequence FROM compact_visibility_source_state WHERE id=1),(SELECT sequence FROM compact_visibility_source_state WHERE id=1))
+ ON CONFLICT(kind,library_id,subject_id,subject_text) DO UPDATE SET sequence=excluded.sequence,first_pending=min(first_pending,excluded.first_pending),rerun_first=CASE WHEN pass_sequence=0 THEN rerun_first WHEN rerun_first=0 THEN excluded.first_pending ELSE min(rerun_first,excluded.first_pending) END;
 END;
 CREATE TRIGGER compact_visibility_dirty_rating_age_update AFTER UPDATE OF minimum_age ON content_rating_ages
  WHEN OLD.minimum_age IS NOT NEW.minimum_age BEGIN
- INSERT INTO compact_visibility_dirty SELECT c.id,r.entity_id FROM catalog_attribute_fields f
-  JOIN catalog_attribute_terms t ON t.field_id=f.id AND t.value_key=NEW.value_key
-  JOIN catalog_item_attribute_edges e ON e.term_id=t.id JOIN catalog_browse_memberships m ON m.item_id=e.item_id
-  JOIN catalog_browse_rows r ON r.entity_id=m.entity_id JOIN compact_visibility_classes c ON c.library_id=r.library_id AND c.retired=0
-  WHERE f.field='contentRating' ON CONFLICT DO NOTHING;
+ UPDATE compact_visibility_source_state SET sequence=sequence+1 WHERE id=1;
+ INSERT INTO compact_visibility_source_jobs(kind,subject_text,sequence,first_pending) VALUES(4,NEW.value_key,(SELECT sequence FROM compact_visibility_source_state WHERE id=1),(SELECT sequence FROM compact_visibility_source_state WHERE id=1))
+ ON CONFLICT(kind,library_id,subject_id,subject_text) DO UPDATE SET sequence=excluded.sequence,first_pending=min(first_pending,excluded.first_pending),rerun_first=CASE WHEN pass_sequence=0 THEN rerun_first WHEN rerun_first=0 THEN excluded.first_pending ELSE min(rerun_first,excluded.first_pending) END;
 END;
 CREATE TRIGGER compact_visibility_dirty_rating_age_delete AFTER DELETE ON content_rating_ages BEGIN
- INSERT INTO compact_visibility_dirty SELECT c.id,r.entity_id FROM catalog_attribute_fields f
-  JOIN catalog_attribute_terms t ON t.field_id=f.id AND t.value_key=OLD.value_key
-  JOIN catalog_item_attribute_edges e ON e.term_id=t.id JOIN catalog_browse_memberships m ON m.item_id=e.item_id
-  JOIN catalog_browse_rows r ON r.entity_id=m.entity_id JOIN compact_visibility_classes c ON c.library_id=r.library_id AND c.retired=0
-  WHERE f.field='contentRating' ON CONFLICT DO NOTHING;
+ UPDATE compact_visibility_source_state SET sequence=sequence+1 WHERE id=1;
+ INSERT INTO compact_visibility_source_jobs(kind,subject_text,sequence,first_pending) VALUES(4,OLD.value_key,(SELECT sequence FROM compact_visibility_source_state WHERE id=1),(SELECT sequence FROM compact_visibility_source_state WHERE id=1))
+ ON CONFLICT(kind,library_id,subject_id,subject_text) DO UPDATE SET sequence=excluded.sequence,first_pending=min(first_pending,excluded.first_pending),rerun_first=CASE WHEN pass_sequence=0 THEN rerun_first WHEN rerun_first=0 THEN excluded.first_pending ELSE min(rerun_first,excluded.first_pending) END;
 END;
 CREATE TRIGGER compact_visibility_dirty_availability_insert AFTER INSERT ON catalog_item_availability BEGIN
- INSERT INTO compact_visibility_dirty SELECT c.id,r.entity_id FROM catalog_browse_memberships m JOIN catalog_browse_rows r ON r.entity_id=m.entity_id
-  JOIN compact_visibility_classes c ON c.library_id=r.library_id AND c.retired=0 WHERE m.item_id=NEW.entity_id AND r.kind IN(2,3) ON CONFLICT DO NOTHING;
+ UPDATE compact_visibility_source_state SET sequence=sequence+1 WHERE id=1;
+ INSERT INTO compact_visibility_source_jobs(kind,subject_id,sequence,first_pending) VALUES(3,NEW.entity_id,(SELECT sequence FROM compact_visibility_source_state WHERE id=1),(SELECT sequence FROM compact_visibility_source_state WHERE id=1))
+ ON CONFLICT(kind,library_id,subject_id,subject_text) DO UPDATE SET sequence=excluded.sequence,first_pending=min(first_pending,excluded.first_pending),rerun_first=CASE WHEN pass_sequence=0 THEN rerun_first WHEN rerun_first=0 THEN excluded.first_pending ELSE min(rerun_first,excluded.first_pending) END;
 END;
 CREATE TRIGGER compact_visibility_dirty_availability_update AFTER UPDATE OF available,retired ON catalog_item_availability
  WHEN OLD.available IS NOT NEW.available OR OLD.retired IS NOT NEW.retired BEGIN
- INSERT INTO compact_visibility_dirty SELECT c.id,r.entity_id FROM catalog_browse_memberships m JOIN catalog_browse_rows r ON r.entity_id=m.entity_id
-  JOIN compact_visibility_classes c ON c.library_id=r.library_id AND c.retired=0 WHERE m.item_id=NEW.entity_id AND r.kind IN(2,3) ON CONFLICT DO NOTHING;
+ UPDATE compact_visibility_source_state SET sequence=sequence+1 WHERE id=1;
+ INSERT INTO compact_visibility_source_jobs(kind,subject_id,sequence,first_pending) VALUES(3,NEW.entity_id,(SELECT sequence FROM compact_visibility_source_state WHERE id=1),(SELECT sequence FROM compact_visibility_source_state WHERE id=1))
+ ON CONFLICT(kind,library_id,subject_id,subject_text) DO UPDATE SET sequence=excluded.sequence,first_pending=min(first_pending,excluded.first_pending),rerun_first=CASE WHEN pass_sequence=0 THEN rerun_first WHEN rerun_first=0 THEN excluded.first_pending ELSE min(rerun_first,excluded.first_pending) END;
 END;
 CREATE TRIGGER compact_visibility_dirty_availability_delete AFTER DELETE ON catalog_item_availability BEGIN
- INSERT INTO compact_visibility_dirty SELECT c.id,r.entity_id FROM catalog_browse_memberships m JOIN catalog_browse_rows r ON r.entity_id=m.entity_id
-  JOIN compact_visibility_classes c ON c.library_id=r.library_id AND c.retired=0 WHERE m.item_id=OLD.entity_id AND r.kind IN(2,3) ON CONFLICT DO NOTHING;
+ UPDATE compact_visibility_source_state SET sequence=sequence+1 WHERE id=1;
+ INSERT INTO compact_visibility_source_jobs(kind,subject_id,sequence,first_pending) VALUES(3,OLD.entity_id,(SELECT sequence FROM compact_visibility_source_state WHERE id=1),(SELECT sequence FROM compact_visibility_source_state WHERE id=1))
+ ON CONFLICT(kind,library_id,subject_id,subject_text) DO UPDATE SET sequence=excluded.sequence,first_pending=min(first_pending,excluded.first_pending),rerun_first=CASE WHEN pass_sequence=0 THEN rerun_first WHEN rerun_first=0 THEN excluded.first_pending ELSE min(rerun_first,excluded.first_pending) END;
 END;
 CREATE TRIGGER compact_visibility_dirty_link_insert AFTER INSERT ON catalog_asset_links BEGIN
- INSERT INTO compact_visibility_dirty SELECT c.id,r.entity_id FROM catalog_browse_memberships m JOIN catalog_browse_rows r ON r.entity_id=m.entity_id
-  JOIN compact_visibility_classes c ON c.library_id=r.library_id AND c.retired=0 WHERE m.item_id=NEW.entity_id AND r.kind IN(2,3) ON CONFLICT DO NOTHING;
+ UPDATE compact_visibility_source_state SET sequence=sequence+1 WHERE id=1;
+ INSERT INTO compact_visibility_source_jobs(kind,subject_id,sequence,first_pending) VALUES(3,NEW.entity_id,(SELECT sequence FROM compact_visibility_source_state WHERE id=1),(SELECT sequence FROM compact_visibility_source_state WHERE id=1))
+ ON CONFLICT(kind,library_id,subject_id,subject_text) DO UPDATE SET sequence=excluded.sequence,first_pending=min(first_pending,excluded.first_pending),rerun_first=CASE WHEN pass_sequence=0 THEN rerun_first WHEN rerun_first=0 THEN excluded.first_pending ELSE min(rerun_first,excluded.first_pending) END;
 END;
 CREATE TRIGGER compact_visibility_dirty_link_delete AFTER DELETE ON catalog_asset_links BEGIN
- INSERT INTO compact_visibility_dirty SELECT c.id,r.entity_id FROM catalog_browse_memberships m JOIN catalog_browse_rows r ON r.entity_id=m.entity_id
-  JOIN compact_visibility_classes c ON c.library_id=r.library_id AND c.retired=0 WHERE m.item_id=OLD.entity_id AND r.kind IN(2,3) ON CONFLICT DO NOTHING;
+ UPDATE compact_visibility_source_state SET sequence=sequence+1 WHERE id=1;
+ INSERT INTO compact_visibility_source_jobs(kind,subject_id,sequence,first_pending) VALUES(3,OLD.entity_id,(SELECT sequence FROM compact_visibility_source_state WHERE id=1),(SELECT sequence FROM compact_visibility_source_state WHERE id=1))
+ ON CONFLICT(kind,library_id,subject_id,subject_text) DO UPDATE SET sequence=excluded.sequence,first_pending=min(first_pending,excluded.first_pending),rerun_first=CASE WHEN pass_sequence=0 THEN rerun_first WHEN rerun_first=0 THEN excluded.first_pending ELSE min(rerun_first,excluded.first_pending) END;
 END;
 CREATE INDEX artwork_entity_heads_entity ON artwork_entity_heads(entity_id,kind);
 CREATE INDEX screen_metadata_work_target ON screen_metadata_work(target_id);
@@ -7445,7 +7466,7 @@ CREATE TRIGGER webhook_storage_lower AFTER UPDATE OF severity ON notification_re
   'freePercent',CASE WHEN json_valid(NEW.arguments) THEN json_extract(NEW.arguments,'$.freePercent') END,
   'freeBytes',CASE WHEN json_valid(NEW.arguments) THEN json_extract(NEW.arguments,'$.freeBytes') END));
 END;
-CREATE TABLE catalog_generations(singleton INTEGER PRIMARY KEY CHECK(singleton=1),generation INTEGER NOT NULL DEFAULT 1,retaining INTEGER NOT NULL DEFAULT 0 CHECK(retaining IN(0,1))) STRICT;
+CREATE TABLE catalog_generations(visibility_sequence INTEGER NOT NULL DEFAULT 0,singleton INTEGER PRIMARY KEY CHECK(singleton=1),generation INTEGER NOT NULL DEFAULT 1,retaining INTEGER NOT NULL DEFAULT 0 CHECK(retaining IN(0,1))) STRICT;
 INSERT INTO catalog_generations(singleton) VALUES(1);
 CREATE TABLE catalog_derivation_failures(domain INTEGER NOT NULL,entity_id INTEGER NOT NULL,reason TEXT NOT NULL,attempts INTEGER NOT NULL DEFAULT 1,failed_ms INTEGER NOT NULL,PRIMARY KEY(domain,entity_id)) WITHOUT ROWID, STRICT;
 CREATE TABLE catalog_browse_rows_previous(generation INTEGER NOT NULL,present INTEGER NOT NULL,entity_id INTEGER,library_id INTEGER,kind INTEGER,title TEXT,sort_key TEXT,head TEXT,year INTEGER,added_text TEXT,item_id INTEGER,rating_key TEXT,label_key TEXT,available INTEGER,recent INTEGER,backdrop INTEGER,duration_max REAL,rating_max REAL,recent_text TEXT,release_key TEXT,latest_aired_key TEXT,critic_key REAL,episode_count INTEGER,album_key TEXT,artist_key TEXT,track_key INTEGER,file_size INTEGER,resolution_key INTEGER,random_key INTEGER,availability_state TEXT,PRIMARY KEY(generation,entity_id)) WITHOUT ROWID, STRICT;
@@ -7848,40 +7869,40 @@ CREATE TABLE catalog_browse_member_links(
  unavailable INTEGER NOT NULL,
  members INTEGER NOT NULL DEFAULT 0) STRICT;
 CREATE TRIGGER catalog_browse_member_links_join AFTER INSERT ON catalog_browse_memberships BEGIN
- INSERT INTO catalog_browse_member_links(entity_id,available,unavailable,members)
-  SELECT NEW.entity_id,COALESCE(sum(l.available=1),0),COALESCE(sum(l.available=0),0),1 FROM catalog_asset_links l WHERE l.entity_id=NEW.item_id
-  ON CONFLICT(entity_id) DO UPDATE SET available=available+excluded.available,unavailable=unavailable+excluded.unavailable,members=members+1;
+ INSERT INTO catalog_browse_member_links(entity_id,available,unavailable,members) VALUES(NEW.entity_id,0,0,1)
+ ON CONFLICT(entity_id) DO UPDATE SET members=members+1;
+ INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 35,id,1 FROM catalog_entities WHERE id=NEW.entity_id ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
 CREATE TRIGGER catalog_browse_member_links_leave AFTER DELETE ON catalog_browse_memberships BEGIN
- UPDATE catalog_browse_member_links SET available=available-(SELECT count(*) FROM catalog_asset_links l WHERE l.entity_id=OLD.item_id AND l.available=1),
-  unavailable=unavailable-(SELECT count(*) FROM catalog_asset_links l WHERE l.entity_id=OLD.item_id AND l.available=0),members=members-1 WHERE entity_id=OLD.entity_id;
+ DELETE FROM catalog_browse_member_metrics WHERE entity_id=OLD.entity_id AND item_id=OLD.item_id AND source=OLD.source;
+ UPDATE catalog_browse_member_links SET members=members-1 WHERE entity_id=OLD.entity_id;
+ INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 35,id,1 FROM catalog_entities WHERE id=OLD.entity_id ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
-CREATE TRIGGER catalog_browse_member_links_move AFTER UPDATE OF entity_id,item_id ON catalog_browse_memberships WHEN OLD.entity_id IS NOT NEW.entity_id OR OLD.item_id IS NOT NEW.item_id BEGIN
- UPDATE catalog_browse_member_links SET available=available-(SELECT count(*) FROM catalog_asset_links l WHERE l.entity_id=OLD.item_id AND l.available=1),
-  unavailable=unavailable-(SELECT count(*) FROM catalog_asset_links l WHERE l.entity_id=OLD.item_id AND l.available=0),members=members-1 WHERE entity_id=OLD.entity_id;
- INSERT INTO catalog_browse_member_links(entity_id,available,unavailable,members)
-  SELECT NEW.entity_id,COALESCE(sum(l.available=1),0),COALESCE(sum(l.available=0),0),1 FROM catalog_asset_links l WHERE l.entity_id=NEW.item_id
-  ON CONFLICT(entity_id) DO UPDATE SET available=available+excluded.available,unavailable=unavailable+excluded.unavailable,members=members+1;
+CREATE TRIGGER catalog_browse_member_links_move AFTER UPDATE OF entity_id,item_id,source ON catalog_browse_memberships
+ WHEN OLD.entity_id IS NOT NEW.entity_id OR OLD.item_id IS NOT NEW.item_id OR OLD.source IS NOT NEW.source BEGIN
+ DELETE FROM catalog_browse_member_metrics WHERE entity_id=OLD.entity_id AND item_id=OLD.item_id AND source=OLD.source;
+ UPDATE catalog_browse_member_links SET members=members-1 WHERE entity_id=OLD.entity_id;
+ INSERT INTO catalog_browse_member_links(entity_id,available,unavailable,members) VALUES(NEW.entity_id,0,0,1)
+ ON CONFLICT(entity_id) DO UPDATE SET members=members+1;
+ INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 35,id,1 FROM catalog_entities WHERE id=OLD.entity_id ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
+ INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 35,id,1 FROM catalog_entities WHERE id=NEW.entity_id ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
 CREATE TRIGGER catalog_browse_member_links_link_insert AFTER INSERT ON catalog_asset_links BEGIN
- INSERT INTO catalog_browse_member_links(entity_id,available,unavailable)
-  SELECT m.entity_id,count(*)*(NEW.available=1),count(*)*(NEW.available=0) FROM catalog_browse_memberships m INDEXED BY catalog_browse_membership_item WHERE m.item_id=NEW.entity_id GROUP BY m.entity_id
-  ON CONFLICT(entity_id) DO UPDATE SET available=available+excluded.available,unavailable=unavailable+excluded.unavailable;
+ INSERT INTO catalog_browse_item_metrics(item_id,available_links,unavailable_links) VALUES(NEW.entity_id,NEW.available=1,NEW.available=0)
+ ON CONFLICT(item_id) DO UPDATE SET available_links=available_links+excluded.available_links,unavailable_links=unavailable_links+excluded.unavailable_links;
 END;
 CREATE TRIGGER catalog_browse_member_links_link_delete AFTER DELETE ON catalog_asset_links BEGIN
- UPDATE catalog_browse_member_links SET
-  available=available-(OLD.available=1)*(SELECT count(*) FROM catalog_browse_memberships m INDEXED BY catalog_browse_membership_item WHERE m.item_id=OLD.entity_id AND m.entity_id=catalog_browse_member_links.entity_id),
-  unavailable=unavailable-(OLD.available=0)*(SELECT count(*) FROM catalog_browse_memberships m INDEXED BY catalog_browse_membership_item WHERE m.item_id=OLD.entity_id AND m.entity_id=catalog_browse_member_links.entity_id)
-  WHERE entity_id IN(SELECT entity_id FROM catalog_browse_memberships INDEXED BY catalog_browse_membership_item WHERE item_id=OLD.entity_id);
+ UPDATE catalog_browse_item_metrics SET available_links=available_links-(OLD.available=1),unavailable_links=unavailable_links-(OLD.available=0) WHERE item_id=OLD.entity_id;
 END;
-CREATE TRIGGER catalog_browse_member_links_link_update AFTER UPDATE OF entity_id,available ON catalog_asset_links WHEN OLD.entity_id IS NOT NEW.entity_id OR OLD.available IS NOT NEW.available BEGIN
- UPDATE catalog_browse_member_links SET
-  available=available-(OLD.available=1)*(SELECT count(*) FROM catalog_browse_memberships m INDEXED BY catalog_browse_membership_item WHERE m.item_id=OLD.entity_id AND m.entity_id=catalog_browse_member_links.entity_id),
-  unavailable=unavailable-(OLD.available=0)*(SELECT count(*) FROM catalog_browse_memberships m INDEXED BY catalog_browse_membership_item WHERE m.item_id=OLD.entity_id AND m.entity_id=catalog_browse_member_links.entity_id)
-  WHERE entity_id IN(SELECT entity_id FROM catalog_browse_memberships INDEXED BY catalog_browse_membership_item WHERE item_id=OLD.entity_id);
- INSERT INTO catalog_browse_member_links(entity_id,available,unavailable)
-  SELECT m.entity_id,count(*)*(NEW.available=1),count(*)*(NEW.available=0) FROM catalog_browse_memberships m INDEXED BY catalog_browse_membership_item WHERE m.item_id=NEW.entity_id GROUP BY m.entity_id
-  ON CONFLICT(entity_id) DO UPDATE SET available=available+excluded.available,unavailable=unavailable+excluded.unavailable;
+CREATE TRIGGER catalog_browse_member_links_link_update AFTER UPDATE OF entity_id,available ON catalog_asset_links
+ WHEN OLD.entity_id IS NOT NEW.entity_id OR OLD.available IS NOT NEW.available BEGIN
+ UPDATE catalog_browse_item_metrics SET available_links=available_links-(OLD.available=1),unavailable_links=unavailable_links-(OLD.available=0) WHERE item_id=OLD.entity_id;
+ INSERT INTO catalog_browse_item_metrics(item_id,available_links,unavailable_links) VALUES(NEW.entity_id,NEW.available=1,NEW.available=0)
+ ON CONFLICT(item_id) DO UPDATE SET available_links=available_links+excluded.available_links,unavailable_links=unavailable_links+excluded.unavailable_links;
+ INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(25,OLD.entity_id,1)
+ ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
+ INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 25,NEW.entity_id,1 WHERE NEW.entity_id<>OLD.entity_id
+ ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
 CREATE TRIGGER catalog_browse_sort_parent_title AFTER UPDATE OF title,sort_key ON catalog_entities WHEN NEW.kind IN(5,6) AND (OLD.title IS NOT NEW.title OR OLD.sort_key IS NOT NEW.sort_key) BEGIN
  INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(34,NEW.id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
@@ -10962,20 +10983,19 @@ END;
 -- Each producer first checks, with one indexed lookup, that the write can
 -- concern a book or comic library; other libraries skip the body.
 CREATE TRIGGER reading_path_inventory_insert AFTER INSERT ON inventory_objects WHEN EXISTS(SELECT 1 FROM library_sources s JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic')) BEGIN
- INSERT INTO reading_path_inputs(library_id,revision) SELECT (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic')),1 WHERE (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic')) IS NOT NULL ON CONFLICT(library_id) DO UPDATE SET revision=revision+1;
- INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic')),'object',CAST(NEW.id AS TEXT) WHERE (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic')) IS NOT NULL ON CONFLICT(library_id,kind,work_key) DO UPDATE SET requested=requested+1;
+ INSERT INTO reading_path_inputs(library_id,revision) SELECT cl.id,1 FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic') ON CONFLICT(library_id) DO UPDATE SET revision=revision+1;
+ INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT cl.id,'object',CAST(NEW.id AS TEXT) FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic') ON CONFLICT(library_id,kind,work_key) DO UPDATE SET requested=requested+1;
 END;
-CREATE TRIGGER reading_path_inventory_update AFTER UPDATE OF source_id,asset_id,root_incarnation,relative_path,revision,state,retired,unsupported_reason ON inventory_objects WHEN (OLD.source_id IS NOT NEW.source_id OR OLD.asset_id IS NOT NEW.asset_id OR OLD.root_incarnation IS NOT NEW.root_incarnation OR OLD.relative_path IS NOT NEW.relative_path OR OLD.revision IS NOT NEW.revision OR OLD.state IS NOT NEW.state OR OLD.retired IS NOT NEW.retired OR OLD.unsupported_reason IS NOT NEW.unsupported_reason) AND (EXISTS(SELECT 1 FROM library_sources s JOIN libraries l ON l.id=s.library_id WHERE s.id=OLD.source_id AND l.kind IN('book','comic')) OR EXISTS(SELECT 1 FROM library_sources s JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic'))) BEGIN
+CREATE TRIGGER reading_path_inventory_update AFTER UPDATE OF id,source_id,asset_id,root_incarnation,relative_path,revision,state,retired,unsupported_reason ON inventory_objects WHEN (OLD.id IS NOT NEW.id OR OLD.source_id IS NOT NEW.source_id OR OLD.asset_id IS NOT NEW.asset_id OR OLD.root_incarnation IS NOT NEW.root_incarnation OR OLD.relative_path IS NOT NEW.relative_path OR OLD.revision IS NOT NEW.revision OR OLD.state IS NOT NEW.state OR OLD.retired IS NOT NEW.retired OR OLD.unsupported_reason IS NOT NEW.unsupported_reason) AND (EXISTS(SELECT 1 FROM library_sources s JOIN libraries l ON l.id=s.library_id WHERE s.id=OLD.source_id AND l.kind IN('book','comic')) OR EXISTS(SELECT 1 FROM library_sources s JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic'))) BEGIN
  UPDATE reading_path_scope SET desired=desired+1,queued=1 WHERE id=(SELECT scope_id FROM reading_path_object_keys WHERE object_id=OLD.id AND context_active=1);
- INSERT INTO reading_path_inputs(library_id,revision) SELECT (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=OLD.source_id AND l.kind IN('book','comic')),1 WHERE (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=OLD.source_id AND l.kind IN('book','comic')) IS NOT NULL ON CONFLICT(library_id) DO UPDATE SET revision=revision+1;
- INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=OLD.source_id AND l.kind IN('book','comic')),'object',CAST(OLD.id AS TEXT) WHERE (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=OLD.source_id AND l.kind IN('book','comic')) IS NOT NULL ON CONFLICT(library_id,kind,work_key) DO UPDATE SET requested=requested+1;
- INSERT INTO reading_path_inputs(library_id,revision) SELECT (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic')),1 WHERE (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic')) IS NOT NULL ON CONFLICT(library_id) DO UPDATE SET revision=revision+1;
- INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic')),'object',CAST(NEW.id AS TEXT) WHERE (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic')) IS NOT NULL ON CONFLICT(library_id,kind,work_key) DO UPDATE SET requested=requested+1;
+ INSERT INTO reading_path_inputs(library_id,revision) SELECT DISTINCT cl.id,1 FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id IN(OLD.source_id,NEW.source_id) AND l.kind IN('book','comic') ON CONFLICT(library_id) DO UPDATE SET revision=revision+1;
+ INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT cl.id,'object',CAST(OLD.id AS TEXT) FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=OLD.source_id AND l.kind IN('book','comic') ON CONFLICT(library_id,kind,work_key) DO UPDATE SET requested=requested+1;
+ INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT cl.id,'object',CAST(NEW.id AS TEXT) FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic') ON CONFLICT(library_id,kind,work_key) DO UPDATE SET requested=requested+1;
 END;
 CREATE TRIGGER reading_path_inventory_delete AFTER DELETE ON inventory_objects WHEN EXISTS(SELECT 1 FROM library_sources s JOIN libraries l ON l.id=s.library_id WHERE s.id=OLD.source_id AND l.kind IN('book','comic')) BEGIN
  UPDATE reading_path_scope SET desired=desired+1,queued=1 WHERE id=(SELECT scope_id FROM reading_path_object_keys WHERE object_id=OLD.id AND context_active=1);
- INSERT INTO reading_path_inputs(library_id,revision) SELECT (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=OLD.source_id AND l.kind IN('book','comic')),1 WHERE (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=OLD.source_id AND l.kind IN('book','comic')) IS NOT NULL ON CONFLICT(library_id) DO UPDATE SET revision=revision+1;
- INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=OLD.source_id AND l.kind IN('book','comic')),'object',CAST(OLD.id AS TEXT) WHERE (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=OLD.source_id AND l.kind IN('book','comic')) IS NOT NULL ON CONFLICT(library_id,kind,work_key) DO UPDATE SET requested=requested+1;
+ INSERT INTO reading_path_inputs(library_id,revision) SELECT cl.id,1 FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=OLD.source_id AND l.kind IN('book','comic') ON CONFLICT(library_id) DO UPDATE SET revision=revision+1;
+ INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT cl.id,'object',CAST(OLD.id AS TEXT) FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=OLD.source_id AND l.kind IN('book','comic') ON CONFLICT(library_id,kind,work_key) DO UPDATE SET requested=requested+1;
 END;
 CREATE TRIGGER reading_path_catalog_assets_insert AFTER INSERT ON catalog_assets WHEN EXISTS(SELECT 1 FROM reading_publications WHERE asset_id=NEW.id) BEGIN
  INSERT INTO reading_path_inputs(library_id,revision) SELECT (SELECT e.library_id FROM reading_publications p JOIN catalog_entities e ON e.id=p.item_id WHERE p.asset_id=NEW.id),1 WHERE (SELECT e.library_id FROM reading_publications p JOIN catalog_entities e ON e.id=p.item_id WHERE p.asset_id=NEW.id) IS NOT NULL ON CONFLICT(library_id) DO UPDATE SET revision=revision+1;
@@ -11109,18 +11129,14 @@ CREATE TRIGGER reading_path_run_identity AFTER UPDATE OF root_identity ON invent
  UPDATE reading_path_source_barrier SET root_identity=NEW.root_identity WHERE source_id=NEW.source_id AND job_id=NEW.job_id AND phase='open';
 END;
 CREATE TRIGGER reading_path_inventory_canonical_insert AFTER INSERT ON inventory_objects WHEN EXISTS(SELECT 1 FROM library_sources s JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic')) BEGIN
- INSERT INTO reading_path_inputs(library_id,revision) SELECT (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic')),1 WHERE (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic')) IS NOT NULL ON CONFLICT(library_id) DO UPDATE SET revision=revision+1;
- INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic')),'asset',NEW.asset_id WHERE (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic')) IS NOT NULL ON CONFLICT(library_id,kind,work_key) DO UPDATE SET requested=requested+1;
+ INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT cl.id,'asset',NEW.asset_id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic') ON CONFLICT(library_id,kind,work_key) DO UPDATE SET requested=requested+1;
 END;
 CREATE TRIGGER reading_path_inventory_canonical_update AFTER UPDATE OF id,asset_id,source_id,root_incarnation,relative_path,retired ON inventory_objects WHEN (OLD.id IS NOT NEW.id OR OLD.asset_id IS NOT NEW.asset_id OR OLD.source_id IS NOT NEW.source_id OR OLD.root_incarnation IS NOT NEW.root_incarnation OR OLD.relative_path IS NOT NEW.relative_path OR OLD.retired IS NOT NEW.retired) AND (EXISTS(SELECT 1 FROM library_sources s JOIN libraries l ON l.id=s.library_id WHERE s.id=OLD.source_id AND l.kind IN('book','comic')) OR EXISTS(SELECT 1 FROM library_sources s JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic'))) BEGIN
- INSERT INTO reading_path_inputs(library_id,revision) SELECT (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=OLD.source_id AND l.kind IN('book','comic')),1 WHERE (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=OLD.source_id AND l.kind IN('book','comic')) IS NOT NULL ON CONFLICT(library_id) DO UPDATE SET revision=revision+1;
- INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=OLD.source_id AND l.kind IN('book','comic')),'asset',OLD.asset_id WHERE (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=OLD.source_id AND l.kind IN('book','comic')) IS NOT NULL ON CONFLICT(library_id,kind,work_key) DO UPDATE SET requested=requested+1;
- INSERT INTO reading_path_inputs(library_id,revision) SELECT (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic')),1 WHERE (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic')) IS NOT NULL ON CONFLICT(library_id) DO UPDATE SET revision=revision+1;
- INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic')),'asset',NEW.asset_id WHERE (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic')) IS NOT NULL ON CONFLICT(library_id,kind,work_key) DO UPDATE SET requested=requested+1;
+ INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT cl.id,'asset',OLD.asset_id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=OLD.source_id AND l.kind IN('book','comic') ON CONFLICT(library_id,kind,work_key) DO UPDATE SET requested=requested+1;
+ INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT cl.id,'asset',NEW.asset_id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=NEW.source_id AND l.kind IN('book','comic') ON CONFLICT(library_id,kind,work_key) DO UPDATE SET requested=requested+1;
 END;
 CREATE TRIGGER reading_path_inventory_canonical_delete AFTER DELETE ON inventory_objects WHEN EXISTS(SELECT 1 FROM library_sources s JOIN libraries l ON l.id=s.library_id WHERE s.id=OLD.source_id AND l.kind IN('book','comic')) BEGIN
- INSERT INTO reading_path_inputs(library_id,revision) SELECT (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=OLD.source_id AND l.kind IN('book','comic')),1 WHERE (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=OLD.source_id AND l.kind IN('book','comic')) IS NOT NULL ON CONFLICT(library_id) DO UPDATE SET revision=revision+1;
- INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=OLD.source_id AND l.kind IN('book','comic')),'asset',OLD.asset_id WHERE (SELECT cl.id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=OLD.source_id AND l.kind IN('book','comic')) IS NOT NULL ON CONFLICT(library_id,kind,work_key) DO UPDATE SET requested=requested+1;
+ INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT cl.id,'asset',OLD.asset_id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE s.id=OLD.source_id AND l.kind IN('book','comic') ON CONFLICT(library_id,kind,work_key) DO UPDATE SET requested=requested+1;
 END;
 -- Barrier changes (scan open/seal/cancel, coverage, identity) queue one coalesced
 -- bounded wake of that source's parked scopes.
@@ -12992,3 +13008,98 @@ CREATE TABLE download_action_transfers(
  UNIQUE(profile_key,device_id,operation_id),
  CHECK((closed=0 AND closed_ms=0) OR (closed=1 AND closed_ms>0))
 ) STRICT;
+
+CREATE TABLE catalog_item_metric_jobs(
+ link_available INTEGER NOT NULL DEFAULT 0,
+ link_unavailable INTEGER NOT NULL DEFAULT 0,
+ item_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ sequence INTEGER NOT NULL,
+ phase INTEGER NOT NULL DEFAULT 0 CHECK(phase BETWEEN 0 AND 2),
+ after_asset INTEGER NOT NULL DEFAULT 0,
+ after_provider TEXT NOT NULL DEFAULT '',
+ max_duration REAL,
+ max_size INTEGER NOT NULL DEFAULT 0,
+ max_height INTEGER NOT NULL DEFAULT 0,
+ critic REAL,
+ rating REAL,
+ after_entity INTEGER NOT NULL DEFAULT 0,
+ after_source INTEGER NOT NULL DEFAULT -1) STRICT;
+
+CREATE TABLE catalog_browse_row_work(
+ domain INTEGER PRIMARY KEY CHECK(domain IN(18,35)),
+ entity_id INTEGER NOT NULL,
+ revision INTEGER NOT NULL,
+ phase INTEGER NOT NULL DEFAULT 0 CHECK(phase BETWEEN 0 AND 2),
+ after_term INTEGER NOT NULL DEFAULT 0) STRICT;
+
+CREATE TABLE catalog_browse_row_keys(
+ domain INTEGER NOT NULL CHECK(domain IN(18,35)),
+ field INTEGER NOT NULL CHECK(field IN(0,1)),
+ value_key TEXT NOT NULL,
+ PRIMARY KEY(domain,field,value_key)) WITHOUT ROWID, STRICT;
+
+CREATE TRIGGER catalog_browse_metric_links_insert AFTER INSERT ON catalog_browse_member_metrics BEGIN
+ INSERT INTO catalog_browse_member_links(entity_id,available,unavailable,members) SELECT NEW.entity_id,NEW.available_links,NEW.unavailable_links,0 WHERE EXISTS(SELECT 1 FROM catalog_entities WHERE id=NEW.entity_id) ON CONFLICT(entity_id) DO UPDATE SET available=available+excluded.available,unavailable=unavailable+excluded.unavailable;
+ INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 35,id,1 FROM catalog_entities WHERE id=NEW.entity_id ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
+END;
+
+CREATE TRIGGER catalog_browse_metric_links_delete AFTER DELETE ON catalog_browse_member_metrics BEGIN
+ UPDATE catalog_browse_member_links SET available=available-OLD.available_links,unavailable=unavailable-OLD.unavailable_links WHERE entity_id=OLD.entity_id;
+ INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 35,id,1 FROM catalog_entities WHERE id=OLD.entity_id ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
+END;
+
+CREATE TABLE catalog_browse_counter_repairs(
+ entity_id INTEGER PRIMARY KEY,
+ revision INTEGER NOT NULL DEFAULT 0,
+ phase INTEGER NOT NULL DEFAULT 0 CHECK(phase BETWEEN 0 AND 2),
+ after_item INTEGER NOT NULL DEFAULT 0,
+ after_source INTEGER NOT NULL DEFAULT -1,
+ available INTEGER NOT NULL DEFAULT 0,
+ unavailable INTEGER NOT NULL DEFAULT 0,
+ members INTEGER NOT NULL DEFAULT 0) STRICT;
+
+CREATE TRIGGER compact_visibility_dirty_member_update AFTER UPDATE OF entity_id,item_id,source ON catalog_browse_memberships
+ WHEN OLD.entity_id IS NOT NEW.entity_id OR OLD.item_id IS NOT NEW.item_id OR OLD.source IS NOT NEW.source BEGIN
+ UPDATE compact_visibility_source_state SET sequence=sequence+1 WHERE id=1;
+ INSERT INTO compact_visibility_source_jobs(kind,library_id,subject_id,sequence,first_pending) SELECT 1,library_id,entity_id,(SELECT sequence FROM compact_visibility_source_state WHERE id=1),(SELECT sequence FROM compact_visibility_source_state WHERE id=1) FROM catalog_browse_rows WHERE entity_id=OLD.entity_id
+ ON CONFLICT(kind,library_id,subject_id,subject_text) DO UPDATE SET sequence=excluded.sequence,first_pending=min(first_pending,excluded.first_pending),rerun_first=CASE WHEN pass_sequence=0 THEN rerun_first WHEN rerun_first=0 THEN excluded.first_pending ELSE min(rerun_first,excluded.first_pending) END;
+ INSERT INTO compact_visibility_source_jobs(kind,library_id,subject_id,sequence,first_pending) SELECT 1,library_id,entity_id,(SELECT sequence FROM compact_visibility_source_state WHERE id=1),(SELECT sequence FROM compact_visibility_source_state WHERE id=1) FROM catalog_browse_rows WHERE entity_id=NEW.entity_id
+ ON CONFLICT(kind,library_id,subject_id,subject_text) DO UPDATE SET sequence=excluded.sequence,first_pending=min(first_pending,excluded.first_pending),rerun_first=CASE WHEN pass_sequence=0 THEN rerun_first WHEN rerun_first=0 THEN excluded.first_pending ELSE min(rerun_first,excluded.first_pending) END;
+END;
+
+CREATE TRIGGER compact_visibility_dirty_attribute_update AFTER UPDATE OF item_id,term_id ON catalog_item_attribute_edges
+ WHEN OLD.item_id IS NOT NEW.item_id OR OLD.term_id IS NOT NEW.term_id BEGIN
+ UPDATE compact_visibility_source_state SET sequence=sequence+1 WHERE id=1;
+ INSERT INTO compact_visibility_source_jobs(kind,subject_id,sequence,first_pending) SELECT 2,OLD.item_id,(SELECT sequence FROM compact_visibility_source_state WHERE id=1),(SELECT sequence FROM compact_visibility_source_state WHERE id=1) WHERE (SELECT f.field FROM catalog_attribute_terms t JOIN catalog_attribute_fields f ON f.id=t.field_id WHERE t.id=OLD.term_id) IN('contentRating','label')
+ ON CONFLICT(kind,library_id,subject_id,subject_text) DO UPDATE SET sequence=excluded.sequence,first_pending=min(first_pending,excluded.first_pending),rerun_first=CASE WHEN pass_sequence=0 THEN rerun_first WHEN rerun_first=0 THEN excluded.first_pending ELSE min(rerun_first,excluded.first_pending) END;
+ INSERT INTO compact_visibility_source_jobs(kind,subject_id,sequence,first_pending) SELECT 2,NEW.item_id,(SELECT sequence FROM compact_visibility_source_state WHERE id=1),(SELECT sequence FROM compact_visibility_source_state WHERE id=1) WHERE (SELECT f.field FROM catalog_attribute_terms t JOIN catalog_attribute_fields f ON f.id=t.field_id WHERE t.id=NEW.term_id) IN('contentRating','label')
+ ON CONFLICT(kind,library_id,subject_id,subject_text) DO UPDATE SET sequence=excluded.sequence,first_pending=min(first_pending,excluded.first_pending),rerun_first=CASE WHEN pass_sequence=0 THEN rerun_first WHEN rerun_first=0 THEN excluded.first_pending ELSE min(rerun_first,excluded.first_pending) END;
+END;
+
+CREATE TABLE compact_visibility_source_state(
+ id INTEGER PRIMARY KEY CHECK(id=1),turn INTEGER NOT NULL DEFAULT 0,sequence INTEGER NOT NULL DEFAULT 0) STRICT;
+
+CREATE TABLE compact_visibility_source_jobs(
+ kind INTEGER NOT NULL CHECK(kind BETWEEN 1 AND 4),
+ library_id INTEGER NOT NULL DEFAULT 0,subject_id INTEGER NOT NULL DEFAULT 0,subject_text TEXT NOT NULL DEFAULT '',
+ sequence INTEGER NOT NULL,first_pending INTEGER NOT NULL,
+ pass_sequence INTEGER NOT NULL DEFAULT 0,rerun_first INTEGER NOT NULL DEFAULT 0,
+ cursor_phase INTEGER NOT NULL DEFAULT 0,cursor_entity INTEGER NOT NULL DEFAULT 0,cursor_source INTEGER NOT NULL DEFAULT -1,
+ fence_entity INTEGER NOT NULL DEFAULT 0,fence_source INTEGER NOT NULL DEFAULT -1,term_id INTEGER NOT NULL DEFAULT 0,
+ PRIMARY KEY(kind,library_id,subject_id,subject_text)) WITHOUT ROWID, STRICT;
+
+CREATE INDEX compact_visibility_source_jobs_frontier ON compact_visibility_source_jobs(first_pending);
+
+CREATE INDEX compact_visibility_source_jobs_turn ON compact_visibility_source_jobs(kind,first_pending,library_id,subject_id,subject_text);
+
+INSERT INTO compact_visibility_source_state(id,turn,sequence) VALUES(1,0,0);
+
+CREATE INDEX compact_visibility_dirty_frontier ON compact_visibility_dirty(class_id,first_sequence,entity_id);
+
+CREATE TRIGGER catalog_browse_metric_links_update AFTER UPDATE OF entity_id,available_links,unavailable_links ON catalog_browse_member_metrics
+ WHEN OLD.entity_id IS NOT NEW.entity_id OR OLD.available_links IS NOT NEW.available_links OR OLD.unavailable_links IS NOT NEW.unavailable_links BEGIN
+ UPDATE catalog_browse_member_links SET available=available-OLD.available_links,unavailable=unavailable-OLD.unavailable_links WHERE entity_id=OLD.entity_id;
+ INSERT INTO catalog_browse_member_links(entity_id,available,unavailable,members) SELECT NEW.entity_id,NEW.available_links,NEW.unavailable_links,0 WHERE EXISTS(SELECT 1 FROM catalog_entities WHERE id=NEW.entity_id) ON CONFLICT(entity_id) DO UPDATE SET available=available+excluded.available,unavailable=unavailable+excluded.unavailable;
+ INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 35,id,1 FROM catalog_entities WHERE id=OLD.entity_id ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
+ INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 35,id,1 FROM catalog_entities WHERE id=NEW.entity_id ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
+END;

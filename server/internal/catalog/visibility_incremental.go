@@ -67,6 +67,14 @@ func (s *Service) refreshVisibilityClass(ctx context.Context, library string, r 
 	if backlog >= visibilityBulkBacklog || (rows >= 64 && backlog > rows/2) {
 		return s.RebuildVisibilityClass(ctx, library, r)
 	}
+	var target, sourceRevision int64
+	if err := dbwork.WithWriteTx(ctx, s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
+		var err error
+		target, sourceRevision, err = captureVisibilityTargetTx(ctx, tx, classID, library)
+		return err
+	}); err != nil {
+		return err
+	}
 	clause, clauseArgs := visibilityMembershipSQL("e.entity_id", r)
 	started := time.Now()
 	for {
@@ -77,7 +85,7 @@ func (s *Service) refreshVisibilityClass(ctx context.Context, library string, r 
 		applied := 0
 		err := dbwork.WithWriteTx(ctx, s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
 			applied = 0
-			rows, err := tx.QueryContext(ctx, `SELECT entity_id FROM compact_visibility_dirty WHERE class_id=? ORDER BY entity_id LIMIT ?`, classID, compactcatalog.BatchLimit)
+			rows, err := tx.QueryContext(ctx, `SELECT entity_id FROM compact_visibility_dirty INDEXED BY compact_visibility_dirty_frontier WHERE class_id=? AND first_sequence<=? ORDER BY first_sequence,entity_id LIMIT ?`, classID, target, compactcatalog.BatchLimit)
 			if err != nil {
 				return err
 			}
@@ -106,11 +114,11 @@ func (s *Service) refreshVisibilityClass(ctx context.Context, library string, r 
 			}
 			applied = len(ids)
 			if applied == 0 {
-				revision := int64(0)
-				if err = tx.QueryRowContext(ctx, `SELECT revision FROM library_revisions WHERE library_id=?`, library).Scan(&revision); err != nil && err != sql.ErrNoRows {
+				ready, err := visibilityTargetReadyTx(ctx, tx, classID, target)
+				if err != nil || !ready {
 					return err
 				}
-				_, err = tx.ExecContext(ctx, `UPDATE compact_visibility_classes SET catalog_revision=?,built_ms=? WHERE id=? AND active_generation=?`, revision, time.Now().UnixMilli(), classID, generation)
+				_, err = tx.ExecContext(ctx, `UPDATE compact_visibility_classes SET catalog_revision=?,captured_sequence=?,built_ms=? WHERE id=? AND active_generation=?`, sourceRevision, target, time.Now().UnixMilli(), classID, generation)
 				return err
 			}
 			return nil

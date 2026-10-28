@@ -25,6 +25,7 @@ import (
 //     catalog_libraries), so they can never be read as another library's.
 func ClearLibraryTx(ctx context.Context, tx *sql.Tx, library string, limit int) (bool, error) {
 	for _, query := range []string{
+		`DELETE FROM compact_visibility_source_jobs WHERE (kind,library_id,subject_id,subject_text) IN(SELECT kind,library_id,subject_id,subject_text FROM compact_visibility_source_jobs WHERE kind=1 AND library_id=(SELECT id FROM catalog_libraries WHERE library_id=?1) LIMIT ?2)`,
 		`DELETE FROM catalog_book_group_visible_counts WHERE (class_id,generation,group_id) IN(SELECT class_id,generation,group_id FROM catalog_book_group_visible_counts WHERE class_id IN(SELECT id FROM compact_visibility_classes WHERE library_id=(SELECT id FROM catalog_libraries WHERE library_id=?1)) LIMIT ?2)`,
 		`DELETE FROM catalog_book_group_visible_edges WHERE (class_id,generation,group_id,book_id) IN(SELECT class_id,generation,group_id,book_id FROM catalog_book_group_visible_edges WHERE class_id IN(SELECT id FROM compact_visibility_classes WHERE library_id=(SELECT id FROM catalog_libraries WHERE library_id=?1)) LIMIT ?2)`,
 		`DELETE FROM catalog_book_visible_counts WHERE (class_id,generation,book_id) IN(SELECT class_id,generation,book_id FROM catalog_book_visible_counts WHERE class_id IN(SELECT id FROM compact_visibility_classes WHERE library_id=(SELECT id FROM catalog_libraries WHERE library_id=?1)) LIMIT ?2)`,

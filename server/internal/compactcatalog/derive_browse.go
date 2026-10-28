@@ -70,10 +70,10 @@ var refinedRowSQL = map[Kind]string{
   WHERE b.library_id=e.library_id AND b.author=e.title COLLATE NOCASE)`,
 }
 
-var playableRow = fmt.Sprintf(playableRowSQL, browseAttributeKeySQL("contentRating")+","+browseAttributeKeySQL("label"))
+var playableRow = fmt.Sprintf(playableRowSQL, "?2,?3")
 
 // readBrowseRow computes an entity's browse row; sql.ErrNoRows when it has none.
-func readBrowseRow(ctx context.Context, tx *sql.Tx, id int64) (browseRow, error) {
+func readBrowseRow(ctx context.Context, tx *sql.Tx, id int64, ratingKey, labelKey string) (browseRow, error) {
 	row := browseRow{entity: id}
 	var playable, browsable bool
 	err := tx.QueryRowContext(ctx, `SELECT e.library_id,e.kind,k.playable,k.browsable FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind WHERE e.id=?`, id).Scan(&row.library, &row.kind, &playable, &browsable)
@@ -92,7 +92,11 @@ func readBrowseRow(ctx context.Context, tx *sql.Tx, id int64) (browseRow, error)
 	default:
 		query = containerRowSQL
 	}
-	err = tx.QueryRowContext(ctx, query, id).Scan(&row.title, &row.sortKey, &row.year, &row.added, &row.item, &row.ratingKey, &row.labelKey, &row.available, &row.recent, &row.backdrop)
+	args := []any{id}
+	if query == playableRow {
+		args = append(args, ratingKey, labelKey)
+	}
+	err = tx.QueryRowContext(ctx, query, args...).Scan(&row.title, &row.sortKey, &row.year, &row.added, &row.item, &row.ratingKey, &row.labelKey, &row.available, &row.recent, &row.backdrop)
 	if err != nil {
 		return row, err
 	}
@@ -185,7 +189,7 @@ func readCountedRow(ctx context.Context, tx *sql.Tx, id int64) (browseRow, error
 // deriveBrowseRow brings one entity's browse row, its bucket and Home
 // contributions and its metrics up to date (or removes them). Its sort facts
 // are refreshed once, by refreshEntityMetrics; a removed row has none.
-func deriveBrowseRow(ctx context.Context, tx *sql.Tx, id int64) error {
+func deriveBrowseRowWithKeys(ctx context.Context, tx *sql.Tx, id int64, ratingKey, labelKey string) error {
 	if _, err := tx.ExecContext(ctx, `UPDATE catalog_entities SET sort_key=portico_sort_title(title,sort_title,metadata_language),sort_head=substr(portico_sort_title(title,sort_title,metadata_language),1,1) WHERE id=? AND sort_key IS NOT portico_sort_title(title,sort_title,metadata_language)`, id); err != nil {
 		return err
 	}
@@ -194,7 +198,7 @@ func deriveBrowseRow(ctx context.Context, tx *sql.Tx, id int64) error {
 		return err
 	}
 	counted := err == nil
-	row, err := readBrowseRow(ctx, tx, id)
+	row, err := readBrowseRow(ctx, tx, id, ratingKey, labelKey)
 	if errors.Is(err, sql.ErrNoRows) {
 		if counted {
 			if err = adjustBrowseBuckets(ctx, tx, old, -1); err != nil {
@@ -249,13 +253,25 @@ func deriveBrowseRow(ctx context.Context, tx *sql.Tx, id int64) error {
 	return deriveHomeBuckets(ctx, tx, id)
 }
 
+// deriveBrowseRow refreshes an already accepted row's ordinary scalar facts.
+// Restriction-source changes go through the queued raw reducer; the only
+// synchronous product caller creates an artist (which has no leaf keys).
+func deriveBrowseRow(ctx context.Context, tx *sql.Tx, id int64) error {
+	var rating, label string
+	err := tx.QueryRowContext(ctx, `SELECT rating_key,label_key FROM catalog_browse_rows WHERE entity_id=?`, id).Scan(&rating, &label)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	return deriveBrowseRowWithKeys(ctx, tx, id, rating, label)
+}
+
 // DeriveBrowseRowTx derives one entity's browse row now, in the caller's
 // transaction, for an owner's action whose next read must already find it: a
 // container made by that action is otherwise unseen by every page until the
 // derivation worker reaches it. The queued derivation still runs and finds the
 // row current.
 func DeriveBrowseRowTx(ctx context.Context, tx *sql.Tx, id int64) error {
-	return deriveBrowseRow(ctx, tx, id)
+	return deriveBrowseRowWithKeys(ctx, tx, id, "", "")
 }
 
 // recentWorkKinds are the containers a Recently Added shelf lists in place of
@@ -318,92 +334,9 @@ func deriveHomeBuckets(ctx context.Context, tx *sql.Tx, id int64) error {
 	return nil
 }
 
-// membershipSQL is the membership set of item ?1 by source: itself (0), its
-// show (1) and season (2), its album (3) and album artist (4), its credited
-// artists (5), its book (6) and the book's author (7), and its collections (8).
-const membershipSQL = `SELECT e.id,0 FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind WHERE e.id=?1 AND (k.playable=1 OR k.id IN(20,21))
- UNION SELECT ep.show_id,1 FROM catalog_episodes ep WHERE ep.entity_id=?1
- UNION SELECT ep.season_id,2 FROM catalog_episodes ep WHERE ep.entity_id=?1 AND ep.season_id IS NOT NULL
- UNION SELECT s.album_id,3 FROM catalog_songs s WHERE s.entity_id=?1
- UNION SELECT a.artist_id,4 FROM catalog_songs s JOIN catalog_albums a ON a.entity_id=s.album_id WHERE s.entity_id=?1
- UNION SELECT sa.artist_id,5 FROM catalog_song_artists sa WHERE sa.song_id=?1
- UNION SELECT f.book_id,6 FROM catalog_book_files f WHERE f.entity_id=?1
- UNION SELECT au.id,7 FROM catalog_book_files f JOIN catalog_books b ON b.entity_id=f.book_id
-  JOIN catalog_libraries cl ON cl.id=b.library_id
-  JOIN catalog_identities i ON i.root=cl.root AND i.source_key=portico_author_key(b.author)
-  JOIN catalog_entities au ON au.public_id=i.public_id
-  WHERE f.entity_id=?1 AND b.author<>''
- UNION SELECT m.collection_id,8 FROM catalog_collection_members m WHERE m.item_id=?1`
-
 type browseEdge struct {
 	entity int64
 	source int
-}
-
-// deriveBrowseMembers brings the given items' memberships to their current
-// parents. A new edge needs its container's row first; changed containers are
-// queued for a refresh of their rows (DomainContainerRefresh, which collapses
-// the refreshes of a container whose members arrive over many batches);
-// changed items requeue their metrics.
-func deriveBrowseMembers(ctx context.Context, tx *sql.Tx, items []int64) error {
-	containers := map[int64]bool{}
-	for _, item := range items {
-		var exists bool
-		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_entities WHERE id=?)`, item).Scan(&exists); err != nil {
-			return err
-		}
-		if !exists {
-			continue // deleted: its memberships went with it
-		}
-		want, err := readEdges(ctx, tx, membershipSQL, item)
-		if err != nil {
-			return err
-		}
-		have, err := readEdges(ctx, tx, `SELECT entity_id,source FROM catalog_browse_memberships WHERE item_id=?1`, item)
-		if err != nil {
-			return err
-		}
-		changed := false
-		for edge := range have {
-			if want[edge] {
-				continue
-			}
-			if _, err = tx.ExecContext(ctx, `DELETE FROM catalog_browse_memberships WHERE entity_id=? AND item_id=? AND source=?`, edge.entity, item, edge.source); err != nil {
-				return err
-			}
-			if edge.entity != item {
-				containers[edge.entity] = true
-			}
-			changed = true
-		}
-		for edge := range want {
-			if have[edge] {
-				continue
-			}
-			var published bool
-			if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_browse_rows WHERE entity_id=?)`, edge.entity).Scan(&published); err != nil {
-				return err
-			}
-			if !published {
-				if err = deriveBrowseRow(ctx, tx, edge.entity); err != nil {
-					return err
-				}
-			}
-			if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO catalog_browse_memberships(entity_id,item_id,source) VALUES(?,?,?)`, edge.entity, item, edge.source); err != nil {
-				return err
-			}
-			if edge.entity != item {
-				containers[edge.entity] = true
-			}
-			changed = true
-		}
-		if changed {
-			if err = TouchTx(ctx, tx, DomainItemMetrics, item); err != nil {
-				return err
-			}
-		}
-	}
-	return touchContainers(ctx, tx, containers)
 }
 
 // touchContainers queues the containers' browse rows for a refresh.
@@ -414,23 +347,6 @@ func touchContainers(ctx context.Context, tx *sql.Tx, containers map[int64]bool)
 	}
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i] < ordered[j] })
 	return TouchTx(ctx, tx, DomainContainerRefresh, ordered...)
-}
-
-func readEdges(ctx context.Context, tx *sql.Tx, query string, item int64) (map[browseEdge]bool, error) {
-	rows, err := tx.QueryContext(ctx, query, item)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := map[browseEdge]bool{}
-	for rows.Next() {
-		var e browseEdge
-		if err = rows.Scan(&e.entity, &e.source); err != nil {
-			return nil, err
-		}
-		out[e] = true
-	}
-	return out, rows.Err()
 }
 
 // Metrics. An item's duration (its longest file) and rating (its best
@@ -547,65 +463,6 @@ const metricEdgesPerUnit = 16
 
 // deriveItemMetrics recomputes one item's metrics and fans them out to its
 // containers, at most limit containers per step.
-func deriveItemMetrics(ctx context.Context, tx *sql.Tx, k Key, limit int, touched map[int64]bool) (bool, error) {
-	afterEntity, afterSource, _, err := metricCursor(ctx, tx, DomainItemMetrics, k)
-	if err != nil {
-		return false, err
-	}
-	var exists bool
-	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_entities WHERE id=?)`, k.ID).Scan(&exists); err != nil {
-		return false, err
-	}
-	var duration, rating sql.NullFloat64
-	var added sql.NullString
-	var air string
-	var critic float64
-	var size, resolution int64
-	if exists {
-		if err = tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT strftime('%Y-%m-%dT%H:%M:%fZ',release_date) FROM catalog_item_details WHERE entity_id=?1),''),COALESCE((SELECT max(value) FROM metadata_ratings WHERE item_id=?1 AND provider IN('metacritic','rottentomatoes')),0),COALESCE(max(a.size),0),COALESCE(max(a.height),0) FROM catalog_asset_links l JOIN catalog_assets a ON a.id=l.asset_id WHERE l.entity_id=?1`, k.ID).Scan(&air, &critic, &size, &resolution); err != nil {
-			return false, err
-		}
-
-		if err = tx.QueryRowContext(ctx, `SELECT max(a.duration) FROM catalog_asset_links l JOIN catalog_assets a ON a.id=l.asset_id WHERE l.entity_id=?`, k.ID).Scan(&duration); err != nil {
-			return false, err
-		}
-		if err = tx.QueryRowContext(ctx, `SELECT max(value) FROM metadata_ratings WHERE item_id=? AND provider IN('tmdb','imdb','musicbrainz','audible')`, k.ID).Scan(&rating); err != nil {
-			return false, err
-		}
-		if err = tx.QueryRowContext(ctx, `SELECT added_text FROM catalog_browse_rows WHERE entity_id=? AND available=1 AND recent=1`, k.ID).Scan(&added); err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return false, err
-		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO catalog_browse_item_metrics(item_id,duration,rating,added) VALUES(?,?,?,?) ON CONFLICT(item_id) DO UPDATE SET duration=excluded.duration,rating=excluded.rating,added=excluded.added`, k.ID, duration, rating, added); err != nil {
-			return false, err
-		}
-	} else if _, err = tx.ExecContext(ctx, `DELETE FROM catalog_browse_item_metrics WHERE item_id=?`, k.ID); err != nil {
-		return false, err
-	}
-	edges, err := metricEdges(ctx, tx, k.ID, afterEntity, afterSource, limit)
-	if err != nil {
-		return false, err
-	}
-	for _, edge := range edges {
-		if _, err = tx.ExecContext(ctx, memberMetricDelete, k.ID, edge.entity, edge.source); err != nil {
-			return false, err
-		}
-		if exists {
-			if _, err = tx.ExecContext(ctx, `INSERT INTO catalog_browse_member_metrics(entity_id,item_id,source,duration,rating,added,air_key,critic,file_size,resolution)
- SELECT m.entity_id,m.item_id,m.source,?,?,?,?,?,?,? FROM catalog_browse_memberships m JOIN catalog_browse_rows r ON r.entity_id=m.entity_id
- WHERE m.entity_id=? AND m.item_id=? AND m.source=?`, duration, rating, added, air, critic, size, resolution, edge.entity, k.ID, edge.source); err != nil {
-				return false, err
-			}
-		}
-		touched[edge.entity] = true
-	}
-	if len(edges) < limit {
-		return true, finishMetricCursor(ctx, tx, DomainItemMetrics, k.ID)
-	}
-	last := edges[len(edges)-1]
-	_, err = tx.ExecContext(ctx, `UPDATE catalog_browse_metric_cursors SET after_entity=?,after_source=? WHERE domain=? AND entity_id=?`, last.entity, last.source, DomainItemMetrics, k.ID)
-	return false, err
-}
-
 func browseDurationBucket(value sql.NullFloat64) string {
 	if !value.Valid || math.IsNaN(value.Float64) || math.IsInf(value.Float64, 0) {
 		return ""
@@ -682,25 +539,38 @@ func refreshEntityMetrics(ctx context.Context, tx *sql.Tx, entity int64) (errOut
 
 func init() {
 	Register(DomainBrowseRows, Derivation{
-		Version: 5,
+		Version: 6,
 		Drain: func(ctx context.Context, tx *sql.Tx, keys []Key, limit int) ([]int64, error) {
-			ids := keyIDs(keys)
-			for _, id := range ids {
-				if err := deriveBrowseRow(ctx, tx, id); err != nil {
-					return nil, fmt.Errorf("browse row %d: %w", id, err)
-				}
+			if len(keys) == 0 {
+				return nil, nil
 			}
-			return ids, nil
+			done, err := deriveBrowseRowBounded(ctx, tx, DomainBrowseRows, keys[0], limit)
+			if err != nil {
+				return nil, err
+			}
+			if done {
+				return []int64{keys[0].ID}, nil
+			}
+			return nil, nil
 		},
 		Backfill: func(ctx context.Context, tx *sql.Tx, after int64, limit int) ([]int64, error) {
 			return scanIDs(ctx, tx, `SELECT id FROM catalog_entities WHERE id>? ORDER BY id LIMIT ?`, after, limit)
 		},
 	})
 	Register(DomainBrowseEdges, Derivation{
-		Version: 2,
+		Version: 3,
 		Drain: func(ctx context.Context, tx *sql.Tx, keys []Key, limit int) ([]int64, error) {
-			ids := keyIDs(keys)
-			return ids, deriveBrowseMembers(ctx, tx, ids)
+			if len(keys) == 0 {
+				return nil, nil
+			}
+			done, err := deriveBrowseMembersBounded(ctx, tx, keys[0], limit)
+			if err != nil {
+				return nil, err
+			}
+			if done {
+				return []int64{keys[0].ID}, nil
+			}
+			return nil, nil
 		},
 		Backfill: func(ctx context.Context, tx *sql.Tx, after int64, limit int) ([]int64, error) {
 			return scanIDs(ctx, tx, `SELECT e.id FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind WHERE (k.playable=1 OR k.id IN(20,21)) AND e.id>? ORDER BY e.id LIMIT ?`, after, limit)
@@ -726,15 +596,15 @@ func init() {
 		},
 	})
 	Register(DomainItemMetrics, Derivation{
-		Version: 3,
+		Version: 4,
 		Drain: func(ctx context.Context, tx *sql.Tx, keys []Key, limit int) ([]int64, error) {
 			touched := map[int64]bool{}
 			var done []int64
 			// An item's fanout is bounded per unit; a song's few containers
 			// (album, its artist, credited artists, collections) fit in one.
-			edges := max(limit, metricEdgesPerUnit)
-			for _, k := range keys {
-				finished, err := deriveItemMetrics(ctx, tx, k, edges, touched)
+			edges := max(1, min(limit, upstreamQuantum))
+			for _, k := range keys[:min(1, len(keys))] {
+				finished, err := deriveItemMetricsBounded(ctx, tx, k, edges, touched)
 				if err != nil {
 					return nil, err
 				}
@@ -746,7 +616,7 @@ func init() {
 			// queued, so each refreshes once however many batches its members
 			// arrive in.
 			ordered := make([]int64, 0, len(keys))
-			for _, k := range keys {
+			for _, k := range keys[:min(1, len(keys))] {
 				if touched[k.ID] {
 					ordered = append(ordered, k.ID)
 					delete(touched, k.ID)
@@ -765,15 +635,23 @@ func init() {
 		},
 	})
 	Register(DomainContainerRefresh, Derivation{
-		Version: 1,
+		Version: 2,
 		Drain: func(ctx context.Context, tx *sql.Tx, keys []Key, limit int) ([]int64, error) {
-			ids := keyIDs(keys)
-			for _, id := range ids {
-				if err := deriveBrowseRow(ctx, tx, id); err != nil {
-					return nil, fmt.Errorf("browse container %d: %w", id, err)
-				}
+			if len(keys) == 0 {
+				return nil, nil
 			}
-			return ids, nil
+			pending, err := RepairBrowseCountersTx(ctx, tx, keys[0], limit)
+			if err != nil || pending {
+				return nil, err
+			}
+			done, err := deriveBrowseRowBounded(ctx, tx, DomainContainerRefresh, keys[0], limit)
+			if err != nil {
+				return nil, err
+			}
+			if done {
+				return []int64{keys[0].ID}, nil
+			}
+			return nil, nil
 		},
 		Backfill: func(ctx context.Context, tx *sql.Tx, after int64, limit int) ([]int64, error) {
 			return nil, nil // containers rebuild with every row (DomainBrowseRows)
