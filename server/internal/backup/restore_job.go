@@ -69,7 +69,7 @@ func (s *Service) StartRestoreWithPassphrase(ctx context.Context, source Source,
 			return "", ErrInvalid
 		}
 		s.restoreOperation, s.restoreSource = operation, source
-		s.restoreJob = &RestoreJob{JobID: last.JobID, Phase: "staged", Result: &StageResult{Staged: true, RestartRequired: true, Validation: Validation{SchemaVersion: last.SchemaVersion, Integrity: "ok"}}}
+		s.restoreJob = &RestoreJob{JobID: last.JobID, Phase: "staged", Result: &StageResult{Staged: true, RestartRequired: true, Validation: validationOf(last.SchemaVersion, last.Recovery)}}
 		s.mu.Unlock()
 		return last.JobID, nil
 	}
@@ -132,7 +132,15 @@ func stagedResult(state string, source Source, work restoreIdentity) (StageResul
 	if json.Unmarshal(raw, &marker) != nil || marker.JobID != work.jobID || marker.OperationID != work.operation || marker.Source != source || marker.State != markerStaged {
 		return StageResult{}, false
 	}
-	return StageResult{Staged: true, RestartRequired: true, Validation: Validation{SchemaVersion: marker.SchemaVersion, Integrity: "ok"}}, true
+	return StageResult{Staged: true, RestartRequired: true, Validation: validationOf(marker.SchemaVersion, marker.Recovery)}, true
+}
+
+func validationOf(schemaVersion int, recovery *persistence.Recovery) Validation {
+	out := Validation{SchemaVersion: schemaVersion, Integrity: "ok", Recovery: recovery}
+	if recovery != nil {
+		out.Integrity = "recovered"
+	}
+	return out
 }
 
 // Caller holds s.mu.
@@ -170,7 +178,7 @@ func restoreCode(err error) string {
 	switch {
 	case errors.Is(err, ErrSourceInvalid):
 		return "restore_source_invalid"
-	case errors.Is(err, ErrInsufficientDisk):
+	case errors.Is(err, ErrInsufficientDisk), errors.Is(err, persistence.ErrRecoveryNoRoom):
 		return "insufficient_disk"
 
 	case errors.Is(err, persistence.ErrCandidatePreRelease):

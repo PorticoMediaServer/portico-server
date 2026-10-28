@@ -47,7 +47,8 @@ export function StorageBackupNow(props: BackupSurfaceProps) {
     </Button>
     {running && <span className={styles.backupProgress} role="progressbar" aria-label={t('web.maintenance.backingUp')} aria-valuemin={0} aria-valuemax={100}
       aria-valuenow={fraction === undefined ? undefined : Math.round(fraction * 100)}><i style={{width: `${((fraction ?? 0) * 100).toFixed(1)}%`}} /></span>}
-    {!running && document?.lastBackup?.outcome === 'failed' && <p className={styles.backupFailure} role="alert">{t(document.lastBackup.errorCode === 'insufficient_disk' ? 'web.maintenance.backupNoSpace' : 'web.console.jobFailed')}</p>}
+    {running?.kind === 'manual' && <p className={styles.storageNote} style={{flexBasis: '100%'}}>{t('web.maintenance.backupMayPause')}</p>}
+    {!running && document?.lastBackup?.outcome === 'failed' && <p className={styles.backupFailure} role="alert">{t(document.lastBackup.errorCode === 'backup_busy' ? 'web.maintenance.backupBusy' : document.lastBackup.errorCode === 'insufficient_disk' ? 'web.maintenance.backupNoSpace' : 'web.console.jobFailed')}</p>}
   </div>;
 }
 

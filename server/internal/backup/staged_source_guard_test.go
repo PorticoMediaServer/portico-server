@@ -57,7 +57,7 @@ func TestPortableFileRefusalPreservesExistingStagedRestore(t *testing.T) {
 			if _, err := os.Stat(filepath.Join(staged, RestoreMarkerFile)); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := persistence.InspectCandidate(ctx, filepath.Join(staged, DatabaseName)); err != nil {
+			if _, err := persistence.InspectCandidate(ctx, staged, DatabaseName); err != nil {
 				t.Fatal("invalid staged fixture", err)
 			}
 			beforeStage := restoreGuardWitness(t, staged)

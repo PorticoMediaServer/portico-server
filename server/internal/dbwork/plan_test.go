@@ -114,8 +114,10 @@ func TestWritePlanSmallOverrunFromServerCodeIsOnlyCounted(t *testing.T) {
 	}
 }
 
+// The security fence is 256 KiB, not the design's 128 KiB: identity fences
+// measure 136–264 KiB on this schema (P2-11, raised in P2-13).
 func TestDefaultPlansFollowTheDesignReservations(t *testing.T) {
-	for class, pages := range map[Class]int64{ClassSecurityFence: 32, ClassInteractive: 128, ClassEstablishedPlayback: 128, ClassBackgroundMedia: 256, ClassMaintenance: 256} {
+	for class, pages := range map[Class]int64{ClassSecurityFence: 64, ClassInteractive: 128, ClassEstablishedPlayback: 128, ClassBackgroundMedia: 256, ClassMaintenance: 256} {
 		plan := DefaultPlan(class)
 		if plan.Rows != 160 || plan.VMOps != 250_000 || plan.Pages != pages {
 			t.Fatalf("%s plan %+v", class, plan)
