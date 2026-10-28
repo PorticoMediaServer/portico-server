@@ -32,8 +32,8 @@ type Resources = Readonly<{id: string; context: Captured['context']; artwork: Ca
   libraryId: string; seriesId: string; rows: ReturnType<typeof createReadingSeriesCollection>; reportError: (error: unknown) => void}>;
 
 /** The canonical series cursor owns complete membership and ordering, including unnumbered volumes. */
-export function ReadSeriesEntry({libraryId, seriesId}: {libraryId: string; seriesId: string}) {
-  const captured = useProtectedWebScreenContext();
+export function ReadSeriesEntry({captured: provided, libraryId, seriesId}: {captured?: Captured; libraryId: string; seriesId: string}) {
+  const original = useProtectedWebScreenContext(), captured = provided ?? original;
   return captured ? <BoundSeries key={JSON.stringify([libraryId, seriesId])} captured={captured} libraryId={libraryId} seriesId={seriesId}/> : null;
 }
 function BoundSeries({captured, libraryId, seriesId}: {captured: Captured; libraryId: string; seriesId: string}) {

@@ -1,3 +1,4 @@
+import type {LibraryRouteProof} from './library-route-proof';
 import type {HttpLocalApi, LocalSession} from '@core/index.ts';
 import {parseLibraryList} from '@core/library-list.ts';
 import {LocalSessionRefresher} from '@core/session-refresh.ts';
@@ -35,6 +36,7 @@ export type ShellFacts = Readonly<{identity: ShellIdentity; preferences: Prefere
 export type ShellAssemblyContext = Readonly<{
   api: HttpLocalApi; session: () => LocalSession; auth: LocalSessionRefresher; events: EventsClient;
   freshness: FreshnessRuntime; home: HomeService; inbox: InboxService; artwork: ShellArtwork;
+  libraryRouteProof?: LibraryRouteProof; libraryRouteSignal?: AbortSignal;
   facts: ShellFacts; factsSource?: ShellFactsSource; homeAuthority?: () => void; observeDirect?: (snapshot: DirectSnapshot) => void; preferences?: PreferencesReader; epoch: number; viewerFence?: string; isCurrent: () => boolean;
   signOut: () => void; signOutPorticoAccount?: () => void; switchProfile:(profileId:string,pin:string,signal:AbortSignal)=>Promise<void>; switchServer:(serverId:string,expectedRevision?:number)=>Promise<void>; savedServers:readonly {id:string;label:string}[];
 }>;

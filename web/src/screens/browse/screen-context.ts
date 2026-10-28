@@ -20,6 +20,7 @@ function libraryScreenOwner(context: ProtectedLibraryScreen['context'], scopeKey
   if (viewer.authority !== 'local' && viewer.authority !== 'hosted') throw new DOMException('Screen authority unavailable', 'AbortError');
   let active = true;
   const downloadLifetime = new AbortController();
+  const downloadSignal = context.libraryRouteSignal ? AbortSignal.any([downloadLifetime.signal, context.libraryRouteSignal]) : downloadLifetime.signal;
   const principalCurrent = () => {
     if (!context.isCurrent() || getBinding().scopeKey !== scopeKey) return false;
     const value = context.session();
@@ -34,11 +35,11 @@ function libraryScreenOwner(context: ProtectedLibraryScreen['context'], scopeKey
   const entryEffects = {...(viewer.authority === 'local' && viewer.role === 'owner' ? {editMetadata: createEntryMetadataEffect(entryPorts, () => current() && context.session().viewer.role === 'owner' && context.session().viewer.authority === 'local')} : {}), addToPlaylist: addToDestinationEffect(entryPorts, 'playlist'), addToCollection: addToDestinationEffect(entryPorts, 'collection', viewer.role === 'owner'), ...(viewer.role === 'owner' ? {deleteTitle: deleteTitleEffect(entryPorts)} : {})};
   const value: ScreenContext = {
     api: context.api, events: context.events, artwork: context.artwork, get identity() {return context.facts.identity;}, subscribeIdentity: listener => subscribeFacts(context, listener),
-    scope: {serverId: viewer.serverId, viewerId: JSON.stringify([viewer.authority, viewer.accountId, viewer.profileId])}, isCurrent: current,
+    scope: {serverId: viewer.serverId, viewerId: JSON.stringify([viewer.authority, viewer.accountId, viewer.profileId])}, isCurrent: current, libraryRouteSignal: context.libraryRouteSignal,
     preferences: {getSnapshot: () => context.preferences?.getSnapshot() ?? context.facts.preferences,
       subscribe: listener => subscribePresentation(context, listener)},
     effects: {
-      download: createBrowserDownloadPort(context.api, current, downloadLifetime.signal),
+      download: createBrowserDownloadPort(context.api, current, downloadSignal),
       reportError,
       openEntry(entry) {
         assert();

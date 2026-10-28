@@ -230,8 +230,8 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry, 
  * component supplies real bounded Read rows, not an audiobook projection.
  * `view` is the selected library tab: Discover draws the server's rows, Books
  * draws the bounded Reading list (Root §3). */
-export function ReadLibraryEntry({libraryId, header, onMore, view = 'discover'}: {libraryId: string; header: ReactNode; onMore?: (item: ReadingLibraryItem, anchor: HTMLButtonElement) => void; view?: 'discover' | 'books'}) {
-  const captured = useProtectedWebScreenContext();
+export function ReadLibraryEntry({captured: provided, libraryId, header, onMore, view = 'discover'}: {captured?: Captured; libraryId: string; header: ReactNode; onMore?: (item: ReadingLibraryItem, anchor: HTMLButtonElement) => void; view?: 'discover' | 'books'}) {
+  const original = useProtectedWebScreenContext(), captured = provided ?? original;
   return captured ? <BoundReadLibrary key={libraryId} captured={captured} libraryId={libraryId} header={header} onMore={onMore} view={view}/> : null;
 }
 function BoundReadLibrary({captured, libraryId, header, onMore, view}: {captured: Captured; libraryId: string; header: ReactNode; onMore?: (item: ReadingLibraryItem, anchor: HTMLButtonElement) => void; view: 'discover' | 'books'}) {

@@ -18,6 +18,7 @@ export type ScreenContext = Readonly<{
   events: EventsClient;
   scope: ContentScope;
   isCurrent: () => boolean;
+  libraryRouteSignal?: AbortSignal;
   artwork: ShellArtwork;
   identity?: ShellIdentity;
   subscribeIdentity?: (listener: () => void) => () => void;
@@ -53,9 +54,10 @@ export function runScreenCommand(context: ScreenContext, command: () => unknown)
 /** Every request, including reads started by a service retry, checks the captured authority. */
 export function screenLifetime(context: ScreenContext) {
   const life = new AbortController();
-  const current = () => !life.signal.aborted && context.isCurrent();
+  const current = () => !life.signal.aborted && !context.libraryRouteSignal?.aborted && context.isCurrent();
   const assert = () => { if (!current()) throw new DOMException('Screen authority changed', 'AbortError'); };
-  const signal = (input?: AbortSignal) => input ? AbortSignal.any([life.signal, input]) : life.signal;
+  const inherited = context.libraryRouteSignal;
+  const signal = (input?: AbortSignal) => inherited || input ? AbortSignal.any([life.signal, ...(inherited ? [inherited] : []), ...(input ? [input] : [])]) : life.signal;
   const api = {
     async request<T>(path: string, method?: string, body?: unknown, input?: AbortSignal): Promise<T> {
       assert();
