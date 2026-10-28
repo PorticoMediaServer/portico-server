@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type {Group, GroupMember, GroupReadiness} from '@core/social-playback.ts';
-import {togetherCanMakeHost, togetherHostNotice, togetherInviteVisible, togetherPlayLabel, togetherStateKey} from '../src/screens/together/together-model.ts';
+import {memberAlias, memberName, togetherCanMakeHost, togetherHostNotice, togetherInviteVisible, togetherPlayLabel, togetherStateKey} from '../src/screens/together/together-model.ts';
 
 const at = '2026-10-24T12:00:00Z';
 function member(id: string, name: string, role: 'host' | 'member', readiness: GroupReadiness = 'ready', present = true): GroupMember {
@@ -72,4 +72,14 @@ test('Play anyway is the drawn label while someone is still catching up', () => 
 test('a member sees the room without Invite', () => {
   assert.equal(togetherInviteVisible(group()), true);
   assert.equal(togetherInviteVisible({...group(), permissions: {isHost: false, canControl: false, canManageQueue: false, canClaimHost: false}}), false);
+});
+
+test('G38: members read by username first, with a differing group name quieter; private members stay masked', () => {
+  assert.equal(memberName({displayName: 'Movie Alex', username: 'alex', private: false}), 'alex');
+  assert.equal(memberAlias({displayName: 'Movie Alex', username: 'alex', private: false}), 'Movie Alex');
+  assert.equal(memberAlias({displayName: 'alex', username: 'alex', private: false}), undefined, 'the same name is not repeated');
+  assert.equal(memberName({displayName: 'Sam', private: false}), 'Sam', 'no username published: the group name');
+  assert.equal(memberAlias({displayName: 'Sam', private: false}), undefined);
+  assert.equal(memberName({displayName: 'Private viewer', username: 'leaked', private: true}), 'Private viewer');
+  assert.equal(memberAlias({displayName: 'Private viewer', username: 'leaked', private: true}), undefined);
 });

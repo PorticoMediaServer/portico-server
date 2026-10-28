@@ -10,7 +10,7 @@ import {Dialog, Menu, type MenuEntry} from '../../kit/overlays';
 import type {TogetherBindings} from './bindings';
 import type {Group} from '@core/social-playback.ts';
 import {watchClock} from '../watch/model';
-import {togetherCanMakeHost, togetherHostNotice, togetherInviteVisible, togetherPlayLabel, togetherStateKey} from './together-model';
+import {memberAlias, memberName, togetherCanMakeHost, togetherHostNotice, togetherInviteVisible, togetherPlayLabel, togetherStateKey} from './together-model';
 import styles from './together.module.css';
 
 /** tv-more desktop19–21 and states27. Room, membership, item facts and actions are real. */
@@ -88,8 +88,8 @@ export function TogetherScreen({binding}: {binding: TogetherBindings}) {
           </section>
           <section><h3>{t('web.together.people', {count: group.readiness.memberCount})}</h3><div className={styles.list}>
             {group.members.filter(member => member.state === 'joined').map(member => <div className={styles.person} key={member.id}>
-              {member.private && member.id !== group.viewerMemberId ? <span className={styles.privateFace}><Icon name="i-person" size={18} /></span> : <ProfileFace initial={member.displayName.trim().slice(0, 1).toUpperCase()} art={member.id === group.viewerMemberId ? binding.profileArt : undefined} size={36} />}
-              <span className={styles.rowText}>{member.id === group.viewerMemberId ? t('web.together.you', {name: member.displayName}) : member.displayName}{member.role === 'host' && <small>{t('web.together.pill.host')}</small>}</span>
+              {member.private && member.id !== group.viewerMemberId ? <span className={styles.privateFace}><Icon name="i-person" size={18} /></span> : <ProfileFace initial={memberName(member).trim().slice(0, 1).toUpperCase()} art={member.id === group.viewerMemberId ? binding.profileArt : undefined} size={36} />}
+              <span className={styles.rowText}>{member.id === group.viewerMemberId ? t('web.together.you', {name: memberName(member)}) : memberName(member)}{(memberAlias(member) || member.role === 'host') && <small>{[memberAlias(member), member.role === 'host' ? t('web.together.pill.host') : ''].filter(Boolean).join(' · ')}</small>}</span>
               {!phone && togetherCanMakeHost(group, member) && <button type="button" onClick={() => act(() => binding.service.makeHost(member.id))}>{t('web.together.makeHost')}</button>}
               <span className={styles.status} data-waiting={member.readiness !== 'ready'}>{t(member.presence !== 'connected' ? 'web.together.away' : member.readiness === 'ready' ? 'web.together.inStep' : member.readiness === 'buffering' ? 'web.together.loading' : 'web.together.catchingUp')}</span>
             </div>)}

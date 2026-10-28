@@ -40,3 +40,10 @@ export function togetherPlayLabel(group: Group): MessageId {
 export function togetherInviteVisible(group: Group): boolean {
   return group.permissions.isHost;
 }
+
+type NamedMember = Readonly<{displayName: string; username?: string; private: boolean}>;
+/** G38: a member is named by username first; private members keep their masked name. */
+export const memberName = (member: NamedMember): string => !member.private && member.username ? member.username : member.displayName;
+/** The "Your name in the group" name, shown quieter only when it differs from the username. */
+export const memberAlias = (member: NamedMember): string | undefined =>
+  !member.private && member.username && member.displayName.trim() && member.displayName !== member.username ? member.displayName : undefined;
