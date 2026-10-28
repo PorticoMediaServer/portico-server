@@ -15,8 +15,8 @@ import {GeneratedCover} from '../../kit/artwork';
 import {Skeleton, StateView} from '../../kit/states';
 import {Menu, MenuItem} from '../../kit/overlays';
 import {useLibraryScreenContext} from '../browse/screen-context';
-import {SelectionBar} from '../../kit/selection';
-import {ServerMark} from '../../kit/shell';
+import {ReadSelectionBar} from './ReadSelectionBar';
+import {readingSelectionAuthority} from './reading-selection-authority';
 import {bulkTargetLimit} from '@core/metadata-bulk.ts';
 import {ReadBulkMetadata} from './ReadBulkMetadata';
 import {ReadMetadata} from './ReadMetadata';
@@ -254,13 +254,14 @@ function BoundReadLibrary({captured, libraryId, header, onMore, view}: {captured
     setResources({books, resume, bindings, artwork: captured.context.artwork, reportError: error => {if (bindings.authority.isCurrent()) errorSink.current(error);}});
     return () => {off();books.dispose();resume.dispose(); void bindings.dispose().catch(() => {});};
   }, [captured.context, libraryId, library?.kind, isReading, retry]);
-  const viewer = context.identity?.viewer, canEdit = viewer?.authority === 'local' && viewer.role === 'owner';
+  // Justin: members keep Select; only metadata editing is the owner's (phone-read 2, desktop-read 2b).
+  const authority = readingSelectionAuthority(context.identity?.viewer), canSelect = authority.select, canEdit = authority.edit;
   const editorContext = useMemo(() => (forwardIdentity(context, {isCurrent: () => context.isCurrent() && !!editor && resources !== undefined && resources.bindings.authority.isCurrent()
     && editor.item.libraryId === libraryId && resources.books.collection.residentItems().includes(editor.item)})), [context, editor, resources, libraryId]);
   const bulkContext = useMemo(() => (forwardIdentity(context, {isCurrent: () => context.isCurrent() && !!bulk && resources !== undefined && resources.bindings.authority.isCurrent()
     && bulk.every(item => item.libraryId === libraryId && selection?.get(item.id) === item)})), [context, bulk, resources, libraryId, selection]);
   const toggle = (item: ReadingLibraryItem) => {
-    if (!canEdit || !context.isCurrent() || !resources?.bindings.authority.isCurrent() || !resources.books.collection.residentItems().includes(item) || item.libraryId !== libraryId) return;
+    if (!canSelect || !context.isCurrent() || !resources?.bindings.authority.isCurrent() || !resources.books.collection.residentItems().includes(item) || item.libraryId !== libraryId) return;
     setSelection(previous => {const next = new Map(previous); if (next.has(item.id)) next.delete(item.id); else if (next.size < bulkTargetLimit) next.set(item.id, item); return next;});
   };
   const openMore = onMore ?? (canEdit ? (item: ReadingLibraryItem, anchor: HTMLButtonElement) => {
@@ -268,9 +269,10 @@ function BoundReadLibrary({captured, libraryId, header, onMore, view}: {captured
   } : undefined);
   if (!isReading || !library) return <StateView title={t('next.states.notFound')} body={t('next.states.notFoundBody')}/>;
   const again = () => setRetry(value => value + 1);
-  return <>{header}{selection && canEdit && <SelectionBar selection={{count: selection.size, kind: library.kind === 'comic' ? 'comic' : 'ebook'}} context={t('next.reader.bulkLimit', {count: bulkTargetLimit})} onExit={() => setSelection(undefined)}
-    actions={{...(selection.size ? {onEdit: (anchor: HTMLElement) => {bulkAnchor.current = anchor; setBulk(Object.freeze([...selection.values()]));}, ownerMark: <ServerMark size={22}/>} : {})}}/>}{retired ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: again}}/>
-    : resources ? <LibraryRows resources={resources} libraryId={libraryId} name={library.name} comic={library.kind === 'comic'} view={view} onMore={openMore} onRetry={again} selection={selection} onToggle={canEdit ? toggle : undefined} onExitSelection={() => setSelection(undefined)}/> : <Skeleton height={320}/>}
+  return <>{header}{selection && canSelect && <ReadSelectionBar context={context} selection={selection} kind={library.kind === 'comic' ? 'comic' : 'ebook'}
+    current={item => !retired && !!resources && resources.bindings.authority.isCurrent() && item.libraryId === libraryId && resources.books.collection.residentItems().includes(item)}
+    onExit={() => setSelection(undefined)} onEdit={anchor => {bulkAnchor.current = anchor; setBulk(Object.freeze([...selection.values()]));}}/>}{retired ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: again}}/>
+    : resources ? <LibraryRows resources={resources} libraryId={libraryId} name={library.name} comic={library.kind === 'comic'} view={view} onMore={openMore} onRetry={again} selection={selection} onToggle={canSelect ? toggle : undefined} onExitSelection={() => setSelection(undefined)}/> : <Skeleton height={320}/>}
     {menu && canEdit && <Menu open title={menu.item.title} anchorRef={{current: menu.anchor}} onOpenChange={open => {if (!open) setMenu(undefined);}}>
       <MenuItem onSelect={() => toggle(menu.item)}>{t('next.selection.select')}</MenuItem>
       <MenuItem onSelect={() => {if (context.isCurrent() && resources?.bindings.authority.isCurrent() && resources.books.collection.residentItems().includes(menu.item)) setEditor(menu);}}>{t('entry.editMetadata')}</MenuItem>

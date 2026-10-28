@@ -19,6 +19,7 @@ func metadataJobEdit(a catalog.JobArguments) metadata.BulkEdit {
 }
 func (d Dependencies) bulkCommandHooks() catalog.BulkCommandHooks {
 	return catalog.BulkCommandHooks{
+		ReadingCollectionAuthorize: d.savedReadingItemAuthorityTx,
 		Validate: func(command string, a catalog.JobArguments) error {
 			switch command {
 			case "refresh":

@@ -2,6 +2,7 @@
 export const readerMessages = {
   'next.reader.exportHighlights': 'Export highlights',
   'next.reader.saveFile': 'Save file',
+  'next.reader.addToCollection': 'Add to a collection',
   'next.reader.markRead': 'Mark as read',
   'next.reader.markUnread': 'Mark as unread',
   'next.reader.annotationReopen': 'After reloading, close and reopen this note before saving.',

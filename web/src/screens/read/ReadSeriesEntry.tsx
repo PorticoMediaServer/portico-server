@@ -15,7 +15,8 @@ import {WindowedGrid} from '../../kit/layout';
 import {ReadBookHero} from '../../kit/reader/ReadBookHero';
 import type {ArtworkSource} from '../../kit/artwork';
 import {Skeleton, StateView} from '../../kit/states';
-import {SelectionBar} from '../../kit/selection';
+import {ReadSelectionBar} from './ReadSelectionBar';
+import {readingSelectionAuthority} from './reading-selection-authority';
 import {ServerMark} from '../../kit/shell';
 import {bulkTargetLimit} from '@core/metadata-bulk.ts';
 import {ReadBulkMetadata} from './ReadBulkMetadata';
@@ -70,13 +71,12 @@ function LiveSeriesRows({resources, context, retry}: {resources: Resources; cont
   const state = useSyncExternalStore(resources.rows.collection.subscribe, resources.rows.collection.getSnapshot, resources.rows.collection.getSnapshot);
   const overview = useSyncExternalStore(resources.rows.overview.subscribe, resources.rows.overview.getSnapshot, resources.rows.overview.getSnapshot);
   const width = useShellWidth(), grid = useRef<HTMLDivElement>(null), [height, setHeight] = useState(600);
-  /** phone-read 4: Select is the owner's, and it edits this series' own volumes in this order. */
-  const viewer = context.identity?.viewer;
-  const canEdit = viewer?.authority === 'local' && viewer.role === 'owner';
+  /** phone-read 4: Select is every signed-in viewer's; it edits this series' own volumes in this order. */
+  const authority = readingSelectionAuthority(context.identity?.viewer), canSelect = authority.select, canEdit = authority.edit;
   const [selection, setSelection] = useState<ReadonlyMap<string, ReadingLibraryItem>>(), [bulk, setBulk] = useState<readonly ReadingLibraryItem[]>();
   const bulkAnchor = useRef<HTMLElement | null>(null);
   const toggle = (item: ReadingLibraryItem) => {
-    if (!canEdit || !context.isCurrent() || !resources.bindings.authority.isCurrent() || !resources.rows.collection.residentItems().includes(item)) return;
+    if (!canSelect || !context.isCurrent() || !resources.bindings.authority.isCurrent() || !resources.rows.collection.residentItems().includes(item)) return;
     setSelection(previous => {const next = new Map(previous); if (next.has(item.id)) next.delete(item.id); else if (next.size < bulkTargetLimit) next.set(item.id, item); return next;});
   };
   // The actual progressed member of this series comes from the canonical continue
@@ -129,11 +129,11 @@ function LiveSeriesRows({resources, context, retry}: {resources: Resources; cont
       actions={<><Button variant="primary" icon="i-book" onClick={start} disabled={!target}>{actionLabel}</Button>{state.status === 'ready' && <ReadGroupSavedAction client={resources.bindings.client} libraryId={resources.libraryId} groupKind="series" seriesId={resources.seriesId} isCurrent={() => resources.bindings.authority.isCurrent() && resources.rows.collection.getSnapshot().status === 'ready'} reportError={report}/>}</>}/>
       <div className={styles.seriesHeading}><h2>{t(resources.comic ? 'next.reader.volumes' : 'next.kit.booksInSeries')}</h2>
         {total === undefined ? null : <span>{t(resources.comic ? 'next.reader.volumeCount' : 'next.kit.books', {count: total})}</span>}
-        {canEdit && <button type="button" className={styles.seriesSelect} aria-pressed={selection !== undefined}
-          onClick={() => setSelection(selection === undefined ? new Map() : undefined)}>{t('next.selection.select')}<ServerMark size={22}/></button>}</div></> : <h2>{t('library.tab.series')}</h2>}
-    {selection && canEdit && <SelectionBar selection={{count: selection.size, kind: resources.comic ? 'comic' : 'ebook'}}
-      context={t('next.reader.bulkLimit', {count: bulkTargetLimit})} onExit={() => setSelection(undefined)}
-      actions={{...(selection.size ? {onEdit: (anchor: HTMLElement) => {bulkAnchor.current = anchor; setBulk(Object.freeze([...selection.values()]));}, ownerMark: <ServerMark size={22}/>} : {})}}/>}
+        {canSelect && <button type="button" className={styles.seriesSelect} aria-pressed={selection !== undefined}
+          onClick={() => setSelection(selection === undefined ? new Map() : undefined)}>{t('next.selection.select')}{canEdit && <ServerMark size={22}/>}</button>}</div></> : <h2>{t('library.tab.series')}</h2>}
+    {selection && canSelect && <ReadSelectionBar context={context} selection={selection} kind={resources.comic ? 'comic' : 'ebook'}
+      current={item => resources.bindings.authority.isCurrent() && resources.rows.collection.residentItems().includes(item)}
+      onExit={() => setSelection(undefined)} onEdit={anchor => {bulkAnchor.current = anchor; setBulk(Object.freeze([...selection.values()]));}}/>}
     <div ref={grid} className={styles.books}><WindowedGrid collection={resources.rows.collection} label={title ?? t('library.tab.series')}
       height={height} cardWidth={cardWidth} rowHeight={cardWidth * 1.5 + 58} gap={20} rowGap={30}
       renderPlaceholder={() => <Skeleton width={cardWidth} height={cardWidth * 1.5}/>}
@@ -144,7 +144,7 @@ function LiveSeriesRows({resources, context, retry}: {resources: Resources; cont
         onNavigate={() => {if (resources.bindings.authority.isCurrent()) void router.navigate({to: '/item/$itemId', params: {itemId: item.id}}).catch(report);}}
         onPlay={item.inventoryAvailable ? () => {if (resources.bindings.authority.isCurrent()) void router.navigate(readChosenDestination(item.id)).catch(report);} : undefined}
         playLabel={t('next.reader.read')}
-        selection={canEdit ? {active: selection !== undefined, checked: selection?.has(item.id) ?? false, onToggle: () => toggle(item), onExit: () => setSelection(undefined)} : undefined}/>} /></div>
+        selection={canSelect ? {active: selection !== undefined, checked: selection?.has(item.id) ?? false, onToggle: () => toggle(item), onExit: () => setSelection(undefined)} : undefined}/>} /></div>
     {bulk && canEdit && <ReadBulkMetadata context={forwardIdentity(context, {isCurrent: () => context.isCurrent() && !!bulk && resources.bindings.authority.isCurrent() && bulk.every(item => resources.rows.collection.residentItems().includes(item))})}
       items={bulk} kind={resources.comic ? 'comic' : 'ebook'} anchor={bulkAnchor} onClose={() => {setBulk(undefined); setSelection(undefined);}}/>}
   </section>;
