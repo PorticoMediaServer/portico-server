@@ -3,7 +3,7 @@ import {defaultI18n} from '@i18n';
 import type {BrowseSortCapability, BrowseSortSelection} from '@core/browse';
 import {sortDirectionKind} from '@core/presentation/browse-toolbar';
 import type {BrowseToolbarModel} from '@core/presentation/kit-model';
-import {Button, Chip, Segmented} from '../controls';
+import {Button, Chip, Segmented, RadioGroup, RadioItem} from '../controls';
 import {MenuRow, Popover} from '../overlays';
 import {Icon, type IconName} from '../Icon';
 import type {AppliedChip, BrowseLabels, BrowsePlatform, BrowseView, CardSizeControl, SaveViewControl} from './types';
@@ -50,9 +50,11 @@ export function SortMenu({sorts, value, onValueChange, label, open: controlledOp
     setOpen(false);
   };
   return <Popover returnFocusRef={triggerRef} open={open} onOpenChange={setOpen} title={t('next.browse.sortBy')} accessibilityLabel={t('next.browse.sortBy')} placement="bottom-end" width={300} className={styles.sortMenu}
-    trigger={<Chip ref={triggerRef} variant="default" icon="i-sort" iconSize={18} trailingIcon="i-down" trailingSize={16} className={styles.sortTrigger} data-saved={variant === 'saved' || undefined} aria-expanded={open}><span className={styles.sortLabel}>{selected ? label(selected) : t('next.browse.sort')}{showOrder && <>{variant === 'saved' && <span className={styles.orderSeparator} aria-hidden="true" />}<span className={styles.direction}>{sortDirectionLabel(value.field, value.direction)}</span></>}</span></Chip>}>
+    trigger={<Chip ref={triggerRef} variant="default" icon="i-sort" iconSize={18} trailingIcon="i-down" trailingSize={16} className={styles.sortTrigger} data-saved={variant === 'saved' || undefined} aria-label={[selected ? label(selected) : t('next.browse.sort'), value.flippable ? sortDirectionLabel(value.field, value.direction) : undefined].filter(Boolean).join(', ')} aria-expanded={open}><span className={styles.sortLabel}>{selected ? label(selected) : t('next.browse.sort')}{showOrder && <>{variant === 'saved' && <span className={styles.orderSeparator} aria-hidden="true" />}<span className={styles.direction}>{sortDirectionLabel(value.field, value.direction)}</span></>}</span></Chip>}>
     <div className={styles.menuHeading}>{t('next.browse.sortBy')}</div>
-    {sorts.map(sort => <MenuRow key={sort.id} selected={sort.id === value.field} onClick={() => pick(sort)} description={sort.expensive ? t('next.browse.expensive') : undefined}>{label(sort)}</MenuRow>)}
+    <RadioGroup value={value.field} aria-label={t('next.browse.sortBy')} onValueChange={id => {const sort = sorts.find(sort => sort.id === id); if (sort) pick(sort);}}>
+      {sorts.map(sort => <RadioItem key={sort.id} value={sort.id} asChild><MenuRow selected={sort.id === value.field} onClick={() => {if (sort.id === value.field) pick(sort);}} description={sort.expensive ? t('next.browse.expensive') : undefined}>{label(sort)}</MenuRow></RadioItem>)}
+    </RadioGroup>
     {showOrder && <div className={styles.sortOrder}><div className={styles.menuHeading}>{t('next.browse.order')}</div>
       <Segmented variant="browse" value={value.direction} aria-label={t('next.browse.order')} onValueChange={direction => { if ((direction === 'asc' || direction === 'desc') && selected.directions.includes(direction)) onValueChange({field: value.field, direction}); }}
         items={[...selected.directions].sort(direction => direction === selected.defaultDirection ? -1 : 1).map(direction => ({value: direction, label: sortDirectionLabel(value.field, direction)}))}/></div>}
@@ -68,7 +70,9 @@ export function CardSizeButton({value, options, onValueChange}: CardSizeControl)
   const [open, setOpen] = useState(false);
   return <Popover open={open} onOpenChange={setOpen} title={t('next.browse.cardSize')} accessibilityLabel={t('next.browse.cardSize')} placement="bottom-end" width={180}
     trigger={<Button variant="icon" size="small" icon="i-size" iconOnly aria-label={t('next.browse.cardSize')}/>}>
-    {options.map(option => <MenuRow key={option.value} selected={option.value === value} onClick={() => { onValueChange(option.value); setOpen(false); }}>{option.label}</MenuRow>)}
+    <RadioGroup value={value} aria-label={t('next.browse.cardSize')} onValueChange={next => {onValueChange(next as typeof value); setOpen(false);}}>
+      {options.map(option => <RadioItem key={option.value} value={option.value} asChild><MenuRow selected={option.value === value} onClick={() => {if (option.value === value) setOpen(false);}}>{option.label}</MenuRow></RadioItem>)}
+    </RadioGroup>
   </Popover>;
 }
 export function SaveViewButton({canSave, onSave}: SaveViewControl) {

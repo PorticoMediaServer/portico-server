@@ -66,7 +66,7 @@ export function Popover({open, onOpenChange, title, children, description, trigg
 type RowExtras = {icon?: IconName; description?: ReactNode; selected?: boolean; destructive?: boolean};
 export type MenuRowProps = ButtonHTMLAttributes<HTMLButtonElement> & RowExtras;
 export const MenuRow = forwardRef<HTMLButtonElement, MenuRowProps>(function MenuRow({icon, description, selected, destructive = false, children, className, type = 'button', ...props}, ref) {
-  return <button {...props} ref={ref} type={type} className={classes(styles.menuRow, className)} data-selected={selected || undefined} data-destructive={destructive || undefined} aria-pressed={props.role?.startsWith('menuitem') ? undefined : selected}>
+  return <button {...props} ref={ref} type={type} className={classes(styles.menuRow, className)} data-selected={selected || undefined} data-destructive={destructive || undefined} aria-pressed={props.role?.startsWith('menuitem') || props.role === 'radio' ? undefined : selected}>
     {icon && <span className={styles.menuIcon}><Icon name={icon} size={18} /></span>}
     <span className={styles.menuLabel}>{children}</span>
     {description !== undefined && <span className={styles.menuDescription}>{description}</span>}
