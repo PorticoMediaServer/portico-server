@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {routePath} from '../../packages/contracts/src/routes.ts';
 import {SettingsStorageSource, storageReport} from '../src/screens/settings/server/storage-source.ts';
 
-const usage = (overrides: Record<string, unknown> = {}) => ({protocolVersion: '1', serverId: 'server', result: {stateDirectory: '/data', totalBytes: 300, totalBytesText: '300 B', observedAt: '2026-10-24T12:00:00Z', truncated: false,
+const usage = (overrides: Record<string, unknown> = {}) => ({protocolVersion: '1', serverId: 'server', result: {stateDirectory: '/data', totalBytes: 300, totalBytesText: '300 B', observedAt: '2026-10-24T12:00:00Z', truncated: false, artworkEncoding: [],
   categories: [{id: 'artwork', name: 'Artwork', description: 'Posters the server fetched.', directories: ['artwork'], paths: ['/data/artwork'], retentionKey: '', bytes: 100, bytesText: '100 B',
     fileCount: 2, present: true, oldestDays: 3, cleanable: false, regenerable: true}], ...overrides}});
 const layout = (overrides: Record<string, unknown> = {}) => ({dataDirectory: '/data', transcodeDirectory: '/data/transcode', transcodeBytes: 40, folders: [{name: 'Database', bytes: 100}], notices: [], ...overrides});
