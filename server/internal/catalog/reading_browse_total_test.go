@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 )
@@ -104,6 +103,7 @@ func TestReadingBrowseContinuationReusesTheExactTotal(t *testing.T) {
 		t.Fatal(err)
 	}
 	legacy.Total = 0
+	legacy.TotalPresent = false
 	legacy.Expires = time.Now().Add(time.Minute).Unix()
 	raw, err := s.encodeCursor(legacy)
 	if err != nil {
@@ -211,347 +211,182 @@ func TestReadingBrowseEmptyTotalIsExact(t *testing.T) {
 	}
 }
 
-// readingBrowseRevisions reads the split library counters: order_revision is
-// what the browse fingerprint digests, while revision also moves on a rating
-// classification change that does not reorder the library.
-func readingBrowseRevisions(t *testing.T, c *catalogtest.Catalog) (revision, orderRevision int64) {
-	t.Helper()
-	if err := c.DB.QueryRow(`SELECT revision,order_revision FROM library_revisions WHERE library_id='reading'`).Scan(&revision, &orderRevision); err != nil {
-		t.Fatal(err)
-	}
-	return revision, orderRevision
-}
-
-// readingBrowseFingerprint recomputes the fingerprint a fresh page of this
-// viewer and query would carry, without running one.
-func readingBrowseFingerprint(t *testing.T, s *Service, viewer Viewer, query *BrowseNode) string {
-	t.Helper()
-	pivot, ok := pivotForKind("book", defaultPivot("book"))
-	if !ok {
-		t.Fatal("book browse pivot is missing")
-	}
-	sorts, err := resolveBrowseSorts(pivot, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	request := BrowseRequest{Library: "reading", Limit: 2, Profile: viewer.Profile, ViewerFence: viewer.Fence, Query: query, Restrictions: viewer.Restrictions}
-	var out string
-	err = dbwork.WithReadSnapshot(context.Background(), s.db, func(ctx context.Context) error {
-		revision, err := s.WithContext(ctx).browseRevision(request, pivot, sorts)
-		out = revision
-		return err
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return out
-}
-
-// A restricted Reading continuation may not reuse the opening page's total: the
-// live restriction reads content_rating_ages at query time, and a classification
-// write moves library_revisions.revision without moving order_revision, which is
-// all the cursor fingerprint digests. The continuation therefore reports the
-// exact new total and remainder. (The legacy envelope's own raw-revision check
-// also zeroes the carried total in this sequence; the reuse gate itself is
-// isolated in TestReadingBrowseRestrictedContinuationIgnoresACarriedTotal.)
-func TestReadingBrowseRestrictedContinuationRecountsTheExactTotal(t *testing.T) {
-	c, s, restricted, items := readingBrowseFixture(t, "book")
+func TestReadingBrowseRestrictedContinuationReusesWitness(t *testing.T) {
+	c, s, v, _ := readingBrowseFixture(t, "book")
 	age := 12
-	restricted.Restrictions = identity.ContentRestrictions{MaximumAge: &age, Revision: 1}
-	// Classify the spelling before attaching the edge, so the drain has nothing
-	// to classify and the opening page counts the title.
-	c.Exec(`INSERT INTO content_rating_ages(value_key,minimum_age) VALUES('x',0)`)
-	c.Attributes(items[3].ID, "contentRating", "X")
+	v.Restrictions = identity.ContentRestrictions{MaximumAge: &age, MemberDeniedLabels: []string{"denied"}, Revision: 1}
 	c.Drain()
-
-	// The same library without a live restriction still carries the total: the
-	// gate is the compiled restriction clause, not Reading continuations.
-	unrestricted := Viewer{Profile: restricted.Profile, Fence: restricted.Fence, Libraries: restricted.Libraries}
-	open, err := s.BrowseEntities(unrestricted, BrowseRequest{Library: "reading", Limit: 2})
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, trace := dbwork.TraceStatements(context.Background())
-	next, err := s.WithContext(ctx).BrowseEntities(unrestricted, BrowseRequest{Library: "reading", Limit: 2, Cursor: open.PageInfo.NextCursor})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if whole, capped := browseRowCountStatements(trace()); whole != 0 || capped != 0 {
-		t.Fatalf("unrestricted continuation recounted: whole=%d capped=%d", whole, capped)
-	}
-	if next.PageInfo.Total != len(items) {
-		t.Fatalf("unrestricted continuation total: %+v", next.PageInfo)
-	}
-
-	revisionBefore, orderBefore := readingBrowseRevisions(t, c)
-	ctx, trace = dbwork.TraceStatements(context.Background())
-	first, err := s.WithContext(ctx).BrowseEntities(restricted, BrowseRequest{Library: "reading", Limit: 2})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if whole, capped := browseRowCountStatements(trace()); whole != 1 || capped != 0 {
-		t.Fatalf("restricted first page counts: whole=%d capped=%d", whole, capped)
-	}
-	if len(first.Entries) != 2 || first.PageInfo.Total != 4 || first.PageInfo.TotalIsLowerBound {
-		t.Fatalf("restricted first page: %+v", first.PageInfo)
-	}
-	fingerprint := first.PageInfo.Revision
-
-	// Classification only: the visible anchor (Title 1) and its order are
-	// untouched; Title 3's spelling moves above the ceiling.
-	c.Exec(`UPDATE content_rating_ages SET minimum_age=17 WHERE value_key='x'`)
-	revisionAfter, orderAfter := readingBrowseRevisions(t, c)
-	if revisionAfter <= revisionBefore {
-		t.Fatalf("classification write did not advance library revision: %d -> %d", revisionBefore, revisionAfter)
-	}
-	if orderAfter != orderBefore {
-		t.Fatalf("classification write reordered the library: %d -> %d", orderBefore, orderAfter)
-	}
-	if got := readingBrowseFingerprint(t, s, restricted, nil); got != fingerprint {
-		t.Fatalf("fingerprint changed across a classification write: %s -> %s", fingerprint, got)
-	}
-
-	ctx, trace = dbwork.TraceStatements(context.Background())
-	second, err := s.WithContext(ctx).BrowseEntities(restricted, BrowseRequest{Library: "reading", Limit: 2, Cursor: first.PageInfo.NextCursor})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if whole, capped := browseRowCountStatements(trace()); whole != 1 || capped != 0 {
-		t.Fatalf("restricted continuation counts: whole=%d capped=%d", whole, capped)
-	}
-	if second.PageInfo.Total != 3 || second.PageInfo.TotalIsLowerBound {
-		t.Fatalf("restricted continuation total: %+v", second.PageInfo)
-	}
-	if got := readingBrowsePageIDs(second.Entries); strings.Join(got, ",") != items[2].Public {
-		t.Fatalf("restricted continuation remainder: %v want [%s]", got, items[2].Public)
-	}
-	if second.PageInfo.HasMore || second.PageInfo.NextCursor != "" {
-		t.Fatalf("restricted walk did not end: %+v", second.PageInfo)
-	}
-}
-
-// The mirror direction: an unclassified spelling becomes classified, so a
-// title that page one could not see becomes visible. The correct total grows
-// while the fingerprint stays put, and the continuation must see both the new
-// total and the new remainder.
-func TestReadingBrowseRestrictedContinuationRecountsAnUnratedClassification(t *testing.T) {
-	c, s, viewer, items := readingBrowseFixture(t, "book")
-	viewer.Restrictions = identity.ContentRestrictions{BlockUnrated: true, Revision: 1}
-	c.Exec(`INSERT INTO content_rating_ages(value_key,minimum_age) VALUES('g',0)`)
-	for _, item := range items[:3] {
-		c.Attributes(item.ID, "contentRating", "G")
-	}
-	// No age row: the drain classifies an unknown spelling as unrated, which
-	// BlockUnrated hides until a real classification arrives.
-	c.Attributes(items[3].ID, "contentRating", "Y")
-	c.Drain()
-
-	revisionBefore, orderBefore := readingBrowseRevisions(t, c)
-	ctx, trace := dbwork.TraceStatements(context.Background())
-	first, err := s.WithContext(ctx).BrowseEntities(viewer, BrowseRequest{Library: "reading", Limit: 2})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if whole, capped := browseRowCountStatements(trace()); whole != 1 || capped != 0 {
-		t.Fatalf("restricted first page counts: whole=%d capped=%d", whole, capped)
-	}
-	if first.PageInfo.Total != 3 || first.PageInfo.TotalIsLowerBound {
-		t.Fatalf("restricted first page total: %+v", first.PageInfo)
-	}
-	fingerprint := first.PageInfo.Revision
-
-	// Unknown spelling to a known age: the same one-row classification write the
-	// drain performs, still without reordering the library.
-	c.Exec(`INSERT INTO content_rating_ages(value_key,minimum_age) VALUES('y',0) ON CONFLICT(value_key) DO UPDATE SET minimum_age=0`)
-	revisionAfter, orderAfter := readingBrowseRevisions(t, c)
-	if revisionAfter <= revisionBefore || orderAfter != orderBefore {
-		t.Fatalf("classification write counters: revision %d -> %d, order %d -> %d", revisionBefore, revisionAfter, orderBefore, orderAfter)
-	}
-	if got := readingBrowseFingerprint(t, s, viewer, nil); got != fingerprint {
-		t.Fatalf("fingerprint changed across a classification write: %s -> %s", fingerprint, got)
-	}
-
-	ctx, trace = dbwork.TraceStatements(context.Background())
-	second, err := s.WithContext(ctx).BrowseEntities(viewer, BrowseRequest{Library: "reading", Limit: 2, Cursor: first.PageInfo.NextCursor})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if whole, capped := browseRowCountStatements(trace()); whole != 1 || capped != 0 {
-		t.Fatalf("restricted continuation counts: whole=%d capped=%d", whole, capped)
-	}
-	if second.PageInfo.Total != 4 || second.PageInfo.TotalIsLowerBound {
-		t.Fatalf("restricted continuation total: %+v", second.PageInfo)
-	}
-	if got := readingBrowsePageIDs(second.Entries); strings.Join(got, ",") != strings.Join([]string{items[2].Public, items[3].Public}, ",") {
-		t.Fatalf("restricted continuation remainder: %v want %v", got, []string{items[2].Public, items[3].Public})
-	}
-	if second.PageInfo.HasMore || second.PageInfo.NextCursor != "" {
-		t.Fatalf("restricted walk did not end: %+v", second.PageInfo)
-	}
-}
-
-// A filtered restricted continuation keeps the existing capped count and its
-// lower-bound meaning, but must recount after validation and must not publish
-// that snapshot to the revision-keyed cache.
-func TestReadingBrowseRestrictedFilteredContinuationRecountsAfterClassification(t *testing.T) {
 	previous := browseTotalThreshold
-	browseTotalThreshold = 2
+	browseTotalThreshold = 1
 	defer func() { browseTotalThreshold = previous }()
-
-	c, s, viewer, items := readingBrowseFixture(t, "book")
-	age := 12
-	viewer.Restrictions = identity.ContentRestrictions{MaximumAge: &age, Revision: 1}
-	// Give the third match the same accepted author spelling as the first two,
-	// and only the second title a distinct rating spelling: the classification
-	// write below then removes a remainder title, not the anchor.
-	c.Exec(`UPDATE metadata_owner_fields SET value='Café Author' WHERE entity_id=? AND field='author'`, items[2].ID)
-	c.Exec(`INSERT INTO content_rating_ages(value_key,minimum_age) VALUES('y',0)`)
-	c.Attributes(items[1].ID, "contentRating", "Y")
-	c.Drain()
-
-	query := &BrowseNode{All: []BrowseNode{{Field: "author", Operator: "contains", Value: "  café\tAUTHOR  "}}}
-	ctx, trace := dbwork.TraceStatements(context.Background())
-	first, err := s.WithContext(ctx).BrowseEntities(viewer, BrowseRequest{Library: "reading", Limit: 1, Query: query})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if whole, capped := browseRowCountStatements(trace()); whole != 0 || capped != 1 {
-		t.Fatalf("filtered first page counts: whole=%d capped=%d", whole, capped)
-	}
-	if first.PageInfo.Total != browseTotalThreshold || !first.PageInfo.TotalIsLowerBound || len(first.Entries) != 1 {
-		t.Fatalf("filtered first page total: %+v entries %d", first.PageInfo, len(first.Entries))
-	}
-	if _, hit := s.cachedBrowseTotal(first.PageInfo.Revision); hit {
-		t.Fatal("a restriction-bound total was cached under the browse revision")
-	}
-	fingerprint := first.PageInfo.Revision
-
-	// Classification only; the anchor (Title 0) stays visible and matched.
-	c.Exec(`UPDATE content_rating_ages SET minimum_age=17 WHERE value_key='y'`)
-	if got := readingBrowseFingerprint(t, s, viewer, query); got != fingerprint {
-		t.Fatalf("fingerprint changed across a classification write: %s -> %s", fingerprint, got)
-	}
-
-	ctx, trace = dbwork.TraceStatements(context.Background())
-	second, err := s.WithContext(ctx).BrowseEntities(viewer, BrowseRequest{Library: "reading", Limit: 1, Query: query, Cursor: first.PageInfo.NextCursor})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if whole, capped := browseRowCountStatements(trace()); whole != 0 || capped != 1 {
-		t.Fatalf("filtered continuation counts: whole=%d capped=%d", whole, capped)
-	}
-	if second.PageInfo.Total != 2 || second.PageInfo.TotalIsLowerBound {
-		t.Fatalf("filtered continuation total: %+v", second.PageInfo)
-	}
-	if got := readingBrowsePageIDs(second.Entries); strings.Join(got, ",") != items[2].Public {
-		t.Fatalf("filtered continuation remainder: %v want [%s]", got, items[2].Public)
-	}
-	if second.PageInfo.HasMore || second.PageInfo.NextCursor != "" {
-		t.Fatalf("filtered walk did not end: %+v", second.PageInfo)
+	for _, query := range []*BrowseNode{nil, {All: []BrowseNode{{Field: "author", Operator: "contains", Value: "café author"}}}} {
+		first, err := s.BrowseEntities(v, BrowseRequest{Library: "reading", Limit: 1, Query: query})
+		if err != nil {
+			t.Fatal(err)
+		}
+		signed, err := s.readSignedBrowseCursor(first.PageInfo.NextCursor)
+		if err != nil {
+			t.Fatal(err)
+		}
+		signed.Expires = time.Now().Add(time.Minute).Unix()
+		raw, err := s.encodeCursor(signed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, trace := dbwork.TraceStatements(context.Background())
+		next, err := s.WithContext(ctx).BrowseEntities(v, BrowseRequest{Library: "reading", Limit: 1, Query: query, Cursor: raw})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if a, b := browseRowCountStatements(trace()); a != 0 || b != 0 {
+			t.Fatal("recount", a, b)
+		}
+		if first.PageInfo.Total != next.PageInfo.Total || first.PageInfo.TotalIsLowerBound != next.PageInfo.TotalIsLowerBound {
+			t.Fatal(first.PageInfo, next.PageInfo)
+		}
+		if next.PageInfo.NextCursor != "" {
+			carried, err := s.readSignedBrowseCursor(next.PageInfo.NextCursor)
+			if err != nil || carried.Expires != signed.Expires || !carried.TotalPresent {
+				t.Fatal(carried, err)
+			}
+		}
 	}
 }
 
-// The deferral must survive the gate: a restricted cursor that is malformed,
-// expired, from another viewer or for another limit still refuses before any
-// count is issued.
-func TestReadingBrowseRestrictedContinuationRefusesBeforeCounting(t *testing.T) {
-	c, s, viewer, items := readingBrowseFixture(t, "book")
+func TestReadingBrowseWitnessMutationRefusesBeforeCounting(t *testing.T) {
+	c, s, v, items := readingBrowseFixture(t, "book")
 	age := 12
-	viewer.Restrictions = identity.ContentRestrictions{MaximumAge: &age, Revision: 1}
-	c.Exec(`INSERT INTO content_rating_ages(value_key,minimum_age) VALUES('x',0)`)
-	c.Attributes(items[3].ID, "contentRating", "X")
+	v.Restrictions = identity.ContentRestrictions{MaximumAge: &age, Revision: 1}
+	c.Exec(`INSERT INTO content_rating_ages VALUES('witness',0)`)
+	c.Attributes(items[3].ID, "contentRating", "Witness")
+	c.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('epoch-account','epoch-owner',X'01','epoch-profile',1)`)
+	c.Exec(`INSERT INTO profile_restrictions(profile_id) VALUES('epoch-profile')`)
+	c.Exec(`INSERT INTO access_limits(account_id,updated_ms,body) VALUES('epoch-account',0,'{}')`)
 	c.Drain()
-
-	first, err := s.BrowseEntities(viewer, BrowseRequest{Library: "reading", Limit: 2})
+	first, err := s.BrowseEntities(v, BrowseRequest{Library: "reading", Limit: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	valid, err := s.readSignedBrowseCursor(first.PageInfo.NextCursor)
-	if err != nil {
-		t.Fatal(err)
+	tests := []struct{ name, query string }{
+		{"profile policy", `UPDATE profile_restrictions SET revision=revision+1 WHERE profile_id='epoch-profile'`},
+		{"member policy", `UPDATE direct_memberships SET revision=revision+1 WHERE account_id='epoch-account'`},
+		{"member denial", `UPDATE access_limits SET body='{"deniedLabels":["x"]}' WHERE account_id='epoch-account'`},
+		{"recording provenance", `INSERT INTO dvr_catalog_provenance SELECT l.entity_id,'recording',a.token,'source','channel','programme','guide','digest',0,1,'completed' FROM catalog_asset_links l JOIN catalog_assets a ON a.id=l.asset_id WHERE l.entity_id=? LIMIT 1`},
+		{"classification age", `UPDATE content_rating_ages SET minimum_age=17 WHERE value_key='witness'`},
+		{"classification key", `UPDATE content_rating_ages SET value_key='other-key' WHERE value_key='witness'`},
+		{"term key", `UPDATE catalog_attribute_terms SET value_key='renamed' WHERE value_key='witness'`},
+		{"term field", `UPDATE catalog_attribute_terms SET field_id=2 WHERE value_key='witness'`},
+		{"edge spelling", `UPDATE catalog_item_attribute_edges SET source_value='denied' WHERE item_id=?`},
+		{"edge delete", `DELETE FROM catalog_item_attribute_edges WHERE item_id=?`},
+		{"membership", `INSERT INTO catalog_browse_memberships(entity_id,item_id,source) VALUES(?,?,8)`},
+		{"browse existence", `DELETE FROM catalog_browse_rows WHERE entity_id=?`},
+		{"browse move", `UPDATE catalog_browse_rows SET library_id=(SELECT id FROM catalog_libraries WHERE library_id='other') WHERE entity_id=?`},
+		{"entity lifetime", `UPDATE catalog_entities SET retired=1 WHERE id=?`},
+		{"library lifetime", `UPDATE catalog_libraries SET retired=1 WHERE library_id='reading'`},
+		{"serving", `UPDATE catalog_generations SET generation=generation+1`},
+		{"retaining", `UPDATE catalog_generations SET retaining=1`},
+		{"domain", `UPDATE catalog_derivations SET rebuilding=1 WHERE domain=18`},
+		{"format", `UPDATE reading_publications SET format='mobi' WHERE item_id=?`},
+		{"publication", `DELETE FROM reading_publications WHERE item_id=?`},
+		{"ready", `UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE library_id=(SELECT id FROM catalog_libraries WHERE library_id='reading')`},
+		{"rule", `UPDATE reading_attribution_state SET publication_rule_version=0 WHERE library_id=(SELECT id FROM catalog_libraries WHERE library_id='reading')`},
+		{"retained row", `INSERT INTO catalog_browse_rows_previous(generation,present,entity_id) SELECT generation,0,? FROM catalog_generations`},
+		{"retained membership", `INSERT INTO catalog_browse_memberships_previous(generation,present,entity_id,item_id,source) SELECT generation,0,?,?,8 FROM catalog_generations`},
 	}
-	expired := valid
-	expired.Expires = time.Now().Add(-time.Second).Unix()
-	expiredRaw, err := s.encodeCursor(expired)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for _, test := range []struct {
-		name   string
-		cursor string
-		limit  int
-		viewer Viewer
-	}{
-		{name: "malformed", cursor: "not-a-cursor", limit: 2},
-		{name: "expired", cursor: expiredRaw, limit: 2},
-		{name: "wrong viewer", cursor: first.PageInfo.NextCursor, limit: 2, viewer: Viewer{Profile: viewer.Profile, Fence: "other-viewer", Libraries: viewer.Libraries}},
-		{name: "wrong limit", cursor: first.PageInfo.NextCursor, limit: 1},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			requestViewer := viewer
-			if test.viewer.Fence != "" {
-				requestViewer = test.viewer
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tx, err := c.DB.Begin()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer tx.Rollback()
+			args := make([]any, strings.Count(tt.query, "?"))
+			for i := range args {
+				args[i] = items[3].ID
+			}
+			if _, err := tx.Exec(tt.query, args...); err != nil {
+				t.Fatal(err)
 			}
 			ctx, trace := dbwork.TraceStatements(context.Background())
-			_, err := s.WithContext(ctx).BrowseEntities(requestViewer, BrowseRequest{Library: "reading", Limit: test.limit, Cursor: test.cursor})
-			if !errors.Is(err, ErrStaleContinuation) && !errors.Is(err, ErrCursor) {
-				t.Fatalf("refused cursor error: %v", err)
+			clone := *s.WithContext(ctx)
+			clone.readTx = tx
+			_, _, err = clone.browseSelect(BrowseRequest{Library: "reading", Profile: v.Profile, ViewerFence: v.Fence, Restrictions: v.Restrictions, Limit: 1, Cursor: first.PageInfo.NextCursor})
+			if !errors.Is(err, ErrStaleContinuation) {
+				t.Fatal("changed witness not refused as stale", err)
 			}
-			if whole, capped := browseRowCountStatements(trace()); whole != 0 || capped != 0 {
-				t.Fatalf("cursor refused after counting: whole=%d capped=%d", whole, capped)
+			if a, b := browseRowCountStatements(trace()); a != 0 || b != 0 {
+				t.Fatal("refused after count", a, b, err)
 			}
 		})
 	}
 }
 
-// The legacy envelope independently zeroes a carried total when
-// library_revisions.revision moves, so the natural classification sequence
-// above already recounts today. The reuse gate is a separate precondition: a
-// restriction-bound continuation must never reuse a nonzero total, even one
-// presented with a current envelope and a still-visible anchor. Re-signing the
-// first page's stale total at the post-classification revision isolates exactly
-// that decision; without the gate the page reports 4 instead of 3.
-func TestReadingBrowseRestrictedContinuationIgnoresACarriedTotal(t *testing.T) {
-	c, s, viewer, items := readingBrowseFixture(t, "book")
-	age := 12
-	viewer.Restrictions = identity.ContentRestrictions{MaximumAge: &age, Revision: 1}
-	c.Exec(`INSERT INTO content_rating_ages(value_key,minimum_age) VALUES('x',0)`)
-	c.Attributes(items[3].ID, "contentRating", "X")
+func TestReadingBrowseWitnessPolicyAndAnchorRefusals(t *testing.T) {
+	c, s, v, _ := readingBrowseFixture(t, "book")
 	c.Drain()
-
-	first, err := s.BrowseEntities(viewer, BrowseRequest{Library: "reading", Limit: 2})
+	first, err := s.BrowseEntities(v, BrowseRequest{Library: "reading", Limit: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	carried, err := s.readSignedBrowseCursor(first.PageInfo.NextCursor)
+	for _, r := range []identity.ContentRestrictions{{Revision: 2}, {MemberRevision: 2}, {MemberDeniedLabels: []string{"x"}}, {BlockedLabels: []string{"a,b"}}, {BlockedLabels: []string{"a", "b"}}, {BlockRecordings: true}} {
+		changed := v
+		changed.Restrictions = r
+		ctx, trace := dbwork.TraceStatements(context.Background())
+		_, err := s.WithContext(ctx).BrowseEntities(changed, BrowseRequest{Library: "reading", Limit: 1, Cursor: first.PageInfo.NextCursor})
+		if err == nil {
+			t.Fatal("policy accepted", r)
+		}
+		if a, b := browseRowCountStatements(trace()); a != 0 || b != 0 {
+			t.Fatal(a, b)
+		}
+	}
+	signed, err := s.readSignedBrowseCursor(first.PageInfo.NextCursor)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if carried.Total != 4 {
-		t.Fatalf("first page carried total: %d", carried.Total)
+	for _, mutate := range []func(*cursorValue){func(c *cursorValue) { c.ID = "999999999" }, func(c *cursorValue) { c.Keys = []string{"bad"} }, func(c *cursorValue) { c.Value = "-1" }} {
+		cursor := signed
+		mutate(&cursor)
+		raw, err := s.encodeCursor(cursor)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, trace := dbwork.TraceStatements(context.Background())
+		_, err = s.WithContext(ctx).BrowseEntities(v, BrowseRequest{Library: "reading", Limit: 1, Cursor: raw})
+		if err == nil {
+			t.Fatal("bad anchor accepted")
+		}
+		if a, b := browseRowCountStatements(trace()); a != 0 || b != 0 {
+			t.Fatal(a, b)
+		}
 	}
+}
 
-	// Classification only: Title 3 drops out; the anchor (Title 1) stays.
-	c.Exec(`UPDATE content_rating_ages SET minimum_age=17 WHERE value_key='x'`)
-	carried.Expires = time.Now().Add(time.Minute).Unix()
-	raw, err := s.encodeCursor(carried)
+func TestReadingBrowseCarriedZeroDistinctFromLegacyAbsent(t *testing.T) {
+	c, s, v, _ := readingBrowseFixture(t, "book")
+	c.Drain()
+	first, err := s.BrowseEntities(v, BrowseRequest{Library: "reading", Limit: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
-
+	signed, err := s.readSignedBrowseCursor(first.PageInfo.NextCursor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A trusted synthetic zero with a valid anchor isolates presence semantics;
+	// a naturally empty page has no continuation.
+	signed.Total = 0
+	signed.TotalPresent = true
+	raw, err := s.encodeCursor(signed)
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctx, trace := dbwork.TraceStatements(context.Background())
-	second, err := s.WithContext(ctx).BrowseEntities(viewer, BrowseRequest{Library: "reading", Limit: 2, Cursor: raw})
+	page, err := s.WithContext(ctx).BrowseEntities(v, BrowseRequest{Library: "reading", Limit: 1, Cursor: raw})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if whole, capped := browseRowCountStatements(trace()); whole != 1 || capped != 0 {
-		t.Fatalf("restricted continuation counts: whole=%d capped=%d", whole, capped)
-	}
-	if second.PageInfo.Total != 3 || second.PageInfo.TotalIsLowerBound {
-		t.Fatalf("restricted continuation total: %+v", second.PageInfo)
-	}
-	if got := readingBrowsePageIDs(second.Entries); strings.Join(got, ",") != items[2].Public {
-		t.Fatalf("restricted continuation remainder: %v want [%s]", got, items[2].Public)
+	if a, b := browseRowCountStatements(trace()); a != 0 || b != 0 || page.PageInfo.Total != 0 {
+		t.Fatal(a, b, page.PageInfo)
 	}
 }

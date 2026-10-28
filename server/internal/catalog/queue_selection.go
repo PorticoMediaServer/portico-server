@@ -132,7 +132,7 @@ func (s *Service) QueueKeysTx(ctx context.Context, tx *sql.Tx, viewer Viewer, ac
 	args = append(orderArgs, args...)
 	visible, values := viewer.itemVisibilitySQL("i.id")
 	args = append(args, values...)
-	revision, err := s.browseRevision(BrowseRequest{Library: query.LibraryID, Profile: viewer.Profile, ViewerFence: viewer.Fence, Query: node, Rows: rows}, pivot, sorts)
+	revision, err := s.browseRevision(BrowseRequest{Library: query.LibraryID, Profile: viewer.Profile, ViewerFence: viewer.Fence, Restrictions: viewer.EffectiveRestrictions(), Query: node, Rows: rows}, pivot, sorts)
 	if err != nil {
 		return QueueSelection{}, err
 	}

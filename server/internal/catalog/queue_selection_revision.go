@@ -37,7 +37,7 @@ func (s *Service) CheckQueueBrowseRevisionTx(ctx context.Context, tx *sql.Tx, vi
 	if !browseQueryReplayable(query.Query, sorts) {
 		return ErrStaleContinuation
 	}
-	revision, err := s.browseRevision(BrowseRequest{Library: query.LibraryID, Profile: viewer.Profile, ViewerFence: viewer.Fence, Query: query.Query}, pivot, sorts)
+	revision, err := s.browseRevision(BrowseRequest{Library: query.LibraryID, Profile: viewer.Profile, ViewerFence: viewer.Fence, Restrictions: viewer.EffectiveRestrictions(), Query: query.Query}, pivot, sorts)
 	if err != nil {
 		return err
 	}
