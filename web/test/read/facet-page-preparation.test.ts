@@ -21,7 +21,8 @@ test('Reading facet retry retains its resident values during replacement prepara
   try {
     f.draw(); f.reads[0]!.resolve(page); await settle(); let shown = f.draw(); assert.match(textOf(shown), /Author/);
     one(tree(shown), 'Button').props.onClick(); f.reads[1]!.reject(new Error('offline')); await settle();
-    shown = f.draw(); one(tree(shown), 'StateView').props.primary.onPress();
+    shown = f.draw(); assert.match(textOf(shown), /Author/, 'a failed continuation retains the resident facet');
+    one(tree(shown), 'Button').props.onClick();
     f.draw(); shown = f.draw(); assert.match(textOf(shown), /Author/, 'retry keeps the existing facet while its first replacement is pending');
     assert.equal(one(tree(shown), 'Button').props.disabled, true, 'load-more cannot race the preparing replacement');
     f.reads[2]!.resolve({...page, values: [{value: 'New', label: 'New', count: 2}]}); await settle(); assert.match(textOf(f.draw()), /New/);
