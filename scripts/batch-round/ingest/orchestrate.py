@@ -515,6 +515,11 @@ def main():
         wal_path = pathlib.Path(args.appdata) / 'Database' / 'server.sqlite-wal' if args.appdata else None
         wal_bytes = wal_path.stat().st_size if wal_path and wal_path.exists() else None
         total_bytes = (media_bytes or 0) + (appdata_bytes or 0)
+        physical_basis = 'tiny media+appdata trees; runtime temp excluded'
+        if args.total > 100:
+            fs = os.statvfs(scratch)
+            total_bytes = (fs.f_blocks-fs.f_bfree)*fs.f_frsize
+            physical_basis = 'whole quota allocated blocks, includes baseline/runtime temp/filesystem metadata'
         if appdata_bytes is None:
             unavailable.append('appdata physical bytes not supplied (--appdata)')
         if wal_bytes is None:
@@ -532,7 +537,7 @@ def main():
                   'writerBasis': 'all writer classes: writeGate.heldMillis delta, includes concurrent foreground work',
                   'generation': args.generation, 'pivots': pivots,
                   'mediaPhysicalBytes': media_bytes, 'appdataPhysicalBytes': appdata_bytes,
-                  'walBytes': wal_bytes, 'totalPhysicalBytes': total_bytes,
+                  'walBytes': wal_bytes, 'totalPhysicalBytes': total_bytes, 'physicalBasis': physical_basis,
                   'scanMode': args.scan_mode or 'default', 'jobs': {kind: (jobs[kind] or {}).get('id') for kind in LIB_KINDS},
                   'unavailable': unavailable}
         append_marker(marker_path, record)

@@ -196,7 +196,9 @@ def write_epub(path, title):
 
 def command_media(args, parser):
     refuse_ci(parser)
-    root = owned_directory(args.root, create=True)
+    root = Path(args.root)
+    if root.exists() or args.execute:
+        root = owned_directory(root, create=args.execute)
     sources = []
     for raw in args.source:
         path = private_path(raw, mode=None, what='source media')
@@ -501,7 +503,8 @@ def command_bootstrap(args, parser):
     appdata = Path(args.appdata)
     if appdata.exists() and any(appdata.iterdir()):
         fail(f'appdata must be absent or empty; never reuse or overwrite an appdata: {appdata}')
-    owned_directory(appdata, create=True)
+    if appdata.exists() or args.execute:
+        owned_directory(appdata, create=args.execute)
     facts = read_private_json(args.media_facts)
     files = facts.get('files') or []
     if not files:
@@ -525,6 +528,9 @@ def command_bootstrap(args, parser):
                    'PORTICO_DATA_DIR': str(appdata), 'PORTICO_BIND': f'{LOOPBACK}:{port}',
                    'PORTICO_SETUP_HOSTS': f'localhost:{port},{LOOPBACK}:{port}',
                    'GOMAXPROCS': '2'}
+    runtime_tmp = Path(os.environ.get('TMPDIR') or str(appdata.parent / (appdata.name + '-runtime-tmp')))
+    owned_directory(runtime_tmp, create=True)
+    environment['TMPDIR'] = str(runtime_tmp)
     for key in ('PORTICO_FFMPEG', 'PORTICO_FFPROBE', 'PORTICO_RCLONE'):
         if key in os.environ: environment[key] = os.environ[key]
     process = subprocess.Popen([str(binary)], stdout=log, stderr=log, stdin=subprocess.DEVNULL,

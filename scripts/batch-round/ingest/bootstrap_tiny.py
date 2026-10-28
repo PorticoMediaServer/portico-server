@@ -122,11 +122,12 @@ def main():
     facts = pathlib.Path(args.facts)
     credentials = pathlib.Path(args.credentials)
     log = appdata / 'bootstrap.log'
+    runtime_tmp = private_dir(appdata.parent / (appdata.name + '-runtime-tmp'), create=True)
     environment = dict(os.environ)
     environment.update({'PORTICO_DATA_DIR': str(appdata), 'PORTICO_BIND': f'127.0.0.1:{args.port}',
                         'PORTICO_SETUP_HOSTS': f'localhost:{args.port},127.0.0.1:{args.port}',
                         'PORTICO_FFMPEG': args.ffmpeg, 'PORTICO_FFPROBE': args.ffprobe,
-                        'GOMAXPROCS': '2', 'HOME': str(appdata)})
+                        'GOMAXPROCS': '2', 'HOME': str(appdata), 'TMPDIR': str(runtime_tmp)})
     handle = open(log, 'wb')
     os.chmod(log, 0o600)
     process = subprocess.Popen([str(binary)], stdout=handle, stderr=handle, stdin=subprocess.DEVNULL,

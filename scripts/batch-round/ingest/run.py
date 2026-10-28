@@ -106,6 +106,8 @@ def main():
 
     try:
         call('quota-create', [sys.executable, str(here / 'quota.py'), 'create', '--root', str(quota), '--execute'])
+        runtime_tmp = private_dir(volume / 'runtime-tmp', create=True)
+        os.environ['TMPDIR'] = str(runtime_tmp)
         call('baseline-media', [sys.executable, str(factory), 'media', '--root', str(volume / 'baseline'),
                                '--source', a.source, '--count', '1', '--distinct-copies', '--window-seconds', '7290',
                                '--out', str(private / 'media.json'), '--execute'])
@@ -113,7 +115,8 @@ def main():
                           '--appdata', str(appdata), '--media-facts', str(private / 'media.json'),
                           '--capabilities', a.capabilities, '--port', str(a.port), '--window-seconds', '7290', '--execute'])
         env = {**os.environ, 'PORTICO_DATA_DIR': str(appdata), 'PORTICO_BIND': f'127.0.0.1:{a.port}',
-               'PORTICO_SETUP_HOSTS': f'localhost:{a.port},127.0.0.1:{a.port}'}
+               'PORTICO_SETUP_HOSTS': f'localhost:{a.port},127.0.0.1:{a.port}',
+               'HOME': str(appdata), 'TMPDIR': str(runtime_tmp)}
         server = child('server', [a.server_binary], env)
         private_json(private / 'process.json', {'pid': server.pid, 'appdata': str(appdata)})
         watcher = child('quota-watch', [sys.executable, str(here / 'quota.py'), 'watch', '--root', str(quota),
