@@ -182,20 +182,27 @@ func (d Dependencies) directIdentityRoutes(mux *http.ServeMux) {
 		write(w, 200, out)
 	})
 	d.httpHandle(mux, "DELETE /v1/direct/profiles/{id}", func(w http.ResponseWriter, r *http.Request) {
-		var q struct {
-			ExpectedRevision     int64 `json:"expectedRevision"`
-			DeleteSavedResources bool  `json:"deleteSavedResources"`
-		}
-		if e := decode(w, r, &q); e != nil {
-			failure(w, e)
+		var q identity.ProfileRetirementRequest
+		if err := decode(w, r, &q); err != nil {
+			failure(w, err)
 			return
 		}
-		if e := d.Identity.DeleteDirectProfile(r.Context(), directBearer(r), r.PathValue("id"), q.ExpectedRevision, q.DeleteSavedResources); e != nil {
-			failure(w, e)
+		out, err := d.Identity.RetireDirectProfile(r.Context(), directBearer(r), r.PathValue("id"), q)
+		if err != nil {
+			failure(w, err)
 			return
 		}
-		w.WriteHeader(204)
+		write(w, 200, out)
 	})
+	d.httpHandle(mux, "GET /v1/direct/profiles/{id}/retirement", func(w http.ResponseWriter, r *http.Request) {
+		out, err := d.Identity.DirectProfileRetirement(r.Context(), directBearer(r), r.PathValue("id"), r.URL.Query().Get("lifetime"))
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		write(w, 200, out)
+	})
+
 	d.httpHandle(mux, "DELETE /v1/direct/trust", func(w http.ResponseWriter, r *http.Request) {
 		var q struct {
 			ProfileID      string `json:"profileId"`
