@@ -1091,6 +1091,12 @@ test('receiver carries an explicit Cast version into playback and private status
  const starts=h.calls.filter(c=>c.url.endsWith('/v1/playback/sessions')&&c.method==='POST');assert.equal(starts[0].body.versionId,'cut-a');await h.message('phone',{type:'status'});assert.equal(h.sent.filter(m=>m.body.type==='status').at(-1).body.versionId,'cut-a');
  await h.message('phone',{type:'load',itemId:'movie',versionId:'../bad'});assert.equal(h.calls.filter(c=>c.url.endsWith('/v1/playback/sessions')&&c.method==='POST').length,1,'a malformed version is not silently dropped');
 });
+test('receiver carries the selected semantic audio track into playback start (AUD-playback-V01)',async()=>{
+ const h=await harness();await h.message('phone',{type:'pair',code:'ABCD',origin:''});await h.message('phone',{type:'load',itemId:'movie',audioTrackId:'a2'});
+ const starts=h.calls.filter(c=>c.url.endsWith('/v1/playback/sessions')&&c.method==='POST');assert.equal(starts.length,1);assert.deepEqual(starts[0].body.audio,{trackId:'a2'});
+ await h.message('phone',{type:'load',itemId:'movie',audioTrackId:'../bad'});assert.equal(h.calls.filter(c=>c.url.endsWith('/v1/playback/sessions')&&c.method==='POST').length,1,'a malformed audio track is not sent');
+ await h.message('phone',{type:'load',itemId:'movie'});const last=h.calls.filter(c=>c.url.endsWith('/v1/playback/sessions')&&c.method==='POST').at(-1);assert.equal(last.body.audio,undefined,'no audio choice when the sender gave none');
+});
 test('CAF load carries its explicit version and subtitle request (AUD-playback-V02)',async()=>{
  const h=await harness();await h.message('phone',{type:'pair',code:'ABCD',origin:''});await h.interceptors.LOAD({senderId:'phone',media:{customData:{itemId:'movie',versionId:'cut-a',subtitleTrackId:'s3'}}});
  const start=h.calls.find(c=>c.url.endsWith('/v1/playback/sessions')&&c.method==='POST');assert.equal(start.body.versionId,'cut-a');assert.deepEqual(start.body.subtitles,{trackId:'s3'});

@@ -27,7 +27,7 @@
  *
  * Sender protocol:
  *   pair  {displayName}                         → paired | pair-pending | pair-failed {code: 'tv_busy' | …}
- *   load  {title, subtitle, seriesTitle, season, episode, kind, artworkPath, subtitleTrackId, versionId}
+ *   load  {title, subtitle, seriesTitle, season, episode, kind, artworkPath, subtitleTrackId, versionId, audioTrackId}
  *   controller receives takeover-requested {requester} and replies takeover {allow}
  *   a replaced controller receives {type: 'replaced'}
  *
@@ -779,7 +779,7 @@
     return [d.video, d.audio, d.subtitles].some(function (x) { return !!x && (x.action === 'transcode' || x.action === 'burn'); });
   }
   function track(session) {
-    return {id: session.id, revision: session.revision, itemId: session.itemId || '', versionId: session.versionId, generation: session.presentation.generation, serverSeek: serverSeek(session), queue: queueRef(session.queue), presentation: session.presentation, subtitleTrackId: session.presentation.subtitle ? session.presentation.subtitle.trackId : 'off'};
+    return {id: session.id, revision: session.revision, itemId: session.itemId || '', versionId: session.versionId, audioTrackId: session.presentation.audio && session.presentation.audio.trackId, generation: session.presentation.generation, serverSeek: serverSeek(session), queue: queueRef(session.queue), presentation: session.presentation, subtitleTrackId: session.presentation.subtitle ? session.presentation.subtitle.trackId : 'off'};
   }
   /** CAF's load request for a session's presentation. */
   function loadRequest(session, image, autoplay,lease) {
@@ -840,10 +840,11 @@
   }
   /** Starts a v1 session for the item and answers CAF's load request for it. A session already
    * playing here is replaced in the same request, so this TV holds one playback slot. */
-  async function resolvePlayback(itemId, startSeconds, identity, subtitleTrackId, queue,lease,pending,attempt,versionId) {
+  async function resolvePlayback(itemId, startSeconds, identity, subtitleTrackId, queue,lease,pending,attempt,versionId,audioTrackId) {
     requireLease(lease);
     if (!session || !manager || !/^[A-Za-z0-9_-]{1,128}$/.test(itemId)) throw new Error('playback_unavailable');
     if (versionId !== undefined && (typeof versionId !== 'string' || !/^[A-Za-z0-9._:-]{1,128}$/.test(versionId))) throw new Error('invalid_cast_version');
+    if (audioTrackId !== undefined && (typeof audioTrackId !== 'string' || !/^[A-Za-z0-9._:-]{1,128}$/.test(audioTrackId))) throw new Error('invalid_cast_audio');
     clearTimeout(reportTimer); clearTimeout(bufferingTimer);
     var previousOwner=playback,replaces=previousOwner&&previousOwner.id,requestedMeta=identity||null;
     showLoading(requestedMeta);
@@ -852,6 +853,8 @@
     requireLease(lease);
     var body = {itemId: itemId, state: 'playing'};
     if (versionId !== undefined) body.versionId = versionId;
+    // The server resolves this semantic track ID for the receiver's own version.
+    if (audioTrackId !== undefined) body.audio = {trackId: audioTrackId};
     if (Number.isFinite(startSeconds)) body.startPositionMs = Math.round(Math.max(0, startSeconds) * 1000); else body.startFrom = 'resume';
     if (replaces) body.replacesSessionId = replaces;
     if(queue&&!queueRef(queue))throw new Error('invalid_cast_queue');
@@ -934,18 +937,18 @@
     reportSeq = 0; reportFailures = 0;
     return load;
   }
-  function startPlayback(itemId,startSeconds,identity,subtitleTrackId,queue,lease,pending,versionId) { return commandQueue(lease,async function(){
+  function startPlayback(itemId,startSeconds,identity,subtitleTrackId,queue,lease,pending,versionId,audioTrackId) { return commandQueue(lease,async function(){
     requireLease(lease);recoveries=0;networkRetries=0;
     var captured,attempt={adopted:false};
     if(queue&&queue.transferId){
-      var digest=JSON.stringify({itemId:itemId,startSeconds:startSeconds,subtitleTrackId:subtitleTrackId,queue:queue,versionId:versionId}),now=Date.now();
+      var digest=JSON.stringify({itemId:itemId,startSeconds:startSeconds,subtitleTrackId:subtitleTrackId,queue:queue,versionId:versionId,audioTrackId:audioTrackId}),now=Date.now();
       transferStarts.forEach(function(value,key){if(value.expires<=now)transferStarts.delete(key);});
       captured=transferStarts.get(queue.transferId);
       if(captured&&(captured.digest!==digest||captured.scope!==scope||captured.origin!==base))throw new Error('cast_transfer_changed');
       if(captured&&captured.accepted)return captured.accepted;
       if(!captured){if(transferStarts.size>=8)throw new Error('cast_transfer_busy');captured={digest:digest,scope:scope,origin:base,expires:now+180000};transferStarts.set(queue.transferId,captured);}
     }
-    try{var load=await resolvePlayback(itemId,startSeconds,identity,subtitleTrackId,queue,lease,pending,attempt,versionId);var startedOwner=attempt.owner;if(playback!==startedOwner)throw new Error('occurrence_replaced');recoveries=0;networkRetries=0;await loadMedia(load,lease,attempt);requireLease(lease);if(playback!==startedOwner)throw new Error('occurrence_replaced');attempt.adopted=true;showPlaying();scheduleReport(0);refreshCatalogueDisplay({id:playback.id,itemId:playback.itemId,presentation:{generation:playback.generation}},load.media.contentId,lease);if(captured)captured.accepted=playback;return playback;}
+    try{var load=await resolvePlayback(itemId,startSeconds,identity,subtitleTrackId,queue,lease,pending,attempt,versionId,audioTrackId);var startedOwner=attempt.owner;if(playback!==startedOwner)throw new Error('occurrence_replaced');recoveries=0;networkRetries=0;await loadMedia(load,lease,attempt);requireLease(lease);if(playback!==startedOwner)throw new Error('occurrence_replaced');attempt.adopted=true;showPlaying();scheduleReport(0);refreshCatalogueDisplay({id:playback.id,itemId:playback.itemId,presentation:{generation:playback.generation}},load.media.contentId,lease);if(captured)captured.accepted=playback;return playback;}
     catch(e){await cleanupFailedLoad(attempt);if(leaseCurrent(lease)&&(!attempt.owner||!playback||playback===attempt.owner))showError(e&&(e.code||e.message));throw e;}
   }); }
 
@@ -1073,7 +1076,7 @@
       if (playback !== operation.owner) return;
       // A stall restart retains the current queue occurrence and session choices.
       var subtitle = selected.text && selected.text.length === 0 && owner.presentation.subtitle && owner.presentation.subtitle.delivery === 'sidecar' ? 'off' : owner.subtitleTrackId;
-      var load = await resolvePlayback(owner.itemId,at,identity,subtitle,owner.queue,undefined,undefined,undefined,owner.versionId);
+      var load = await resolvePlayback(owner.itemId,at,identity,subtitle,owner.queue,undefined,undefined,undefined,owner.versionId,owner.audioTrackId);
       operation.owner = playback;load.autoplay = !wasPaused;
       await loadMedia(load,undefined,undefined,selected);showPlaying();scheduleReport(0);
     });}).catch(function(e){
@@ -1321,7 +1324,7 @@
       if (!custom.itemId || fromOther(request)) { return null; }
       var lease;try{lease=await controllerAuthority(request.senderId);}catch(e){return null;}
       var identity = displayMeta(custom) || (request.media.metadata ? displayMeta({title: request.media.metadata.title, subtitle: request.media.metadata.subtitle || request.media.metadata.seriesTitle}) : null);
-      return commandQueue(lease,function(){recoveries=0;networkRetries=0;return resolvePlayback(custom.itemId,custom.startSeconds,identity,custom.subtitleTrackId,undefined,lease,undefined,undefined,custom.versionId);}).then(function(load){requireLease(lease);platformOccurrence={id:playback.id,generation:playback.generation,contentId:load.media.contentId};showPlaying();scheduleReport(0);return load;}).catch(function(e){if(leaseCurrent(lease))showError(e&&(e.code||e.message));return null;});
+      return commandQueue(lease,function(){recoveries=0;networkRetries=0;return resolvePlayback(custom.itemId,custom.startSeconds,identity,custom.subtitleTrackId,undefined,lease,undefined,undefined,custom.versionId,custom.audioTrackId);}).then(function(load){requireLease(lease);platformOccurrence={id:playback.id,generation:playback.generation,contentId:load.media.contentId};showPlaying();scheduleReport(0);return load;}).catch(function(e){if(leaseCurrent(lease))showError(e&&(e.code||e.message));return null;});
     });
     // Play and pause are the player's own; the timeline reports them. A seek the server must
     // produce again is sent to it and the new presentation loaded here instead.
@@ -1409,7 +1412,7 @@
           startPlayback(String(message.itemId || ''), typeof message.startSeconds === 'number' ? message.startSeconds : undefined, displayMeta(message), message.subtitleTrackId, queueRef(message.queue),commandLease,function(evidence){
             requireLease(commandLease);
             if(typeof message.requestId==='string'&&/^[A-Za-z0-9._:-]{1,128}$/.test(message.requestId))reply({type:'load-pending',requestId:message.requestId,itemId:String(message.itemId||''),startId:evidence.startId,sequence:evidence.sequence,controller:controllerStamp(commandLease)});
-          },message.versionId).then(function (accepted) {
+          },message.versionId,message.audioTrackId).then(function (accepted) {
             requireLease(commandLease);
             if (typeof message.requestId === 'string' && /^[A-Za-z0-9._:-]{1,128}$/.test(message.requestId)) reply({type:'loaded',requestId:message.requestId,itemId:accepted ? accepted.itemId : ''});
             broadcast();
