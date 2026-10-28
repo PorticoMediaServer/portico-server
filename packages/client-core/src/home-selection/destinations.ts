@@ -44,7 +44,10 @@ export class HomeSelectionDestinations {
     this.collection = new PersonalSavedService(options.api, savedScope, options.requestId);
     this.state = {kind, phase: 'loading', rows: [], jobs: [], receipt: null, query: '', next: false, previous: false, destination: null, error: null, results: []};
   }
-  private active() {if (this.closed || this.signal.aborted || !this.current()) throw selectionExecutionError('cancelled');}
+  private active() {
+    if (this.closed || this.signal.aborted || !this.current()) throw selectionExecutionError('cancelled');
+    if (this.state.kind === 'playlist' && this.target.mode === 'query' && this.target.summary.unavailableActions?.playlist) throw selectionExecutionError('query-destination-unavailable');
+  }
   private update(patch: Partial<HomeSelectionPicker>) {this.active(); this.state = Object.freeze({...this.state, ...patch}); this.publish(this.state);}
   async load(query = this.query, cursor?: string, history: (string | undefined)[] = []) {
     this.active();

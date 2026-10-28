@@ -51,6 +51,7 @@ export type SelectionLibrary =
 export type SelectionUnavailableActions = Readonly<{
   play?: 'unsupported-sort';
   queue?: 'unsupported-sort';
+  playlist?: 'unsupported-sort';
   metadataPreview?: 'preview-limit';
 }>;
 export type SelectionSummary = Readonly<{

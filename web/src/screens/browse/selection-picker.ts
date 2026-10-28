@@ -37,7 +37,10 @@ export class LibraryPickerProducer {
   }
   private readonly api: EntryActionPorts['api'];
   private current = () => !this.lifetime.signal.aborted && this.ports.isCurrent();
-  private check() {if (!this.current()) throw new DOMException('Picker authority changed', 'AbortError');}
+  private check() {
+    if (!this.current()) throw new DOMException('Picker authority changed', 'AbortError');
+    if (this.kind === 'playlist' && queryTarget(this.targets) && this.targets.summary.unavailableActions?.playlist) throw new Error('query-destination-unavailable');
+  }
   private update = (state: HomeSelectionPicker) => {if (this.current()) {this.state = state; this.publish(state);}};
   private run(work: () => Promise<void>): Promise<void> {
     this.check();
