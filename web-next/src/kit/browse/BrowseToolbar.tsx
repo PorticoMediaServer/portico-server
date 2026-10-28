@@ -4,7 +4,7 @@ import type {BrowseSortCapability, BrowseSortSelection} from '@core/browse';
 import {sortDirectionKind} from '@core/presentation/browse-toolbar';
 import type {BrowseToolbarModel} from '@core/presentation/kit-model';
 import {Button, Chip, Segmented} from '../controls';
-import {MenuRow, Popover} from '../overlays';
+import {Menu, MenuRow} from '../overlays';
 import {Icon, type IconName} from '../Icon';
 import type {AppliedChip, BrowseLabels, BrowsePlatform, BrowseView, CardSizeControl, SaveViewControl} from './types';
 import styles from './browse.module.css';
@@ -49,14 +49,15 @@ export function SortMenu({sorts, value, onValueChange, label, open: controlledOp
     if (next) onValueChange(next);
     setOpen(false);
   };
-  return <Popover returnFocusRef={triggerRef} open={open} onOpenChange={setOpen} title={t('next.browse.sortBy')} accessibilityLabel={t('next.browse.sortBy')} placement="bottom-end" width={300} className={styles.sortMenu}
-    trigger={<Chip ref={triggerRef} variant="default" icon="i-sort" iconSize={18} trailingIcon="i-down" trailingSize={16} className={styles.sortTrigger} data-saved={variant === 'saved' || undefined} aria-expanded={open}><span className={styles.sortLabel}>{selected ? label(selected) : t('next.browse.sort')}{showOrder && <>{variant === 'saved' && <span className={styles.orderSeparator} aria-hidden="true" />}<span className={styles.direction}>{sortDirectionLabel(value.field, value.direction)}</span></>}</span></Chip>}>
+  return <Menu presentation="anchored" returnFocusRef={triggerRef} open={open} onOpenChange={setOpen} title={t('next.browse.sortBy')} accessibilityLabel={t('next.browse.sortBy')} placement="bottom-end" width={300} className={styles.sortMenu}
+    trigger={<Chip ref={triggerRef} variant="default" icon="i-sort" iconSize={18} trailingIcon="i-down" trailingSize={16} className={styles.sortTrigger} data-saved={variant === 'saved' || undefined} aria-label={[selected ? label(selected) : t('next.browse.sort'), value.flippable ? sortDirectionLabel(value.field, value.direction) : undefined].filter(Boolean).join(', ')} aria-expanded={open}><span className={styles.sortLabel}>{selected ? label(selected) : t('next.browse.sort')}{showOrder && <>{variant === 'saved' && <span className={styles.orderSeparator} aria-hidden="true" />}<span className={styles.direction}>{sortDirectionLabel(value.field, value.direction)}</span></>}</span></Chip>}>
     <div className={styles.menuHeading}>{t('next.browse.sortBy')}</div>
-    {sorts.map(sort => <MenuRow key={sort.id} selected={sort.id === value.field} onClick={() => pick(sort)} description={sort.expensive ? t('next.browse.expensive') : undefined}>{label(sort)}</MenuRow>)}
+    {sorts.map(sort => <MenuRow key={sort.id} role="menuitemradio" aria-checked={sort.id === value.field} data-menu-item="" tabIndex={-1}
+      selected={sort.id === value.field} onClick={() => pick(sort)} description={sort.expensive ? t('next.browse.expensive') : undefined}>{label(sort)}</MenuRow>)}
     {showOrder && <div className={styles.sortOrder}><div className={styles.menuHeading}>{t('next.browse.order')}</div>
       <Segmented variant="browse" value={value.direction} aria-label={t('next.browse.order')} onValueChange={direction => { if ((direction === 'asc' || direction === 'desc') && selected.directions.includes(direction)) onValueChange({field: value.field, direction}); }}
         items={[...selected.directions].sort(direction => direction === selected.defaultDirection ? -1 : 1).map(direction => ({value: direction, label: sortDirectionLabel(value.field, direction)}))}/></div>}
-  </Popover>;
+  </Menu>;
 }
 export function ViewToggle({value, onValueChange}: BrowseView) {
   return <div className={styles.viewToggle} role="group" aria-label={t('next.browse.view')}>
@@ -66,10 +67,11 @@ export function ViewToggle({value, onValueChange}: BrowseView) {
 }
 export function CardSizeButton({value, options, onValueChange}: CardSizeControl) {
   const [open, setOpen] = useState(false);
-  return <Popover open={open} onOpenChange={setOpen} title={t('next.browse.cardSize')} accessibilityLabel={t('next.browse.cardSize')} placement="bottom-end" width={180}
+  return <Menu presentation="anchored" open={open} onOpenChange={setOpen} title={t('next.browse.cardSize')} accessibilityLabel={t('next.browse.cardSize')} placement="bottom-end" width={180}
     trigger={<Button variant="icon" size="small" icon="i-size" iconOnly aria-label={t('next.browse.cardSize')}/>}>
-    {options.map(option => <MenuRow key={option.value} selected={option.value === value} onClick={() => { onValueChange(option.value); setOpen(false); }}>{option.label}</MenuRow>)}
-  </Popover>;
+    {options.map(option => <MenuRow key={option.value} role="menuitemradio" aria-checked={option.value === value} data-menu-item="" tabIndex={-1}
+      selected={option.value === value} onClick={() => {onValueChange(option.value); setOpen(false);}}>{option.label}</MenuRow>)}
+  </Menu>;
 }
 export function SaveViewButton({canSave, onSave}: SaveViewControl) {
   return <Button variant="text" size="small" icon="i-save" className={styles.saveView} disabled={!canSave} onClick={onSave}>{t('next.browse.saveView')}</Button>;

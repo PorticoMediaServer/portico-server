@@ -66,11 +66,11 @@ export function DefaultHint({value, effectiveSource, onReset, variant = 'default
 }
 
 export type SettingOption = Readonly<{value: string; label: string; description?: string}>;
-export function ChoiceMatrix({choices, rows, onChange, label}: {choices: readonly SettingOption[]; rows: readonly {id: string; label: string; icon?: IconName; value: string; hint?: ReactNode}[]; onChange: (id: string, value: string) => void; label: string}) {
+export function ChoiceMatrix({choices, rows, onChange, label, disabled}: {choices: readonly SettingOption[]; rows: readonly {id: string; label: string; icon?: IconName; value: string; hint?: ReactNode}[]; onChange: (id: string, value: string) => void; label: string; disabled?: boolean}) {
   const instance = useId();
   return <div className={styles.matrix} aria-label={label} style={{'--choice-columns': choices.length} as CSSProperties}>
     <div className={styles.matrixHead} aria-hidden="true"><span />{choices.map(choice => <span key={choice.value}>{choice.label}{choice.description && <small>{choice.description}</small>}</span>)}</div>
-    {rows.map(row => <fieldset key={row.id} className={styles.matrixRow}><legend>{row.label}</legend><span className={styles.matrixLabel}>{row.icon && <Icon name={row.icon} size={20} />}{row.label}{row.hint}</span>{choices.map(choice => <label key={choice.value} className={styles.matrixChoice}><input type="radio" name={`${instance}-${row.id}`} value={choice.value} checked={row.value === choice.value} onChange={() => onChange(row.id, choice.value)} aria-label={choice.label} /><span className={styles.radio} /></label>)}<div className={styles.phoneChoice}><Select aria-label={row.label} options={choices} value={row.value} onValueChange={value => onChange(row.id, value)} /></div></fieldset>)}
+    {rows.map(row => <fieldset key={row.id} className={styles.matrixRow} disabled={disabled}><legend>{row.label}</legend><span className={styles.matrixLabel}>{row.icon && <Icon name={row.icon} size={20} />}{row.label}{row.hint}</span>{choices.map(choice => <label key={choice.value} className={styles.matrixChoice}><input type="radio" name={`${instance}-${row.id}`} value={choice.value} checked={row.value === choice.value} onChange={() => {if (!disabled) onChange(row.id, choice.value);}} aria-label={choice.label} /><span className={styles.radio} /></label>)}<div className={styles.phoneChoice}><Select aria-label={row.label} disabled={disabled} options={choices} value={row.value} onValueChange={value => {if (!disabled) onChange(row.id, value);}} /></div></fieldset>)}
   </div>;
 }
 export function ChoiceCards({label, options, value, onChange}: {label: string; options: readonly SettingOption[]; value: string; onChange: (value: string) => void}) {

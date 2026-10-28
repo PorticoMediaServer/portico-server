@@ -7,6 +7,7 @@ import type {ShellAssemblyContext} from './bootstrap';
 import {activityPanelView, type ActivityIssueAction} from './activity-model';
 import {defaultI18n} from '@i18n';
 import {Icon} from '../kit/Icon';
+import {activityIndicator} from './activity-indicator';
 
 export type OwnerActivityProps = Readonly<{presentation?: 'topbar' | 'rail' | 'sidebar'; className?: string}>;
 
@@ -33,11 +34,14 @@ export function createOwnerActivity(context: ShellAssemblyContext, time: TimeEnv
     const retry = () => { void service.retry(); };
     const view = activityPanelView(snapshot, context.facts.serverName, time, {onDashboard, onRetry: retry, openUpdate, openIssue});
     if (presentation !== 'topbar') {
-      const count = view.phase === 'ready' ? view.streamCount : undefined;
-      return <button type="button" className={className} data-nav-activity data-icon-only={presentation === 'rail' || undefined}
-        aria-label={count === undefined ? defaultI18n.t('next.shell.activity') : defaultI18n.t('next.shell.activityLabel', {count})} onClick={() => onDashboard()}>
+      const {count, update, majorIssue, busy, dot} = activityIndicator(view);
+      const activityLabel = count === undefined ? defaultI18n.t('next.shell.activity') : defaultI18n.t(update ? 'next.shell.activityLabelUpdate' : 'next.shell.activityLabel', {count});
+      const label = majorIssue ? defaultI18n.t('next.shell.activityLabelMajor', {activity: activityLabel, title: majorIssue.title}) : activityLabel;
+      return <button type="button" className={className} data-nav-activity data-nav-busy={busy || undefined} data-icon-only={presentation === 'rail' || undefined}
+        aria-label={label} onClick={() => onDashboard()}>
         <Icon name="i-act" size={22} />{presentation === 'sidebar' && <span data-nav-label>{defaultI18n.t('next.shell.activity')}</span>}
         {count !== undefined && count > 0 && <span data-nav-count aria-hidden="true">{count}</span>}
+        {dot && <span data-nav-dot={dot} aria-hidden="true" />}
       </button>;
     }
     return <TopBarActivity viewerRole="owner" view={view} open={open} onOpenChange={setOpen} />;

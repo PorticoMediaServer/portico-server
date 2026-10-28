@@ -21,6 +21,11 @@
 .form > [data-variant="auth"]:has(input[data-filled]) > div { background: rgba(64,159,212,.13); }
 .form input:-webkit-autofill { box-shadow: 0 0 0 1000px var(--color-raised-high) inset; -webkit-text-fill-color: var(--color-text); }
 .submit { width: 100%; margin-top: 8px; }
+.submit[data-retry-waiting] { background: rgba(237,245,250,.16); color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
+.signInLabel { display: grid; }
+.signInLabel > span { grid-area: 1 / 1; transition: opacity var(--motion-quick) var(--ease-out); }
+.signInLabel > [aria-hidden="true"] { opacity: 0; }
+.form [data-variant="auth"]:has(input[aria-invalid="true"]) > div { box-shadow: inset 0 0 0 1.5px var(--color-danger); }
 .handoffSubmit { width: 100%; }
 .links { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 26px; margin-top: 22px; font-size: 15px; line-height: normal; font-weight: 700; }
 .links a, .links button { color: var(--color-accent-strong); text-decoration: none; background: none; border: 0; padding: 0; font: inherit; cursor: pointer; }
@@ -42,6 +47,8 @@
 .reveal { display: inline-flex; align-items: center; gap: 6px; padding: 0; border: 0; background: none; color: var(--color-text-tertiary); font-size: 14px; font-weight: 700; cursor: pointer; }
 .error { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-radius: 12px; font-size: 15px; line-height: 1.45; margin: 0 0 18px; background: rgba(243,139,136,.1); box-shadow: inset 0 0 0 1px rgba(243,139,136,.32); }
 .error > svg { flex: none; margin-top: 1px; color: var(--color-danger); }
+.error.wait { background: rgba(232,188,106,.1); box-shadow: inset 0 0 0 1px rgba(232,188,106,.3); }
+.error.wait > svg { color: var(--color-amber); }
 .stage[data-layout="center"] .content { align-items: center; text-align: center; margin: 0; width: 100%; }
 /* The picker heading is left-aligned over centred faces (auth.html 13 `.who h1`: text-align
    start inside a centred flex column), not the centred PIN copy of the same stage. */
@@ -56,11 +63,16 @@
 .codeBoxes input { position: absolute; inset: 0; z-index: 1; width: 100%; opacity: 0; cursor: text; }
 .codeBoxes > span { width: 56px; height: 64px; border-radius: 12px; display: grid; place-items: center; font-size: 28px; font-weight: 800; background: rgba(7,16,24,.62); box-shadow: inset 0 0 0 1px var(--color-line-strong); backdrop-filter: blur(16px); }
 .pin .codeBoxes > span { width: 68px; height: 76px; }
-.codeBoxes > [data-filled]::after { content: ''; width: 14px; height: 14px; border-radius: 50%; background: var(--color-text); }
+.codeBoxes[data-pin] > span::after { content: ''; grid-area: 1 / 1; width: 14px; height: 14px; border-radius: 50%; background: var(--color-text); opacity: 0; transition: opacity var(--motion-quick) var(--ease-out); }
+.codeBoxes[data-pin] > [data-filled]::after { opacity: 1; }
+.codeBoxes[data-pin] > span { transition: box-shadow var(--motion-quick) var(--ease-out); }
+.codeBoxes[data-pin] > [data-current]::before { grid-area: 1 / 1; }
 .codeBoxes > [data-current] { box-shadow: inset 0 0 0 1.5px var(--color-accent-strong); }
 .codeBoxes > [data-current]::before { content: ''; width: 2px; height: 30px; border-radius: 1px; background: var(--color-accent-strong); }
 .codeBoxes[data-error] > span { box-shadow: inset 0 0 0 1.5px var(--color-danger); }
 .codeError { color: var(--color-danger); font-size: 13.5px; font-weight: 600; line-height: 1.45; margin: 8px 0 0; }
+.pin .codeError { animation: pinError var(--motion-standard) var(--ease-out); }
+@keyframes pinError { from { opacity: 0; } to { opacity: 1; } }
 .remember { display: flex; align-items: center; gap: 12px; font-size: 15px; font-weight: 600; color: var(--color-text-secondary); margin: 26px 0; }
 .remember input { appearance: none; margin: 0; width: 24px; height: 24px; border-radius: 7px; box-shadow: inset 0 0 0 2px var(--color-line-strong); }
 .remember input:checked { background: var(--color-accent-strong); box-shadow: none; }
@@ -239,6 +251,18 @@
   .pinStage .pinActions button:last-child { padding: 0; height: auto; font-size: 15px; }
   .pinStage .phoneProfileBack { position: absolute; z-index: 2; top: 50px; left: 8px; display: flex; align-items: center; gap: 6px; height: 38px; padding: 0 6px 0 0; border: 0; background: none; color: var(--color-text-secondary); font-size: 16px; font-weight: 600; }
 }
+
+@media (min-width: 600px) and (max-width: 1023px) {
+  .profilesStage .pickerTitle { font-size: 54px !important; margin-bottom: 48px !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .signInLabel > span, .codeBoxes[data-pin] > span::after { transition: opacity var(--motion-reduced) linear; }
+  .codeBoxes[data-pin] > span { transition: none; }
+  .pin .codeError { animation-duration: var(--motion-reduced); animation-timing-function: linear; }
+}
+:global([data-reduce-motion="true"]) .signInLabel > span, :global([data-reduce-motion="true"]) .codeBoxes[data-pin] > span::after { transition: opacity var(--motion-reduced) linear; }
+:global([data-reduce-motion="true"]) .codeBoxes[data-pin] > span { transition: none; }
+:global([data-reduce-motion="true"]) .pin .codeError { animation-duration: var(--motion-reduced); animation-timing-function: linear; }
 
 /* The same stage inside a dialog: no page backdrop, wordmark or legal footer. */
 .stage[data-bare] { min-height: 0; overflow: visible; background: transparent; }

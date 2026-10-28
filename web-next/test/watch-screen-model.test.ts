@@ -18,7 +18,6 @@ import {scrubImageStyle, watchPreviewFrame} from '../src/screens/watch/preview.t
 import {dispatchWatchMarker, watchUndoOffer} from '../src/screens/watch/policy.ts';
 import {dispatchWatchVersion, watchVersionRows} from '../src/screens/watch/versions.ts';
 import {WatchPictureInput} from '../src/screens/watch/picture.ts';
-import {browserMusicSignal} from '../src/player/music-signal.ts';
 
 function previewSet() {
   const id = 'a'.repeat(64);
@@ -474,27 +473,4 @@ test('the actual screen renders one empty picture target and real identity, with
   assert.doesNotMatch(render(pending), /class="watch" hidden/);
   dock.remote({id: 'cast', kind: 'cast', phase: 'playing', sequence: '2', playback, positionSeconds: 35}, 1000);
   assert.match(render(snapshot({dock: dock.getSnapshot()})), /class="watch" hidden/);
-});
-
-
-test('Music source presentation follows the selected audio, never a default track or converted output', () => {
-  const session = parseSession({id: 'session', revision: '1', kind: 'audio', role: 'local', state: 'playing', itemId: 'item', versionId: 'group',
-    presentation: {generation: 1, mode: 'stream', engine: 'native', url: '/v1/playback/sessions/session/media', audioTrackId: 'a2', decision: {audio: {action: 'transcode'}},
-      audioRender: {version: 2, mode: 'converted', id: 'audio', url: '/v1/playback/sessions/session/audio', container: 'flac', codec: 'flac', sampleRate: 48000, channels: 2, bitDepth: 16, durationFrames: 48000, trim: {startFrames: 0, endFrames: 0, source: 'none'}}}});
-  assert.equal(session.presentation.audio?.mode, 'converted');
-  const version: MediaVersion = {id: 'group', label: 'label must never become a fact', durationMs: 1000, parts: [], video: [], subtitles: [], audio: [
-    {id: 'a1', codec: 'aac', default: true, commentary: false, visualImpaired: false, atmos: false, sampleRate: 44100, bitDepth: 16},
-    {id: 'a2', codec: 'wavpack', default: false, commentary: false, visualImpaired: false, atmos: false, sampleRate: 96000, bitDepth: 24},
-  ]};
-  const options: PlaybackOptions = {itemId: 'item', kind: 'song', versions: [version], markers: [], chapters: [], qualities: []};
-  const shown = snapshot();
-  const music = snapshot({session, options, presentation: {...shown.presentation!, kind: 'music', subject: {kind: 'music', item: {id: 'item', kind: 'song', title: 'Actual song'}}},
-    dock: {local: {fence, kind: 'music', expanded: true, playing: true, positionSeconds: 0, queue: null}} as WebPlaybackRuntimeSnapshot['dock'],
-    playback: {phase: 'ready', audioEffects: {rendering: false, settings: {normalization: 'off'}}} as WebPlaybackRuntimeSnapshot['playback']});
-  const signal = browserMusicSignal(music, undefined, false)!;
-  assert.equal(signal.steps.find(value => value.id === 'file')!.value, 'WavPack');
-  assert.equal(signal.source, 'WavPack', 'unknown lossless stays unknown instead of classifying WavPack from its codec');
-  assert.equal(browserMusicSignal({...music, session: {...session, presentation: {...session.presentation, audioTrackId: undefined}}}, undefined, false), null);
-  assert.equal(browserMusicSignal({...music, session: {...session, versionId: 'not-current'}}, undefined, false), null);
-  assert.equal(browserMusicSignal({...music, fence: {...fence, generation: 2}}, undefined, false), null);
 });

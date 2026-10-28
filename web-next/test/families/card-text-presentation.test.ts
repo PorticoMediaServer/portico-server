@@ -41,7 +41,7 @@ test('authored percentage and match decorate only exact canonical text and keep 
     extraCaption: [[{id: 'progress', role: 'reason', text: '46% read'}]],
     selection: {active: true, checked: false, onToggle() {}, onExit() {}},
   });
-  assert.match(html, /aria-label="Dune"/);
+  assert.match(html, /aria-labelledby="([^"]+)"[^>]*>[\s\S]*?<span id="\1" class="accessible">Dune<\/span>/);
   assert.match(html, /aria-label="Select Dune"/);
   assert.match(html, /<span class="title"><mark class="textMatch">Dune<\/mark><\/span>/);
   assert.match(html, /data-fact="progress" data-role="reason"><b class="textSecondary">46%<\/b> read<\/span>/);
@@ -95,7 +95,7 @@ test('all CardCaption media consumers forward only the declared optional present
   for (const element of [createElement(CoverCard, props), createElement(PosterCard, props), createElement(SquareCard, props), createElement(CircleCard, {...props, covers: []})]) {
     const html = renderToStaticMarkup(element);
     assert.match(html, /<mark class="textMatch">Dune<\/mark>/);
-    assert.match(html, /aria-label="Dune"/);
+    assert.match(html, /aria-labelledby="([^"]+)"[^>]*>[\s\S]*?<span id="\1" class="accessible">Dune<\/span>/);
     assert.doesNotMatch(html, /textPresentation=/i);
   }
 });

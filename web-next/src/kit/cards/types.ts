@@ -45,6 +45,8 @@ export type CardProps = Readonly<{
   disabled?: boolean;
   selection?: CardSelection;
   watched?: boolean;
+  /** The localized completion state when a card says Finished instead of Watched. */
+  watchedLabel?: string;
   isNew?: boolean;
   next?: boolean;
   /** Additional authored credit/reason rows, retaining semantic fact parts. */

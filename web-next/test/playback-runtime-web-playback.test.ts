@@ -13,7 +13,7 @@ import {queueItemInput} from '@core/queue-controller.ts';
 import {offeredQualities} from '@core/playback-v1/choices.ts';
 import type {V1Http} from '@core/playback-v1/http.ts';
 import {WebPlayback, PlayerSlot, failure, type PlaybackMediaPort, type WebPlaybackHost, type WebPlaybackNotice} from '../src/platform/playback/web-playback.ts';
-import {playbackFailure} from '../src/platform/playback/failure.ts';
+import {playbackFailure} from '@core/presentation/playback-failure.ts';
 /**
  * A media element and an hls.js that do only what a test tells them to, for the web media
  * player port and the playback path above it. Time is the test's own clock.

@@ -153,7 +153,7 @@ export function AccountSignInView({entry, form, takeReturn, takeMove, initialize
     <Button variant="ghost" disabled={busy} onClick={() => setRecoveryChoice(false)}>{defaultI18n.t('action.cancel')}</Button>
   </AuthStage>;
   if (state.phase === 'password' && state.server?.signIn === 'local') return <LocalServerSignIn key={input.inputEpoch} serverName={state.server.name} initialUsername={input.username}
-    busy={busy} error={failure} onSignIn={(username, password) => {setError(undefined); void form.signIn(username, password);}} onJoin={join}
+    busy={busy} error={failure} retryAt={input.retryAt} onSignIn={(username, password) => {setError(undefined); void form.signIn(username, password);}} onJoin={join}
     onForgotPassword={state.invitation ? undefined : openRecovery}
     onMoveCode={state.server.move === 'to_local' && !state.invitation ? () => openMember('code') : undefined} />;
   if (state.phase === 'portico' && state.server?.signIn === 'portico') return <PorticoServerSignIn serverName={state.server.name} busy={busy} error={failure} onContinue={continuePortico}

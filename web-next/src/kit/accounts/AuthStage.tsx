@@ -46,7 +46,7 @@ export function AuthCodeBoxes({length, value, onChange, onComplete, label, error
 }) {
   const id = useId(), input = useRef<HTMLInputElement>(null), [focused, setFocused] = useState(false);
   return <div className={styles.codeGroup}>
-    <div className={styles.codeBoxes} data-error={Boolean(error) || undefined} data-focused={focused || undefined} data-grouped={length === 6 && grouped || undefined} onClick={() => input.current?.focus()}>
+    <div className={styles.codeBoxes} data-pin={length === 4 || undefined} data-error={Boolean(error) || undefined} data-focused={focused || undefined} data-grouped={length === 6 && grouped || undefined} onClick={() => input.current?.focus()}>
       <input ref={input} type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]*" maxLength={length}
         autoFocus={autoFocus} disabled={disabled} aria-label={label} aria-invalid={Boolean(error) || undefined} aria-describedby={error ? id : undefined}
         value={value} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} onChange={event => {

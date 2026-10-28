@@ -22,7 +22,12 @@ test('build pins the existing browser floor, eight-character hashes and same-ori
 test('HTML guard precedes React and preserves the per-document nonce marker', () => {
   const html = read('../index.html'); assert.ok(html.indexOf('/browser-check.js') < html.indexOf('/src/main.tsx'));
   assert.match(html, /content="__PORTICO_STYLE_NONCE__"/); assert.match(read('../src/main.tsx'), /__webpack_nonce__/);
-  assert.doesNotMatch(html, /<style|style=|<script> /);
+  // The approved first paint needs a stylesheet in the document. It uses the
+  // same per-response CSP nonce; style attributes and inline scripts stay forbidden.
+  assert.doesNotMatch(html, /\sstyle=|<script> /);
+  const inlineStyles = [...html.matchAll(/<style\b([^>]*)>/g)];
+  assert.equal(inlineStyles.length, 1);
+  assert.equal(inlineStyles[0][1].trim(), 'nonce="__PORTICO_STYLE_NONCE__"');
 });
 test('browser guard substitutes catalogue words and stops unsupported engines before app bootstrap', () => {
   let source = ''; browserCheck(enUS).generateBundle.call({emitFile: (file: {source: string}) => { source = file.source; }});

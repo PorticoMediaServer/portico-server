@@ -22,6 +22,7 @@ import {lastKnownShell, rememberShell} from './last-known';
 import {browserAppSessionActions,signOutBrowserPorticoAccount,type BrowserAppSessionActions} from '../platform/app-sessions';
 import {browserConnectionEnvironment, restoreBrowserConnection, trackBrowserConnection, forgetBrowserConnection} from '../platform/server-connections';
 import {displayableTransportCode, launchFailure, retryDelayMs, serverIsStarting} from './connection-retry';
+import {bootRecoveryDeadline, bootRecoveryDelay, documentStartedAt} from './boot-state';
 import {browserEventStream, browserFeedEnvironment} from '../platform/event-feed';
 import {freshnessFor, type FreshnessRuntime} from '../platform/freshness';
 import {authenticatedArtwork, type ShellArtwork} from './artwork';
@@ -59,7 +60,8 @@ export type LaunchUnreachable = Readonly<{
   nextRetryAt: number;
   retrying: boolean;
 }>;
-export type ShellBootstrapSnapshot = Readonly<{phase: 'restoring' | 'signed-out' | 'ready' | 'error' | 'unreachable'; binding?: ShellBindings; context?: ShellAssemblyContext; entry?: boolean; error?: unknown; unreachable?: LaunchUnreachable}>;
+export type ShellBootstrapSnapshot = Readonly<{phase: 'restoring' | 'signed-out' | 'ready' | 'error' | 'unreachable'; binding?: ShellBindings; context?: ShellAssemblyContext; entry?: boolean; error?: unknown; unreachable?: LaunchUnreachable;
+  startedAt?: number; waiting?: Readonly<{serverName?: string}>}>;
 
 /** The saved address without credentials or paths; display only. */
 function savedHost(value: unknown): string {
@@ -125,7 +127,9 @@ async function readFacts(api: HttpLocalApi, session: LocalSession, preferences: 
 
 /** Restores only genuine protected state. No credentials or business data appear in source. */
 export class ShellBootstrap {
-  private state: ShellBootstrapSnapshot = Object.freeze({phase: 'restoring'});
+  private startedAt: number;
+  private started = false;
+  private state: ShellBootstrapSnapshot;
   private readonly listeners = new Set<() => void>();
   private epoch = 0;
   private controller?: AbortController;
@@ -134,17 +138,23 @@ export class ShellBootstrap {
   private disposed = false;
   private retryTimer?: ReturnType<typeof setTimeout>;
   private waitWakers?: () => void;
+  private recoveryWait?: () => void;
   private failure?: {attempt: number; firstFailureAt: number; startedAt: number; nextRetryAt: number};
   private launch?: {address: string; owner: boolean; serverId: string; family?: string};
   /** Exactly the error the restore call raised; a later bug must never read as "server away". */
   private transportError?: unknown;
   constructor(private readonly assemble: ShellAssembler, private readonly environment: {
+    /** Override the document launch epoch in deterministic hosts/tests. */
+    startedAt?: number;
     selected: Pick<typeof browserViewerStorage, 'read'>;
     restore: typeof restoreBrowserConnection;
     actions?: () => BrowserAppSessionActions;
     /** Closed Account Settings return: inspect the original access only. */
     readonlyAccess?: true;
-  } = {selected: browserViewerStorage, restore: restoreBrowserConnection}) {}
+  } = {selected: browserViewerStorage, restore: restoreBrowserConnection}) {
+    this.startedAt = environment.startedAt ?? documentStartedAt();
+    this.state = Object.freeze({phase: 'restoring', startedAt: this.startedAt});
+  }
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => { if (this.disposed) return () => {}; this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private publish(next: ShellBootstrapSnapshot) { if (this.disposed && next.phase !== 'signed-out') return; this.state = Object.freeze(next); for (const listener of this.listeners) listener(); }
@@ -171,8 +181,13 @@ export class ShellBootstrap {
     if (this.running) return this.running;
     this.transportError = undefined;
     this.fence();
-    // A retry keeps the drawn wait on screen; only a fresh launch shows the skeleton.
-    if (!retry) { this.clearWait(); this.publish({phase: 'restoring'}); }
+    // Retries share the original launch deadline. A later explicit opening gets
+    // its own wait, but never recreates the document's cold-start picture.
+    if (!retry) {
+      if (this.started) this.startedAt = Date.now();
+      this.started = true;
+      this.clearWait(); this.launch = undefined; this.publish({phase: 'restoring', startedAt: this.startedAt});
+    }
     else if (this.failure && this.state.phase === 'unreachable') this.publish({phase: 'unreachable', unreachable: {...this.state.unreachable!, retrying: true}});
     const epoch = this.epoch, controller = this.controller = new AbortController();
     const current = () => this.epoch === epoch && !controller.signal.aborted;
@@ -181,7 +196,7 @@ export class ShellBootstrap {
       if (serverIsStarting(error)) {this.waitAfterFailure(error, 'starting');return;}
       const category = this.transportError === error ? launchFailure(error, globalThis.navigator?.onLine) : 'other';
       if (category !== 'other') { this.waitAfterFailure(error, category); return; }
-      this.fence(); this.publish({phase: 'error', error});
+      this.clearWait(); this.fence(); this.publish({phase: 'error', error});
     }).finally(() => { if (this.running === task) this.running = undefined; });
     this.running = task; return task;
   };
@@ -194,10 +209,36 @@ export class ShellBootstrap {
     const nextRetryAt = now + retryDelayMs(attempt - 1);
     const wait = {attempt, firstFailureAt, startedAt: now, nextRetryAt};
     this.failure = wait;
-    this.publish({phase: 'unreachable', unreachable: this.unreachable(wait, category, error)});
+    const show = category === 'starting' || this.state.phase === 'unreachable'
+      || bootRecoveryDelay(this.startedAt, now, category === 'offline' || globalThis.navigator?.onLine === false) === 0;
+    this.publish({phase: show ? 'unreachable' : 'restoring', startedAt: this.startedAt,
+      waiting: this.state.waiting, unreachable: this.unreachable(wait, category, error)});
+    if (show) { this.recoveryWait?.(); this.recoveryWait = undefined; }
     clearTimeout(this.retryTimer);
     this.retryTimer = setTimeout(() => { this.retryTimer = undefined; void this.start(true); }, Math.max(0, nextRetryAt - Date.now()));
     this.armWaitWakers();
+  }
+
+  /** The first failed probe stays invisible. A slow in-flight probe can also
+   * reach the presentation deadline; it keeps its original request and guards. */
+  private armRecovery(current: () => boolean) {
+    this.recoveryWait?.(); this.recoveryWait = undefined;
+    if (this.state.phase !== 'restoring') return;
+    const deadline = bootRecoveryDeadline(this.startedAt, () => {
+      if (!current() || this.state.phase !== 'restoring') return;
+      const now = Date.now(), offline = globalThis.navigator?.onLine === false;
+      const facts = this.state.unreachable ?? this.unreachable({attempt: 0, firstFailureAt: now, startedAt: now, nextRetryAt: now}, offline ? 'offline' : 'timeout');
+      this.publish({phase: 'unreachable', unreachable: {...facts, ...(offline ? {category: 'offline' as const} : {}), retrying: !!this.running}});
+    });
+    const update = () => deadline.update(globalThis.navigator?.onLine === false);
+    globalThis.addEventListener?.('offline', update);
+    globalThis.addEventListener?.('online', update);
+    this.recoveryWait = () => {
+      deadline.dispose();
+      globalThis.removeEventListener?.('offline', update);
+      globalThis.removeEventListener?.('online', update);
+    };
+    update();
   }
 
   /** states.html#3 / desktop-app.html#15: a retry also runs at once when the
@@ -205,7 +246,7 @@ export class ShellBootstrap {
   private armWaitWakers() {
     this.disarmWaitWakers();
     const wake = () => {
-      if (!this.disposed && this.state.phase === 'unreachable' && !this.state.unreachable?.retrying) void this.retryNow();
+      if (!this.disposed && this.failure && !this.running && (this.state.phase === 'restoring' || this.state.phase === 'unreachable')) void this.retryNow();
     };
     const visibility = () => { if (globalThis.document?.visibilityState !== 'hidden') wake(); };
     globalThis.document?.addEventListener('visibilitychange', visibility);
@@ -244,6 +285,7 @@ export class ShellBootstrap {
 
   private clearWait() {
     this.disarmWaitWakers();
+    this.recoveryWait?.(); this.recoveryWait = undefined;
     if (this.retryTimer) { clearTimeout(this.retryTimer); this.retryTimer = undefined; }
     this.failure = undefined;
   }
@@ -255,6 +297,12 @@ export class ShellBootstrap {
     // Only what this saved launch already holds: the address used and the saved role.
     const viewer = selected.session?.viewer;
     this.launch = {address: savedHost(selected.serverUrl), owner: viewer?.role === 'owner', serverId: viewer?.serverId ?? '', family: selected.session.sessionFamilyId};
+    if (this.state.phase === 'restoring') {
+      const known = lastKnownShell(selected.session.sessionFamilyId);
+      const serverName = known?.serverName ?? (viewer?.serverId ? browserServerDisplay().name(viewer.serverId) : undefined);
+      this.publish({...this.state, startedAt: this.startedAt, waiting: {serverName}});
+      this.armRecovery(isCurrent);
+    }
     let restored: Awaited<ReturnType<typeof restoreBrowserConnection>>;
     try { restored = await this.environment.restore(selected.session); }
     catch (error) { this.transportError = error; throw error; }

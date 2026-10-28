@@ -11,6 +11,7 @@ import type {CardFactPresentation, CardProps, CardTextRun} from './types';
 import styles from './cards.module.css';
 import {useCardInteractionAdmission} from './use-interaction-admission';
 import {useRetainedLayoutPaint} from '../layout/retained-paint';
+import {cardDescription} from './accessibility';
 
 export const cx = (...names: (string | false | undefined)[]) => names.filter(Boolean).join(' ');
 
@@ -37,11 +38,13 @@ export function NotInterestedButton({onClick, className, disabled}: {onClick: ()
   </span>;
 }
 
-type FrameProps = CardProps & Readonly<{children: ReactNode; kind: string; primaryClassName?: string; playIcon?: 'i-play' | 'i-book' | 'i-pause'; playIconSize?: number; artworkRef?: RefObject<HTMLSpanElement | null>; overlay?: ReactNode; footer?: ReactNode}>;
+type FrameProps = CardProps & Readonly<{children: ReactNode; kind: string; primaryClassName?: string; playIcon?: 'i-play' | 'i-book' | 'i-pause'; playIconSize?: number; artworkRef?: RefObject<HTMLSpanElement | null>; overlay?: ReactNode; footer?: ReactNode; additionalDescription?: readonly (string | undefined)[]}>;
 
 /** Primary navigation and auxiliary actions are sibling buttons, never nested controls. */
-export function CardFrame({children, kind, primaryClassName, playIcon = 'i-play', playIconSize = 22, artworkRef, overlay, footer, ...props}: FrameProps) {
+export function CardFrame({children, kind, primaryClassName, playIcon = 'i-play', playIconSize = 22, artworkRef, overlay, footer, additionalDescription = [], ...props}: FrameProps) {
   const {model, onNavigate, onPlay, onMore, onNotInterested, selection: originalSelection, disabled, className, style, primaryRef} = props;
+  const accessibleId = useId(), titleId = `${accessibleId}-title`, descriptionId = `${accessibleId}-description`;
+  const description = cardDescription(props, [...additionalDescription, props.isNew ? defaultI18n.t('next.cards.new') : undefined, props.watched ? props.watchedLabel ?? defaultI18n.t('next.cards.watched') : undefined]);
   const interactionRoot = useRef<HTMLElement>(null), retained = useRetainedLayoutPaint();
   const selection = useCardInteractionAdmission(originalSelection, interactionRoot, disabled || retained);
   const hasAuxiliary = !!(onPlay || onMore || onNotInterested || selection);
@@ -92,15 +95,16 @@ export function CardFrame({children, kind, primaryClassName, playIcon = 'i-play'
   };
   return <article ref={interactionRoot} className={cx(styles.card, styles[kind], styles[`context-${props.context ?? 'shelf'}`], props.density === 'grid' && styles['context-grid'], selection?.active && styles.selecting, selection?.checked && styles.selected, selection?.preview && styles.range, !!holdGesture.hold && styles.holding, props.next && styles.next, className)} style={style} data-card-kind={kind} data-disabled={disabled || undefined}
     {...rangeInteraction}>
-    <button type="button" disabled={disabled} ref={primaryRef} className={cx(styles.primary, primaryClassName)} aria-label={model.title} aria-pressed={selection?.active ? selection.checked : undefined} onClick={click} onFocus={retained ? undefined : props.onFocus} onBlur={event => {holdGesture.cancel(); if (!retained) props.onBlur?.(event);}}
+    <button type="button" disabled={disabled} ref={primaryRef} className={cx(styles.primary, primaryClassName)} aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined} aria-pressed={selection?.active ? selection.checked : undefined} onClick={click} onFocus={retained ? undefined : props.onFocus} onBlur={event => {holdGesture.cancel(); if (!retained) props.onBlur?.(event);}}
       onKeyDown={event => { if (!retained && event.key === 'Escape') { holdGesture.cancel(); if (selection?.active) { event.preventDefault(); event.stopPropagation(); selection.onExit(); } } }}
       {...holdGesture.handlers}>
+      <span id={titleId} className={styles.accessible}>{model.title}</span>{description && <span id={descriptionId} className={styles.accessible}>{description}</span>}
       {artworkRef && <span ref={shadowRef} className={styles.artShadow} aria-hidden="true" />}
       {children}
     </button>
     {hasAuxiliary && <span className={cx(styles.auxiliary, !!artworkRef && styles.artAligned)}><span ref={auxiliaryRef} className={artworkRef ? styles.artAuxiliary : styles.cardAuxiliary}>
-    {onPlay && !selection?.active && <button type="button" disabled={disabled} className={styles.play} aria-label={props.playLabel ?? defaultI18n.t(playIcon === 'i-book' ? 'next.cards.read' : playIcon === 'i-pause' ? 'next.cards.pause' : 'next.cards.play')} onClick={() => {if (!retained) onPlay();}}><Icon name={playIcon} size={playIconSize} /></button>}
-    {onMore && <button type="button" disabled={disabled} className={styles.more} aria-label={defaultI18n.t('next.cards.more')} aria-haspopup="menu" aria-expanded={props.moreExpanded} onClick={event => {if (!retained) onMore(event.currentTarget);}}><Icon name="i-more" size={18} /></button>}
+    {onPlay && !selection?.active && <button type="button" disabled={disabled} className={styles.play} aria-label={`${props.playLabel ?? defaultI18n.t(playIcon === 'i-book' ? 'next.cards.read' : playIcon === 'i-pause' ? 'next.cards.pause' : 'next.cards.play')}: ${model.title}`} onClick={() => {if (!retained) onPlay();}}><Icon name={playIcon} size={playIconSize} /></button>}
+    {onMore && <button type="button" disabled={disabled} className={styles.more} aria-label={`${defaultI18n.t('next.cards.more')}: ${model.title}`} aria-haspopup="menu" aria-expanded={props.moreExpanded} onClick={event => {if (!retained) onMore(event.currentTarget);}}><Icon name="i-more" size={18} /></button>}
     {onNotInterested && <NotInterestedButton disabled={disabled} onClick={() => {if (!retained) onNotInterested();}} className={styles.notInterestedPosition} />}
     {selection && <button type="button" disabled={disabled} className={styles.selection} aria-label={defaultI18n.t('card.select', {title: model.title})} aria-describedby={selectionHint ? selectionHintId : undefined} aria-pressed={selection.checked} onClick={event => {event.stopPropagation(); if (!retained) selection.onToggle({range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'});}}>{selection.control ?? <SelectionCircle interactive={false} selected={selection.checked} selecting={selection.active} accessibilityLabel={model.title} />}</button>}
     {selectionHint && <span className={styles.selectionHint} id={selectionHintId} role="tooltip">{'shortcut' in selectionHint && selectionHint.shortcut && <kbd>{selectionHint.shortcut}</kbd>}{selectionHint.text}</span>}

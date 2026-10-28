@@ -6,6 +6,7 @@ import {Popover} from '../overlays/Popover';
 import {BottomSheet} from '../overlays/BottomSheet';
 import type {OverlayChange} from '../overlays/types';
 import {focusElement, focusable, useOverlayKeys, usePresence, useSurfaceMotion} from '../overlays/shared';
+import {ReaderSheetClose} from './ReaderSheetClose';
 import styles from './display.module.css';
 
 type DisplayOption = Readonly<{value: string; label: string; disabled?: boolean}>;
@@ -125,6 +126,7 @@ export function ReaderDisplayPopover({label, open, onOpenChange, anchorRef, ...c
 export function ReaderDisplaySheet({label, open, onOpenChange, anchorRef, ...controls}: ReaderDisplayProps) {
   return <BottomSheet open={open} onOpenChange={onOpenChange} title={label} accessibilityLabel={label} returnFocusRef={anchorRef}
     showCloseButton={false} fitContent className={styles.sheet} headerClassName={styles.sheetHeader} bodyClassName={styles.sheetBody}>
+    <ReaderSheetClose onClose={() => onOpenChange(false, 'close-button')}/>
     <ReaderDisplayControls {...controls} />
   </BottomSheet>;
 }

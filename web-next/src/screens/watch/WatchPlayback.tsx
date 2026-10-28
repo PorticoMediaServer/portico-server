@@ -36,6 +36,7 @@ import {dispatchWatchFeedback, watchFeedbackTarget} from './feedback';
 import {fenceKey, localVideoSurfaceActive, playbackPresentation, PlaybackPresentations, retainedPlaybackNotice} from '../../shell/playback-model';
 import {PlaybackMediaOwner} from '../../shell/playback-media-owner';
 import {useShellWidth} from '../../shell/viewport';
+import {ExpandedPlaybackFocus} from './expanded-focus';
 import styles from './playback-host.module.css';
 
 export type WatchPlaybackProps = Readonly<{binding?: WatchBindings; context?: WatchPlaybackContext; surfaces?: WatchSurfaces; geometry?: WatchGeometry; live?: LiveChromePort}>;
@@ -226,6 +227,14 @@ export function WatchPlayback({binding, context, surfaces, geometry, live}: Watc
     },
   } : undefined, [runtime, binding, cast, castAvailable, dockPanels,listening,snapshot]);
   const expanded = !!snapshot?.dock.local?.expanded;
+  const focusOwner = useRef<ExpandedPlaybackFocus | null>(null);
+  useLayoutEffect(() => {
+    const owner = new ExpandedPlaybackFocus(document); focusOwner.current = owner;
+    return () => {owner.dispose(); focusOwner.current = null;};
+  }, []);
+  useLayoutEffect(() => {
+    focusOwner.current?.update(host.current, expanded && !snapshot?.disposed && !remotePlaying);
+  });
   // A reused sequence from another runtime/session must never inherit an expiry.
   const noticeRuntime = useRef<{runtime?: WebShellPlaybackRuntime; epoch: number}>({epoch: 0});
   if (noticeRuntime.current.runtime !== runtime) noticeRuntime.current = {runtime, epoch: noticeRuntime.current.epoch + 1};
@@ -380,7 +389,7 @@ export function WatchPlayback({binding, context, surfaces, geometry, live}: Watc
   const videoGesture = useVideoGesture(binding, snapshot, phone && activeVideo && !snapshot?.nativeVideoSurfaceActive
     && !fullscreen && !pipActive && !drawnSurfaces.modal && !remoteState?.remote, videoCurrent, dockSlot, expandedSlot, musicBar);
   return <div ref={host} className={styles.dock} data-phone={phone} data-shell-dock data-watch-playback-host data-music-expanded={!phone && expanded && !remotePlaying && snapshot?.presentation?.kind === 'music' ? 'true' : undefined}>
-    {snapshot && dockBinding && <div ref={musicBar} className={styles.localDock} data-covered={!!remote} data-music-retained={!!musicMotion.scope || undefined} data-video-retained={videoGesture.retain && expanded || undefined} inert={musicMotion.open || videoGesture.retain && expanded || undefined} aria-hidden={musicMotion.open || videoGesture.retain && expanded || undefined}><DockHost state={snapshot.dock} presentations={presentations} binding={dockBinding} layout={phone ? 'phone' : 'desktop'} artSlotRef={dockSlot} videoSurface={!!activeVideo} artworkSurface={!!musicMotion.scope} retainExpandedMusic={!!musicMotion.scope} retainExpandedVideo={videoGesture.retain} videoGesture={videoGesture.port} videoGestureActive={videoGesture.active} />
+    {snapshot && dockBinding && <div ref={musicBar} className={styles.localDock} data-covered={!!remote} data-music-retained={!!musicMotion.scope || undefined} data-video-retained={videoGesture.retain && expanded || undefined} inert={expanded && !remotePlaying || undefined} aria-hidden={expanded && !remotePlaying || undefined}><DockHost state={snapshot.dock} presentations={presentations} binding={dockBinding} layout={phone ? 'phone' : 'desktop'} artSlotRef={dockSlot} videoSurface={!!activeVideo} artworkSurface={!!musicMotion.scope} retainExpandedMusic={!!musicMotion.scope} retainExpandedVideo={videoGesture.retain} videoGesture={videoGesture.port} videoGestureActive={videoGesture.active} />
       {!expanded && !remote && noticeIdentity && <CurrentListeningNotice key={noticeIdentity} snapshot={snapshot} phone={phone}/>}
       <DockNotice notice={currentNotice} nowMs={now} binding={dockBinding} phone={phone} /></div>}
     <MediaSurface gesturePaint={videoGesture.paint} finished={snapshot?.presentation?.finished} expanded={expanded} dockSlot={dockSlot} expandedSlot={expandedSlot} hidden={!activeVideo} nativeRenderActive={snapshot?.nativeVideoSurfaceActive} className={styles.surface}>

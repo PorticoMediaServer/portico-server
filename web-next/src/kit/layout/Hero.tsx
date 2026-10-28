@@ -100,7 +100,7 @@ export function Hero<T extends HeroCandidate>({candidates, renderArtwork, render
     {platform !== 'tv' && showNavigation && candidates.length > 1 && <div className={phone ? styles.dots : styles.thumbnails} role="tablist" aria-label={defaultI18n.t('next.layout.featuredTitles')}>
       {candidates.map((candidate, candidateIndex) => <button type="button" key={candidate.id} ref={element => { thumbRefs.current[candidateIndex] = element; }}
         id={`${id}-tab-${candidateIndex}`} className={phone ? styles.dot : styles.thumbnail} role="tab" tabIndex={candidateIndex === index ? 0 : -1}
-        aria-label={candidate.title} aria-controls={`${id}-panel`} aria-selected={candidateIndex === index} data-active={candidateIndex === index}
+        aria-label={candidate.title} aria-controls={`${id}-panel`} aria-selected={candidateIndex === index} data-active={candidateIndex === index} data-compact-hit-target={phone || undefined}
         onClick={() => choose(candidateIndex)} onKeyDown={event => {
           let next = candidateIndex;
           if (event.key === 'ArrowRight') next = (candidateIndex + 1) % candidates.length;

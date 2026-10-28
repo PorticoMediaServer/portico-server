@@ -2,7 +2,7 @@ import {useRef, useLayoutEffect, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import type {Library} from '@core/index.ts';
 import type {BrowseCount, BrowseNode} from '@core/browse.ts';
-import {Chip} from '../../kit/controls';
+import {Chip, RadioGroup, RadioItem} from '../../kit/controls';
 import type {BrowseController, BrowseState} from './controller';
 import {scopeTypes, type ScopeType} from './scope-types';
 import styles from './browse.module.css';
@@ -47,9 +47,9 @@ export function BrowseScopeChips({controller, libraries, reportError, labelFor}:
       ...(libraryIds ? [controller.parseNode({field: 'library', operator: 'in', value: libraryIds})] : [])], undefined, state);}
     catch (error) {reportError(error);}
   };
-  return <><div className={styles.scopeChips} role="radiogroup" aria-label={defaultI18n.t('next.browse.libraries')}><Chip variant="quick" role="radio" aria-checked={!selected} selected={!selected} count={label(all)} onClick={() => change()}>{defaultI18n.t('next.controls.all')}</Chip>
+  return <><RadioGroup className={styles.scopeChips} orientation="horizontal" value={!selected ? 'all' : groups.find(checked)?.kind ?? ''} onValueChange={value => change(value === 'all' ? undefined : groups.find(group => group.kind === value)?.libraryIds)} aria-label={defaultI18n.t('next.browse.libraries')}><RadioItem value="all" asChild><Chip variant="quick" selected={!selected} count={label(all)}>{defaultI18n.t('next.controls.all')}</Chip></RadioItem>
     {groups.map(group => {
       const count = scope.counts.find(count => count.id === group.kind);
-      return count && (count.total > 0 || checked(group)) ? <Chip key={group.kind} variant="quick" role="radio" aria-checked={checked(group)} selected={checked(group)} count={label(count)} onClick={() => change(group.libraryIds)}>{labelFor?.(group.kind) ?? defaultI18n.t(group.label)}</Chip> : null;
-    })}</div><span className={styles.scopeSeparator} aria-hidden="true"/></>;
+      return count && (count.total > 0 || checked(group)) ? <RadioItem key={group.kind} value={group.kind} asChild><Chip variant="quick" selected={checked(group)} count={label(count)}>{labelFor?.(group.kind) ?? defaultI18n.t(group.label)}</Chip></RadioItem> : null;
+    })}</RadioGroup><span className={styles.scopeSeparator} aria-hidden="true"/></>;
 }

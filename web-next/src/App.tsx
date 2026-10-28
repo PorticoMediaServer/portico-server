@@ -34,7 +34,7 @@ function BoundApp({binding, context, bootstrap, takeAccountReturn, takeAccountMo
   // a second provider would detach the first one's feed when either unmounts.
   const content = <>
     <IconSprite />
-    <ShellBindingsProvider value={binding}><RouterProvider router={router} /></ShellBindingsProvider>
+    <div data-playback-route><ShellBindingsProvider value={binding}><RouterProvider router={router} /></ShellBindingsProvider></div>
     <MediaHost binding={binding?.playback} />
     <EntryActionHost />
     <EntryMetadataHost />

@@ -14,3 +14,12 @@ test('PDF text-layer cancellation releases a pending provider read',async()=>{
   let cancelled=false;const source=new ReadableStream({cancel(){cancelled=true;}}),abort=new AbortController();
   const page={streamTextContent:()=>source} as unknown as PDFPageProxy,reader=pdfTextStream(page,abort.signal).getReader();const pending=reader.read();abort.abort();await assert.rejects(pending,{name:'AbortError'});assert.equal(cancelled,true);reader.releaseLock();
 });
+test('PDF text layers request and retain marked-content identities for the structure tree',async()=>{
+  let options:unknown;
+  const items=[{type:'beginMarkedContentProps',id:'p0R_mc0',tag:'H1'},{str:'A heading'},{type:'endMarkedContent'}];
+  const page={streamTextContent:(value:unknown)=>{options=value;return new ReadableStream({start(controller){controller.enqueue({items});controller.close();}});}} as unknown as PDFPageProxy;
+  const reader=pdfTextStream(page,new AbortController().signal).getReader();
+  assert.deepEqual(options,{includeMarkedContent:true});
+  assert.deepEqual((await reader.read()).value.items,items);
+  assert.equal((await reader.read()).done,true);reader.releaseLock();
+});

@@ -51,7 +51,7 @@ function DisplayFixture() {
     twoPages={phone ? undefined : {label: 'Two pages side by side in landscape', description: 'Held upright, a book always shows one page.', checked: twoPages, onChange: value => change('twoPages', value, setTwoPages)}}
     copy={{sample: 'Aa', sizeSample: 'A', sessionNote: 'Changes here last until you close this book.', defaultsNote: 'Your defaults are in Settings, Reading.', openSettings: phone ? undefined : 'Open Settings'}} onOpenSettings={phone ? undefined : () => probe.changes.push({key: 'settings', value: true})} />;
   return <div style={{width: '100vw', height: '100dvh', position: 'relative'}}>
-    <ReaderChrome copy={{back: 'Back', previous: 'Previous page', next: 'Next page', progress: 'Position in book'}} direction="ltr" tapTurnEnabled pageTurnsEnabled
+    <ReaderChrome copy={{back: 'Back', previous: 'Previous page', next: 'Next page', progress: 'Position in book', showControls: 'Show controls'}} direction="ltr" tapTurnEnabled pageTurnsEnabled
       onBack={() => {}} onTurn={turn => probe.turns.push(turn)} actions={[]} showPageArrows={false} panel={open ? panel : null} panelReflows={open && !phone}
       onPanelDismiss={reason => dismiss(false, reason)} subscribeSurfaceInput={subscribe} initiallyVisible>
       <div style={{height: '100%', background: '#f1e6d1'}} />

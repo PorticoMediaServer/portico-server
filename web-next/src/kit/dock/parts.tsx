@@ -1,4 +1,4 @@
-import {Fragment, type RefObject} from 'react';
+import {Fragment, useId, type RefObject} from 'react';
 import type {FactPart} from '@core/presentation/kit-model/index.ts';
 import {Icon, type IconName} from '../Icon';
 import {Artwork} from '../artwork';
@@ -34,10 +34,14 @@ export function ArtSlot({view, artSlotRef, videoSurface = false, artworkSurface 
 }
 export function Identity({view, binding, t = dockText, artSlotRef, identityRef, videoSurface, artworkSurface, phone = false}: DockRendererProps & {phone?: boolean}) {
   const send = useDockActions({view, binding}), terminal = remoteTerminal(view.remote), pending = view.remote && !remoteReady(view.remote);
+  const accessibleId = useId(), actionId = `${accessibleId}-action`, titleId = `${accessibleId}-title`, subtitleId = `${accessibleId}-subtitle`;
   const subtitle: readonly FactPart[] = view.presentation.finished ? [...view.presentation.identity.subtitle.filter(part => part.id === 'episode-label'), {id: 'finished', role: 'status', text: t('next.dock.finished')}] : phone && view.mode === 'music' && !view.playback.playing ? [...view.presentation.identity.subtitle, {id: 'paused', role: 'status', text: t('next.dock.paused')}] : view.presentation.identity.subtitle;
-  const content = <><ArtSlot view={view} artSlotRef={artSlotRef} videoSurface={videoSurface} artworkSurface={artworkSurface} phone={phone} /><span className={styles.identityText} data-dock-expansion-copy><b>{view.presentation.identity.title}</b>
-    <small data-status={view.remote?.phase} aria-live={view.remote ? 'polite' : undefined}>{phone && view.remote?.phase === 'playing' ? <>{view.presentation.deviceName}<span className={styles.gap} aria-hidden="true" />{clockText(positionOf(view))}</> : phone && view.remote?.phase === 'stopped' ? t('next.dock.stoppedAt', {position: clockText(positionOf(view)) ?? ''}) : remoteText(view, t) ?? <Facts parts={subtitle} />}</small></span></>;
-  return terminal || pending ? <div className={styles.identity}>{content}</div> : <button ref={identityRef} type="button" className={styles.identity} aria-label={t(view.remote ? 'next.dock.castControls' : view.mode === 'music' || view.mode === 'audiobook' ? 'next.dock.openNowPlaying' : 'next.dock.expand')} onClick={() => send({kind: 'expand'})}>{content}<span className={styles.expandTip} role="tooltip">{t('next.dock.expand')}</span></button>;
+  const content = <><ArtSlot view={view} artSlotRef={artSlotRef} videoSurface={videoSurface} artworkSurface={artworkSurface} phone={phone} /><span className={styles.identityText} data-dock-expansion-copy><b id={titleId}>{view.presentation.identity.title}</b>
+    <small id={subtitleId} data-status={view.remote?.phase}>{phone && view.remote?.phase === 'playing' ? <>{view.presentation.deviceName}<span className={styles.gap} aria-hidden="true" />{clockText(positionOf(view))}</> : phone && view.remote?.phase === 'stopped' ? t('next.dock.stoppedAt', {position: clockText(positionOf(view)) ?? ''}) : remoteText(view, t) ?? <Facts parts={subtitle} />}</small></span></>;
+  return <>{terminal || pending ? <div className={styles.identity}>{content}</div> : <button ref={identityRef} type="button" className={styles.identity} aria-labelledby={`${actionId} ${titleId}`} aria-describedby={subtitleId} onClick={() => send({kind: 'expand'})}>
+    <span id={actionId} className={styles.accessible}>{t(view.remote ? 'next.dock.castControls' : view.mode === 'music' || view.mode === 'audiobook' ? 'next.dock.openNowPlaying' : 'next.dock.expand')}</span>{content}<span className={styles.expandTip} role="tooltip">{t('next.dock.expand')}</span></button>}
+    <span className={styles.accessible} role="status" aria-atomic="true">{remoteText(view, t)}</span>
+  </>;
 }
 export function Transport({view, binding, t = dockText, phone = false}: DockRendererProps & {phone?: boolean}) {
   const send = useDockActions({view, binding}), model = view.presentation, can = (key: typeof model.controls[number]) => model.controls.includes(key) && remoteReady(view.remote);

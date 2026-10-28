@@ -11,6 +11,7 @@ import {LossNotice} from '../../kit/media';
 import {dispatchWatch, watchClock, watchIsPortrait, watchSeek, watchSeekBounds, watchShortcutTarget, watchStepIntent, type WatchIntent} from './model';
 import {settledPlaybackChanged, settledPlaybackKey, type SettledPlayback} from './screen-state';
 import type {WatchPanel, WatchRect, WatchScreenProps} from './types';
+import {revealVideoControlsOnTab, videoControlsMayHide} from './video-controls-focus';
 import styles from './watch.module.css';
 import {PlaybackWaiting} from '../../kit/states/PlaybackWaiting';
 import {fenceKey} from '../../shell/playback-model';
@@ -66,7 +67,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   const pointerKind = useRef('mouse');
   const [tapFeedback, setTapFeedback] = useState<{direction: 'left' | 'right'; seconds: number; x: number; y: number; sequence: number} | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const keyboardFocus = useRef(false);
+  const [controlsFocus, requestControlsFocus] = useState<{backwards: boolean}>();
   const controlsVisible = useRef(visible);
   controlsVisible.current = visible;
   const lastLayout = useRef<string | null>(null);
@@ -116,10 +117,8 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     clearTimer(); setVisible(true);
     if (!open || permanent || panel || externalPanel || more || shortcuts || liveGuideOpen || scrubDrag.current || !presentation?.playing) return;
     timer.current = setTimeout(() => {
-      if (chrome.current?.contains(document.activeElement)) {
-        if (keyboardFocus.current) return;
-        if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-      }
+      if (!videoControlsMayHide(chrome.current, document.activeElement)) return;
+      if (chrome.current?.contains(document.activeElement) && document.activeElement instanceof HTMLElement) document.activeElement.blur();
       setControlsExit('idle'); setVisible(false);
     }, milliseconds);
   }, [clearTimer, open, permanent, panel, externalPanel, more, shortcuts, liveGuideOpen, presentation?.playing]);
@@ -140,17 +139,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     setPanel(null); setMore(false); setShortcuts(false); setFullWindow(false); setVisible(true); setLiveGuideOpen(false);
   }, [binding.runtime, playbackKey, fence?.playback]);
   useEffect(() => {if (!open) setLiveGuideOpen(false);}, [open]);
-  const focusEdge = useRef(false), expandedNow = useRef(expanded); expandedNow.current = expanded;
-  useLayoutEffect(() => {
-    const wasOpen = focusEdge.current; focusEdge.current = open;
-    // Only on the closed-to-open edge: a later autoplay entry change must not take
-    // focus, and an open surface above the player keeps it.
-    if (!open || wasOpen) return;
-    const element = root.current, active = document.activeElement;
-    if (!element || (active instanceof Node && element.contains(active))) return;
-    if (active instanceof Element && active.closest('[role="dialog"],[role="menu"],[aria-modal="true"]')) return;
-    element.focus({preventScroll: true});
-  }, [open]);
+  const expandedNow = useRef(expanded); expandedNow.current = expanded;
   useLayoutEffect(() => { pictureInput.cancel(); setTapFeedback(null); scrubDrag.current = null; setScrub(null); setHoverSeconds(null); }, [binding.runtime, snapshot.authority, sourceKey, pictureInput]);
   useEffect(() => () => pictureInput.cancel(), [pictureInput]);
   useLayoutEffect(() => { setFullWindow(false); }, [shapePortrait]);
@@ -222,7 +211,8 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     if (!open) return;
     const keydown = (event: KeyboardEvent) => {
       if (current.current.gestureActive) return;
-      keyboardFocus.current = true;
+      if (!panel && !externalPanel && !more && !shortcuts && !stillWatching && !watchShortcutTarget(event.target)
+        && revealVideoControlsOnTab(event, chromeVisible, backwards => {reveal(); requestControlsFocus({backwards});})) return;
       if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || watchShortcutTarget(event.target) || panel || externalPanel || more || shortcuts) return;
       if ((event.key === ' ' || event.key === 'Enter') && event.target instanceof Element && event.target.closest('button,a')) return;
       const step = liveChrome ? null : watchStepIntent(current.current.binding.runtime, current.current.snapshot, event.key);
@@ -251,6 +241,13 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     window.addEventListener('keydown', keydown);
     return () => window.removeEventListener('keydown', keydown);
   });
+  useLayoutEffect(() => {
+    if (!controlsFocus || !chromeVisible) return;
+    const controls = [...chrome.current?.querySelectorAll<HTMLElement>('button:not(:disabled),[role="slider"][tabindex="0"]') ?? []]
+      .filter(element => !element.closest('[inert],[hidden]') && element.getClientRects().length > 0);
+    (controlsFocus.backwards ? controls.at(-1) : controls[0])?.focus({preventScroll: true});
+    requestControlsFocus(undefined);
+  }, [controlsFocus, chromeVisible]);
   const bounds = watchSeekBounds(snapshot), position = presentation?.positionSeconds ?? 0, duration = presentation?.durationSeconds ?? 0;
   const activeScrub = scrub && fence && sameFence(scrub.fence, fence) && scrub.snapshot.authority === snapshot.authority ? scrub : null;
   const drawnPosition = activeScrub?.seconds ?? position;
@@ -332,7 +329,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     controlsVisible: chromeVisible, focusAllowed: promptFocusAllowed} : undefined,
   [promptSource, seekPresent, chromeVisible, promptFocusAllowed]);
   return <div ref={attachRoot} className={styles.watch} hidden={!open && !videoGesture?.preview} inert={!open || undefined} aria-hidden={!open || undefined} data-video-preview={!open && videoGesture?.preview || undefined} tabIndex={-1} data-watch-screen data-mode={mode} data-still-watching={stillWatching || undefined} data-touch-expanded={coarsePointer && width >= 1024 || undefined} data-controls-visible={chromeVisible} data-controls-exit={controlsExit} data-panel-open={!!panel} data-scrubbing={!!activeScrub && mobile}
-    onPointerDownCapture={() => { keyboardFocus.current = false; }}
+    onBlurCapture={event => {if (!chrome.current?.contains(event.relatedTarget as Node | null)) reveal();}}
     onPointerMove={event => { if (event.pointerType === 'mouse') reveal(); }} onFocusCapture={reveal}>
     <div ref={surfaceSlotRef} className={styles.pictureSlot} style={rectStyle(geometry?.picture)} data-watch-picture-slot data-media-slot="expanded" aria-hidden="true" />
     <div ref={chrome} data-video-gesture-copy className={styles.chrome} style={rectStyle(geometry?.controls)} inert={stillWatching || undefined}>
@@ -374,7 +371,10 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
             back: binding.skips.back, forward: binding.skips.forward,
             single: () => {
               if (!controlsVisible.current) { controlsVisible.current = true; reveal(); }
-              else if (presentation?.playing && !permanent) { controlsVisible.current = false; clearTimer(); setControlsExit('tap'); setVisible(false); }
+              else if (presentation?.playing && !permanent && videoControlsMayHide(chrome.current, document.activeElement)) {
+                if (chrome.current?.contains(document.activeElement) && document.activeElement instanceof HTMLElement) document.activeElement.blur();
+                controlsVisible.current = false; clearTimer(); setControlsExit('tap'); setVisible(false);
+              }
             },
             fullscreen: toggleFullscreen,
             feedback: (direction, seconds) => setTapFeedback(value => ({direction, seconds, x, y, sequence: (value?.sequence ?? 0) + 1})),

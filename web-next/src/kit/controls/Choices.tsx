@@ -11,13 +11,15 @@ export type TabsProps = Omit<ComponentPropsWithoutRef<typeof TabsPrimitive.Root>
   onValueChange?: (value: string) => void;
   phone?: boolean;
   listClassName?: string;
+  /** For title pages whose sticky strip and existing panel have separate parents. */
+  externalPanelId?: string;
 };
 
-export function Tabs({items, value, defaultValue, onValueChange, phone, className, listClassName, 'aria-label': label, ...props}: TabsProps) {
+export function Tabs({items, value, defaultValue, onValueChange, phone, className, listClassName, externalPanelId, 'aria-label': label, ...props}: TabsProps) {
   const initial = defaultValue ?? items.find(item => !item.disabled)?.value;
   return <TabsPrimitive.Root {...props} value={value} defaultValue={initial} onValueChange={onValueChange} className={className}>
     <div className={styles.tabStrip}><TabsPrimitive.List className={[styles.tabs, listClassName].filter(Boolean).join(' ')} data-phone={phone || undefined} aria-label={label}>
-      {items.map(item => <TabsPrimitive.Trigger key={item.value} value={item.value} disabled={item.disabled} className={styles.tab} onFocus={event => {
+      {items.map(item => <TabsPrimitive.Trigger key={item.value} value={item.value} {...(externalPanelId ? {id: `${externalPanelId}-tab-${item.value}`, 'aria-controls': externalPanelId} : {})} disabled={item.disabled} className={styles.tab} onFocus={event => {
         const list = event.currentTarget.parentElement;
         if (!list) return;
         const tab = event.currentTarget.getBoundingClientRect(), viewport = list.getBoundingClientRect();
@@ -61,3 +63,6 @@ export function Segmented({items, value, defaultValue, onValueChange, variant = 
     </RadioGroup.Item>)}
   </RadioGroup.Root>;
 }
+
+/** Unstyled parts share the same Radix keyboard and panel lifecycle. */
+export {TabsPrimitive as TabsParts};

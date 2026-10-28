@@ -21,6 +21,19 @@ export function alphabetKeys(anchors: readonly PositionAnchor[]): readonly strin
   return [...new Set(['#', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ', ...anchors.map(anchor => anchor.key)])];
 }
 
+/** Pointer coordinates and rendered cell bounds share viewport space, even when
+ * the rail is scrolled or the browser uses a fractional/text-scaled cell pitch. */
+export function railIndexAt(y: number, cells: readonly (Readonly<{top: number; bottom: number}> | undefined)[]): number {
+  let last = -1;
+  for (let index = 0; index < cells.length; index++) {
+    const cell = cells[index];
+    if (!cell || cell.bottom <= cell.top) continue;
+    last = index;
+    if (y < cell.bottom) return index;
+  }
+  return last;
+}
+
 export function railBand(keys: readonly string[], anchors: readonly PositionAnchor[], visible: VisibleRange): VisibleRange | undefined {
   if (visible.first < 0 || visible.last < visible.first || !anchors.length) return undefined;
   let first = anchors[0], last = anchors[0];

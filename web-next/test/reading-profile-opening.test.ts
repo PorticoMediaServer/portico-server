@@ -273,3 +273,65 @@ test('choice Advanced preview preserves inapplicable original values; it grants 
   const a = f.draft();f.opening.select(a, a.profile.choiceDefinitions![1]);const b = f.draft();
   assert.equal(f.opening.previewAdvanced(b)?.watchForChanges, true);assert.equal(b.consent, false);assert.equal(b.consentDirty, false);
 });
+
+test('retired and successor openings cannot adopt each other’s drafts or late receipts', async () => {
+  const oldReply = deferred<unknown>(), nextReply = deferred<unknown>();
+  const old = fixture({put: () => oldReply.promise}), next = fixture({put: () => nextReply.promise});
+  await old.opening.load();const oldDraft = old.draft();
+  const oldSave = old.opening.save(oldDraft, old.opening.getSnapshot());
+  await Promise.resolve();await Promise.resolve();old.opening.retire();
+  await next.opening.load();const nextDraft = next.draft();
+  next.opening.changeConsent(oldDraft, true);next.opening.edit(oldDraft, {connections: 9});
+  assert.equal(next.draft(), nextDraft);
+  const nextSave = next.opening.save(nextDraft, next.opening.getSnapshot());
+  await Promise.resolve();await Promise.resolve();
+  oldReply.resolve(receipt());await oldSave;
+  assert.equal(old.opening.getSnapshot().kind, 'retired');
+  assert.equal(next.opening.getSnapshot().kind, 'saving', 'old completion cannot release a successor flight');
+  next.opening.changeConsent(nextDraft, true);
+  await next.opening.save(nextDraft, next.opening.getSnapshot());
+  assert.equal(next.calls.filter(call => call.method === 'PUT').length, 1);
+  nextReply.resolve(receipt());await nextSave;
+  assert.equal(next.opening.getSnapshot().kind, 'saved');
+  old.opening.retire();next.opening.retire();
+});
+
+test('unknown consent stays absent and every offered choice preserves independent consent and whole-file policy', async () => {
+  const unknown = profile();const {allowAdvancedMediaAnalysis: _consent, ...withoutConsent} = unknown.values;
+  const f = fixture({initial: {...unknown, values: withoutConsent}});await f.opening.load();const original = f.draft();
+  assert.equal(original.consent, undefined);f.opening.changeConsent(original, true);assert.equal(f.draft(), original);
+  await f.opening.save(original, f.opening.getSnapshot());
+  const body = f.calls.find(call => call.method === 'PUT')!.body as {values: Record<string, unknown>};
+  assert.equal(Object.hasOwn(body.values, 'allowAdvancedMediaAnalysis'), false);f.opening.retire();
+  for (const name of ['once', 'list', 'everything', 'ask']) {
+    for (const consent of [false, true]) {
+      const initial = profile();
+      const next = fixture({initial: {...initial, values: {...initial.values, wholeFileReads: true, allowAdvancedMediaAnalysis: consent}}});
+      await next.opening.load();const a = next.draft();
+      next.opening.select(a, a.profile.choiceDefinitions!.find(choice => choice.name === name)!);
+      const selected = next.draft();
+      assert.equal(selected.consent, consent);assert.equal(selected.consentDirty, false);
+      assert.equal(selected.values.wholeFileReads, true);
+      assert.equal(Object.hasOwn(selected.values, 'allowAdvancedMediaAnalysis'), false);
+      next.opening.changeConsent(a, !consent);assert.equal(next.draft(), selected, 'stale checkbox cannot edit the successor record');
+      await next.opening.save(selected, next.opening.getSnapshot());
+      const write = next.calls.find(call => call.method === 'PUT')!.body as {values: Record<string, unknown>};
+      assert.equal(write.values.wholeFileReads, true);assert.equal(Object.hasOwn(write.values, 'allowAdvancedMediaAnalysis'), false);
+      next.opening.retire();
+    }
+  }
+});
+
+test('explicit consent changes preserve both false and true while retired guards refuse edits', async () => {
+  for (const consent of [false, true]) {
+    const initial = profile(), f = fixture({initial: {...initial, values: {...initial.values, allowAdvancedMediaAnalysis: consent}}});
+    await f.opening.load();const a = f.draft();f.opening.changeConsent(a, !consent);const changed = f.draft();
+    f.opening.changeConsent(a, consent);assert.equal(f.draft(), changed);
+    await f.opening.save(changed, f.opening.getSnapshot());
+    const body = f.calls.find(call => call.method === 'PUT')!.body as {values: Record<string, unknown>};
+    assert.equal(body.values.allowAdvancedMediaAnalysis, !consent);assert.equal(body.values.wholeFileReads, true);
+    f.opening.retire();f.opening.changeConsent(changed, consent);assert.equal(f.opening.getSnapshot().kind, 'retired');
+  }
+  const broken = new ReadingProfileOpening({} as never, source, () => {throw new Error('retired');}, () => true);
+  assert.equal(broken.current(), false);
+});

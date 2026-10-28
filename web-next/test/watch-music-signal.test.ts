@@ -68,3 +68,25 @@ test('absent local facts keep the committed observation', () => {
   const without = watchMusicSignal(snapshot(96000, 96000, 'original', stale), null);
   assert.equal(rates(without).includes(44.1), true);
 });
+
+test('source facts come from the committed comparison, never a default track or delivered format', () => {
+  const shown: any = snapshot(48000, 48000, 'converted');
+  shown.session.playbackInfo.source.audio = {codec: 'wavpack', sampleRate: 96000, bitDepth: 24, channels: 2};
+  shown.options = {versions: [{id: 'default', audio: [{id: 'default-audio', default: true, codec: 'aac', sampleRate: 44100, bitDepth: 16}]}]};
+  const model = watchMusicSignal(shown, null)!;
+  assert.equal(model.steps.find(step => step.id === 'file')?.value, 'WavPack');
+  assert.equal(model.source, 'WavPack', 'an unknown lossless fact is never guessed from a codec');
+  shown.session.playbackInfo.source.audio.lossless = true;
+  assert.ok(rates(watchMusicSignal(shown, null)).includes(96), 'a known lossless source keeps its own 96k rate separate from converted delivery');
+  assert.equal(rates(model).includes(44.1), false, 'the default track never supplies missing facts');
+  shown.session.playbackInfo = undefined;
+  assert.equal(watchMusicSignal(shown, null), undefined, 'selected/default tracks cannot fabricate a missing committed comparison');
+});
+
+test('a replaced render recipe cannot keep the old music source comparison', () => {
+  for (const change of [{id: 'replacement'}, {sampleRate: 44100}, {mode: 'unavailable'}]) {
+    const shown: any = snapshot(48000, 48000, 'converted');
+    Object.assign(shown.playback.session.audio, change);
+    assert.equal(watchMusicSignal(shown, null), undefined);
+  }
+});

@@ -1,4 +1,4 @@
-import {useState, type ReactNode} from 'react';
+import type {ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import {colors, profileArtColors} from '@design';
 import type {ProfilePickerProfile} from '../artwork/ProfilePicker';
@@ -6,6 +6,7 @@ import {ProfileFace, ProfilePicker} from '../artwork/ProfilePicker';
 import {Button} from '../controls/Button';
 import {Icon} from '../Icon';
 import {AuthCodeBoxes, AuthError, AuthStage} from './AuthStage';
+import {usePINFeedback} from './pin-feedback';
 import styles from './accounts.module.css';
 
 const t = defaultI18n.t;
@@ -21,11 +22,11 @@ export function ServerProfiles({serverName, profiles, onSelect, onSwitchServer, 
     <AuthError error={error} /><ProfilePicker profiles={profiles} onSelect={onSelect} autoFocusId={autoFocusId} getProfileTint={profileTint} layout="auto" />
   </AuthStage>;
 }
-export function ServerProfilePIN({serverName, profile, onComplete, onOtherProfiles, onForgotPIN, onSwitchServer, remember, onRememberChange, error, errorText, failure, busy, initialPIN = '', autoFocus = true}: {
+export function ServerProfilePIN({serverName, profile, onComplete, onOtherProfiles, onForgotPIN, onSwitchServer, remember, onRememberChange, error, errorText, rejectionKey, failure, busy, initialPIN = '', autoFocus = true}: {
   serverName: string; profile: ProfilePickerProfile; onComplete: (pin: string) => void; onOtherProfiles: () => void; onForgotPIN: () => void; onSwitchServer: () => void;
-  remember: boolean; onRememberChange: (value: boolean) => void; error?: boolean; errorText?: ReactNode; failure?: unknown; busy?: boolean; initialPIN?: string; autoFocus?: boolean;
+  remember: boolean; onRememberChange: (value: boolean) => void; error?: boolean; errorText?: ReactNode; rejectionKey?: unknown; failure?: unknown; busy?: boolean; initialPIN?: string; autoFocus?: boolean;
 }) {
-  const [pin, setPIN] = useState(initialPIN);
+  const {pin, change} = usePINFeedback(initialPIN, error || errorText || failure ? rejectionKey ?? failure ?? true : undefined);
   const context = t('accounts.profiles.serverContext', {server: '\uFFFC'}).split('\uFFFC');
   return <AuthStage shape="round" phoneShape="top" className={styles.pinStage} layout="center" legal={false} topRight={<>
     <span className={styles.serverContext}>{context[0]}<b>{serverName}</b>{context[1]}</span><Button icon="i-server" size="small" onClick={onSwitchServer}>{t('settings.switchServer')}</Button>
@@ -35,8 +36,8 @@ export function ServerProfilePIN({serverName, profile, onComplete, onOtherProfil
     <h2 className={styles.desktopPINHeading}>{profile.name}</h2><h1 className={styles.phonePINHeading}>{t('accounts.profiles.pin')}</h1><p className={styles.desktopPINHeading}>{t('accounts.profiles.pinForProfile', {profile: profile.name})}</p><p className={styles.phonePINHeading}>{profile.name}</p>
     <AuthError error={failure} />
     <label className={styles.phonePINLabel}>{t('accounts.profiles.pinLabel')}</label>
-    <AuthCodeBoxes length={4} value={pin} label={t('accounts.profiles.pinLabel')} onChange={setPIN} autoFocus={autoFocus} disabled={busy}
-      error={errorText ?? (error && t('accounts.profiles.pinFailed'))} onComplete={value => {onComplete(value); setPIN('');}} />
+    <AuthCodeBoxes length={4} value={pin} label={t('accounts.profiles.pinLabel')} onChange={change} autoFocus={autoFocus} disabled={busy}
+      error={errorText ?? (error && t('accounts.profiles.pinFailed'))} onComplete={onComplete} />
     <label className={styles.remember}><input type="checkbox" checked={remember} onChange={event => onRememberChange(event.currentTarget.checked)} />{t('web.direct.rememberProfile')}</label>
     <div className={styles.pinActions}><Button size="small" icon="i-left" onClick={onOtherProfiles}>{t('web.direct.otherProfiles')}</Button><Button variant="ghost" size="small" onClick={onForgotPIN}>{t('pin.forgot')}</Button></div>
   </div></AuthStage>;

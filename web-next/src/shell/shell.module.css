@@ -32,6 +32,9 @@
 .railItem[data-icon-only='true']:not([data-nav-activity]) [data-nav-count] { position: absolute; top: 0; right: 0; box-shadow: 0 0 0 2px var(--color-ink); }
 .railItem[data-nav-activity][data-icon-only='true'] [data-nav-count] { padding: 0; background: none; color: var(--color-text); font-size: var(--type-nav-size); }
 .railItem[data-nav-activity]:has([data-nav-count]) { color: var(--color-accent-strong); }
+.railItem[data-nav-activity][data-nav-busy] { color: var(--color-accent-strong); }
+.railItem [data-nav-dot] { position: absolute; top: 8px; left: 24px; width: 7px; height: 7px; border-radius: 50%; background: var(--color-accent-strong); box-shadow: 0 0 0 2px var(--color-ink); }
+.railItem [data-nav-dot='major'] { width: 8px; height: 8px; background: var(--color-danger); }
 .collapse { flex: none; width: 44px; min-height: 44px; display: grid; place-items: center; border: 0; border-radius: 12px; color: var(--color-text-secondary); background: none; cursor: pointer; }
 .shell[data-navigation='sidebar'] .rail { padding-left: 12px; padding-right: 12px; }
 .shell[data-navigation='sidebar'] .railBrand { justify-content: space-between; padding-left: 12px; }
@@ -46,7 +49,7 @@
 .profileText b { font-size: var(--type-nav-size); font-weight: var(--type-button-weight); line-height: var(--type-nav-line); }
 .profileText small { font-size: var(--type-label-size); color: var(--color-text-tertiary); line-height: var(--type-label-line); }
 .profileRow > svg { flex: none; color: var(--color-text-tertiary); }
-.shell[data-pointer='coarse'] button, .shell[data-pointer='coarse'] a { min-height: 44px; min-width: 44px; }
+.shell[data-pointer='coarse'] button:not([data-compact-hit-target]), .shell[data-pointer='coarse'] a { min-height: 44px; min-width: 44px; }
 
 /* states.html 4b / desktop-app.html#16: one quiet line under the top bar while the
    server stops answering. It never covers the page and leaves by itself. */

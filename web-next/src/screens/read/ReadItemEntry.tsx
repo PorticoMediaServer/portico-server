@@ -23,6 +23,7 @@ import {usePhone} from '../../kit/overlays/shared';
 import {runScreenCommand} from '../detail/context';
 import {Skeleton, StateView} from '../../kit/states';
 import {ReadBookFacts, ReadBookHero, ReadBookSections} from '../../kit/reader/ReadBookHero';
+import {readBookTitleStyle} from '../../kit/reader/book-title';
 import {ServerMark} from '../../kit/shell';
 import {useLibraryScreenContext} from '../browse/screen-context';
 import {ReadMetadata} from './ReadMetadata';
@@ -246,7 +247,7 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
     {id: 'format', label: t('next.reader.format'), value: manifest.format.toUpperCase()},
     {id: 'size', label: t('next.reader.fileSize'), value: defaultI18n.bytes(manifest.size)},
   ]}/>;
-  return <>{phoneBack}<ReadBookHero cover={context.artwork.foreground(manifest.metadata.coverUrl, 784, 2 / 3)} title={title} author={author ? {name: author} : undefined} series={seriesPresentation} facts={[
+  return <>{phoneBack}<ReadBookHero cover={context.artwork.foreground(manifest.metadata.coverUrl, 784, 2 / 3)} title={title} titleStyle={readBookTitleStyle(title, !!metadata.openingLines)} author={author ? {name: author} : undefined} series={seriesPresentation} facts={[
       ...(metadata.wordCount !== undefined ? [{id: 'words', text: t('next.reader.wordCount', {count: metadata.wordCount}), role: 'context' as const}] : []),
       ...(metadata.pageCount !== undefined ? [{id: 'pages', text: t('next.reader.pageCount', {count: metadata.pageCount}), role: 'context' as const}] : []),
       ...(metadata.estimatedSeconds !== undefined && metadata.estimatedSeconds > 0 ? [{id: 'estimate', text: t('next.reader.aboutDuration', {duration: defaultI18n.duration(metadata.estimatedSeconds)}), role: 'context' as const}] : []),
@@ -260,7 +261,8 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
         selected={candidate.sourceId === sourceId} disabled={!candidate.inventoryAvailable} onSelect={() => {if (!factsCurrent()) return; pickVersion(candidate, attempt, sourceId);}} description={defaultI18n.bytes(candidate.size)}>
         {candidate.format.toUpperCase()}</MenuItem>)}</Menu></> : null}</>}/>
     {editing && canEdit && <ReadMetadata context={context} reading={captured.context} sourceId={manifest.sourceId} format={manifest.format} itemId={eligibility.itemId} anchor={editorAnchor} onClose={() => {if (!current(original)) return; setEditing(false); refresh(original);}}/>}
-    <ReadBookSections contents={detail.targets?.length ? <><h2>{t('next.reader.contents')}</h2><ReaderContents entries={detailContents(manifest.contents ?? [], index => open(index))}/></> : <span hidden/>} details={details}/></>;
+    <ReadBookSections labels={{contents: t('next.reader.contents'), details: t('next.reader.details')}}
+      contents={detail.targets?.length ? <><h2>{t('next.reader.contents')}</h2><ReaderContents entries={detailContents(manifest.contents ?? [], index => open(index))}/></> : undefined} details={details}/></>;
 }
 
 /** Preserve the file's hierarchy and original index; no inferred page or progress labels. */

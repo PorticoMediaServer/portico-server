@@ -1,5 +1,6 @@
 import {header, type V1Http, type V1Response} from '@core/playback-v1/http.ts';
 import type {Timers} from '@core/playback-v1/sessions.ts';
+import type {PageVisibility} from '@core/index.ts';
 import {routePath} from '../../../../packages/contracts/src/routes.ts';
 
 /** One server-directed wait on one original idempotent start, never a new Play. */
@@ -24,6 +25,7 @@ function directedWait(response: V1Response): number | undefined {
  * other refusals and missing server timing return unchanged to the existing error path. */
 export function capacityRetryHttp(input: Readonly<{
   http: V1Http; life: AbortSignal; isCurrent(): boolean; captureCurrent(): (() => boolean) | undefined; timers?: Timers;
+  visibility?: PageVisibility;
   publish(wait: WebPlaybackCapacityWait | undefined): void;
 }>): V1Http {
   const now = input.timers?.now ?? Date.now;
@@ -46,15 +48,45 @@ export function capacityRetryHttp(input: Readonly<{
     const started = now();
     const current = () => !signal.aborted && serial === generation && input.isCurrent() && originalCurrent();
     const check = () => {signal.throwIfAborted(); if (!current()) throw new DOMException('Playback start retired', 'AbortError');};
+    const waitForForeground = async () => {
+      while (input.visibility?.hidden()) {
+        check();
+        await new Promise<void>((resolve, reject) => {
+          let off: (() => void) | undefined, settled = false;
+          const finish = (aborted = false) => {
+            if (settled) return;
+            settled = true; off?.(); signal.removeEventListener('abort', abort);
+            if (aborted) reject(new DOMException('Playback start retired', 'AbortError')); else resolve();
+          };
+          const abort = () => finish(true);
+          off = input.visibility!.onVisible(() => {if (!input.visibility!.hidden()) finish();});
+          if (settled) off();
+          else {
+            signal.addEventListener('abort', abort, {once: true});
+            if (signal.aborted) abort(); else if (!input.visibility!.hidden()) finish();
+          }
+        });
+      }
+    };
     let mine: WebPlaybackCapacityWait | undefined;
+    let refused: V1Response | undefined;
     try {
       for (let attempt = 0; ; attempt++) {
         check();
+        if (refused) {
+          if (now() - started > 30_000) return refused;
+          await waitForForeground();
+          check();
+          // A timer or visibility callback can arrive long after its deadline in
+          // a suspended tab. Recheck immediately before every repeated write.
+          if (now() - started > 30_000) return refused;
+        }
         const response = await input.http.send(captured);
         // Return a success to its original owner even after retirement, so it can clean up
         // an actual created session. A retired refusal must never schedule another write.
         const delay = directedWait(response);
         if (!current() || delay === undefined || attempt >= 5 || now() - started + delay > 30_000) return response;
+        refused = response;
         let wake: (() => void) | undefined, requested = false;
         const wait: WebPlaybackCapacityWait = Object.freeze({attempt: attempt + 1, retryAt: now() + delay,
           isCurrent: () => current() && active === wait,

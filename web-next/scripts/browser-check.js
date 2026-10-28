@@ -45,6 +45,10 @@
     box.appendChild(heading);
     box.appendChild(text);
     root.appendChild(box);
+    // Unsupported engines never mount React, so their real error page owns
+    // this hand-off too. Keep the first-paint layer until the message exists.
+    var boot = document.getElementById('boot');
+    if (boot && boot.parentNode) boot.parentNode.removeChild(boot);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', show);
   else show();

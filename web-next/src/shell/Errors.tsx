@@ -4,6 +4,7 @@ import {Toast} from '../kit/overlays';
 import {DetailsPanel, StateLayout, type DetailsFact} from '../kit/states';
 import {useShellWidth} from './viewport';
 import styles from './states.module.css';
+import {DocumentBootReady} from './DocumentBootReady';
 
 const t = defaultI18n.t;
 
@@ -70,7 +71,7 @@ export function LastResort({details}: {details: CrashDetails}) {
     const write = navigator.clipboard?.writeText(crashDetailsText(details));
     void Promise.resolve(write).then(() => setCopied(true), () => setCopied(false));
   };
-  return <>
+  return <DocumentBootReady>
     <StateLayout className={styles.page} backdrop={{kind: 'colour', shape: 'side'}} tone="error" icon="i-warn"
       contentStyle={{top: width >= 1024 ? 420 : 250}}
       title={t('next.states.crashed')} body={t('next.states.crashedBody')}
@@ -84,7 +85,7 @@ export function LastResort({details}: {details: CrashDetails}) {
       <Toast open={copied} onOpenChange={open => { if (!open) setCopied(false); }} icon="i-check" tone="success"
         message={<><b>{t('next.overlays.detailsCopied')}</b> {t('next.overlays.detailsSafe')}</>} />
     </div>
-  </>;
+  </DocumentBootReady>;
 }
 
 type BoundaryState = Readonly<{details?: CrashDetails}>;

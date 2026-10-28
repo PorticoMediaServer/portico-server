@@ -5,6 +5,7 @@ import {Icon, type IconName} from '../Icon';
 import {BottomSheet} from './BottomSheet';
 import {classes, focusElement, focusable, useDismissReason, useExclusiveAnchor, useInDialog, useOverlayKeys, usePhone, usePresence, useSurfaceFocus, useSurfaceMotion} from './shared';
 import type {AnchoredOverlayProps, OverlayChange, OverlayStyle} from './types';
+import {menuInitialFocus, navigateMenuArrow, recoverMenuChildFocus} from './menu-focus';
 import styles from './overlays.module.css';
 
 /** A caller-supplied virtual anchor, queried when Radix positions an external
@@ -66,7 +67,7 @@ export function Popover({open, onOpenChange, title, children, description, trigg
 type RowExtras = {icon?: IconName; description?: ReactNode; selected?: boolean; destructive?: boolean};
 export type MenuRowProps = ButtonHTMLAttributes<HTMLButtonElement> & RowExtras;
 export const MenuRow = forwardRef<HTMLButtonElement, MenuRowProps>(function MenuRow({icon, description, selected, destructive = false, children, className, type = 'button', ...props}, ref) {
-  return <button {...props} ref={ref} type={type} className={classes(styles.menuRow, className)} data-selected={selected || undefined} data-destructive={destructive || undefined} aria-pressed={props.role?.startsWith('menuitem') ? undefined : selected}>
+  return <button {...props} ref={ref} type={type} className={classes(styles.menuRow, className)} data-selected={selected || undefined} data-destructive={destructive || undefined} aria-pressed={props.role?.startsWith('menuitem') || props.role === 'radio' ? undefined : selected}>
     {icon && <span className={styles.menuIcon}><Icon name={icon} size={18} /></span>}
     <span className={styles.menuLabel}>{children}</span>
     {description !== undefined && <span className={styles.menuDescription}>{description}</span>}
@@ -111,23 +112,27 @@ function EntryGroups({items, phone}: {items: readonly MenuEntry[]; phone: boolea
 }
 
 export function Menu({items, children, open, onOpenChange, title, presentation = 'responsive', ...props}: MenuProps) {
-  const phone = usePhone(), typeahead = useRef({text: '', time: 0}), initial = useRef<HTMLElement | null>(null), input = useRef<'pointer' | 'keyboard'>('keyboard');
-  useEffect(() => {
-    const pointer = () => { input.current = 'pointer'; }, keyboard = () => { input.current = 'keyboard'; };
-    document.addEventListener('pointerdown', pointer, true); document.addEventListener('keydown', keyboard, true);
-    return () => { document.removeEventListener('pointerdown', pointer, true); document.removeEventListener('keydown', keyboard, true); };
-  }, []);
+  const phone = usePhone(), typeahead = useRef({text: '', time: 0}), initial = useRef<HTMLElement | null>(null);
+  const observer = useRef<MutationObserver | null>(null), lastFocused = useRef<HTMLElement | null>(null);
+  // The portal may mount after this owner's layout effect. Attach to its actual
+  // content node so child-only view swaps also retain a focus recovery owner.
+  const attachContent = useCallback((element: HTMLDivElement | null) => {
+    observer.current?.disconnect();observer.current = null;
+    initial.current = element ? menuInitialFocus(element) : null;
+    if (!open || !element) {lastFocused.current = null;return;}
+    const recover = () => recoverMenuChildFocus(element, lastFocused.current);
+    observer.current = new MutationObserver(recover);
+    observer.current.observe(element, {childList: true, subtree: true});
+    recover();
+  }, [open]);
   const sheet = phone && presentation === 'responsive';
   useExclusiveAnchor(sheet && open, onOpenChange);
   const keydown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || navigateMenuArrow(event)) return;
     const rows = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[data-menu-item]:not(:disabled)'));
     if (!rows.length) return;
     const current = rows.indexOf(document.activeElement as HTMLButtonElement);
     let next: HTMLButtonElement | undefined;
-    if (event.key === 'ArrowDown') next = rows[(current + 1) % rows.length];
-    if (event.key === 'ArrowUp') next = rows[(current - 1 + rows.length) % rows.length];
-    if (event.key === 'Home') next = rows[0]; if (event.key === 'End') next = rows.at(-1);
     if (event.key.length === 1 && event.key !== ' ') {
       const now = performance.now(), previous = now - typeahead.current.time < 700 ? typeahead.current.text : '';
       typeahead.current = {text: previous + event.key.toLocaleLowerCase(), time: now};
@@ -137,7 +142,7 @@ export function Menu({items, children, open, onOpenChange, title, presentation =
     }
     if (next) { event.preventDefault(); focusElement(next); }
   };
-  const content = <MenuContext.Provider value={{change: onOpenChange}}><div tabIndex={-1} ref={element => { initial.current = input.current === 'pointer' ? element : element?.querySelector<HTMLButtonElement>('[data-menu-item]:not(:disabled)') ?? null; }} onKeyDown={keydown} className={styles.menuItems}>
+  const content = <MenuContext.Provider value={{change: onOpenChange}}><div tabIndex={-1} ref={attachContent} onFocusCapture={event => {lastFocused.current = event.target as HTMLElement;}} onKeyDown={keydown} className={styles.menuItems}>
     {items && <EntryGroups items={items} phone={sheet} />}
     {children}
   </div></MenuContext.Provider>;

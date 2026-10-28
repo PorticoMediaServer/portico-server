@@ -3,7 +3,7 @@ import {defaultI18n} from '@i18n';
 import {ChannelMark} from '../../kit/artwork';
 import {Button} from '../../kit/controls';
 import {Icon, type IconName} from '../../kit/Icon';
-import {liveRailDragHeld, liveRailDragSeek, liveBehindLabel, liveNextLine, liveRail, liveRecordLabel, liveSeekSeconds, liveTimeRange} from './live-chrome-model';
+import {liveRailDragHeld, liveRailDragSeek, liveBehindLabel, liveNextLine, liveRail, liveRecordLabel, liveSeekSeconds, liveTimeRange, liveRailValueText} from './live-chrome-model';
 import type {LiveChromeDrag, LiveChromePort} from './live-chrome-types';
 import styles from './live-chrome.module.css';
 
@@ -126,7 +126,7 @@ export function LiveChrome({port, playing, onCollapse, onStop, onPlayPause, onSk
       <div className={styles.seek}>
         <div ref={rail} className={styles.rail} role="slider" aria-label={t('player.position')}
           aria-valuemin={Math.round(liveSeekSeconds(window, window.seekStartMs))} aria-valuemax={Math.round(liveSeekSeconds(window, window.liveEdgeMs))} aria-valuenow={Math.round(liveSeekSeconds(window, displayWindow.positionMs))}
-          aria-disabled={!canSeek || undefined} tabIndex={canSeek ? 0 : -1} aria-valuetext={`${time(displayWindow.positionMs)}${behind ? `, ${behind}` : ''}`} onKeyDown={railKeys}
+          aria-disabled={!canSeek || undefined} tabIndex={canSeek ? 0 : -1} aria-valuetext={liveRailValueText(displayWindow, programme, time)} onKeyDown={railKeys}
           onPointerDown={event => {if (!canSeek || !port.isCurrent()) return;drag.current = {fence: port.fence, window};event.currentTarget.setPointerCapture(event.pointerId);seekAt(event.clientX);}}
           onPointerMove={event => {if (!drag.current) return;if (!liveRailDragHeld(drag.current, port.fence)) {endDrag();return;}seekAt(event.clientX);}}
           onPointerUp={event => {const captured = drag.current;const value = scrubRef.current;endDrag();if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);const seconds = liveRailDragSeek(captured, port.fence, value);if (seconds !== undefined && port.isCurrent()) onSeek(seconds);}}

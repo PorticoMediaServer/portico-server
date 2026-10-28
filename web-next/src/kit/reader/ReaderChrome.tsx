@@ -8,7 +8,7 @@ import styles from './reader.module.css';
 
 /** All copy is supplied by the localized, frame-backed assembly. No engine copy leaks. */
 export type ReaderChromeCopy = Readonly<{
-  back: string; previous: string; next: string; progress: string;
+  back: string; previous: string; next: string; progress: string; showControls: string;
 }>;
 export type ReaderChromeAction = Readonly<{
   id: string; label: string; icon?: IconName; text?: ReactNode;
@@ -28,6 +28,7 @@ export type ReaderChromeProps = Readonly<{
   onBack: () => void; onTurn: (turn: ReadTurn) => void; onSeek?: (progression: number) => void;
   actions: readonly ReaderChromeAction[]; children: ReactNode; panel?: ReactNode;
   panelReflows?: boolean; showPageArrows: boolean;
+  presentation?: 'desktop' | 'tablet' | 'phone';
   /** Real retained search results supplied by the reader assembly. */
   searchNavigation?: ReactNode;
   /** Optional localized assembly content for fixed pages; prose always keeps the generic footer. */
@@ -39,7 +40,7 @@ export type ReaderChromeProps = Readonly<{
   /** The same page tap closes a docked panel without also navigating the book. */
   onPanelDismiss?: (reason: 'outside' | 'escape') => void;
   /** A panel/menu or a live text selection pins chrome until it closes. */
-  holdOpen?: boolean; textSelectionActive?: boolean; initiallyVisible?: boolean; reducedMotion?: boolean; fixedPage?: boolean;
+  holdOpen?: boolean; textSelectionActive?: boolean; initiallyVisible?: boolean; reducedMotion?: boolean; fixedPage?: boolean; comic?: boolean;
   /** Reader engine owns taps/selection in its iframe; forwarded fractions use the same handler. */
   subscribeSurfaceInput?: (listener: (input: ReaderSurfaceInput) => void) => (() => void);
   readActivity?: ReaderReadActivity;
@@ -57,7 +58,7 @@ function useReaderChromeMotion(root: RefObject<HTMLDivElement | null>, shown: bo
     for (const [element, owner] of layers.current) if (!elements.has(element)) {owner.animation?.cancel(); layers.current.delete(element);}
     for (const element of elements) {
       const previous = layers.current.get(element), painted = getComputedStyle(element);
-      const offset = element.dataset.readerChromeLayer === 'top' ? -8 : element.dataset.readerChromeLayer === 'turn' ? 0 : 8;
+      const offset = element.dataset.readerChromeLayer === 'top' ? -8 : ['turn', 'shade'].includes(element.dataset.readerChromeLayer ?? '') ? 0 : 8;
       const freshEntry = shown && (!previous || !previous.shown && Number(painted.opacity) === 0);
       const from = {opacity: !previous && shown ? 0 : Number(painted.opacity),
         transform: reduced ? 'none' : freshEntry ? `translateY(${offset}px)` : painted.transform};
@@ -82,11 +83,20 @@ function useReaderChromeMotion(root: RefObject<HTMLDivElement | null>, shown: bo
 }
 
 export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingInSection, percent, remainingInBook, progression, chapters = [], direction, tapTurnEnabled, pageTurnsEnabled,
-  onBack, onTurn, onSeek, actions, children, panel, panelReflows = false, onPanelDismiss, showPageArrows, holdOpen = false, textSelectionActive = false, initiallyVisible = true, reducedMotion = false, fixedPage = false, fixedPageFooter, fixedPageStrip, searchNavigation, hint, subscribeSurfaceInput, readActivity}: ReaderChromeProps) {
+  onBack, onTurn, onSeek, actions, children, panel, panelReflows = false, onPanelDismiss, showPageArrows, presentation, holdOpen = false, textSelectionActive = false, initiallyVisible = true, reducedMotion = false, fixedPage = false, comic = false, fixedPageFooter, fixedPageStrip, searchNavigation, hint, subscribeSurfaceInput, readActivity}: ReaderChromeProps) {
   const root = useRef<HTMLDivElement>(null), chrome = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(initiallyVisible), [focusWithin, setFocusWithin] = useState(false);
+  const [focusRequest, requestFocus] = useState(0), focusedRequest = useRef(0);
   const held = holdOpen || textSelectionActive || Boolean(panel) || focusWithin;
+  const shown = visible || held;
   const show = useCallback(() => setVisible(true), []);
+  const showControls = useCallback(() => {setVisible(true); requestFocus(value => value + 1);}, []);
+  useLayoutEffect(() => {
+    if (!shown || focusedRequest.current === focusRequest) return;
+    // Wait for React to remove inert before handing focus to the first control.
+    focusedRequest.current = focusRequest;
+    chrome.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({preventScroll: true});
+  }, [shown, focusRequest]);
   const readOn = useCallback(() => {
     if (!held && !chrome.current?.contains(document.activeElement) && !window.getSelection()?.toString()) setVisible(false);
   }, [held]);
@@ -99,11 +109,13 @@ export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingIn
     else if (turn && tapTurnEnabled && pageTurnsEnabled && !textSelectionActive) onTurn(turn);
   }, [panel, onPanelDismiss, direction, held, onTurn, tapTurnEnabled, pageTurnsEnabled, textSelectionActive]);
   const key = useCallback((input: Extract<ReaderSurfaceInput, {kind: 'key'}>) => {
-    if (input.editable || textSelectionActive || input.alt || input.ctrl || input.meta) return;
+    if (input.alt || input.ctrl || input.meta) return;
+    if (!shown && (input.key === 'Tab' || input.key === 'Escape')) {input.preventDefault(); showControls(); return;}
+    if (input.editable || textSelectionActive) return;
     if (panel && input.key === 'Escape') { input.preventDefault(); onPanelDismiss?.('escape'); return; }
     const turn = readKeyTurn(input.key, direction, input.shift);
     if (turn && pageTurnsEnabled) { input.preventDefault(); onTurn(turn); }
-  }, [panel, onPanelDismiss, direction, onTurn, pageTurnsEnabled, textSelectionActive]);
+  }, [shown, showControls, panel, onPanelDismiss, direction, onTurn, pageTurnsEnabled, textSelectionActive]);
   useEffect(() => subscribeSurfaceInput?.(input => {
     if (input.kind === 'turned') {if (!held && !textSelectionActive) setVisible(false);}
     else if (input.kind === 'tap') tap(input.fraction);
@@ -114,15 +126,17 @@ export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingIn
     }
     else if (input.kind === 'key') key(input);
   }), [subscribeSurfaceInput, tap, key, panel, onPanelDismiss, direction, pageTurnsEnabled, textSelectionActive, onTurn, held]);
-  const shown = visible || held, progress = observedProgress(progression);
+  const progress = observedProgress(progression);
   useReaderChromeMotion(root, shown, reducedMotion);
   const customFixedFooter = fixedPage && fixedPageFooter != null;
-  return <div ref={root} tabIndex={-1} className={styles.reader} data-reader-root data-fixed={fixedPage || undefined} data-reduced-motion={reducedMotion || undefined}
+  return <div ref={root} tabIndex={-1} className={styles.reader} data-reader-root data-fixed={fixedPage || undefined} data-comic={comic || undefined} data-presentation={presentation} data-reduced-motion={reducedMotion || undefined}
     data-chrome={shown ? 'shown' : 'hidden'} data-panel={panelReflows || undefined} dir={direction === 'rtl' ? 'rtl' : 'ltr'}
     onKeyDown={event => {
-      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || readerInteractiveTarget(event.target)) return;
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+      if (readerInteractiveTarget(event.target) && (shown || event.key !== 'Tab' && event.key !== 'Escape')) return;
       key({kind: 'key', key: event.key, shift: event.shiftKey, alt: event.altKey, ctrl: event.ctrlKey, meta: event.metaKey, editable: false, preventDefault: () => event.preventDefault()});
     }}>
+    <button type="button" className={styles.srOnly} onClick={showControls}>{copy.showControls}</button>
     <div className={styles.surface} data-reader-surface onScrollCapture={event => {
       const target = event.target;
       // Foliate forwards its real scroll from the closed shadow root; fixed
@@ -136,10 +150,11 @@ export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingIn
       const bounds = event.currentTarget.getBoundingClientRect();
       if (bounds.width > 0) tap((event.clientX - bounds.left) / bounds.width);
     }}>{children}</div>
-    {title && <div className={styles.runningTitle} aria-hidden={shown}>{title}</div>}
-    {(chapter || remainingInSection) && <div className={styles.runningFooter} aria-hidden={shown}><span>{chapter}</span><span>{remainingInSection}</span></div>}
+    {!comic && title && <div className={styles.runningTitle} aria-hidden={shown}>{title}</div>}
+    {!comic && (chapter || remainingInSection) && <div className={styles.runningFooter} aria-hidden={shown}><span>{chapter}</span><span>{remainingInSection}</span></div>}
     <div ref={chrome} className={styles.chrome} inert={!shown} aria-hidden={!shown}
       onFocusCapture={() => { setFocusWithin(true); show(); }} onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocusWithin(false); }}>
+      {comic && <div className={styles.fixedShade} data-reader-chrome-layer="shade" aria-hidden="true"/>}
       <header className={styles.top} dir="ltr" data-reader-chrome-layer="top">
         <button type="button" className={styles.back} aria-label={copy.back} onClick={onBack}><Icon name="i-left" size={24} /></button>
         <div className={styles.title}>{title && <b>{title}</b>}{subtitle && <small>{subtitle}</small>}</div>

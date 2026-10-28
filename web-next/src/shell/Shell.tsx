@@ -142,9 +142,9 @@ function ShellFrame({identity, OwnerActivity, dockVisible, serverAway, onSignOut
       watchTogether: () => { void navigate({to: '/watch-together'}); }, feedback: onFeedback,
       help: () => { void navigate({to: '/help'}); }, signOut: onSignOut,signOutPorticoAccount:onSignOutPorticoAccount,
     }} trigger={navigation === 'sidebar' ? <button type="button" className={styles.profileRow} aria-label={[t('web.account.switchProfileOrServer'), identity.username || t('next.shell.usernameUnavailable'), identity.serverName].join(', ')}>
-      <ProfileAvatarFace initial={current.initial} art={identity.profileArt} size={34} />
+      <ProfileAvatarFace initial={current.initial} art={identity.profileArt} size={38} />
       <span className={styles.profileText}><b>{identity.username || t('next.shell.usernameUnavailable')}</b><small>{identity.serverName}</small></span><Icon name="i-updown" size={18} />
-    </button> : <ProfileAvatar className={styles.avatar} name={identity.profileName} initial={current.initial} art={identity.profileArt} size={desktop ? 34 : 30}
+    </button> : <ProfileAvatar className={styles.avatar} name={identity.profileName} initial={current.initial} art={identity.profileArt} size={navigation === 'rail' ? 40 : desktop ? 34 : 30}
       notificationDot={compact && identity.showNotificationDot && identity.unread > 0} aria-label={t('next.home.shell.profileMenu', {name: identity.profileName})} />} />;
   if (hostedSelection) return <HostedServerOpening selection={hostedSelection} cancel={() => setHostedSelection(undefined)} />;
   const captionRenderer = windowChrome ?? chrome.renderer;
@@ -166,7 +166,7 @@ function ShellFrame({identity, OwnerActivity, dockVisible, serverAway, onSignOut
           {account}
         </div>
       </nav> : !compact ? <nav className={styles.rail} data-window-drag-region="rail-empty" aria-label={t('next.home.shell.main')}>
-        {chrome.os && sizeClass === 'medium' && <div className={styles.nativeRailMark}><span><img src={wordmark} alt={t('next.platform.appName')} /></span></div>}
+        {sizeClass === 'medium' && <div className={styles.nativeRailMark}><span><img src={wordmark} alt={t('next.platform.appName')} /></span></div>}
         {sizeClass === 'expanded' && <div className={styles.railBrand} data-window-no-drag>
           {navigation === 'sidebar' && <Link className={styles.brand} to="/" aria-label={t('next.platform.appName')}><img src={wordmark} alt="" /></Link>}
           <button type="button" className={styles.collapse} aria-label={t(sidebarCollapsed ? 'web.shell.expand' : 'web.shell.collapse')} aria-expanded={!sidebarCollapsed} onClick={toggleSidebar}><Icon name="i-panels" size={22} /></button>
