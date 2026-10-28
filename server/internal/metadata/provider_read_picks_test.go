@@ -304,7 +304,7 @@ func TestProviderReadPicksTVDBFetchesAfterReleasingSnapshot(t *testing.T) {
 	for i := 0; i < 96; i++ {
 		item := c.Episode(names["show"], names["season"], i+10, fmt.Sprintf("/media/settled-%03d.mkv", i))
 		mbCurrentExec(t, db, `INSERT INTO provider_evidence VALUES(?,'tvdb',?,'{}','now')`, item.ID, i+1000)
-		mbCurrentExec(t, db, `INSERT INTO tvdb_episode_credit_evidence VALUES(?,?,'now',0,0)`, item.ID, i+1000)
+		mbCurrentExec(t, db, `INSERT INTO tvdb_episode_credit_evidence VALUES(?,?,'now',0,0) ON CONFLICT(item_id,provider_id) DO UPDATE SET credits=excluded.credits,attempts=excluded.attempts`, item.ID, i+1000)
 	}
 	var picked []catalogtest.Item
 	for i := 0; i < 10; i++ {
@@ -312,7 +312,7 @@ func TestProviderReadPicksTVDBFetchesAfterReleasingSnapshot(t *testing.T) {
 		picked = append(picked, item)
 		mbCurrentExec(t, db, `INSERT INTO provider_evidence VALUES(?,'tvdb',?,'{}','now')`, item.ID, i+2000)
 	}
-	mbCurrentExec(t, db, `INSERT INTO tvdb_episode_credit_evidence VALUES(?,2000,'now',NULL,5),(?,2001,'now',NULL,4)`, picked[0].ID, picked[1].ID)
+	mbCurrentExec(t, db, `INSERT INTO tvdb_episode_credit_evidence VALUES(?,2000,'now',NULL,5),(?,2001,'now',NULL,4) ON CONFLICT(item_id,provider_id) DO UPDATE SET credits=excluded.credits,attempts=excluded.attempts`, picked[0].ID, picked[1].ID)
 	mbCurrentExec(t, db, `INSERT INTO tvdb_episode_credit_evidence VALUES(?,9999,'now',0,0)`, names["one"].ID)
 	ctx := readPickContext(t)
 	hold, err := dbwork.Begin(ctx, db, dbwork.ClassMaintenance)
@@ -375,7 +375,7 @@ func TestProviderReadPicksTVDBFetchesAfterReleasingSnapshot(t *testing.T) {
 			t.Fatal("credit identity/provenance changed", key, record, ordinal)
 		}
 	}
-	if n := readPickCount(t, db, `SELECT count(*) FROM tvdb_episode_credit_evidence WHERE item_id=?`, picked[9].ID); n != 0 {
+	if n := readPickCount(t, db, `SELECT count(*) FROM tvdb_episode_credit_evidence WHERE item_id=? AND (credits IS NOT NULL OR attempts<>0)`, picked[9].ID); n != 0 {
 		t.Fatal("page exceeded eight episodes")
 	}
 }
@@ -407,7 +407,7 @@ func TestProviderReadPicksTVDBPublicationKeepsLookupFence(t *testing.T) {
 	if err := <-results; !errors.Is(err, localonly.Err) {
 		t.Fatalf("old lookup epoch published: %v", err)
 	}
-	if readPickCount(t, db, `SELECT count(*) FROM tvdb_episode_credit_evidence`) != 0 || readPickCount(t, db, `SELECT count(*) FROM catalog_credits WHERE provider='tvdb'`) != 0 {
-		t.Fatal("rejected publication wrote credits/evidence")
+	if readPickCount(t, db, `SELECT count(*) FROM tvdb_episode_credit_evidence WHERE credits IS NOT NULL OR attempts<>0`) != 0 || readPickCount(t, db, `SELECT count(*) FROM catalog_credits WHERE provider='tvdb'`) != 0 {
+		t.Fatal("rejected publication wrote credits/results/attempts")
 	}
 }

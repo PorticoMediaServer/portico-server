@@ -1795,7 +1795,7 @@ CREATE TABLE mb_operation_artists(operation_id TEXT NOT NULL REFERENCES mb_publi
 CREATE TABLE mb_candidates(kind TEXT NOT NULL,entity_id INTEGER NOT NULL,provider_id TEXT NOT NULL,entity_type TEXT NOT NULL CHECK(entity_type IN('recording','release')),title TEXT NOT NULL,artist TEXT NOT NULL,edition TEXT NOT NULL,confidence REAL NOT NULL CHECK(confidence>=0 AND confidence<=1),decision TEXT NOT NULL CHECK(decision IN('candidate','accepted','rejected','superseded')),query_digest TEXT NOT NULL CHECK(length(query_digest)=64),payload TEXT NOT NULL CHECK(length(CAST(payload AS BLOB))<=1048576),observed_at TEXT NOT NULL,PRIMARY KEY(kind,entity_id,provider_id),FOREIGN KEY(kind,entity_id) REFERENCES mb_jobs(kind,entity_id) ON DELETE CASCADE) STRICT;
 CREATE TABLE mb_candidate_reasons(kind TEXT NOT NULL,entity_id INTEGER NOT NULL,provider_id TEXT NOT NULL,ordinal INTEGER NOT NULL CHECK(ordinal>=0 AND ordinal<16),reason TEXT NOT NULL,PRIMARY KEY(kind,entity_id,provider_id,ordinal),FOREIGN KEY(kind,entity_id,provider_id) REFERENCES mb_candidates(kind,entity_id,provider_id) ON DELETE CASCADE) STRICT;
 CREATE TABLE mb_selection_receipts(id TEXT PRIMARY KEY,kind TEXT NOT NULL,entity_id INTEGER NOT NULL,job_generation INTEGER NOT NULL,actor_authority TEXT NOT NULL,actor_account_id TEXT NOT NULL,actor_profile_id TEXT NOT NULL,candidate_id TEXT NOT NULL,query_digest TEXT NOT NULL CHECK(length(query_digest)=64),prior_revision_id TEXT NOT NULL DEFAULT '',accepted_revision_id TEXT NOT NULL DEFAULT '',status TEXT NOT NULL CHECK(status IN('pending','applied','superseded','failed')),created_at TEXT NOT NULL,finished_at TEXT NOT NULL DEFAULT '',FOREIGN KEY(kind,entity_id) REFERENCES mb_jobs(kind,entity_id) ON DELETE CASCADE) STRICT;
-CREATE TABLE mb_album_reconciliations(album_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,release_revision TEXT NOT NULL REFERENCES mb_release_evidence(revision_id),membership_revision INTEGER NOT NULL,cursor TEXT NOT NULL DEFAULT '',status TEXT NOT NULL CHECK(status IN('pending','complete')),revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0)) STRICT;
+CREATE TABLE mb_album_reconciliations(album_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,release_revision TEXT NOT NULL REFERENCES mb_release_evidence(revision_id),membership_revision INTEGER NOT NULL,cursor TEXT NOT NULL DEFAULT '',status TEXT NOT NULL CHECK(status IN('pending','complete')),revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0),current_pin INTEGER NOT NULL DEFAULT 0 CHECK(current_pin IN(0,1))) STRICT;
 CREATE TABLE mb_album_hint_scans(album_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,incarnation TEXT NOT NULL,base_revision INTEGER NOT NULL,membership_revision INTEGER NOT NULL,cursor TEXT NOT NULL DEFAULT '',hint_id TEXT NOT NULL DEFAULT '',problem TEXT NOT NULL DEFAULT '',status TEXT NOT NULL CHECK(status IN('pending','complete'))) STRICT;
 CREATE TABLE audio_metadata_policies(
   library_id TEXT PRIMARY KEY REFERENCES libraries(id) ON DELETE CASCADE,
@@ -10630,4 +10630,444 @@ END;
 CREATE TRIGGER summary_classification_update AFTER UPDATE OF value_key,minimum_age ON content_rating_ages
 WHEN OLD.value_key IS NOT NEW.value_key OR OLD.minimum_age IS NOT NEW.minimum_age BEGIN
  UPDATE catalog_summary_classification_revision SET revision=revision+1 WHERE singleton=1;
+END;
+
+-- Runnable reconciliation is a maintained base fact; public pending semantics stay unchanged.
+CREATE INDEX mb_album_reconciliations_pending ON mb_album_reconciliations(album_id) WHERE status='pending' AND current_pin=1;
+CREATE TRIGGER mb_reconcile_head_insert AFTER INSERT ON mb_album_heads BEGIN UPDATE mb_album_reconciliations SET current_pin=EXISTS(SELECT 1 FROM mb_album_heads h JOIN mb_album_links l ON l.album_id=h.album_id WHERE h.album_id=mb_album_reconciliations.album_id AND l.release_revision=mb_album_reconciliations.release_revision),status=CASE WHEN EXISTS(SELECT 1 FROM mb_album_heads h WHERE h.album_id=mb_album_reconciliations.album_id AND h.membership_revision<>mb_album_reconciliations.membership_revision) THEN 'pending' ELSE status END WHERE album_id=NEW.album_id AND (current_pin IS NOT EXISTS(SELECT 1 FROM mb_album_heads h JOIN mb_album_links l ON l.album_id=h.album_id WHERE h.album_id=mb_album_reconciliations.album_id AND l.release_revision=mb_album_reconciliations.release_revision) OR (status<>'pending' AND EXISTS(SELECT 1 FROM mb_album_heads h WHERE h.album_id=mb_album_reconciliations.album_id AND h.membership_revision<>mb_album_reconciliations.membership_revision))); END;
+CREATE TRIGGER mb_reconcile_head_delete AFTER DELETE ON mb_album_heads BEGIN UPDATE mb_album_reconciliations SET current_pin=EXISTS(SELECT 1 FROM mb_album_heads h JOIN mb_album_links l ON l.album_id=h.album_id WHERE h.album_id=mb_album_reconciliations.album_id AND l.release_revision=mb_album_reconciliations.release_revision),status=CASE WHEN EXISTS(SELECT 1 FROM mb_album_heads h WHERE h.album_id=mb_album_reconciliations.album_id AND h.membership_revision<>mb_album_reconciliations.membership_revision) THEN 'pending' ELSE status END WHERE album_id=OLD.album_id AND (current_pin IS NOT EXISTS(SELECT 1 FROM mb_album_heads h JOIN mb_album_links l ON l.album_id=h.album_id WHERE h.album_id=mb_album_reconciliations.album_id AND l.release_revision=mb_album_reconciliations.release_revision) OR (status<>'pending' AND EXISTS(SELECT 1 FROM mb_album_heads h WHERE h.album_id=mb_album_reconciliations.album_id AND h.membership_revision<>mb_album_reconciliations.membership_revision))); END;
+CREATE TRIGGER mb_reconcile_head_update AFTER UPDATE OF album_id,membership_revision ON mb_album_heads WHEN OLD.album_id IS NOT NEW.album_id OR OLD.membership_revision IS NOT NEW.membership_revision BEGIN UPDATE mb_album_reconciliations SET current_pin=EXISTS(SELECT 1 FROM mb_album_heads h JOIN mb_album_links l ON l.album_id=h.album_id WHERE h.album_id=mb_album_reconciliations.album_id AND l.release_revision=mb_album_reconciliations.release_revision),status=CASE WHEN EXISTS(SELECT 1 FROM mb_album_heads h WHERE h.album_id=mb_album_reconciliations.album_id AND h.membership_revision<>mb_album_reconciliations.membership_revision) THEN 'pending' ELSE status END WHERE album_id=OLD.album_id AND (current_pin IS NOT EXISTS(SELECT 1 FROM mb_album_heads h JOIN mb_album_links l ON l.album_id=h.album_id WHERE h.album_id=mb_album_reconciliations.album_id AND l.release_revision=mb_album_reconciliations.release_revision) OR (status<>'pending' AND EXISTS(SELECT 1 FROM mb_album_heads h WHERE h.album_id=mb_album_reconciliations.album_id AND h.membership_revision<>mb_album_reconciliations.membership_revision))); UPDATE mb_album_reconciliations SET current_pin=EXISTS(SELECT 1 FROM mb_album_heads h JOIN mb_album_links l ON l.album_id=h.album_id WHERE h.album_id=mb_album_reconciliations.album_id AND l.release_revision=mb_album_reconciliations.release_revision),status=CASE WHEN EXISTS(SELECT 1 FROM mb_album_heads h WHERE h.album_id=mb_album_reconciliations.album_id AND h.membership_revision<>mb_album_reconciliations.membership_revision) THEN 'pending' ELSE status END WHERE album_id=NEW.album_id AND (current_pin IS NOT EXISTS(SELECT 1 FROM mb_album_heads h JOIN mb_album_links l ON l.album_id=h.album_id WHERE h.album_id=mb_album_reconciliations.album_id AND l.release_revision=mb_album_reconciliations.release_revision) OR (status<>'pending' AND EXISTS(SELECT 1 FROM mb_album_heads h WHERE h.album_id=mb_album_reconciliations.album_id AND h.membership_revision<>mb_album_reconciliations.membership_revision))); END;
+CREATE TRIGGER mb_reconcile_link_insert AFTER INSERT ON mb_album_links BEGIN UPDATE mb_album_reconciliations SET current_pin=EXISTS(SELECT 1 FROM mb_album_heads h JOIN mb_album_links l ON l.album_id=h.album_id WHERE h.album_id=mb_album_reconciliations.album_id AND l.release_revision=mb_album_reconciliations.release_revision),status=CASE WHEN EXISTS(SELECT 1 FROM mb_album_heads h WHERE h.album_id=mb_album_reconciliations.album_id AND h.membership_revision<>mb_album_reconciliations.membership_revision) THEN 'pending' ELSE status END WHERE album_id=NEW.album_id AND (current_pin IS NOT EXISTS(SELECT 1 FROM mb_album_heads h JOIN mb_album_links l ON l.album_id=h.album_id WHERE h.album_id=mb_album_reconciliations.album_id AND l.release_revision=mb_album_reconciliations.release_revision) OR (status<>'pending' AND EXISTS(SELECT 1 FROM mb_album_heads h WHERE h.album_id=mb_album_reconciliations.album_id AND h.membership_revision<>mb_album_reconciliations.membership_revision))); END;
+CREATE TRIGGER mb_reconcile_link_delete AFTER DELETE ON mb_album_links BEGIN UPDATE mb_album_reconciliations SET current_pin=EXISTS(SELECT 1 FROM mb_album_heads h JOIN mb_album_links l ON l.album_id=h.album_id WHERE h.album_id=mb_album_reconciliations.album_id AND l.release_revision=mb_album_reconciliations.release_revision),status=CASE WHEN EXISTS(SELECT 1 FROM mb_album_heads h WHERE h.album_id=mb_album_reconciliations.album_id AND h.membership_revision<>mb_album_reconciliations.membership_revision) THEN 'pending' ELSE status END WHERE album_id=OLD.album_id AND (current_pin IS NOT EXISTS(SELECT 1 FROM mb_album_heads h JOIN mb_album_links l ON l.album_id=h.album_id WHERE h.album_id=mb_album_reconciliations.album_id AND l.release_revision=mb_album_reconciliations.release_revision) OR (status<>'pending' AND EXISTS(SELECT 1 FROM mb_album_heads h WHERE h.album_id=mb_album_reconciliations.album_id AND h.membership_revision<>mb_album_reconciliations.membership_revision))); END;
+CREATE TRIGGER mb_reconcile_link_update AFTER UPDATE OF album_id,release_revision ON mb_album_links WHEN OLD.album_id IS NOT NEW.album_id OR OLD.release_revision IS NOT NEW.release_revision BEGIN UPDATE mb_album_reconciliations SET current_pin=EXISTS(SELECT 1 FROM mb_album_heads h JOIN mb_album_links l ON l.album_id=h.album_id WHERE h.album_id=mb_album_reconciliations.album_id AND l.release_revision=mb_album_reconciliations.release_revision),status=CASE WHEN EXISTS(SELECT 1 FROM mb_album_heads h WHERE h.album_id=mb_album_reconciliations.album_id AND h.membership_revision<>mb_album_reconciliations.membership_revision) THEN 'pending' ELSE status END WHERE album_id=OLD.album_id AND (current_pin IS NOT EXISTS(SELECT 1 FROM mb_album_heads h JOIN mb_album_links l ON l.album_id=h.album_id WHERE h.album_id=mb_album_reconciliations.album_id AND l.release_revision=mb_album_reconciliations.release_revision) OR (status<>'pending' AND EXISTS(SELECT 1 FROM mb_album_heads h WHERE h.album_id=mb_album_reconciliations.album_id AND h.membership_revision<>mb_album_reconciliations.membership_revision))); UPDATE mb_album_reconciliations SET current_pin=EXISTS(SELECT 1 FROM mb_album_heads h JOIN mb_album_links l ON l.album_id=h.album_id WHERE h.album_id=mb_album_reconciliations.album_id AND l.release_revision=mb_album_reconciliations.release_revision),status=CASE WHEN EXISTS(SELECT 1 FROM mb_album_heads h WHERE h.album_id=mb_album_reconciliations.album_id AND h.membership_revision<>mb_album_reconciliations.membership_revision) THEN 'pending' ELSE status END WHERE album_id=NEW.album_id AND (current_pin IS NOT EXISTS(SELECT 1 FROM mb_album_heads h JOIN mb_album_links l ON l.album_id=h.album_id WHERE h.album_id=mb_album_reconciliations.album_id AND l.release_revision=mb_album_reconciliations.release_revision) OR (status<>'pending' AND EXISTS(SELECT 1 FROM mb_album_heads h WHERE h.album_id=mb_album_reconciliations.album_id AND h.membership_revision<>mb_album_reconciliations.membership_revision))); END;
+CREATE TRIGGER mb_reconcile_row_insert AFTER INSERT ON mb_album_reconciliations BEGIN UPDATE mb_album_reconciliations SET current_pin=EXISTS(SELECT 1 FROM mb_album_heads h JOIN mb_album_links l ON l.album_id=h.album_id WHERE h.album_id=mb_album_reconciliations.album_id AND l.release_revision=mb_album_reconciliations.release_revision),status=CASE WHEN EXISTS(SELECT 1 FROM mb_album_heads h WHERE h.album_id=mb_album_reconciliations.album_id AND h.membership_revision<>mb_album_reconciliations.membership_revision) THEN 'pending' ELSE status END WHERE album_id=NEW.album_id AND (current_pin IS NOT EXISTS(SELECT 1 FROM mb_album_heads h JOIN mb_album_links l ON l.album_id=h.album_id WHERE h.album_id=mb_album_reconciliations.album_id AND l.release_revision=mb_album_reconciliations.release_revision) OR (status<>'pending' AND EXISTS(SELECT 1 FROM mb_album_heads h WHERE h.album_id=mb_album_reconciliations.album_id AND h.membership_revision<>mb_album_reconciliations.membership_revision))); END;
+CREATE TRIGGER mb_reconcile_row_update AFTER UPDATE OF album_id,release_revision,membership_revision,status ON mb_album_reconciliations WHEN OLD.album_id IS NOT NEW.album_id OR OLD.release_revision IS NOT NEW.release_revision OR OLD.membership_revision IS NOT NEW.membership_revision OR OLD.status IS NOT NEW.status BEGIN UPDATE mb_album_reconciliations SET current_pin=EXISTS(SELECT 1 FROM mb_album_heads h JOIN mb_album_links l ON l.album_id=h.album_id WHERE h.album_id=mb_album_reconciliations.album_id AND l.release_revision=mb_album_reconciliations.release_revision),status=CASE WHEN EXISTS(SELECT 1 FROM mb_album_heads h WHERE h.album_id=mb_album_reconciliations.album_id AND h.membership_revision<>mb_album_reconciliations.membership_revision) THEN 'pending' ELSE status END WHERE album_id=OLD.album_id AND (current_pin IS NOT EXISTS(SELECT 1 FROM mb_album_heads h JOIN mb_album_links l ON l.album_id=h.album_id WHERE h.album_id=mb_album_reconciliations.album_id AND l.release_revision=mb_album_reconciliations.release_revision) OR (status<>'pending' AND EXISTS(SELECT 1 FROM mb_album_heads h WHERE h.album_id=mb_album_reconciliations.album_id AND h.membership_revision<>mb_album_reconciliations.membership_revision))); UPDATE mb_album_reconciliations SET current_pin=EXISTS(SELECT 1 FROM mb_album_heads h JOIN mb_album_links l ON l.album_id=h.album_id WHERE h.album_id=mb_album_reconciliations.album_id AND l.release_revision=mb_album_reconciliations.release_revision),status=CASE WHEN EXISTS(SELECT 1 FROM mb_album_heads h WHERE h.album_id=mb_album_reconciliations.album_id AND h.membership_revision<>mb_album_reconciliations.membership_revision) THEN 'pending' ELSE status END WHERE album_id=NEW.album_id AND (current_pin IS NOT EXISTS(SELECT 1 FROM mb_album_heads h JOIN mb_album_links l ON l.album_id=h.album_id WHERE h.album_id=mb_album_reconciliations.album_id AND l.release_revision=mb_album_reconciliations.release_revision) OR (status<>'pending' AND EXISTS(SELECT 1 FROM mb_album_heads h WHERE h.album_id=mb_album_reconciliations.album_id AND h.membership_revision<>mb_album_reconciliations.membership_revision))); END;
+
+-- P2-52 SRV020 maintained episode-credit work
+
+CREATE INDEX tvdb_episode_credit_due ON tvdb_episode_credit_evidence(item_id,provider_id) WHERE credits IS NULL AND attempts<5;
+CREATE TABLE tvdb_episode_credit_pending(
+ item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ provider_id INTEGER NOT NULL CHECK(provider_id>0),
+ library_id INTEGER NOT NULL REFERENCES catalog_libraries(id) ON DELETE CASCADE,
+ PRIMARY KEY(item_id,provider_id),
+ FOREIGN KEY(item_id,provider_id) REFERENCES tvdb_episode_credit_evidence(item_id,provider_id) ON DELETE CASCADE
+) STRICT;
+CREATE INDEX tvdb_episode_credit_pending_library ON tvdb_episode_credit_pending(library_id,item_id,provider_id);
+CREATE TABLE tvdb_episode_credit_heads(
+ library_id INTEGER PRIMARY KEY REFERENCES catalog_libraries(id) ON DELETE CASCADE,
+ enabled INTEGER NOT NULL CHECK(enabled IN(0,1)),
+ next_item INTEGER,next_provider INTEGER,
+ CHECK((next_item IS NULL AND next_provider IS NULL) OR (next_item IS NOT NULL AND next_provider IS NOT NULL AND next_provider>0))
+) STRICT;
+CREATE INDEX tvdb_episode_credit_heads_due ON tvdb_episode_credit_heads(next_item,library_id) WHERE enabled=1 AND next_item IS NOT NULL;
+CREATE TABLE tvdb_episode_credit_cleanup(
+ item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ provider_id INTEGER NOT NULL CHECK(provider_id>0),
+ PRIMARY KEY(item_id,provider_id)
+) STRICT;
+CREATE TRIGGER tvdb_credit_pending_insert AFTER INSERT ON tvdb_episode_credit_pending BEGIN
+ UPDATE tvdb_episode_credit_heads SET (next_item,next_provider)=(SELECT item_id,provider_id FROM tvdb_episode_credit_pending WHERE library_id=NEW.library_id ORDER BY item_id,provider_id LIMIT 1) WHERE library_id=NEW.library_id AND (next_item,next_provider) IS NOT (SELECT item_id,provider_id FROM tvdb_episode_credit_pending WHERE library_id=NEW.library_id ORDER BY item_id,provider_id LIMIT 1);
+END;
+CREATE TRIGGER tvdb_credit_pending_delete AFTER DELETE ON tvdb_episode_credit_pending BEGIN
+ UPDATE tvdb_episode_credit_heads SET (next_item,next_provider)=(SELECT item_id,provider_id FROM tvdb_episode_credit_pending WHERE library_id=OLD.library_id ORDER BY item_id,provider_id LIMIT 1) WHERE library_id=OLD.library_id AND (next_item,next_provider) IS NOT (SELECT item_id,provider_id FROM tvdb_episode_credit_pending WHERE library_id=OLD.library_id ORDER BY item_id,provider_id LIMIT 1);
+END;
+CREATE TRIGGER tvdb_credit_library_insert AFTER INSERT ON catalog_libraries BEGIN
+ INSERT INTO tvdb_episode_credit_heads(library_id,enabled)
+ SELECT cl.id,COALESCE((SELECT tp.enabled FROM tvdb_provider_policies tp WHERE tp.library_id=cl.library_id),0)
+ FROM catalog_libraries cl WHERE cl.id=NEW.id ON CONFLICT(library_id) DO NOTHING;
+END;
+CREATE TRIGGER tvdb_credit_policy_insert AFTER INSERT ON tvdb_provider_policies BEGIN
+ INSERT INTO tvdb_episode_credit_heads(library_id,enabled)
+ SELECT cl.id,COALESCE((SELECT tp.enabled FROM tvdb_provider_policies tp WHERE tp.library_id=cl.library_id),0)
+ FROM catalog_libraries cl WHERE cl.id=(SELECT id FROM catalog_libraries WHERE library_id=NEW.library_id) ON CONFLICT(library_id) DO NOTHING;
+ UPDATE tvdb_episode_credit_heads SET enabled=COALESCE((SELECT enabled FROM tvdb_provider_policies WHERE library_id=NEW.library_id),0)
+ WHERE library_id=(SELECT id FROM catalog_libraries WHERE library_id=NEW.library_id) AND enabled IS NOT COALESCE((SELECT enabled FROM tvdb_provider_policies WHERE library_id=NEW.library_id),0);
+END;
+CREATE TRIGGER tvdb_credit_policy_delete AFTER DELETE ON tvdb_provider_policies BEGIN
+ INSERT INTO tvdb_episode_credit_heads(library_id,enabled)
+ SELECT cl.id,COALESCE((SELECT tp.enabled FROM tvdb_provider_policies tp WHERE tp.library_id=cl.library_id),0)
+ FROM catalog_libraries cl WHERE cl.id=(SELECT id FROM catalog_libraries WHERE library_id=OLD.library_id) ON CONFLICT(library_id) DO NOTHING;
+ UPDATE tvdb_episode_credit_heads SET enabled=COALESCE((SELECT enabled FROM tvdb_provider_policies WHERE library_id=OLD.library_id),0)
+ WHERE library_id=(SELECT id FROM catalog_libraries WHERE library_id=OLD.library_id) AND enabled IS NOT COALESCE((SELECT enabled FROM tvdb_provider_policies WHERE library_id=OLD.library_id),0);
+END;
+CREATE TRIGGER tvdb_credit_policy_update AFTER UPDATE OF enabled ON tvdb_provider_policies WHEN OLD.enabled IS NOT NEW.enabled BEGIN
+ INSERT INTO tvdb_episode_credit_heads(library_id,enabled)
+ SELECT cl.id,COALESCE((SELECT tp.enabled FROM tvdb_provider_policies tp WHERE tp.library_id=cl.library_id),0)
+ FROM catalog_libraries cl WHERE cl.id=(SELECT id FROM catalog_libraries WHERE library_id=NEW.library_id) ON CONFLICT(library_id) DO NOTHING;
+ UPDATE tvdb_episode_credit_heads SET enabled=COALESCE((SELECT enabled FROM tvdb_provider_policies WHERE library_id=NEW.library_id),0)
+ WHERE library_id=(SELECT id FROM catalog_libraries WHERE library_id=NEW.library_id) AND enabled IS NOT COALESCE((SELECT enabled FROM tvdb_provider_policies WHERE library_id=NEW.library_id),0);
+END;
+CREATE TRIGGER tvdb_credit_pair_insert AFTER INSERT ON provider_evidence WHEN NEW.provider='tvdb' AND NEW.provider_id>0 BEGIN
+ DELETE FROM tvdb_episode_credit_pending WHERE item_id=NEW.item_id;
+ INSERT INTO tvdb_episode_credit_evidence(item_id,provider_id,observed_at,credits,attempts)
+ SELECT pe.item_id,pe.provider_id,pe.observed_at,NULL,0 FROM provider_evidence pe
+ JOIN catalog_episodes ep ON ep.entity_id=pe.item_id JOIN catalog_entities e ON e.id=pe.item_id
+ WHERE pe.item_id=NEW.item_id AND pe.provider='tvdb' AND pe.provider_id>0 AND e.kind=4
+ ON CONFLICT(item_id,provider_id) DO NOTHING;
+ INSERT INTO tvdb_episode_credit_heads(library_id,enabled)
+ SELECT cl.id,COALESCE((SELECT tp.enabled FROM tvdb_provider_policies tp WHERE tp.library_id=cl.library_id),0)
+ FROM catalog_libraries cl WHERE cl.id=(SELECT library_id FROM catalog_entities WHERE id=NEW.item_id) ON CONFLICT(library_id) DO NOTHING;
+ INSERT INTO tvdb_episode_credit_pending(item_id,provider_id,library_id)
+ SELECT pe.item_id,pe.provider_id,e.library_id FROM provider_evidence pe
+ JOIN catalog_episodes ep ON ep.entity_id=pe.item_id JOIN catalog_entities e ON e.id=pe.item_id
+ JOIN tvdb_episode_credit_evidence ce ON ce.item_id=pe.item_id AND ce.provider_id=pe.provider_id
+ WHERE pe.item_id=NEW.item_id AND pe.provider='tvdb' AND pe.provider_id>0 AND e.kind=4 AND ce.credits IS NULL AND ce.attempts<5
+ ON CONFLICT(item_id,provider_id) DO NOTHING;
+END;
+CREATE TRIGGER tvdb_credit_pair_delete AFTER DELETE ON provider_evidence WHEN OLD.provider='tvdb' AND OLD.provider_id>0 BEGIN
+ DELETE FROM tvdb_episode_credit_pending WHERE item_id=OLD.item_id AND provider_id=OLD.provider_id;
+ INSERT INTO tvdb_episode_credit_cleanup(item_id,provider_id)
+ SELECT OLD.item_id,OLD.provider_id WHERE OLD.provider_id>0 AND (1) AND EXISTS(SELECT 1 FROM catalog_entities WHERE id=OLD.item_id)
+ ON CONFLICT(item_id,provider_id) DO NOTHING;
+END;
+CREATE TRIGGER tvdb_credit_pair_update AFTER UPDATE OF item_id,provider,provider_id ON provider_evidence WHEN OLD.item_id IS NOT NEW.item_id OR OLD.provider IS NOT NEW.provider OR OLD.provider_id IS NOT NEW.provider_id BEGIN
+ DELETE FROM tvdb_episode_credit_pending WHERE item_id=OLD.item_id AND provider_id=OLD.provider_id AND OLD.provider='tvdb';
+ INSERT INTO tvdb_episode_credit_cleanup(item_id,provider_id)
+ SELECT OLD.item_id,OLD.provider_id WHERE OLD.provider_id>0 AND (OLD.provider='tvdb') AND EXISTS(SELECT 1 FROM catalog_entities WHERE id=OLD.item_id)
+ ON CONFLICT(item_id,provider_id) DO NOTHING;
+ DELETE FROM tvdb_episode_credit_pending WHERE item_id=NEW.item_id;
+ INSERT INTO tvdb_episode_credit_evidence(item_id,provider_id,observed_at,credits,attempts)
+ SELECT pe.item_id,pe.provider_id,pe.observed_at,NULL,0 FROM provider_evidence pe
+ JOIN catalog_episodes ep ON ep.entity_id=pe.item_id JOIN catalog_entities e ON e.id=pe.item_id
+ WHERE pe.item_id=NEW.item_id AND pe.provider='tvdb' AND pe.provider_id>0 AND e.kind=4
+ ON CONFLICT(item_id,provider_id) DO NOTHING;
+ INSERT INTO tvdb_episode_credit_heads(library_id,enabled)
+ SELECT cl.id,COALESCE((SELECT tp.enabled FROM tvdb_provider_policies tp WHERE tp.library_id=cl.library_id),0)
+ FROM catalog_libraries cl WHERE cl.id=(SELECT library_id FROM catalog_entities WHERE id=NEW.item_id) ON CONFLICT(library_id) DO NOTHING;
+ INSERT INTO tvdb_episode_credit_pending(item_id,provider_id,library_id)
+ SELECT pe.item_id,pe.provider_id,e.library_id FROM provider_evidence pe
+ JOIN catalog_episodes ep ON ep.entity_id=pe.item_id JOIN catalog_entities e ON e.id=pe.item_id
+ JOIN tvdb_episode_credit_evidence ce ON ce.item_id=pe.item_id AND ce.provider_id=pe.provider_id
+ WHERE pe.item_id=NEW.item_id AND pe.provider='tvdb' AND pe.provider_id>0 AND e.kind=4 AND ce.credits IS NULL AND ce.attempts<5
+ ON CONFLICT(item_id,provider_id) DO NOTHING;
+END;
+CREATE TRIGGER tvdb_credit_episode_insert AFTER INSERT ON catalog_episodes BEGIN
+ DELETE FROM tvdb_episode_credit_pending WHERE item_id=NEW.entity_id;
+ INSERT INTO tvdb_episode_credit_evidence(item_id,provider_id,observed_at,credits,attempts)
+ SELECT pe.item_id,pe.provider_id,pe.observed_at,NULL,0 FROM provider_evidence pe
+ JOIN catalog_episodes ep ON ep.entity_id=pe.item_id JOIN catalog_entities e ON e.id=pe.item_id
+ WHERE pe.item_id=NEW.entity_id AND pe.provider='tvdb' AND pe.provider_id>0 AND e.kind=4
+ ON CONFLICT(item_id,provider_id) DO NOTHING;
+ INSERT INTO tvdb_episode_credit_heads(library_id,enabled)
+ SELECT cl.id,COALESCE((SELECT tp.enabled FROM tvdb_provider_policies tp WHERE tp.library_id=cl.library_id),0)
+ FROM catalog_libraries cl WHERE cl.id=(SELECT library_id FROM catalog_entities WHERE id=NEW.entity_id) ON CONFLICT(library_id) DO NOTHING;
+ INSERT INTO tvdb_episode_credit_pending(item_id,provider_id,library_id)
+ SELECT pe.item_id,pe.provider_id,e.library_id FROM provider_evidence pe
+ JOIN catalog_episodes ep ON ep.entity_id=pe.item_id JOIN catalog_entities e ON e.id=pe.item_id
+ JOIN tvdb_episode_credit_evidence ce ON ce.item_id=pe.item_id AND ce.provider_id=pe.provider_id
+ WHERE pe.item_id=NEW.entity_id AND pe.provider='tvdb' AND pe.provider_id>0 AND e.kind=4 AND ce.credits IS NULL AND ce.attempts<5
+ ON CONFLICT(item_id,provider_id) DO NOTHING;
+END;
+CREATE TRIGGER tvdb_credit_episode_delete AFTER DELETE ON catalog_episodes BEGIN
+ DELETE FROM tvdb_episode_credit_pending WHERE item_id=OLD.entity_id;
+END;
+CREATE TRIGGER tvdb_credit_episode_update AFTER UPDATE OF entity_id ON catalog_episodes WHEN OLD.entity_id IS NOT NEW.entity_id BEGIN
+ DELETE FROM tvdb_episode_credit_pending WHERE item_id=OLD.entity_id;
+ DELETE FROM tvdb_episode_credit_pending WHERE item_id=NEW.entity_id;
+ INSERT INTO tvdb_episode_credit_evidence(item_id,provider_id,observed_at,credits,attempts)
+ SELECT pe.item_id,pe.provider_id,pe.observed_at,NULL,0 FROM provider_evidence pe
+ JOIN catalog_episodes ep ON ep.entity_id=pe.item_id JOIN catalog_entities e ON e.id=pe.item_id
+ WHERE pe.item_id=NEW.entity_id AND pe.provider='tvdb' AND pe.provider_id>0 AND e.kind=4
+ ON CONFLICT(item_id,provider_id) DO NOTHING;
+ INSERT INTO tvdb_episode_credit_heads(library_id,enabled)
+ SELECT cl.id,COALESCE((SELECT tp.enabled FROM tvdb_provider_policies tp WHERE tp.library_id=cl.library_id),0)
+ FROM catalog_libraries cl WHERE cl.id=(SELECT library_id FROM catalog_entities WHERE id=NEW.entity_id) ON CONFLICT(library_id) DO NOTHING;
+ INSERT INTO tvdb_episode_credit_pending(item_id,provider_id,library_id)
+ SELECT pe.item_id,pe.provider_id,e.library_id FROM provider_evidence pe
+ JOIN catalog_episodes ep ON ep.entity_id=pe.item_id JOIN catalog_entities e ON e.id=pe.item_id
+ JOIN tvdb_episode_credit_evidence ce ON ce.item_id=pe.item_id AND ce.provider_id=pe.provider_id
+ WHERE pe.item_id=NEW.entity_id AND pe.provider='tvdb' AND pe.provider_id>0 AND e.kind=4 AND ce.credits IS NULL AND ce.attempts<5
+ ON CONFLICT(item_id,provider_id) DO NOTHING;
+END;
+CREATE TRIGGER tvdb_credit_entity_update AFTER UPDATE OF kind,library_id ON catalog_entities WHEN OLD.kind IS NOT NEW.kind OR OLD.library_id IS NOT NEW.library_id BEGIN
+ DELETE FROM tvdb_episode_credit_pending WHERE item_id=NEW.id;
+ INSERT INTO tvdb_episode_credit_evidence(item_id,provider_id,observed_at,credits,attempts)
+ SELECT pe.item_id,pe.provider_id,pe.observed_at,NULL,0 FROM provider_evidence pe
+ JOIN catalog_episodes ep ON ep.entity_id=pe.item_id JOIN catalog_entities e ON e.id=pe.item_id
+ WHERE pe.item_id=NEW.id AND pe.provider='tvdb' AND pe.provider_id>0 AND e.kind=4
+ ON CONFLICT(item_id,provider_id) DO NOTHING;
+ INSERT INTO tvdb_episode_credit_heads(library_id,enabled)
+ SELECT cl.id,COALESCE((SELECT tp.enabled FROM tvdb_provider_policies tp WHERE tp.library_id=cl.library_id),0)
+ FROM catalog_libraries cl WHERE cl.id=(SELECT library_id FROM catalog_entities WHERE id=NEW.id) ON CONFLICT(library_id) DO NOTHING;
+ INSERT INTO tvdb_episode_credit_pending(item_id,provider_id,library_id)
+ SELECT pe.item_id,pe.provider_id,e.library_id FROM provider_evidence pe
+ JOIN catalog_episodes ep ON ep.entity_id=pe.item_id JOIN catalog_entities e ON e.id=pe.item_id
+ JOIN tvdb_episode_credit_evidence ce ON ce.item_id=pe.item_id AND ce.provider_id=pe.provider_id
+ WHERE pe.item_id=NEW.id AND pe.provider='tvdb' AND pe.provider_id>0 AND e.kind=4 AND ce.credits IS NULL AND ce.attempts<5
+ ON CONFLICT(item_id,provider_id) DO NOTHING;
+END;
+CREATE TRIGGER tvdb_credit_evidence_insert AFTER INSERT ON tvdb_episode_credit_evidence BEGIN
+ DELETE FROM tvdb_episode_credit_pending WHERE item_id=NEW.item_id;
+ INSERT INTO tvdb_episode_credit_evidence(item_id,provider_id,observed_at,credits,attempts)
+ SELECT pe.item_id,pe.provider_id,pe.observed_at,NULL,0 FROM provider_evidence pe
+ JOIN catalog_episodes ep ON ep.entity_id=pe.item_id JOIN catalog_entities e ON e.id=pe.item_id
+ WHERE pe.item_id=NEW.item_id AND pe.provider='tvdb' AND pe.provider_id>0 AND e.kind=4
+ ON CONFLICT(item_id,provider_id) DO NOTHING;
+ INSERT INTO tvdb_episode_credit_heads(library_id,enabled)
+ SELECT cl.id,COALESCE((SELECT tp.enabled FROM tvdb_provider_policies tp WHERE tp.library_id=cl.library_id),0)
+ FROM catalog_libraries cl WHERE cl.id=(SELECT library_id FROM catalog_entities WHERE id=NEW.item_id) ON CONFLICT(library_id) DO NOTHING;
+ INSERT INTO tvdb_episode_credit_pending(item_id,provider_id,library_id)
+ SELECT pe.item_id,pe.provider_id,e.library_id FROM provider_evidence pe
+ JOIN catalog_episodes ep ON ep.entity_id=pe.item_id JOIN catalog_entities e ON e.id=pe.item_id
+ JOIN tvdb_episode_credit_evidence ce ON ce.item_id=pe.item_id AND ce.provider_id=pe.provider_id
+ WHERE pe.item_id=NEW.item_id AND pe.provider='tvdb' AND pe.provider_id>0 AND e.kind=4 AND ce.credits IS NULL AND ce.attempts<5
+ ON CONFLICT(item_id,provider_id) DO NOTHING;
+ INSERT INTO tvdb_episode_credit_cleanup(item_id,provider_id)
+ SELECT NEW.item_id,NEW.provider_id WHERE NEW.provider_id>0 AND (NOT EXISTS(SELECT 1 FROM provider_evidence WHERE item_id=NEW.item_id AND provider='tvdb' AND provider_id=NEW.provider_id)) AND EXISTS(SELECT 1 FROM catalog_entities WHERE id=NEW.item_id)
+ ON CONFLICT(item_id,provider_id) DO NOTHING;
+END;
+CREATE TRIGGER tvdb_credit_evidence_update AFTER UPDATE OF item_id,provider_id,credits,attempts ON tvdb_episode_credit_evidence WHEN OLD.item_id IS NOT NEW.item_id OR OLD.provider_id IS NOT NEW.provider_id OR OLD.credits IS NOT NEW.credits OR OLD.attempts IS NOT NEW.attempts BEGIN
+ DELETE FROM tvdb_episode_credit_pending WHERE item_id=OLD.item_id;
+ INSERT INTO tvdb_episode_credit_evidence(item_id,provider_id,observed_at,credits,attempts)
+ SELECT pe.item_id,pe.provider_id,pe.observed_at,NULL,0 FROM provider_evidence pe
+ JOIN catalog_episodes ep ON ep.entity_id=pe.item_id JOIN catalog_entities e ON e.id=pe.item_id
+ WHERE pe.item_id=OLD.item_id AND pe.provider='tvdb' AND pe.provider_id>0 AND e.kind=4
+ ON CONFLICT(item_id,provider_id) DO NOTHING;
+ INSERT INTO tvdb_episode_credit_heads(library_id,enabled)
+ SELECT cl.id,COALESCE((SELECT tp.enabled FROM tvdb_provider_policies tp WHERE tp.library_id=cl.library_id),0)
+ FROM catalog_libraries cl WHERE cl.id=(SELECT library_id FROM catalog_entities WHERE id=OLD.item_id) ON CONFLICT(library_id) DO NOTHING;
+ INSERT INTO tvdb_episode_credit_pending(item_id,provider_id,library_id)
+ SELECT pe.item_id,pe.provider_id,e.library_id FROM provider_evidence pe
+ JOIN catalog_episodes ep ON ep.entity_id=pe.item_id JOIN catalog_entities e ON e.id=pe.item_id
+ JOIN tvdb_episode_credit_evidence ce ON ce.item_id=pe.item_id AND ce.provider_id=pe.provider_id
+ WHERE pe.item_id=OLD.item_id AND pe.provider='tvdb' AND pe.provider_id>0 AND e.kind=4 AND ce.credits IS NULL AND ce.attempts<5
+ ON CONFLICT(item_id,provider_id) DO NOTHING;
+ DELETE FROM tvdb_episode_credit_pending WHERE item_id=NEW.item_id;
+ INSERT INTO tvdb_episode_credit_evidence(item_id,provider_id,observed_at,credits,attempts)
+ SELECT pe.item_id,pe.provider_id,pe.observed_at,NULL,0 FROM provider_evidence pe
+ JOIN catalog_episodes ep ON ep.entity_id=pe.item_id JOIN catalog_entities e ON e.id=pe.item_id
+ WHERE pe.item_id=NEW.item_id AND pe.provider='tvdb' AND pe.provider_id>0 AND e.kind=4
+ ON CONFLICT(item_id,provider_id) DO NOTHING;
+ INSERT INTO tvdb_episode_credit_heads(library_id,enabled)
+ SELECT cl.id,COALESCE((SELECT tp.enabled FROM tvdb_provider_policies tp WHERE tp.library_id=cl.library_id),0)
+ FROM catalog_libraries cl WHERE cl.id=(SELECT library_id FROM catalog_entities WHERE id=NEW.item_id) ON CONFLICT(library_id) DO NOTHING;
+ INSERT INTO tvdb_episode_credit_pending(item_id,provider_id,library_id)
+ SELECT pe.item_id,pe.provider_id,e.library_id FROM provider_evidence pe
+ JOIN catalog_episodes ep ON ep.entity_id=pe.item_id JOIN catalog_entities e ON e.id=pe.item_id
+ JOIN tvdb_episode_credit_evidence ce ON ce.item_id=pe.item_id AND ce.provider_id=pe.provider_id
+ WHERE pe.item_id=NEW.item_id AND pe.provider='tvdb' AND pe.provider_id>0 AND e.kind=4 AND ce.credits IS NULL AND ce.attempts<5
+ ON CONFLICT(item_id,provider_id) DO NOTHING;
+ INSERT INTO tvdb_episode_credit_cleanup(item_id,provider_id)
+ SELECT NEW.item_id,NEW.provider_id WHERE NEW.provider_id>0 AND (NOT EXISTS(SELECT 1 FROM provider_evidence WHERE item_id=NEW.item_id AND provider='tvdb' AND provider_id=NEW.provider_id)) AND EXISTS(SELECT 1 FROM catalog_entities WHERE id=NEW.item_id)
+ ON CONFLICT(item_id,provider_id) DO NOTHING;
+END;
+CREATE TRIGGER tvdb_credit_evidence_delete AFTER DELETE ON tvdb_episode_credit_evidence BEGIN
+ DELETE FROM tvdb_episode_credit_pending WHERE item_id=OLD.item_id;
+ INSERT INTO tvdb_episode_credit_evidence(item_id,provider_id,observed_at,credits,attempts)
+ SELECT pe.item_id,pe.provider_id,pe.observed_at,NULL,0 FROM provider_evidence pe
+ JOIN catalog_episodes ep ON ep.entity_id=pe.item_id JOIN catalog_entities e ON e.id=pe.item_id
+ WHERE pe.item_id=OLD.item_id AND pe.provider='tvdb' AND pe.provider_id>0 AND e.kind=4
+ ON CONFLICT(item_id,provider_id) DO NOTHING;
+ INSERT INTO tvdb_episode_credit_heads(library_id,enabled)
+ SELECT cl.id,COALESCE((SELECT tp.enabled FROM tvdb_provider_policies tp WHERE tp.library_id=cl.library_id),0)
+ FROM catalog_libraries cl WHERE cl.id=(SELECT library_id FROM catalog_entities WHERE id=OLD.item_id) ON CONFLICT(library_id) DO NOTHING;
+ INSERT INTO tvdb_episode_credit_pending(item_id,provider_id,library_id)
+ SELECT pe.item_id,pe.provider_id,e.library_id FROM provider_evidence pe
+ JOIN catalog_episodes ep ON ep.entity_id=pe.item_id JOIN catalog_entities e ON e.id=pe.item_id
+ JOIN tvdb_episode_credit_evidence ce ON ce.item_id=pe.item_id AND ce.provider_id=pe.provider_id
+ WHERE pe.item_id=OLD.item_id AND pe.provider='tvdb' AND pe.provider_id>0 AND e.kind=4 AND ce.credits IS NULL AND ce.attempts<5
+ ON CONFLICT(item_id,provider_id) DO NOTHING;
+END;
+
+-- P2-52 MusicBrainz base accounting. Fresh baseline only; no retained-data backfill.
+-- Acceptance is positivity, never the cardinality of these symmetric references.
+CREATE TABLE mb_evidence_totals(
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+ releases INTEGER NOT NULL CHECK(releases>=0),
+ recordings INTEGER NOT NULL CHECK(recordings>=0),
+ charge INTEGER NOT NULL CHECK(charge>=0)
+) STRICT;
+INSERT INTO mb_evidence_totals VALUES(1,0,0,0);
+CREATE TABLE mb_release_accounting(
+ revision_id TEXT PRIMARY KEY REFERENCES mb_release_evidence(revision_id) ON DELETE CASCADE,
+ charge INTEGER NOT NULL CHECK(charge>=512),
+ direct_refs INTEGER NOT NULL DEFAULT 0 CHECK(direct_refs>=0)
+) STRICT;
+CREATE TABLE mb_recording_accounting(
+ revision_id TEXT PRIMARY KEY REFERENCES mb_recording_evidence(revision_id) ON DELETE CASCADE,
+ charge INTEGER NOT NULL CHECK(charge>=512),
+ direct_refs INTEGER NOT NULL DEFAULT 0 CHECK(direct_refs>=0),
+ release_refs INTEGER NOT NULL DEFAULT 0 CHECK(release_refs>=0)
+) STRICT;
+-- Both the grouped window and any exact pair probe start with the release.
+-- A recording-only index would examine unrelated shared-release tracks.
+CREATE INDEX mb_release_track_release_recording ON mb_release_tracks(release_revision,recording_revision);
+CREATE TRIGGER mb_account_release_insert AFTER INSERT ON mb_release_accounting
+BEGIN
+ UPDATE mb_evidence_totals SET releases=releases+1,charge=charge+NEW.charge WHERE singleton=1;
+END;
+CREATE TRIGGER mb_account_release_delete AFTER DELETE ON mb_release_accounting WHEN OLD.direct_refs=0
+BEGIN
+ UPDATE mb_evidence_totals SET releases=releases-1,charge=charge-OLD.charge WHERE singleton=1;
+END;
+CREATE TRIGGER mb_account_release_update AFTER UPDATE OF charge,direct_refs ON mb_release_accounting
+WHEN OLD.charge<>NEW.charge OR OLD.direct_refs<>NEW.direct_refs
+BEGIN
+ UPDATE mb_evidence_totals SET
+ releases=releases+(NEW.direct_refs=0)-(OLD.direct_refs=0),
+ charge=charge+(NEW.direct_refs=0)*NEW.charge-(OLD.direct_refs=0)*OLD.charge
+ WHERE singleton=1 AND (OLD.direct_refs=0 OR NEW.direct_refs=0);
+END;
+-- Named indivisible exception: one old and one new release, each <=10k tracks.
+-- No accepted-link scan. Repeated recordings are grouped inside this release.
+CREATE TRIGGER mb_account_release_acceptance AFTER UPDATE OF direct_refs ON mb_release_accounting
+WHEN (OLD.direct_refs=0)<>(NEW.direct_refs=0)
+BEGIN
+ UPDATE mb_recording_accounting
+ SET release_refs=release_refs+refs.n*CASE WHEN NEW.direct_refs>0 THEN 1 ELSE -1 END
+ FROM (SELECT recording_revision,count(*) AS n FROM mb_release_tracks INDEXED BY mb_release_track_release_recording
+       WHERE release_revision=NEW.revision_id GROUP BY recording_revision) AS refs
+ WHERE revision_id=refs.recording_revision;
+END;
+CREATE TRIGGER mb_account_recording_insert AFTER INSERT ON mb_recording_accounting
+BEGIN
+ UPDATE mb_evidence_totals SET recordings=recordings+1,charge=charge+NEW.charge WHERE singleton=1;
+END;
+CREATE TRIGGER mb_account_recording_delete AFTER DELETE ON mb_recording_accounting
+WHEN OLD.direct_refs=0 AND OLD.release_refs=0
+BEGIN
+ UPDATE mb_evidence_totals SET recordings=recordings-1,charge=charge-OLD.charge WHERE singleton=1;
+END;
+CREATE TRIGGER mb_account_recording_update AFTER UPDATE OF charge,direct_refs,release_refs ON mb_recording_accounting
+WHEN (OLD.charge<>NEW.charge OR OLD.direct_refs<>NEW.direct_refs OR OLD.release_refs<>NEW.release_refs)
+ AND ((OLD.direct_refs=0 AND OLD.release_refs=0) OR (NEW.direct_refs=0 AND NEW.release_refs=0))
+BEGIN
+ UPDATE mb_evidence_totals SET
+ recordings=recordings+(NEW.direct_refs=0 AND NEW.release_refs=0)-(OLD.direct_refs=0 AND OLD.release_refs=0),
+ charge=charge+(NEW.direct_refs=0 AND NEW.release_refs=0)*NEW.charge-(OLD.direct_refs=0 AND OLD.release_refs=0)*OLD.charge
+ WHERE singleton=1;
+END;
+
+CREATE TRIGGER mb_account_release_evidence_insert AFTER INSERT ON mb_release_evidence
+BEGIN
+ INSERT INTO mb_release_accounting(revision_id,charge) VALUES(NEW.revision_id,length(CAST(NEW.payload AS BLOB))*8+512);
+END;
+
+CREATE TRIGGER mb_account_recording_evidence_insert AFTER INSERT ON mb_recording_evidence
+BEGIN
+ INSERT INTO mb_recording_accounting(revision_id,charge) VALUES(NEW.revision_id,length(CAST(NEW.payload AS BLOB))*8+512);
+END;
+
+CREATE TRIGGER mb_account_mb_recording_credits_insert AFTER INSERT ON mb_recording_credits
+BEGIN
+ UPDATE mb_recording_accounting SET charge=charge+512 WHERE revision_id=NEW.revision_id;
+END;
+
+CREATE TRIGGER mb_account_mb_recording_credits_delete AFTER DELETE ON mb_recording_credits
+BEGIN
+ UPDATE mb_recording_accounting SET charge=charge-512 WHERE revision_id=OLD.revision_id;
+END;
+
+CREATE TRIGGER mb_account_mb_release_credits_insert AFTER INSERT ON mb_release_credits
+BEGIN
+ UPDATE mb_release_accounting SET charge=charge+512 WHERE revision_id=NEW.revision_id;
+END;
+
+CREATE TRIGGER mb_account_mb_release_credits_delete AFTER DELETE ON mb_release_credits
+BEGIN
+ UPDATE mb_release_accounting SET charge=charge-512 WHERE revision_id=OLD.revision_id;
+END;
+
+CREATE TRIGGER mb_account_mb_release_group_types_insert AFTER INSERT ON mb_release_group_types
+BEGIN
+ UPDATE mb_release_accounting SET charge=charge+512 WHERE revision_id=NEW.release_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_release_group_types_delete AFTER DELETE ON mb_release_group_types
+BEGIN
+ UPDATE mb_release_accounting SET charge=charge-512 WHERE revision_id=OLD.release_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_release_media_insert AFTER INSERT ON mb_release_media
+BEGIN
+ UPDATE mb_release_accounting SET charge=charge+512 WHERE revision_id=NEW.release_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_release_media_delete AFTER DELETE ON mb_release_media
+BEGIN
+ UPDATE mb_release_accounting SET charge=charge-512 WHERE revision_id=OLD.release_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_release_tracks_insert AFTER INSERT ON mb_release_tracks
+BEGIN
+ UPDATE mb_release_accounting SET charge=charge+512 WHERE revision_id=NEW.release_revision;
+ UPDATE mb_recording_accounting SET release_refs=release_refs+1
+ WHERE revision_id=NEW.recording_revision
+ AND EXISTS(SELECT 1 FROM mb_release_accounting WHERE revision_id=NEW.release_revision AND direct_refs>0);
+END;
+
+CREATE TRIGGER mb_account_mb_release_tracks_delete AFTER DELETE ON mb_release_tracks
+BEGIN
+ UPDATE mb_release_accounting SET charge=charge-512 WHERE revision_id=OLD.release_revision;
+ UPDATE mb_recording_accounting SET release_refs=release_refs-1
+ WHERE revision_id=OLD.recording_revision
+ AND EXISTS(SELECT 1 FROM mb_release_accounting WHERE revision_id=OLD.release_revision AND direct_refs>0);
+END;
+
+CREATE TRIGGER mb_account_mb_track_credits_insert AFTER INSERT ON mb_track_credits
+BEGIN
+ UPDATE mb_release_accounting SET charge=charge+512 WHERE revision_id=NEW.release_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_track_credits_delete AFTER DELETE ON mb_track_credits
+BEGIN
+ UPDATE mb_release_accounting SET charge=charge-512 WHERE revision_id=OLD.release_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_album_links_release_revision_insert AFTER INSERT ON mb_album_links
+WHEN NEW.release_revision IS NOT NULL
+BEGIN
+ UPDATE mb_release_accounting SET direct_refs=direct_refs+1 WHERE revision_id=NEW.release_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_album_links_release_revision_delete AFTER DELETE ON mb_album_links
+WHEN OLD.release_revision IS NOT NULL
+BEGIN
+ UPDATE mb_release_accounting SET direct_refs=direct_refs-1 WHERE revision_id=OLD.release_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_album_links_release_revision_update AFTER UPDATE OF release_revision ON mb_album_links
+WHEN OLD.release_revision IS NOT NEW.release_revision
+BEGIN
+ UPDATE mb_release_accounting SET direct_refs=direct_refs-1 WHERE revision_id=OLD.release_revision;
+ UPDATE mb_release_accounting SET direct_refs=direct_refs+1 WHERE revision_id=NEW.release_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_song_links_release_revision_insert AFTER INSERT ON mb_song_links
+WHEN NEW.release_revision IS NOT NULL
+BEGIN
+ UPDATE mb_release_accounting SET direct_refs=direct_refs+1 WHERE revision_id=NEW.release_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_song_links_release_revision_delete AFTER DELETE ON mb_song_links
+WHEN OLD.release_revision IS NOT NULL
+BEGIN
+ UPDATE mb_release_accounting SET direct_refs=direct_refs-1 WHERE revision_id=OLD.release_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_song_links_release_revision_update AFTER UPDATE OF release_revision ON mb_song_links
+WHEN OLD.release_revision IS NOT NEW.release_revision
+BEGIN
+ UPDATE mb_release_accounting SET direct_refs=direct_refs-1 WHERE revision_id=OLD.release_revision;
+ UPDATE mb_release_accounting SET direct_refs=direct_refs+1 WHERE revision_id=NEW.release_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_song_links_recording_revision_insert AFTER INSERT ON mb_song_links
+WHEN NEW.recording_revision IS NOT NULL
+BEGIN
+ UPDATE mb_recording_accounting SET direct_refs=direct_refs+1 WHERE revision_id=NEW.recording_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_song_links_recording_revision_delete AFTER DELETE ON mb_song_links
+WHEN OLD.recording_revision IS NOT NULL
+BEGIN
+ UPDATE mb_recording_accounting SET direct_refs=direct_refs-1 WHERE revision_id=OLD.recording_revision;
+END;
+
+CREATE TRIGGER mb_account_mb_song_links_recording_revision_update AFTER UPDATE OF recording_revision ON mb_song_links
+WHEN OLD.recording_revision IS NOT NEW.recording_revision
+BEGIN
+ UPDATE mb_recording_accounting SET direct_refs=direct_refs-1 WHERE revision_id=OLD.recording_revision;
+ UPDATE mb_recording_accounting SET direct_refs=direct_refs+1 WHERE revision_id=NEW.recording_revision;
 END;

@@ -18,7 +18,7 @@ const (
 )
 
 func (s *Service) mbReconcileAlbums(ctx context.Context) (bool, error) {
-	// The settled-set walk must not hold the writer gate. Capture only a key;
+	// The maintained due index omits settled and noncurrent pins. Capture only a key;
 	// all facts used by reconciliation are read again after taking the gate.
 	// Albums take turns: the pick resumes after the album the last turn
 	// served and wraps to the lowest id, so an album whose membership keeps
@@ -27,7 +27,7 @@ func (s *Service) mbReconcileAlbums(ctx context.Context) (bool, error) {
 	after := s.mbReconcileAfter.Load()
 	e := dbwork.WithReadSnapshot(dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia), s.db, func(readCtx context.Context) error {
 		pick := func(after int64) error {
-			return dbwork.QueryRow(readCtx, s.db, `SELECT c.album_id FROM mb_album_reconciliations c JOIN mb_album_heads h ON h.album_id=c.album_id JOIN mb_album_links l ON l.album_id=c.album_id AND l.release_revision=c.release_revision WHERE (c.status='pending' OR c.membership_revision<>h.membership_revision) AND c.album_id>? ORDER BY c.album_id LIMIT 1`, after).Scan(&pickedAlbum)
+			return dbwork.QueryRow(readCtx, s.db, `SELECT c.album_id FROM mb_album_reconciliations c INDEXED BY mb_album_reconciliations_pending JOIN mb_album_heads h ON h.album_id=c.album_id JOIN mb_album_links l ON l.album_id=c.album_id AND l.release_revision=c.release_revision WHERE c.status='pending' AND c.current_pin=1 AND c.album_id>? ORDER BY c.album_id LIMIT 1`, after).Scan(&pickedAlbum)
 		}
 		err := pick(after)
 		if errors.Is(err, sql.ErrNoRows) && after > 0 {
@@ -127,7 +127,9 @@ func (s *Service) mbReconcileAlbums(ctx context.Context) (bool, error) {
 	return true, nil
 }
 func (s *Service) cleanupMusicBrainz(ctx context.Context) error {
-	gated2, e := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
+	// A release can own 10,000 tracks. Never multiply the indivisible record
+	// exception by the old 100-release cleanup batch.
+	gated2, e := dbwork.Begin(dbwork.WithPlan(ctx, mbPublicationAccountingPlan), s.db, dbwork.ClassBackgroundMedia)
 	if e != nil {
 		return e
 	}
@@ -145,7 +147,7 @@ func (s *Service) cleanupMusicBrainz(ctx context.Context) error {
 			return e
 		}
 	}
-	if _, e = tx.ExecContext(ctx, `DELETE FROM mb_release_evidence WHERE revision_id IN(SELECT r.revision_id FROM mb_release_evidence r WHERE r.observed_at<? AND NOT EXISTS(SELECT 1 FROM mb_album_links l WHERE l.release_revision=r.revision_id) AND NOT EXISTS(SELECT 1 FROM mb_song_links l WHERE l.release_revision=r.revision_id) AND NOT EXISTS(SELECT 1 FROM mb_release_aliases a WHERE a.evidence_revision=r.revision_id) AND NOT EXISTS(SELECT 1 FROM mb_publication_operations o WHERE o.accepted_release_revision=r.revision_id OR o.result_release_revision=r.revision_id) AND NOT EXISTS(SELECT 1 FROM mb_album_reconciliations c WHERE c.release_revision=r.revision_id) ORDER BY r.observed_at,r.revision_id LIMIT 100)`, cutoff); e != nil {
+	if _, e = tx.ExecContext(ctx, `DELETE FROM mb_release_evidence WHERE revision_id IN(SELECT r.revision_id FROM mb_release_evidence r JOIN mb_release_accounting a ON a.revision_id=r.revision_id WHERE r.observed_at<? AND a.direct_refs=0 AND NOT EXISTS(SELECT 1 FROM mb_release_aliases a WHERE a.evidence_revision=r.revision_id) AND NOT EXISTS(SELECT 1 FROM mb_publication_operations o WHERE o.accepted_release_revision=r.revision_id OR o.result_release_revision=r.revision_id) AND NOT EXISTS(SELECT 1 FROM mb_album_reconciliations c WHERE c.release_revision=r.revision_id) ORDER BY r.observed_at,r.revision_id LIMIT 1)`, cutoff); e != nil {
 		return e
 	}
 	if _, e = tx.ExecContext(ctx, `DELETE FROM mb_recording_evidence WHERE revision_id IN(SELECT r.revision_id FROM mb_recording_evidence r WHERE r.observed_at<? AND NOT EXISTS(SELECT 1 FROM mb_song_links l WHERE l.recording_revision=r.revision_id) AND NOT EXISTS(SELECT 1 FROM mb_release_tracks t WHERE t.recording_revision=r.revision_id) AND NOT EXISTS(SELECT 1 FROM mb_recording_aliases a WHERE a.evidence_revision=r.revision_id) AND NOT EXISTS(SELECT 1 FROM mb_publication_operations o WHERE o.accepted_recording_revision=r.revision_id OR o.result_recording_revision=r.revision_id) ORDER BY r.observed_at,r.revision_id LIMIT 100)`, cutoff); e != nil {
