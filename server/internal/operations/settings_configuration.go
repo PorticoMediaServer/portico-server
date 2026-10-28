@@ -59,6 +59,7 @@ func ConfigurationBindings() []ConfigurationBinding {
 		{"streaming.convertAhead", "streaming.convert_ahead_seconds", "throttleBufferMs", 1000, false},
 		{"streaming.rewindKeep", "streaming.rewind_keep_seconds", "playedRetentionMs", 1000, false},
 		{"streaming.sessionSpace", "streaming.session_space_mb", "sessionStorageMiB", 1, false},
+		{"streaming.memoryCap", "streaming.memory_cap", "memoryCap", 1, false},
 		{"streaming.maxConversions", "streaming.max_conversions", "maxConcurrentSessions", 1, false},
 		{"streaming.maxHardwareConversions", "streaming.max_hardware_conversions", "maxHardwareSessions", 1, false},
 		{"streaming.maxSoftwareConversions", "streaming.max_software_conversions", "maxSoftwareSessions", 1, false},

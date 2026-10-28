@@ -9040,6 +9040,7 @@ CREATE TABLE server_settings(singleton INTEGER PRIMARY KEY CHECK(singleton=1), u
  "temporaryDirectory" TEXT,
  "ffmpegPath" TEXT,
  "sessionStorageMiB" INTEGER,
+ "memoryCap" TEXT,
  "maxConcurrentSessions" INTEGER,
  "maxHardwareSessions" INTEGER,
  "maxSoftwareSessions" INTEGER,

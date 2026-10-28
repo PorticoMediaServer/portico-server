@@ -5881,6 +5881,7 @@ server_settings.maxConcurrentSessions
 server_settings.maxHardwareSessions
 server_settings.maxSoftwareSessions
 server_settings.memberTokenScope
+server_settings.memoryCap
 server_settings.musicAwayQuality
 server_settings.notificationDays
 server_settings.outputFormat
