@@ -84,6 +84,18 @@ func CurrentMounts() ([]Mount, error) {
 // TranscodeDirectories separates bounded Linux tmpfs output from its verified
 // disk spill volume. ramfs has no kernel size bound and is never writable output.
 func TranscodeDirectories(requested, fallback string, mounts []Mount) (disk, memory string, err error) {
+	verifiedDisk := func(path string) bool {
+		return filepath.IsAbs(path) && canonicalParents(path) == nil && Filesystem(path, mounts) != "" && !MemoryFilesystem(Filesystem(path, mounts))
+	}
+	// Classifying an alias by its textual mount prefix can turn an apparently
+	// disk-backed folder into unbounded tmpfs output. Refuse aliased parents and
+	// use only a separately verified disk fallback.
+	if !filepath.IsAbs(requested) || canonicalParents(requested) != nil {
+		if verifiedDisk(fallback) {
+			return fallback, "", nil
+		}
+		return "", "", errors.New("conversion directories require verified real disk parents")
+	}
 	kind := Filesystem(requested, mounts)
 	if kind == "" {
 		return "", "", errors.New("conversion filesystem could not be verified; choose a verified disk directory")
@@ -91,7 +103,7 @@ func TranscodeDirectories(requested, fallback string, mounts []Mount) (disk, mem
 	if !MemoryFilesystem(kind) {
 		return requested, "", nil
 	}
-	if fallback == "" || Filesystem(fallback, mounts) == "" || MemoryFilesystem(Filesystem(fallback, mounts)) {
+	if !verifiedDisk(fallback) {
 		return "", "", errors.New("RAM-backed conversion storage requires a verified disk spill directory")
 	}
 	if runtime.GOOS == "linux" && kind == "tmpfs" {

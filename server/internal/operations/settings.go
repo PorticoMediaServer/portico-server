@@ -817,6 +817,9 @@ func (s *Store) applySettings(ctx context.Context, p identity.Principal, auth Au
 		if current.Revision != c.ExpectedRevision {
 			return &ConflictError{current.Revision}
 		}
+		if normalized.TemporaryDirectory != current.Requested.TemporaryDirectory && s.TranscodeDirectoryAllowed != nil && !s.TranscodeDirectoryAllowed(normalized.TemporaryDirectory) {
+			return invalidFields("values.temporaryDirectory")
+		}
 		values := normalized
 		if omittedPeopleInvitationRole {
 			values.PeopleInvitationRole = current.Requested.PeopleInvitationRole

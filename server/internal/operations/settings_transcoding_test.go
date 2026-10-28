@@ -144,3 +144,25 @@ func TestConversionFolderReportsPendingRestart(t *testing.T) {
 		t.Fatal(after)
 	}
 }
+
+func TestConversionFolderRejectsUnsupportedRuntimePath(t *testing.T) {
+	s, p, auth := consoleFixture(t)
+	s.TranscodeDirectoryAllowed = func(path string) bool { return path == "" || path == "/transcode" }
+	ctx := context.Background()
+	before, err := s.Settings(ctx, auth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := before.Requested
+	values.TemporaryDirectory = "/config/Keys"
+	_, err = s.ApplySettings(ctx, p, auth, SettingsChange{ExpectedRevision: before.Revision, IdempotencyKey: "reject-conversion-root", Values: values})
+	var invalid *ValidationError
+	if !errors.As(err, &invalid) || len(invalid.Fields) != 1 || invalid.Fields[0] != "values.temporaryDirectory" {
+		t.Fatal("unsupported runtime folder was not rejected by name", err)
+	}
+	values.TemporaryDirectory = "/transcode"
+	after, err := s.ApplySettings(ctx, p, auth, SettingsChange{ExpectedRevision: before.Revision, IdempotencyKey: "supported-conversion-root", Values: values})
+	if err != nil || after.Requested.TemporaryDirectory != "/transcode" {
+		t.Fatal("supported disk folder could not be configured", after, err)
+	}
+}

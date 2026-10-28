@@ -23,6 +23,27 @@ type Options struct {
 	Mounts                                                   []Mount
 }
 
+// AllowsTranscodeDirectory keeps container output within its two documented
+// writable conversion roots. The disk folder remains configurable within them.
+func (l Layout) AllowsTranscodeDirectory(path string) bool {
+	if path == "" {
+		return true
+	}
+	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
+		return false
+	}
+	if !l.Container {
+		return true
+	}
+	for _, root := range []string{"/transcode", filepath.Join(l.Data, "Transcode")} {
+		rel, err := filepath.Rel(root, path)
+		if err == nil && (rel == "." || filepath.IsLocal(rel)) {
+			return true
+		}
+	}
+	return false
+}
+
 // Resolve is pure; the caller obtains service/container identity and mountinfo.
 func Resolve(o Options) (Layout, error) {
 	platform := o.Platform

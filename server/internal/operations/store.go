@@ -69,6 +69,8 @@ type Store struct {
 	FFmpegValidation     func(context.Context, string) FFmpegStatus
 	// Set once at startup by the conversion consumer. Nil is a store without a running converter.
 	AppliedTemporaryDirectory *string
+	// Optional startup policy for the configurable disk conversion folder.
+	TranscodeDirectoryAllowed func(string) bool
 	// Set once by the listener at startup; zero means the automatic ceiling.
 	AppliedConnectionLimit *int
 	AppliedFFmpegPath      *string

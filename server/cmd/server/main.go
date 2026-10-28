@@ -880,12 +880,13 @@ func run() (runErr error) {
 	player.ConfigureProbe(assets.Probe{Binary: ffprobeTool, Supervisor: storeIO.Supervisor})
 	supervise.Go("cmd.hardware-report", func() { player.HardwareReport(context.Background()) })
 	appliedConversionSetting := startupMedia.TemporaryDirectory
+	if !layout.AllowsTranscodeDirectory(appliedConversionSetting) {
+		log.Printf("Configured conversion folder is outside the container conversion roots; using the default disk folder")
+		appliedConversionSetting = ""
+	}
 	conversionDirectory := layout.Transcode
 	if appliedConversionSetting != "" {
 		conversionDirectory = operations.ConversionDirectory(layout.Transcode, appliedConversionSetting)
-		if layout.Container {
-			return errors.New("container transcodes must use /transcode or /config/Transcode; clear the previous temporary-directory override")
-		}
 	}
 	// The configured folder is always the disk target. A memory preference is
 	// independent of that folder and can always fall back or spill here.
@@ -1111,6 +1112,7 @@ func run() (runErr error) {
 	if console != nil && e == nil {
 		console.FFmpegValidation = operations.FFmpegValidator(ffmpegTool)
 		console.AppliedTemporaryDirectory = &appliedConversionSetting
+		console.TranscodeDirectoryAllowed = layout.AllowsTranscodeDirectory
 		console.AppliedFFmpegPath = &startupMedia.FFmpegPath
 		console.RecordingRoot, e = recordingroot.Runtime(adminOperations, recordingStore, recordingsRoot, operatorRecordingsRoot != "")
 		if e != nil {

@@ -224,8 +224,10 @@ docker restart --time 45 portico
 
 Keep `/transcode` mapped to a writable local **disk** directory; never replace
 that mount with tmpfs. If it is absent or RAM-backed, Portico uses the disk-backed
-`/config/Transcode` fallback. `/config` must also be on disk. Mount memory storage
-separately at `/memory-transcode`. Startup discovers that tmpfs first, otherwise
+`/config/Transcode` fallback. `/config` must also be on disk. Inside a container, the disk folder may be `/transcode` or a child of it,
+or `/config/Transcode` or a child of it; other paths are refused when saved.
+Use a real directory: linked parents cannot establish disk placement. Mount
+memory storage separately at `/memory-transcode`. Startup discovers that tmpfs first, otherwise
 Docker's `/dev/shm`, and uses a private, marker-protected installation child.
 Portico never mounts or resizes a filesystem itself and needs no privileged
 mode or `SYS_ADMIN` capability.

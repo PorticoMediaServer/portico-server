@@ -64,3 +64,43 @@ func TestTranscodeDirectoriesPlacementAndVerification(t *testing.T) {
 		t.Fatal("unknown filesystem accepted")
 	}
 }
+
+func TestTranscodeDirectoriesNeverTreatLinkedRAMAsDisk(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux tmpfs placement")
+	}
+	base := t.TempDir()
+	alias := filepath.Join(base, "looks-like-disk")
+	if err := os.Symlink("/dev/shm", alias); err != nil {
+		t.Fatal(err)
+	}
+	fallback := filepath.Join(base, "disk")
+	mounts, err := CurrentMounts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, memory, err := TranscodeDirectories(filepath.Join(alias, "output"), fallback, mounts)
+	if err != nil || got != fallback || memory != "" {
+		t.Fatal("linked RAM was treated as disk", got, memory, err)
+	}
+	if _, _, err := TranscodeDirectories(filepath.Join(alias, "output"), filepath.Join(alias, "fallback"), mounts); err == nil {
+		t.Fatal("a linked RAM fallback was accepted")
+	}
+}
+
+func TestContainerConversionFolderStaysWithinDiskRoots(t *testing.T) {
+	layout := Layout{Container: true, Data: "/config", Transcode: "/transcode"}
+	for _, path := range []string{"", "/transcode", "/transcode/jobs", "/config/Transcode", "/config/Transcode/jobs"} {
+		if !layout.AllowsTranscodeDirectory(path) {
+			t.Fatal("refused a supported container conversion folder", path)
+		}
+	}
+	for _, path := range []string{"relative", "/transcode-other", "/config/Keys", "/transcode/../config", "/media"} {
+		if layout.AllowsTranscodeDirectory(path) {
+			t.Fatal("accepted output outside the container conversion roots", path)
+		}
+	}
+	if !(Layout{}).AllowsTranscodeDirectory("/owner/disk") {
+		t.Fatal("native-host disk folder was not configurable")
+	}
+}
