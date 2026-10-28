@@ -222,7 +222,17 @@ func (s *Service) bulkSelection(p identity.Principal, v Viewer, in JobRequest) (
 		return query + ` ORDER BY i.id`, args, nil
 	}
 	args = append(args, bound...)
-	return `SELECT ` + distinct + `i.id AS id FROM ` + from + ` JOIN catalog_kinds k ON k.id=i.kind AND k.playable=1 WHERE i.retired=0 AND ` + where + ` AND ` + visible + recordingsClause("i.id", v.EffectiveRestrictions()) + ` AND NOT EXISTS(SELECT 1 FROM dvr_catalog_retirements gone WHERE gone.item_id=i.id) ORDER BY i.id`, args, nil
+	// Only explicit collection-add picks admit Reading. Query/container and every
+	// other job retain the playable-only producer unchanged.
+	kindClause := "k.playable=1"
+	if in.Command == "collection-add" && selector.Items != nil {
+		reading, err := s.explicitReadingCollectionSQL(p, v, selector.Items.IDs)
+		if err != nil {
+			return "", nil, err
+		}
+		kindClause = "(k.playable=1 OR (" + reading + "))"
+	}
+	return `SELECT ` + distinct + `i.id AS id FROM ` + from + ` JOIN catalog_kinds k ON k.id=i.kind AND ` + kindClause + ` WHERE i.retired=0 AND ` + where + ` AND ` + visible + recordingsClause("i.id", v.EffectiveRestrictions()) + ` AND NOT EXISTS(SELECT 1 FROM dvr_catalog_retirements gone WHERE gone.item_id=i.id) ORDER BY i.id`, args, nil
 }
 
 func (s *Service) BulkFailures(profile, id, cursor string, v Viewer) (JobFailures, error) {
