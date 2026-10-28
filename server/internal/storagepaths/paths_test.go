@@ -194,7 +194,7 @@ func TestNativeVolumeRootIsNeverADataOrSpillFolder(t *testing.T) {
 	if err := At(root).Prepare(); err == nil {
 		t.Fatal("volume root accepted as data")
 	}
-	if _, err := NewTranscodePool("", root, 0, nil); err == nil {
+	if _, _, err := TranscodeDirectories(root, root, nil); err == nil {
 		t.Fatal("volume root accepted for spill")
 	}
 }

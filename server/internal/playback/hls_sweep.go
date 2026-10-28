@@ -2,7 +2,6 @@ package playback
 
 import (
 	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -183,6 +182,7 @@ func (h *HLS) sweep(ctx context.Context) {
 		// session: the segments stay, and asking for one restarts the producer.
 		h.reclaimAbandoned()
 	}
+	h.sweepMemory(ctx)
 	h.enforceGlobalBudgetMeasured(ctx, measured)
 }
 
@@ -215,11 +215,17 @@ func (h *HLS) enforceSessionCeilings(ids []string) map[string]hlsMeasured {
 	for _, id := range ids {
 		h.mu.Lock()
 		usage := h.usage[id]
+		interval := hlsUsageInterval
+		if h.inMemory[id] {
+			interval = memoryUsageInterval
+		}
+		fresh := usage != nil && now.Sub(usage.measured) < interval
+		moving := h.moving[id] != nil
 		h.mu.Unlock()
-		if usage != nil && now.Sub(usage.measured) < hlsUsageInterval {
+		if fresh || moving {
 			continue
 		}
-		bytes, files, err := h.measureOutput(filepath.Join(h.root, id))
+		bytes, files, err := h.measureOutput(h.outputDir(id))
 		if err != nil && !os.IsNotExist(err) {
 			h.cancelSession(id)
 			continue
@@ -232,7 +238,7 @@ func (h *HLS) enforceSessionCeilings(ids []string) map[string]hlsMeasured {
 			if served < 0 && h.db != nil {
 				_ = h.db.QueryRow(`SELECT highest_served FROM playback_hls_demand WHERE session_id=?`, id).Scan(&served)
 			}
-			bytes, files = reclaimPlayedForBudget(filepath.Join(h.root, id), served, bytes, limit, files, fileLimit)
+			bytes, files = reclaimPlayedForBudget(h.outputDir(id), served, bytes, limit, files, fileLimit)
 		}
 		h.recordUsage(id, bytes, files, now)
 		if err == nil {
@@ -348,7 +354,7 @@ func (h *HLS) enforceGlobalBudgetMeasured(ctx context.Context, measured map[stri
 		total += measuredUsage.bytes
 		h.recordUsage(id, measuredUsage.bytes, measuredUsage.files, now)
 		h.mu.Lock()
-		live := h.sessionActiveLocked(id)
+		live := h.sessionActiveLocked(id) || h.moving[id] != nil
 		served := time.Time{}
 		if usage := h.usage[id]; usage != nil {
 			served = usage.served
@@ -364,6 +370,9 @@ func (h *HLS) enforceGlobalBudgetMeasured(ctx context.Context, measured map[stri
 	// Sessions whose directories have gone leave nothing behind: this map would
 	// otherwise grow with every session the server has ever converted.
 	h.mu.Lock()
+	for id := range h.inMemory {
+		present[id] = true
+	}
 	for id := range h.usage {
 		if !present[id] {
 			delete(h.usage, id)
@@ -411,7 +420,7 @@ func (h *HLS) enforceGlobalBudgetMeasured(ctx context.Context, measured map[stri
 		// Fence admission against eviction. Retire the directory atomically;
 		// recursive deletion needs no HLS lock.
 		h.mu.Lock()
-		if h.sessionActiveLocked(c.id) || (h.usage[c.id] != nil && !h.usage[c.id].served.IsZero() && now.Sub(h.usage[c.id].served) < retention) {
+		if h.moving[c.id] != nil || h.cleaning[c.id] || h.outputBusy[c.id] > 0 || h.sessionActiveLocked(c.id) || (h.usage[c.id] != nil && !h.usage[c.id].served.IsZero() && now.Sub(h.usage[c.id].served) < retention) {
 			h.mu.Unlock()
 			continue
 		}
@@ -437,17 +446,12 @@ func (h *HLS) enforceGlobalBudgetMeasured(ctx context.Context, measured map[stri
 func measureDirectory(dir string) (int64, int, error) {
 	var total int64
 	files := 0
-	err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		rel, err := filepath.Rel(dir, path)
-		if err != nil {
-			return err
-		}
-		if strings.Count(rel, string(filepath.Separator)) > 8 || files > HLSMaxSegments*17 {
-			return errors.New("conversion output exceeds traversal bound")
-		}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer root.Close()
+	err = walkOutput(context.Background(), root, func(_ string, entry os.DirEntry) error {
 		if entry.IsDir() {
 			return nil
 		}

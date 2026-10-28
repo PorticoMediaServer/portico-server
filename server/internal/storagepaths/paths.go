@@ -71,7 +71,7 @@ func Resolve(o Options) (Layout, error) {
 	}
 	l := At(data)
 	l.Container = o.Container
-	if o.Container && (!IsMount("/transcode", o.Mounts) || MemoryFilesystem(Filesystem("/transcode", o.Mounts))) {
+	if o.Container && !IsMount("/transcode", o.Mounts) {
 		transcode = filepath.Join(data, "Transcode")
 		l.TranscodeFallback = true
 	}

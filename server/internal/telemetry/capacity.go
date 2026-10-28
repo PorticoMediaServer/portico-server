@@ -193,7 +193,9 @@ type Capacity struct {
 	// Directory is the exact effective producer root. When present, it takes
 	// precedence over the legacy state/configured directory composition.
 	Directory *string
-	Now       func() time.Time
+	// MemoryDirectory is the configured live tmpfs root; Directory remains spill disk.
+	MemoryDirectory string
+	Now             func() time.Time
 	// Run is the reporter seam, so tests compose a report without executables.
 	Run func(ctx context.Context, name string, args ...string) (string, error)
 
@@ -258,6 +260,10 @@ func (c *Capacity) Report(ctx context.Context, s TranscodeSettings, sessions Ses
 		Dependencies:       dependencies,
 		Warnings:           []string{},
 		ObservedAt:         now,
+	}
+	out.TemporaryDirectory.Memory = memoryTranscodeDirectory()
+	if c.MemoryDirectory != "" {
+		out.Warnings = append(out.Warnings, "Conversions use memory when space allows at "+c.MemoryDirectory+", spilling to "+directory.Path+".")
 	}
 	if out.Toolchain != nil {
 		if missing := out.Toolchain.MissingRequired(); len(missing) > 0 {
