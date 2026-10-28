@@ -22,13 +22,14 @@ type fixtureFacetInput struct {
 	members           []readingFacetMember
 	rejected          map[int64]bool
 	at, work, visited int
+	readBytes         int // optional transient scalar/read size
 }
 
 func (in *fixtureFacetInput) next(_ *Service, b *readingFacetBudget) (readingFacetMember, bool, bool, bool, error) {
 	// Three nested history rows per fixture member; deliberately resumable even
 	// when a quantum has room for less than one complete title.
 	for b.available() {
-		b.charge(32)
+		b.charge(max(32, in.readBytes))
 		in.visited++
 		if in.at == len(in.members) {
 			return readingFacetMember{}, false, false, true, nil
@@ -814,5 +815,39 @@ func TestReadingFacetRelativeRevisionBindsCapturedInstant(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// Read quantum exhaustion is scheduling, not a result-capacity refusal. Even
+// a legal transient scalar may exceed one turn while the retained result fits.
+func TestReadingFacetReadQuantumDoesNotPoisonBoundedResult(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		read, quantum int
+	}{{"ordinary reads cross byte boundary", 32, 63}, {"lossless transient scalar", 8192, 512}} {
+		t.Run(tc.name, func(t *testing.T) {
+			in := &fixtureFacetInput{members: fixtureFacetMembers([]string{"A", "B"}, []int{2, 1}), readBytes: tc.read}
+			r, err := newReadingFacetReduction(FacetRequest{Field: "author", Limit: 2}, "w", in, 1<<20)
+			if err != nil {
+				t.Fatal(err)
+			}
+			crossed, completed := false, false
+			for turn := 0; turn < 100; turn++ {
+				b := newReadingFacetBudget(16, tc.quantum, time.Second)
+				done, err := r.step(nil, "w", b)
+				if err != nil {
+					t.Fatal(err)
+				}
+				crossed = crossed || b.Bytes < 0
+				if done {
+					completed = true
+					break
+				}
+			}
+			page, ok := r.result()
+			if !completed || !crossed || !ok || !r.cacheable() || page.Total != 2 || len(page.Values) != 2 || page.Values[0].Count != 2 {
+				t.Fatalf("read exhaustion became result capacity: completed=%v crossed=%v cacheable=%v page=%+v", completed, crossed, r.cacheable(), page)
+			}
+		})
 	}
 }
