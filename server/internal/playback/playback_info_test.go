@@ -184,6 +184,19 @@ func TestCopiedObjectsAreLostOnlyWhereTheEngineCannotRenderThem(t *testing.T) {
 	if info := PlaybackInfoForPlan(withObjects, nil); info == nil || info.Delivered.Audio.ObjectAudio != "atmos" {
 		t.Fatalf("an Atmos renderer lost its objects: %+v", info)
 	}
+	// A bed-only decoder that can also pass Atmos to a receiver: the route is
+	// unknown until observed, so the plan must not report a confirmed loss.
+	bothDoc, err := ParseCapabilityDocument([]byte(`{"version":2,"client":{"family":"android"},"display":{"dynamicRanges":["sdr"]},"audioOutput":{"route":"hdmi","maxChannels":8},"engines":{"native":{"name":"exoplayer","evidence":"declared","video":[{"codec":"h264","bitDepths":[8],"maxWidth":1920,"maxHeight":1080}],"audio":[{"codec":"eac3","maxChannels":8}],"audioPassthrough":[{"codec":"eac3","maxChannels":8,"objectAudio":["atmos"]}],"transports":[{"transport":"direct","containers":["mkv"],"video":["h264"],"audio":["eac3"]}]}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	both := decide(t, source, bothDoc.Profile(EngineNative), nil)
+	if containsString(both.Trace.Notes, NoteObjectAudioDecoded) || both.AudioPassthrough {
+		t.Fatalf("decode-or-passthrough was reported as decided: passthrough=%v notes=%+v", both.AudioPassthrough, both.Trace.Notes)
+	}
+	if info := PlaybackInfoForPlan(both, nil); info == nil || len(info.Losses) != 0 {
+		t.Fatalf("decode-or-passthrough claimed a loss: %+v", info)
+	}
 }
 
 // A device that shows HDR10 but not HDR10+ plays the HDR10 base picture. The

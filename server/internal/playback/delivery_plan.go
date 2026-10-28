@@ -373,8 +373,10 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 			}
 			// A track copied to an engine that decodes the codec but not its
 			// objects plays only the channel bed. The report must say so rather
-			// than claim Atmos or DTS:X on the delivered track.
-			if selected := sourceAudioAt(source.Audio, p.AudioStream); selected != nil && selected.ObjectAudio != "" && p.AudioAction != "convert" && !p.AudioPassthrough {
+			// than claim Atmos or DTS:X on the delivered track. When the engine
+			// could also pass the track to a receiver intact, which path it takes
+			// is unknown until the renderer reports it, so no loss is claimed.
+			if selected := sourceAudioAt(source.Audio, p.AudioStream); selected != nil && selected.ObjectAudio != "" && p.AudioAction != "convert" && !p.AudioPassthrough && !audioPassedThrough(selected, client) {
 				if c := client.audioCodec(p.OutputAudioCodec); c == nil || !containsString(c.ObjectAudio, selected.ObjectAudio) {
 					if p.Trace != nil {
 						p.Trace.Notes = append(p.Trace.Notes, NoteObjectAudioDecoded)
