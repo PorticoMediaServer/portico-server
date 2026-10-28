@@ -25,9 +25,16 @@ import (
 )
 
 // One analysis-enqueue page holds the single SQLite writer for its whole
-// duration. Keep it small enough that a one-core server releases the writer
-// often enough for playback control and navigation writes to win between pages.
-const analysisEnqueuePageSize = "32"
+// duration. The page is a bounded raw window over the source's existing
+// (source_id, retired, id) index, so a run of rows another phase ruled out
+// cannot hide unbounded work behind a LIMIT. A policy with an active sonic
+// fallback keeps the smaller window: one such row can run SonicCurrentTx, whose
+// inner binding read is already bounded at 4097 track rows, and that inner work
+// must not be multiplied by a larger outer page.
+const (
+	analysisEnqueueRawPageSize   = 64
+	analysisEnqueueSonicPageSize = 32
+)
 
 func (s *Service) enqueueAnalysisPage(ctx context.Context, job string, source catalog.LibrarySource) error {
 	if more, e := s.enqueueSidecarChanges(ctx, job, source); more || e != nil {
@@ -83,17 +90,21 @@ func (s *Service) enqueueAnalysisPage(ctx context.Context, job string, source ca
 		required = switches.Filter(required)
 	}
 	requiredJSON, _ := json.Marshal(required)
-	// Bound evidence evaluation even when the entire source is already complete.
-	// Unchanged candidates advance the cursor without creating queue rows.
-	rows, err := tx.QueryContext(ctx, `WITH batch AS MATERIALIZED (
- SELECT o.* FROM inventory_objects o JOIN inventory_runs r ON r.source_id=o.source_id
- WHERE r.job_id=? AND o.id>r.reconcile_cursor AND o.retired=0 AND o.state='available' AND o.root_incarnation=r.root_incarnation AND o.unsupported_reason=''
- ORDER BY o.id LIMIT `+analysisEnqueuePageSize+`)
- SELECT o.id,o.revision,(lower(substr(o.relative_path,-5)) NOT IN('.epub','.mobi','.azw3') AND lower(substr(o.relative_path,-4)) NOT IN('.pdf','.cbz','.cb7','.cbr') AND (lower(substr(o.relative_path,-5))<>'.strm' OR ?=1) AND (o.analysis_revision<>o.revision OR o.analysis_policy<>? OR o.analysis_state='pending' OR o.analysis_generation<>r.source_generation OR (o.analysis_algorithm<>? AND EXISTS(SELECT 1 FROM json_each((SELECT operations_json FROM library_scan_policies WHERE library_id=?)) WHERE value IN('checksum','chapter_images','trickplay','waveform','loudness','fingerprint'))) OR
- (lower(substr(o.relative_path,-5))<>'.strm' AND EXISTS(SELECT 1 FROM json_each(?) wanted WHERE NOT EXISTS(SELECT 1 FROM json_each(o.analysis_operations_json) done WHERE done.value=wanted.value))) OR
- EXISTS(SELECT 1 FROM json_each(?) wanted WHERE wanted.value IN('checksum','chapter_images','trickplay','waveform','loudness','fingerprint') AND NOT EXISTS(SELECT 1 FROM analysis_heads h JOIN analysis_results a ON a.id=h.result_id WHERE h.object_id=o.id AND h.source_revision=o.revision AND h.stage=wanted.value AND a.algorithm=? AND a.root_incarnation=r.root_incarnation AND a.configuration_generation=r.source_generation AND a.retired_ms=0)) OR
- (lower(substr(o.relative_path,-5))='.strm' AND NOT EXISTS(SELECT 1 FROM json_each(o.analysis_operations_json) done WHERE done.value=?))))
- FROM batch o JOIN inventory_runs r ON r.source_id=o.source_id WHERE r.job_id=? ORDER BY o.id`, job, strmEnabled && policy.Allows("probe"), policy.Revision, mediaanalysis.Algorithm, source.LibraryID, string(requiredJSON), string(requiredJSON), mediaanalysis.Algorithm, "strm_target:"+strconv.FormatInt(strmRevision, 10), job)
+	sonicFallback := policy.Allows(catalog.SonicOperation) && s.DeepAnalysis.SonicCanAttempt()
+	rawPageSize := analysisEnqueueRawPageSize
+	if sonicFallback {
+		rawPageSize = analysisEnqueueSonicPageSize
+	}
+	var cursor string
+	if err = tx.QueryRowContext(ctx, `SELECT reconcile_cursor FROM inventory_runs WHERE job_id=?`, job).Scan(&cursor); err != nil {
+		return err
+	}
+	// Read the raw keyset window first, bounded by the existing
+	// (source_id, retired, id) index. The extra row is a probe: if it comes back
+	// there is more source after this window, so the phase is not over and the
+	// probe is re-read as the next window's first row. Rows the filters below
+	// reject are still consumed here, so a rejected prefix cannot repeat forever.
+	rows, err := tx.QueryContext(ctx, `SELECT o.id,o.revision FROM inventory_objects o INDEXED BY inventory_objects_source WHERE o.source_id=? AND o.retired=0 AND o.id>? ORDER BY o.id LIMIT ?`, source.ID, cursor, rawPageSize+1)
 	if err != nil {
 		return err
 	}
@@ -101,22 +112,63 @@ func (s *Service) enqueueAnalysisPage(ctx context.Context, job string, source ca
 		id, revision string
 		needs        bool
 	}
-	batch := []object{}
+	window := []object{}
 	for rows.Next() {
 		var o object
-		if err = rows.Scan(&o.id, &o.revision, &o.needs); err != nil {
+		if err = rows.Scan(&o.id, &o.revision); err != nil {
 			rows.Close()
 			return err
 		}
-		batch = append(batch, o)
+		window = append(window, o)
 	}
 	err = rows.Err()
 	rows.Close()
 	if err != nil {
 		return err
 	}
+	atEnd := len(window) <= rawPageSize
+	if !atEnd {
+		window = window[:rawPageSize]
+	}
+	// Bound evidence evaluation even when the entire source is already complete.
+	// The unchanged predicate is evaluated in one statement over exactly this
+	// window's ids, not one query per row. Unchanged candidates advance the
+	// cursor without creating queue rows.
+	batch := []object{}
+	if len(window) > 0 {
+		ids := make([]string, len(window))
+		for i := range window {
+			ids[i] = window[i].id
+		}
+		idsJSON, _ := json.Marshal(ids)
+		rows, err = tx.QueryContext(ctx, `WITH batch AS MATERIALIZED (
+ SELECT o.* FROM inventory_objects o JOIN inventory_runs r ON r.source_id=o.source_id
+ WHERE r.job_id=? AND o.id IN (SELECT value FROM json_each(?)) AND o.retired=0 AND o.state='available' AND o.root_incarnation=r.root_incarnation AND o.unsupported_reason=''
+ ORDER BY o.id)
+ SELECT o.id,o.revision,(lower(substr(o.relative_path,-5)) NOT IN('.epub','.mobi','.azw3') AND lower(substr(o.relative_path,-4)) NOT IN('.pdf','.cbz','.cb7','.cbr') AND (lower(substr(o.relative_path,-5))<>'.strm' OR ?=1) AND (o.analysis_revision<>o.revision OR o.analysis_policy<>? OR o.analysis_state='pending' OR o.analysis_generation<>r.source_generation OR (o.analysis_algorithm<>? AND EXISTS(SELECT 1 FROM json_each((SELECT operations_json FROM library_scan_policies WHERE library_id=?)) WHERE value IN('checksum','chapter_images','trickplay','waveform','loudness','fingerprint'))) OR
+ (lower(substr(o.relative_path,-5))<>'.strm' AND EXISTS(SELECT 1 FROM json_each(?) wanted WHERE NOT EXISTS(SELECT 1 FROM json_each(o.analysis_operations_json) done WHERE done.value=wanted.value))) OR
+ EXISTS(SELECT 1 FROM json_each(?) wanted WHERE wanted.value IN('checksum','chapter_images','trickplay','waveform','loudness','fingerprint') AND NOT EXISTS(SELECT 1 FROM analysis_heads h JOIN analysis_results a ON a.id=h.result_id WHERE h.object_id=o.id AND h.source_revision=o.revision AND h.stage=wanted.value AND a.algorithm=? AND a.root_incarnation=r.root_incarnation AND a.configuration_generation=r.source_generation AND a.retired_ms=0)) OR
+ (lower(substr(o.relative_path,-5))='.strm' AND NOT EXISTS(SELECT 1 FROM json_each(o.analysis_operations_json) done WHERE done.value=?))))
+ FROM batch o JOIN inventory_runs r ON r.source_id=o.source_id WHERE r.job_id=? ORDER BY o.id`, job, string(idsJSON), strmEnabled && policy.Allows("probe"), policy.Revision, mediaanalysis.Algorithm, source.LibraryID, string(requiredJSON), string(requiredJSON), mediaanalysis.Algorithm, "strm_target:"+strconv.FormatInt(strmRevision, 10), job)
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			var o object
+			if err = rows.Scan(&o.id, &o.revision, &o.needs); err != nil {
+				rows.Close()
+				return err
+			}
+			batch = append(batch, o)
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return err
+		}
+	}
 	for _, o := range batch {
-		if !o.needs && policy.Allows(catalog.SonicOperation) && s.DeepAnalysis.SonicCanAttempt() {
+		if !o.needs && sonicFallback {
 			current, e := s.DeepAnalysis.SonicCurrentTx(ctx, tx, mediaanalysis.Request{JobID: job, ObjectID: o.id, SourceRevision: o.revision, PolicyRevision: policy.Revision})
 			if e != nil {
 				return e
@@ -130,10 +182,13 @@ func (s *Service) enqueueAnalysisPage(ctx context.Context, job string, source ca
 			return err
 		}
 	}
-	if len(batch) > 0 {
-		_, err = tx.ExecContext(ctx, `UPDATE inventory_runs SET reconcile_cursor=?,policy_revision=? WHERE job_id=?`, batch[len(batch)-1].id, policy.Revision, job)
-	} else {
+	// The cursor is the last raw id of the window, not the last row the predicate
+	// selected: filtered rows must be consumed too. Queue rows, cursor and phase
+	// move in this one commit, so a crash replays at most this window.
+	if atEnd {
 		_, err = tx.ExecContext(ctx, `UPDATE inventory_runs SET phase='basic_pending',reconcile_cursor='',policy_revision=? WHERE job_id=?`, policy.Revision, job)
+	} else {
+		_, err = tx.ExecContext(ctx, `UPDATE inventory_runs SET reconcile_cursor=?,policy_revision=? WHERE job_id=?`, window[len(window)-1].id, policy.Revision, job)
 	}
 	if err != nil {
 		return err
