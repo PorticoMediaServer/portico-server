@@ -140,3 +140,38 @@ func TestChannelMapMarksMatchDirectoryAcrossPagesFiltersAndAuthority(t *testing.
 		t.Fatal(replaced, err)
 	}
 }
+
+// A channel-map read reports the same combined revision a write is fenced by,
+// even after the source itself has moved (enabled, refreshed, reconfigured), so
+// an exact lookup followed by Hide never conflicts with itself.
+func TestChannelMapRevisionMatchesItsWriteFence(t *testing.T) {
+	s, db, _ := newService(t)
+	ctx := context.Background()
+	live, err := livechannels.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authority := func(context.Context, *sql.Tx, bool) (string, func(string, string) bool, error) {
+		return "owner", func(string, string) bool { return true }, nil
+	}
+	source, err := live.Save(ctx, authority, livechannels.SourceInput{ID: strings.Repeat("ef", 24), RequestID: strings.Repeat("aa", 24), Name: "Fence", TunerCount: 1,
+		Playlist: "#EXTM3U\n#EXTINF:-1 tvg-id=\"one\" tvg-chno=\"1\",One\nhttps://fixture.invalid/one\n"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`UPDATE live_sources SET revision=revision+3 WHERE id=?`, source.ID); err != nil {
+		t.Fatal(err)
+	}
+	page, err := s.ChannelMap(ctx, allow, source.ID, "", "", 10)
+	if err != nil || len(page.Items) != 1 {
+		t.Fatal(page, err)
+	}
+	exact, err := s.ChannelMap(ctx, allow, source.ID, "", page.Items[0].ChannelID, 1)
+	if err != nil || exact.Revision != page.Revision {
+		t.Fatal(exact, err)
+	}
+	saved, err := s.SaveChannelMap(ctx, allow, source.ID, ChannelMapChange{ExpectedRevision: exact.Revision, OperationID: "fence-hide", Overrides: []ChannelMapOverride{{ChannelID: exact.Items[0].ChannelID, Hidden: true}}})
+	if err != nil || !saved.Items[0].Hidden || saved.Items[0].Mark.Text == "" || saved.Revision != exact.Revision+1 {
+		t.Fatal(saved, err)
+	}
+}

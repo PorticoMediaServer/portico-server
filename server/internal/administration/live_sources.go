@@ -490,10 +490,11 @@ func channelMapPage(ctx context.Context, tx *sql.Tx, db *sql.DB, id string, afte
 	if err := tx.QueryRowContext(ctx, `SELECT active_generation FROM live_sources WHERE id=?`, id).Scan(&out.Generation); err != nil {
 		return out, err
 	}
+	// The same combined fence the write checks, so a fresh read can always write.
 	if _, revision, err := readDocument(ctx, tx, liveSourceScope(id), DefaultLiveSourceSettings()); err != nil {
 		return out, err
-	} else {
-		out.Revision = revision
+	} else if out.Revision, err = liveSourceDocumentRevision(ctx, tx, id, revision); err != nil {
+		return out, err
 	}
 	if out.Generation == "" {
 		return out, nil
@@ -540,10 +541,11 @@ func channelMapEntry(ctx context.Context, tx *sql.Tx, db *sql.DB, id, channelID 
 	if err := tx.QueryRowContext(ctx, `SELECT active_generation FROM live_sources WHERE id=?`, id).Scan(&out.Generation); err != nil {
 		return out, err
 	}
+	// The same combined fence the write checks, so a fresh read can always write.
 	if _, revision, err := readDocument(ctx, tx, liveSourceScope(id), DefaultLiveSourceSettings()); err != nil {
 		return out, err
-	} else {
-		out.Revision = revision
+	} else if out.Revision, err = liveSourceDocumentRevision(ctx, tx, id, revision); err != nil {
+		return out, err
 	}
 	if out.Generation == "" {
 		return out, ErrNotFound
@@ -567,8 +569,11 @@ func channelMapEntry(ctx context.Context, tx *sql.Tx, db *sql.DB, id, channelID 
 	return out, channelMapMarks(ctx, tx, db, &out)
 }
 
+// channelMapMarks fills each entry's mark from the source's whole lineup. With
+// no database (inside the writer) it fills nothing: a lineup scan must never hold
+// the writer, so the write path adds marks after it commits.
 func channelMapMarks(ctx context.Context, tx *sql.Tx, db *sql.DB, page *ChannelMapPage) error {
-	if len(page.Items) == 0 {
+	if len(page.Items) == 0 || db == nil {
 		return nil
 	}
 	marks, err := livechannels.SourceChannelMarksTx(ctx, tx, db, page.SourceID)
@@ -782,6 +787,11 @@ func (s *Service) SaveChannelMap(ctx context.Context, auth Authorize, id string,
 		}
 		return saveReceipt(ctx, tx, "channel-map:"+id, change.OperationID, digest, out, at)
 	})
+	if err != nil {
+		return out, err
+	}
+	// Marks come from a read snapshot after the writer is released.
+	err = s.snapshot(ctx, auth, func(tx *sql.Tx) error { return channelMapMarks(ctx, tx, s.db, &out) })
 	return out, err
 }
 

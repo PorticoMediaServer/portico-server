@@ -93,7 +93,7 @@ func channelMarks(names []markName) map[string]ChannelMark {
 
 // The process-wide LRU is shared by owner, guide and recording reads. Database
 // identity prevents cross-server reuse. At most four snapshots / 100,000 marks
-// are retained; a cold build holds the mutex to coalesce concurrent misses.
+// are retained; builds run outside the mutex.
 const markCacheEntries = 4
 const markCacheChannels = 100000
 
@@ -124,15 +124,19 @@ func SourceChannelMarksTx(ctx context.Context, tx *sql.Tx, db *sql.DB, source st
 		return nil, err
 	}
 	if db != nil {
+		// The lock covers only the lookup and the insert: a cold build of a large
+		// lineup never stalls warm reads of other sources. Two cold readers of
+		// one source may both build; the second insert replaces the first.
 		sourceMarkCache.Lock()
-		defer sourceMarkCache.Unlock()
 		for i, entry := range sourceMarkCache.entries {
 			if entry.key == key {
 				copy(sourceMarkCache.entries[i:], sourceMarkCache.entries[i+1:])
 				sourceMarkCache.entries[len(sourceMarkCache.entries)-1] = entry
+				sourceMarkCache.Unlock()
 				return entry.marks, nil
 			}
 		}
+		sourceMarkCache.Unlock()
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT v.channel_id,v.name,COALESCE(NULLIF(n.number,''),v.number) FROM live_channel_versions v LEFT JOIN admin_channel_numbers n ON n.source_id=? AND n.channel_id=v.channel_id WHERE v.generation_id=?`, source, key.generation)
 	if err != nil {
@@ -156,6 +160,8 @@ func SourceChannelMarksTx(ctx context.Context, tx *sql.Tx, db *sql.DB, source st
 	}
 	marks := channelMarks(names)
 	if db != nil && len(marks) <= markCacheChannels {
+		sourceMarkCache.Lock()
+		defer sourceMarkCache.Unlock()
 		previous := sourceMarkCache.entries
 		kept := previous[:0]
 		total := len(marks)
