@@ -576,6 +576,7 @@ func (s *Service) Delete(ctx context.Context, auth Authorize, actor string, requ
 	// The files are gone; the catalogue follows. Each title goes in short
 	// transactions, and a title whose file could not be removed stays.
 	for i, target := range targets {
+		ctx := catalog.WithAdministrationDeleteTarget(ctx, target.emptyPlan, request.OperationID+":"+digest)
 		for start := 0; start < len(target.gone); start += deleteMemberBatch {
 			end := min(start+deleteMemberBatch, len(target.gone))
 			if err = s.transaction(ctx, liveAuth, func(tx *sql.Tx) error {

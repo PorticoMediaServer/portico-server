@@ -303,3 +303,34 @@ func TestP252bGenericAlbumAdoptionCoalescesKnownRoots(t *testing.T) {
 		t.Fatal("coalesced root skipped known candidate", n)
 	}
 }
+
+func TestP252bFreshEmptyShowKeepsForeignSeasonCustody(t *testing.T) {
+	c, show, season, episode := emptyParentFixture(t)
+	var ref compactcatalog.MutationRef
+	var plan TitleDeletePlan
+	c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		if e := purgeEntityTx(ctx, tx, episode.ID); e != nil {
+			return e
+		}
+		var e error
+		plan, e = CaptureTitleDeleteTx(ctx, tx, show.ID)
+		if e != nil {
+			return e
+		}
+		ref, e = compactcatalog.BeginEntityMutationTx(ctx, tx, compactcatalog.MutationIntent{Entity: season.ID, OwnerKind: "title", OwnerID: "foreign-season", OwnerGeneration: 1, Mode: "members"})
+		return e
+	})
+	c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		if _, e := DeleteEmptyApprovedContainerStepTx(ctx, tx, plan, "new-show:approval"); !errors.Is(e, compactcatalog.ErrEntityMutating) {
+			t.Fatal("fresh Show consumed a foreign domain", e)
+		}
+		m, e := compactcatalog.ReadEntityMutationTx(ctx, tx, ref)
+		if e != nil {
+			return e
+		}
+		if m.Status != "active" {
+			t.Fatal("foreign Season was unwound", m.Status)
+		}
+		return nil
+	})
+}

@@ -231,6 +231,39 @@ func supersedeAdministrationTx(ctx context.Context, tx *sql.Tx, entity int64, ne
 	if e != nil {
 		return false, e
 	}
+	return abandonAdministrationMutationTx(ctx, tx, m)
+}
+
+// One raw reverse edge, not a filtered descendant walk. Only an old actual
+// empty administrative Season inside the freshly approved empty Show may
+// be abandoned. A different domain's first hold remains a typed conflict.
+func supersedeEmptyAdministrationSeasonTx(ctx context.Context, tx *sql.Tx, show int64, newOwner string) (bool, error) {
+	var ref compactcatalog.MutationRef
+	e := tx.QueryRowContext(ctx, `SELECT mutation_id,generation FROM catalog_entity_mutations INDEXED BY catalog_entity_mutations_subject_ancestor_1_fk WHERE subject_ancestor_1=? AND status IN('active','blocked') ORDER BY status,family_id LIMIT 1`, show).Scan(&ref.ID, &ref.Generation)
+	if errors.Is(e, sql.ErrNoRows) {
+		return false, nil
+	}
+	if e != nil {
+		return false, e
+	}
+	m, e := compactcatalog.ReadEntityMutationTx(ctx, tx, ref)
+	if e != nil {
+		return false, e
+	}
+	if m.OwnerKind != "administration" || m.OwnerID == newOwner || m.Kind != compactcatalog.Season || m.Mode != "members" || m.Target != 0 || m.Child != "" {
+		return false, compactcatalog.ErrEntityMutating
+	}
+	var empty bool
+	if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_entities e JOIN catalog_seasons s ON s.entity_id=e.id JOIN catalog_entities parent ON parent.id=s.show_id WHERE e.id=? AND e.kind=3 AND e.library_id=? AND parent.library_id=e.library_id AND pid(e.public_id)=? AND e.parent_id=? AND s.show_id=? AND NOT EXISTS(SELECT 1 FROM catalog_episodes INDEXED BY catalog_episodes_season_entity WHERE season_id=e.id))`, m.Entity, m.Library, m.Public, show, show).Scan(&empty); e != nil {
+		return false, e
+	}
+	if !empty {
+		return false, compactcatalog.ErrEntityMutating
+	}
+	return abandonAdministrationMutationTx(ctx, tx, m)
+}
+
+func abandonAdministrationMutationTx(ctx context.Context, tx *sql.Tx, m compactcatalog.EntityMutation) (bool, error) {
 	step, e := staleMutationStepTx(ctx, tx, m)
 	if e != nil {
 		return false, e

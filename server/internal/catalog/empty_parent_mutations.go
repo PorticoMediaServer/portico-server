@@ -14,6 +14,19 @@ type parentCleanupCustody struct {
 	library bool
 }
 
+type administrationDeleteTargetKey struct{}
+type administrationDeleteTarget struct {
+	plan  TitleDeletePlan
+	owner string
+}
+
+// WithAdministrationDeleteTarget binds only this live approved target's
+// continuation. It admits nothing before file outcomes are known and stores
+// no callback or selected members. The service reauthorizes each writer.
+func WithAdministrationDeleteTarget(ctx context.Context, plan TitleDeletePlan, owner string) context.Context {
+	return context.WithValue(ctx, administrationDeleteTargetKey{}, administrationDeleteTarget{plan, owner})
+}
+
 // An empty Show is a consequence of an actual Episode/Season removal. It
 // owns no member selection or provider authority. The existing library
 // removal job already owns a bounded container phase and needs no extra root.
@@ -28,6 +41,23 @@ func enqueueEmptyShowTx(ctx context.Context, tx *sql.Tx, show int64) error {
 		return nil
 	}
 	if e != nil {
+		return e
+	}
+	if approved, ok := ctx.Value(administrationDeleteTargetKey{}).(administrationDeleteTarget); ok && approved.plan.ItemID == public {
+		current, e := CaptureTitleDeleteTx(ctx, tx, show)
+		if e != nil {
+			return e
+		}
+		if current != approved.plan {
+			return nil
+		}
+		// This writer already physically removed its Episode. Only admission is
+		// permitted here: an older overlap is handled in the separate approved
+		// zero-member turn, without combining supersession/extra physical work.
+		e = beginAdministrationContainerTx(ctx, tx, show, approved.plan, approved.owner)
+		if errors.Is(e, compactcatalog.ErrEntityMutating) {
+			return nil
+		}
 		return e
 	}
 	if held, e := entityMutationHeldTx(ctx, tx, show); e != nil || held {
@@ -58,6 +88,32 @@ func enqueueEmptyShowTx(ctx context.Context, tx *sql.Tx, show int64) error {
 		return e
 	}
 	return enqueueCatalogMutationTx(ctx, tx, ref)
+}
+
+func driveApprovedEmptyParentTx(ctx context.Context, tx *sql.Tx, show int64) (compactcatalog.MutationStep, bool, error) {
+	var ref compactcatalog.MutationRef
+	e := tx.QueryRowContext(ctx, `SELECT mutation_id,generation FROM catalog_entity_mutations INDEXED BY catalog_entity_mutations_entity_fk WHERE entity_id=? AND owner_kind='empty-parent' AND status='active'`, show).Scan(&ref.ID, &ref.Generation)
+	if errors.Is(e, sql.ErrNoRows) {
+		return compactcatalog.MutationStep{}, false, nil
+	}
+	if e != nil {
+		return compactcatalog.MutationStep{}, true, e
+	}
+	custody, e := readMutationConsoleTx(ctx, tx, ref.ID)
+	if errors.Is(e, sql.ErrNoRows) {
+		return compactcatalog.MutationStep{}, true, compactcatalog.ErrEntityMutating
+	}
+	if e != nil {
+		return compactcatalog.MutationStep{}, true, e
+	}
+	step, e := emptyParentStepTx(ctx, tx, ref)
+	if e != nil || !step.Complete {
+		return step, true, e
+	}
+	if e = completeMutationConsoleTx(ctx, tx, custody, ref.ID, step.Outcome); e != nil {
+		return compactcatalog.MutationStep{}, true, e
+	}
+	return step, true, acknowledgeMutationTx(ctx, tx, ref)
 }
 
 func removeEmptySeasonAndSettleShowTx(ctx context.Context, tx *sql.Tx, season int64) error {

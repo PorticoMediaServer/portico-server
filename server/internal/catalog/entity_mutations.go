@@ -412,19 +412,46 @@ func DeleteEmptyApprovedContainerStepTx(ctx context.Context, tx *sql.Tx, plan Ti
 	if superseded {
 		return compactcatalog.PendingMutationStep(), nil
 	}
+	var kind compactcatalog.Kind
+	if e = tx.QueryRowContext(ctx, `SELECT kind FROM catalog_entities WHERE id=?`, entity).Scan(&kind); e != nil {
+		return compactcatalog.MutationStep{}, e
+	}
+	if kind == compactcatalog.Show {
+		has, e := hasTitleMembersTx(ctx, tx, entity, kind)
+		if e != nil {
+			return compactcatalog.MutationStep{}, e
+		}
+		if has {
+			return compactcatalog.MutationStep{Complete: true, Outcome: "stale"}, nil
+		}
+		superseded, e := supersedeEmptyAdministrationSeasonTx(ctx, tx, entity, owner)
+		if e != nil {
+			return compactcatalog.MutationStep{}, e
+		}
+		if superseded {
+			return compactcatalog.PendingMutationStep(), nil
+		}
+		if step, found, e := driveApprovedEmptyParentTx(ctx, tx, entity); found || e != nil {
+			return step, e
+		}
+	}
+	return compactcatalog.PendingMutationStep(), beginAdministrationContainerTx(ctx, tx, entity, plan, owner)
+}
+
+func beginAdministrationContainerTx(ctx context.Context, tx *sql.Tx, entity int64, plan TitleDeletePlan, owner string) error {
 	operation, _, ok := strings.Cut(owner, ":")
 	if !ok {
 		operation = owner
 	}
 	in := compactcatalog.MutationIntent{Entity: entity, OwnerKind: "administration", OwnerID: owner, OwnerGeneration: 1, Mode: "members", CauseOperation: operation}
 	var anchor, family string
-	e = tx.QueryRowContext(ctx, `SELECT mutation_id,family_id FROM catalog_entity_mutations WHERE owner_kind='administration' AND owner_id=? AND owner_generation=1 AND parent_mutation_id IS NULL LIMIT 1`, owner).Scan(&anchor, &family)
+	e := tx.QueryRowContext(ctx, `SELECT mutation_id,family_id FROM catalog_entity_mutations WHERE owner_kind='administration' AND owner_id=? AND owner_generation=1 AND parent_mutation_id IS NULL LIMIT 1`, owner).Scan(&anchor, &family)
 	if e == nil {
 		in.Parent = anchor
 		in.Family = family
 	} else if !errors.Is(e, sql.ErrNoRows) {
-		return compactcatalog.MutationStep{}, e
+		return e
 	}
 	_, e = compactcatalog.BeginEntityMutationTx(ctx, tx, in)
-	return compactcatalog.PendingMutationStep(), e
+	return e
 }
