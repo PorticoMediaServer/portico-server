@@ -110,10 +110,11 @@ func TestFingerprintKeyWaitsForTheWriterGate(t *testing.T) {
 		done <- loadOrCreateFingerprintKey(db, &key)
 	}()
 
-	awaitFingerprintKeyQueued(t, done, release)
+	awaitFingerprintKeyQueued(t, done)
 	if stored := persistence.Get(db, fingerprintKeyName); stored != "" {
 		t.Fatalf("held gate did not block the fingerprint-key write: %q already stored", stored)
 	}
+	release()
 	select {
 	case e := <-done:
 		if e != nil {
@@ -127,7 +128,7 @@ func TestFingerprintKeyWaitsForTheWriterGate(t *testing.T) {
 	}
 }
 
-func awaitFingerprintKeyQueued(t *testing.T, done <-chan error, release func()) {
+func awaitFingerprintKeyQueued(t *testing.T, done <-chan error) {
 	t.Helper()
 	watchdog := time.NewTimer(15 * time.Second)
 	defer watchdog.Stop()
@@ -139,7 +140,6 @@ func awaitFingerprintKeyQueued(t *testing.T, done <-chan error, release func()) 
 			t.Fatalf("fingerprint-key write completed while the gate was held (err %v): it bypassed the writer gate", err)
 		case <-poll.C:
 			if dbwork.WriteGate().Waiting()[dbwork.ClassInteractive.String()] > 0 {
-				release()
 				return
 			}
 		case <-watchdog.C:

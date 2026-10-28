@@ -118,10 +118,11 @@ func TestCursorKeyWaitsForTheWriterGate(t *testing.T) {
 		done <- e
 	}()
 
-	awaitCursorKeyQueued(t, done, release)
+	awaitCursorKeyQueued(t, done)
 	if stored := persistence.Get(db, cursorKeyName); stored != "" {
 		t.Fatalf("held gate did not block the cursor-key write: %q already stored", stored)
 	}
+	release()
 	select {
 	case e := <-done:
 		if e != nil {
@@ -135,7 +136,7 @@ func TestCursorKeyWaitsForTheWriterGate(t *testing.T) {
 	}
 }
 
-func awaitCursorKeyQueued(t *testing.T, done <-chan error, release func()) {
+func awaitCursorKeyQueued(t *testing.T, done <-chan error) {
 	t.Helper()
 	watchdog := time.NewTimer(15 * time.Second)
 	defer watchdog.Stop()
@@ -147,7 +148,6 @@ func awaitCursorKeyQueued(t *testing.T, done <-chan error, release func()) {
 			t.Fatalf("cursor-key write completed while the gate was held (err %v): it bypassed the writer gate", err)
 		case <-poll.C:
 			if dbwork.WriteGate().Waiting()[dbwork.ClassInteractive.String()] > 0 {
-				release()
 				return
 			}
 		case <-watchdog.C:
