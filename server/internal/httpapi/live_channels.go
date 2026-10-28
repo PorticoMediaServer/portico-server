@@ -285,7 +285,7 @@ func (d Dependencies) liveChannelRoutes(mux *http.ServeMux, store *livechannels.
 		q := r.URL.Query()
 		for key, values := range q {
 			switch key {
-			case "start", "end", "timezone", "kind", "search", "sourceId", "limit", "cursor", "favorites", "includeHidden", "group", "channels", "programmes":
+			case "start", "end", "timezone", "kind", "search", "sourceId", "limit", "cursor", "favorites", "includeHidden", "includeServerHidden", "group", "channels", "programmes":
 			default:
 				return nil, livechannels.ErrInvalid
 			}
@@ -302,6 +302,12 @@ func (d Dependencies) liveChannelRoutes(mux *http.ServeMux, store *livechannels.
 		if (q.Get("favorites") != "" && q.Get("favorites") != "true" && q.Get("favorites") != "false") || (q.Get("includeHidden") != "" && q.Get("includeHidden") != "true" && q.Get("includeHidden") != "false") {
 			return nil, livechannels.ErrInvalid
 		}
+		if q.Has("includeServerHidden") && q.Get("includeServerHidden") != "true" && q.Get("includeServerHidden") != "false" {
+			return nil, livechannels.ErrInvalid
+		}
+		if q.Get("includeServerHidden") == "true" && !channelOwner(p) {
+			return nil, livechannels.ErrDenied
+		}
 		if q.Get("programmes") != "" && q.Get("programmes") != "none" {
 			return nil, livechannels.ErrInvalid
 		}
@@ -317,7 +323,7 @@ func (d Dependencies) liveChannelRoutes(mux *http.ServeMux, store *livechannels.
 				}
 			}
 		}
-		query := livechannels.GuideQuery{ChannelIDs: channelIDs, NoProgrammes: q.Get("programmes") == "none", Viewer: channelSubject(p), FavoritesOnly: q.Get("favorites") == "true", IncludeHidden: q.Get("includeHidden") == "true", Group: q.Get("group"), Start: start, End: end, Timezone: q.Get("timezone"), Kind: livechannels.Provenance(q.Get("kind")), Search: q.Get("search"), SourceID: q.Get("sourceId"), Limit: limit, Cursor: q.Get("cursor")}
+		query := livechannels.GuideQuery{ChannelIDs: channelIDs, NoProgrammes: q.Get("programmes") == "none", Viewer: channelSubject(p), FavoritesOnly: q.Get("favorites") == "true", IncludeHidden: q.Get("includeHidden") == "true", IncludeServerHidden: q.Get("includeServerHidden") == "true", Group: q.Get("group"), Start: start, End: end, Timezone: q.Get("timezone"), Kind: livechannels.Provenance(q.Get("kind")), Search: q.Get("search"), SourceID: q.Get("sourceId"), Limit: limit, Cursor: q.Get("cursor")}
 		// Live-source programmes follow the profile's content restrictions
 		// like library items (Channels spec §8.1); Library Channels apply
 		// theirs per scheduled item.

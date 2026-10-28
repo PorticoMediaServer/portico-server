@@ -5078,6 +5078,7 @@ export const routes = [
       "favorites",
       "group",
       "includeHidden",
+      "includeServerHidden",
       "kind",
       "limit",
       "programmes",
@@ -5149,6 +5150,7 @@ export const routes = [
       "favorites",
       "group",
       "includeHidden",
+      "includeServerHidden",
       "kind",
       "limit",
       "offset",
@@ -5292,6 +5294,7 @@ export const routes = [
     "bodyLimit": 0,
     "query": [
       "includeHidden",
+      "includeServerHidden",
       "timezone"
     ],
     "errors": [

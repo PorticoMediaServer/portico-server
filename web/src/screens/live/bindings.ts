@@ -2,6 +2,7 @@ import {GuideWindowStore, legacyChannel, legacyGuideSource, type GuideChannelRow
 import {fetchGuideSourceSummaries} from '@core/guide/directory.ts';
 import type {LegacyGuideOptions} from '@core/guide/legacy-source.ts';
 import {channelOperationId, guideWindow, parseChannelGuide, saveChannelPreference, type ChannelKind} from '@core/channel-guide.ts';
+import {setServerChannelHidden} from '@core/server-channel-visibility.ts';
 import {routePath} from '../../../../packages/contracts/src/routes.ts';
 import {screenLifetime, type ScreenContext} from '../detail/context';
 
@@ -34,12 +35,12 @@ export function createLiveBindings(context: ScreenContext, options: LegacyGuideO
       return {store: current, dispose() {current.dispose();stores.delete(current);}};
     },
     async sources() {
-      const value = await fetchGuideSourceSummaries(api, context.scope.serverId, options.timezone, life.signal());
+      const value = await fetchGuideSourceSummaries(api, context.scope.serverId, options.timezone, life.signal(), options.includeServerHidden);
       life.assert();return value;
     },
     async refresh(signal?: AbortSignal) {
       const active = life.signal(signal);active.throwIfAborted();
-      const value = await fetchGuideSourceSummaries(api, context.scope.serverId, options.timezone, active);
+      const value = await fetchGuideSourceSummaries(api, context.scope.serverId, options.timezone, active, options.includeServerHidden);
       life.assert();active.throwIfAborted();
       // Membership, marks and favorites order may all have changed. Forget the
       // prior revision and re-read only each store's current bounded viewport.
@@ -47,14 +48,14 @@ export function createLiveBindings(context: ScreenContext, options: LegacyGuideO
       return value;
     },
     async selectedChannel(target: Readonly<{sourceId: string; channelId: string; provenance: ChannelKind}>, signal?: AbortSignal) {
-      const route = {kind: target.provenance, sourceId: target.sourceId, timezone: options.timezone, search: '', ...guideWindow()};
-      const params = new URLSearchParams({...route, channels: target.channelId, limit: '1'});
+      const route = {kind: target.provenance, sourceId: target.sourceId, ...(options.includeServerHidden ? {includeServerHidden: true} : {}), timezone: options.timezone, search: '', ...guideWindow()};
+      const params = new URLSearchParams({...route, includeServerHidden: String(options.includeServerHidden === true), channels: target.channelId, limit: '1'});
       const value = parseChannelGuide(await api.request(routePath('get_guide') + '?' + params, 'GET', undefined, life.signal(signal)), context.scope.serverId, route);
       life.assert();signal?.throwIfAborted();
       return value.channels.find(channel => channel.id === target.channelId && channel.sourceId === target.sourceId && channel.provenance === target.provenance);
     },
-    /** The viewer's own favorite or hidden mark for one drawn row, at that row's preference
-     * revision. The caller re-reads the guide afterwards; nothing is patched locally. */
+    /** The viewer's favorite for one drawn row, retaining its existing profile hidden
+     * preference at that row's revision. The caller re-reads the guide afterwards; nothing is patched locally. */
     async channelPreference(row: GuideChannelRow, values: Readonly<{favorite: boolean; hidden: boolean}>) {
       const channel = legacyChannel(row);
       if (!channel) throw new Error('This channel is no longer in the guide.');
@@ -62,6 +63,11 @@ export function createLiveBindings(context: ScreenContext, options: LegacyGuideO
       const operation = await channelOperationId(() => Promise.resolve(crypto.randomUUID()));
       await saveChannelPreference(api, context.scope.serverId, channel, operation, values, life.signal());
       life.assert();
+    },
+    async channelHidden(row: GuideChannelRow, hidden: boolean, expected?: Readonly<{revision: number; hidden: boolean}>) {
+      const channel = legacyChannel(row);
+      if (!channel || row.kind === 'library') throw new Error('invalid_channel_kind');
+      return setServerChannelHidden(api, context.scope.serverId, channel.sourceId, channel.id, hidden, () => crypto.randomUUID(), life.signal(), () => context.isCurrent(), expected);
     },
     dispose() {life.dispose();for (const value of stores) value.dispose();stores.clear();listeners.clear();failure = undefined;},
   };

@@ -34543,6 +34543,9 @@
                     "overridden": {
                       "type": "boolean"
                     },
+                    "overrideNumber": {
+                      "type": "string"
+                    },
                     "position": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -34562,7 +34565,8 @@
                     "hidden",
                     "position",
                     "overridden",
-                    "mark"
+                    "mark",
+                    "overrideNumber"
                   ],
                   "type": "object"
                 },
@@ -34571,11 +34575,17 @@
               "nextCursor": {
                 "type": "string"
               },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "sourceId": {
                 "type": "string"
               }
             },
             "required": [
+              "revision",
               "sourceId",
               "generation",
               "items",
@@ -50186,6 +50196,9 @@
                               "recordUnavailableReason": {
                                 "type": "string"
                               },
+                              "serverHidden": {
+                                "type": "boolean"
+                              },
                               "sourceId": {
                                 "type": "string"
                               },
@@ -50211,6 +50224,7 @@
                               "recordAvailable",
                               "favorite",
                               "hidden",
+                              "serverHidden",
                               "preferenceRevision"
                             ],
                             "type": "object"
@@ -50606,6 +50620,9 @@
                     "recordUnavailableReason": {
                       "type": "string"
                     },
+                    "serverHidden": {
+                      "type": "boolean"
+                    },
                     "sourceId": {
                       "type": "string"
                     },
@@ -50631,6 +50648,7 @@
                     "recordAvailable",
                     "favorite",
                     "hidden",
+                    "serverHidden",
                     "preferenceRevision"
                   ],
                   "type": "object"
@@ -50920,6 +50938,9 @@
                     "recordUnavailableReason": {
                       "type": "string"
                     },
+                    "serverHidden": {
+                      "type": "boolean"
+                    },
                     "sourceId": {
                       "type": "string"
                     },
@@ -50945,6 +50966,7 @@
                     "recordAvailable",
                     "favorite",
                     "hidden",
+                    "serverHidden",
                     "preferenceRevision"
                   ],
                   "type": "object"
@@ -51246,6 +51268,9 @@
                     "recordUnavailableReason": {
                       "type": "string"
                     },
+                    "serverHidden": {
+                      "type": "boolean"
+                    },
                     "sourceId": {
                       "type": "string"
                     },
@@ -51271,6 +51296,7 @@
                     "recordAvailable",
                     "favorite",
                     "hidden",
+                    "serverHidden",
                     "preferenceRevision"
                   ],
                   "type": "object"
@@ -51587,6 +51613,9 @@
                             "recordUnavailableReason": {
                               "type": "string"
                             },
+                            "serverHidden": {
+                              "type": "boolean"
+                            },
                             "sourceId": {
                               "type": "string"
                             },
@@ -51612,6 +51641,7 @@
                             "recordAvailable",
                             "favorite",
                             "hidden",
+                            "serverHidden",
                             "preferenceRevision"
                           ],
                           "type": "object"
@@ -51991,6 +52021,9 @@
                     "recordUnavailableReason": {
                       "type": "string"
                     },
+                    "serverHidden": {
+                      "type": "boolean"
+                    },
                     "sourceId": {
                       "type": "string"
                     },
@@ -52016,6 +52049,7 @@
                     "recordAvailable",
                     "favorite",
                     "hidden",
+                    "serverHidden",
                     "preferenceRevision"
                   ],
                   "type": "object"
@@ -56545,6 +56579,9 @@
                                     "recordUnavailableReason": {
                                       "type": "string"
                                     },
+                                    "serverHidden": {
+                                      "type": "boolean"
+                                    },
                                     "sourceId": {
                                       "type": "string"
                                     },
@@ -56570,6 +56607,7 @@
                                     "recordAvailable",
                                     "favorite",
                                     "hidden",
+                                    "serverHidden",
                                     "preferenceRevision"
                                   ],
                                   "type": "object"
@@ -62853,6 +62891,9 @@
                               "recordUnavailableReason": {
                                 "type": "string"
                               },
+                              "serverHidden": {
+                                "type": "boolean"
+                              },
                               "sourceId": {
                                 "type": "string"
                               },
@@ -62878,6 +62919,7 @@
                               "recordAvailable",
                               "favorite",
                               "hidden",
+                              "serverHidden",
                               "preferenceRevision"
                             ],
                             "type": "object"
@@ -72713,6 +72755,9 @@
                               "recordUnavailableReason": {
                                 "type": "string"
                               },
+                              "serverHidden": {
+                                "type": "boolean"
+                              },
                               "sourceId": {
                                 "type": "string"
                               },
@@ -72738,6 +72783,7 @@
                               "recordAvailable",
                               "favorite",
                               "hidden",
+                              "serverHidden",
                               "preferenceRevision"
                             ],
                             "type": "object"
@@ -79021,6 +79067,9 @@
                         "recordUnavailableReason": {
                           "type": "string"
                         },
+                        "serverHidden": {
+                          "type": "boolean"
+                        },
                         "sourceId": {
                           "type": "string"
                         },
@@ -79046,6 +79095,7 @@
                         "recordAvailable",
                         "favorite",
                         "hidden",
+                        "serverHidden",
                         "preferenceRevision"
                       ],
                       "type": "object"
@@ -94292,6 +94342,9 @@
                                     "recordUnavailableReason": {
                                       "type": "string"
                                     },
+                                    "serverHidden": {
+                                      "type": "boolean"
+                                    },
                                     "sourceId": {
                                       "type": "string"
                                     },
@@ -94317,6 +94370,7 @@
                                     "recordAvailable",
                                     "favorite",
                                     "hidden",
+                                    "serverHidden",
                                     "preferenceRevision"
                                   ],
                                   "type": "object"
@@ -100600,6 +100654,9 @@
                               "recordUnavailableReason": {
                                 "type": "string"
                               },
+                              "serverHidden": {
+                                "type": "boolean"
+                              },
                               "sourceId": {
                                 "type": "string"
                               },
@@ -100625,6 +100682,7 @@
                               "recordAvailable",
                               "favorite",
                               "hidden",
+                              "serverHidden",
                               "preferenceRevision"
                             ],
                             "type": "object"
@@ -106949,6 +107007,9 @@
                               "recordUnavailableReason": {
                                 "type": "string"
                               },
+                              "serverHidden": {
+                                "type": "boolean"
+                              },
                               "sourceId": {
                                 "type": "string"
                               },
@@ -106974,6 +107035,7 @@
                               "recordAvailable",
                               "favorite",
                               "hidden",
+                              "serverHidden",
                               "preferenceRevision"
                             ],
                             "type": "object"
@@ -113257,6 +113319,9 @@
                         "recordUnavailableReason": {
                           "type": "string"
                         },
+                        "serverHidden": {
+                          "type": "boolean"
+                        },
                         "sourceId": {
                           "type": "string"
                         },
@@ -113282,6 +113347,7 @@
                         "recordAvailable",
                         "favorite",
                         "hidden",
+                        "serverHidden",
                         "preferenceRevision"
                       ],
                       "type": "object"
@@ -169612,6 +169678,9 @@
                                     "recordUnavailableReason": {
                                       "type": "string"
                                     },
+                                    "serverHidden": {
+                                      "type": "boolean"
+                                    },
                                     "sourceId": {
                                       "type": "string"
                                     },
@@ -169637,6 +169706,7 @@
                                     "recordAvailable",
                                     "favorite",
                                     "hidden",
+                                    "serverHidden",
                                     "preferenceRevision"
                                   ],
                                   "type": "object"
@@ -175920,6 +175990,9 @@
                               "recordUnavailableReason": {
                                 "type": "string"
                               },
+                              "serverHidden": {
+                                "type": "boolean"
+                              },
                               "sourceId": {
                                 "type": "string"
                               },
@@ -175945,6 +176018,7 @@
                               "recordAvailable",
                               "favorite",
                               "hidden",
+                              "serverHidden",
                               "preferenceRevision"
                             ],
                             "type": "object"
@@ -182272,6 +182346,9 @@
                               "recordUnavailableReason": {
                                 "type": "string"
                               },
+                              "serverHidden": {
+                                "type": "boolean"
+                              },
                               "sourceId": {
                                 "type": "string"
                               },
@@ -182297,6 +182374,7 @@
                               "recordAvailable",
                               "favorite",
                               "hidden",
+                              "serverHidden",
                               "preferenceRevision"
                             ],
                             "type": "object"
@@ -188580,6 +188658,9 @@
                         "recordUnavailableReason": {
                           "type": "string"
                         },
+                        "serverHidden": {
+                          "type": "boolean"
+                        },
                         "sourceId": {
                           "type": "string"
                         },
@@ -188605,6 +188686,7 @@
                         "recordAvailable",
                         "favorite",
                         "hidden",
+                        "serverHidden",
                         "preferenceRevision"
                       ],
                       "type": "object"
@@ -201957,6 +202039,9 @@
                                     "recordUnavailableReason": {
                                       "type": "string"
                                     },
+                                    "serverHidden": {
+                                      "type": "boolean"
+                                    },
                                     "sourceId": {
                                       "type": "string"
                                     },
@@ -201982,6 +202067,7 @@
                                     "recordAvailable",
                                     "favorite",
                                     "hidden",
+                                    "serverHidden",
                                     "preferenceRevision"
                                   ],
                                   "type": "object"
@@ -208265,6 +208351,9 @@
                               "recordUnavailableReason": {
                                 "type": "string"
                               },
+                              "serverHidden": {
+                                "type": "boolean"
+                              },
                               "sourceId": {
                                 "type": "string"
                               },
@@ -208290,6 +208379,7 @@
                               "recordAvailable",
                               "favorite",
                               "hidden",
+                              "serverHidden",
                               "preferenceRevision"
                             ],
                             "type": "object"
@@ -256640,6 +256730,9 @@
                     "overridden": {
                       "type": "boolean"
                     },
+                    "overrideNumber": {
+                      "type": "string"
+                    },
                     "position": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -256659,7 +256752,8 @@
                     "hidden",
                     "position",
                     "overridden",
-                    "mark"
+                    "mark",
+                    "overrideNumber"
                   ],
                   "type": "object"
                 },
@@ -256668,11 +256762,17 @@
               "nextCursor": {
                 "type": "string"
               },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "sourceId": {
                 "type": "string"
               }
             },
             "required": [
+              "revision",
               "sourceId",
               "generation",
               "items",
@@ -259683,6 +259783,9 @@
                       "recordUnavailableReason": {
                         "type": "string"
                       },
+                      "serverHidden": {
+                        "type": "boolean"
+                      },
                       "sourceId": {
                         "type": "string"
                       },
@@ -259708,6 +259811,7 @@
                       "recordAvailable",
                       "favorite",
                       "hidden",
+                      "serverHidden",
                       "preferenceRevision"
                     ],
                     "type": "object"
@@ -330374,6 +330478,9 @@
                               "overridden": {
                                 "type": "boolean"
                               },
+                              "overrideNumber": {
+                                "type": "string"
+                              },
                               "position": {
                                 "maximum": 9007199254740991,
                                 "minimum": -9007199254740991,
@@ -330393,7 +330500,8 @@
                               "hidden",
                               "position",
                               "overridden",
-                              "mark"
+                              "mark",
+                              "overrideNumber"
                             ],
                             "type": "object"
                           },
@@ -330402,11 +330510,17 @@
                         "nextCursor": {
                           "type": "string"
                         },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
                         "sourceId": {
                           "type": "string"
                         }
                       },
                       "required": [
+                        "revision",
                         "sourceId",
                         "generation",
                         "items",
@@ -330591,6 +330705,9 @@
                               "overridden": {
                                 "type": "boolean"
                               },
+                              "overrideNumber": {
+                                "type": "string"
+                              },
                               "position": {
                                 "maximum": 9007199254740991,
                                 "minimum": -9007199254740991,
@@ -330610,7 +330727,8 @@
                               "hidden",
                               "position",
                               "overridden",
-                              "mark"
+                              "mark",
+                              "overrideNumber"
                             ],
                             "type": "object"
                           },
@@ -330619,11 +330737,17 @@
                         "nextCursor": {
                           "type": "string"
                         },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
                         "sourceId": {
                           "type": "string"
                         }
                       },
                       "required": [
+                        "revision",
                         "sourceId",
                         "generation",
                         "items",
@@ -395878,6 +396002,14 @@
           },
           {
             "in": "query",
+            "name": "includeServerHidden",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
             "name": "kind",
             "required": false,
             "schema": {
@@ -396127,6 +396259,9 @@
                               "recordUnavailableReason": {
                                 "type": "string"
                               },
+                              "serverHidden": {
+                                "type": "boolean"
+                              },
                               "sourceId": {
                                 "type": "string"
                               },
@@ -396152,6 +396287,7 @@
                               "recordAvailable",
                               "favorite",
                               "hidden",
+                              "serverHidden",
                               "preferenceRevision"
                             ],
                             "type": "object"
@@ -396593,6 +396729,9 @@
                                         "recordUnavailableReason": {
                                           "type": "string"
                                         },
+                                        "serverHidden": {
+                                          "type": "boolean"
+                                        },
                                         "sourceId": {
                                           "type": "string"
                                         },
@@ -396618,6 +396757,7 @@
                                         "recordAvailable",
                                         "favorite",
                                         "hidden",
+                                        "serverHidden",
                                         "preferenceRevision"
                                       ],
                                       "type": "object"
@@ -396931,6 +397071,14 @@
           },
           {
             "in": "query",
+            "name": "includeServerHidden",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
             "name": "kind",
             "required": false,
             "schema": {
@@ -397188,6 +397336,9 @@
                               "recordUnavailableReason": {
                                 "type": "string"
                               },
+                              "serverHidden": {
+                                "type": "boolean"
+                              },
                               "sourceId": {
                                 "type": "string"
                               },
@@ -397213,6 +397364,7 @@
                               "recordAvailable",
                               "favorite",
                               "hidden",
+                              "serverHidden",
                               "preferenceRevision"
                             ],
                             "type": "object"
@@ -397598,6 +397750,9 @@
                               "recordUnavailableReason": {
                                 "type": "string"
                               },
+                              "serverHidden": {
+                                "type": "boolean"
+                              },
                               "sourceId": {
                                 "type": "string"
                               },
@@ -397623,6 +397778,7 @@
                               "recordAvailable",
                               "favorite",
                               "hidden",
+                              "serverHidden",
                               "preferenceRevision"
                             ],
                             "type": "object"
@@ -398019,6 +398175,9 @@
                               "recordUnavailableReason": {
                                 "type": "string"
                               },
+                              "serverHidden": {
+                                "type": "boolean"
+                              },
                               "sourceId": {
                                 "type": "string"
                               },
@@ -398044,6 +398203,7 @@
                               "recordAvailable",
                               "favorite",
                               "hidden",
+                              "serverHidden",
                               "preferenceRevision"
                             ],
                             "type": "object"
@@ -398535,6 +398695,9 @@
                                       "recordUnavailableReason": {
                                         "type": "string"
                                       },
+                                      "serverHidden": {
+                                        "type": "boolean"
+                                      },
                                       "sourceId": {
                                         "type": "string"
                                       },
@@ -398560,6 +398723,7 @@
                                       "recordAvailable",
                                       "favorite",
                                       "hidden",
+                                      "serverHidden",
                                       "preferenceRevision"
                                     ],
                                     "type": "object"
@@ -399034,6 +399198,9 @@
                                 "recordUnavailableReason": {
                                   "type": "string"
                                 },
+                                "serverHidden": {
+                                  "type": "boolean"
+                                },
                                 "sourceId": {
                                   "type": "string"
                                 },
@@ -399059,6 +399226,7 @@
                                 "recordAvailable",
                                 "favorite",
                                 "hidden",
+                                "serverHidden",
                                 "preferenceRevision"
                               ],
                               "type": "object"
@@ -399398,6 +399566,14 @@
           {
             "in": "query",
             "name": "includeHidden",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "includeServerHidden",
             "required": false,
             "schema": {
               "type": "string"
@@ -404796,6 +404972,9 @@
                                               "recordUnavailableReason": {
                                                 "type": "string"
                                               },
+                                              "serverHidden": {
+                                                "type": "boolean"
+                                              },
                                               "sourceId": {
                                                 "type": "string"
                                               },
@@ -404821,6 +405000,7 @@
                                               "recordAvailable",
                                               "favorite",
                                               "hidden",
+                                              "serverHidden",
                                               "preferenceRevision"
                                             ],
                                             "type": "object"
@@ -411104,6 +411284,9 @@
                                         "recordUnavailableReason": {
                                           "type": "string"
                                         },
+                                        "serverHidden": {
+                                          "type": "boolean"
+                                        },
                                         "sourceId": {
                                           "type": "string"
                                         },
@@ -411129,6 +411312,7 @@
                                         "recordAvailable",
                                         "favorite",
                                         "hidden",
+                                        "serverHidden",
                                         "preferenceRevision"
                                       ],
                                       "type": "object"
@@ -425392,6 +425576,9 @@
                                         "recordUnavailableReason": {
                                           "type": "string"
                                         },
+                                        "serverHidden": {
+                                          "type": "boolean"
+                                        },
                                         "sourceId": {
                                           "type": "string"
                                         },
@@ -425417,6 +425604,7 @@
                                         "recordAvailable",
                                         "favorite",
                                         "hidden",
+                                        "serverHidden",
                                         "preferenceRevision"
                                       ],
                                       "type": "object"
@@ -431700,6 +431888,9 @@
                                   "recordUnavailableReason": {
                                     "type": "string"
                                   },
+                                  "serverHidden": {
+                                    "type": "boolean"
+                                  },
                                   "sourceId": {
                                     "type": "string"
                                   },
@@ -431725,6 +431916,7 @@
                                   "recordAvailable",
                                   "favorite",
                                   "hidden",
+                                  "serverHidden",
                                   "preferenceRevision"
                                 ],
                                 "type": "object"
@@ -455116,6 +455308,9 @@
                                               "recordUnavailableReason": {
                                                 "type": "string"
                                               },
+                                              "serverHidden": {
+                                                "type": "boolean"
+                                              },
                                               "sourceId": {
                                                 "type": "string"
                                               },
@@ -455141,6 +455336,7 @@
                                               "recordAvailable",
                                               "favorite",
                                               "hidden",
+                                              "serverHidden",
                                               "preferenceRevision"
                                             ],
                                             "type": "object"
@@ -461424,6 +461620,9 @@
                                         "recordUnavailableReason": {
                                           "type": "string"
                                         },
+                                        "serverHidden": {
+                                          "type": "boolean"
+                                        },
                                         "sourceId": {
                                           "type": "string"
                                         },
@@ -461449,6 +461648,7 @@
                                         "recordAvailable",
                                         "favorite",
                                         "hidden",
+                                        "serverHidden",
                                         "preferenceRevision"
                                       ],
                                       "type": "object"
@@ -467861,6 +468061,9 @@
                                         "recordUnavailableReason": {
                                           "type": "string"
                                         },
+                                        "serverHidden": {
+                                          "type": "boolean"
+                                        },
                                         "sourceId": {
                                           "type": "string"
                                         },
@@ -467886,6 +468089,7 @@
                                         "recordAvailable",
                                         "favorite",
                                         "hidden",
+                                        "serverHidden",
                                         "preferenceRevision"
                                       ],
                                       "type": "object"
@@ -474169,6 +474373,9 @@
                                   "recordUnavailableReason": {
                                     "type": "string"
                                   },
+                                  "serverHidden": {
+                                    "type": "boolean"
+                                  },
                                   "sourceId": {
                                     "type": "string"
                                   },
@@ -474194,6 +474401,7 @@
                                   "recordAvailable",
                                   "favorite",
                                   "hidden",
+                                  "serverHidden",
                                   "preferenceRevision"
                                 ],
                                 "type": "object"
@@ -594498,6 +594706,9 @@
                                               "recordUnavailableReason": {
                                                 "type": "string"
                                               },
+                                              "serverHidden": {
+                                                "type": "boolean"
+                                              },
                                               "sourceId": {
                                                 "type": "string"
                                               },
@@ -594523,6 +594734,7 @@
                                               "recordAvailable",
                                               "favorite",
                                               "hidden",
+                                              "serverHidden",
                                               "preferenceRevision"
                                             ],
                                             "type": "object"
@@ -600806,6 +601018,9 @@
                                         "recordUnavailableReason": {
                                           "type": "string"
                                         },
+                                        "serverHidden": {
+                                          "type": "boolean"
+                                        },
                                         "sourceId": {
                                           "type": "string"
                                         },
@@ -600831,6 +601046,7 @@
                                         "recordAvailable",
                                         "favorite",
                                         "hidden",
+                                        "serverHidden",
                                         "preferenceRevision"
                                       ],
                                       "type": "object"
@@ -607246,6 +607462,9 @@
                                         "recordUnavailableReason": {
                                           "type": "string"
                                         },
+                                        "serverHidden": {
+                                          "type": "boolean"
+                                        },
                                         "sourceId": {
                                           "type": "string"
                                         },
@@ -607271,6 +607490,7 @@
                                         "recordAvailable",
                                         "favorite",
                                         "hidden",
+                                        "serverHidden",
                                         "preferenceRevision"
                                       ],
                                       "type": "object"
@@ -613554,6 +613774,9 @@
                                   "recordUnavailableReason": {
                                     "type": "string"
                                   },
+                                  "serverHidden": {
+                                    "type": "boolean"
+                                  },
                                   "sourceId": {
                                     "type": "string"
                                   },
@@ -613579,6 +613802,7 @@
                                   "recordAvailable",
                                   "favorite",
                                   "hidden",
+                                  "serverHidden",
                                   "preferenceRevision"
                                 ],
                                 "type": "object"
