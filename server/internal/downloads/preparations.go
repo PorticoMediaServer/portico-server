@@ -155,6 +155,7 @@ func (s *Service) submit(ctx context.Context, p identity.Principal, r Request, g
 		out.Rejected = append(out.Rejected, Rejection{item, ReasonItemDeleted})
 		return true
 	}
+	room := newStorageAllowance(tx)
 	for _, item := range targets {
 		entity, err := entityid.Resolve(ctx, tx, item)
 		if errors.Is(err, entityid.ErrNotFound) {
@@ -193,7 +194,7 @@ func (s *Service) submit(ctx context.Context, p identity.Principal, r Request, g
 				continue
 			}
 		}
-		if err = retireStrays(ctx, tx, key, entity, item, now); err != nil {
+		if err = retireStrays(ctx, tx, room, key, entity, item, now); err != nil {
 			return out, err
 		}
 
@@ -219,7 +220,7 @@ func (s *Service) submit(ctx context.Context, p identity.Principal, r Request, g
 		// asking again starts it again, rather than handing back the failure.
 		existing, err := readPreparation(tx.QueryRowContext(ctx, `SELECT `+preparationColumns+` FROM download_preparations WHERE profile_key=? AND item_id=? AND quality=? AND source_asset_id=? AND state IN('queued','running','ready','paused','failed') ORDER BY CASE state WHEN 'ready' THEN 0 WHEN 'running' THEN 1 WHEN 'queued' THEN 2 WHEN 'paused' THEN 3 ELSE 4 END,id LIMIT 1`, key, entity, quality, found.Asset))
 		if err == nil && existing.State == StateFailed {
-			if err = s.restart(ctx, tx, p, existing, now); errors.Is(err, ErrStorageFull) {
+			if err = s.restart(ctx, tx, p, room, existing, now); errors.Is(err, ErrStorageFull) {
 				out.Rejected = append(out.Rejected, Rejection{item, ReasonStorageFull})
 				refused++
 				continue
@@ -246,7 +247,7 @@ func (s *Service) submit(ctx context.Context, p identity.Principal, r Request, g
 			continue
 		}
 		estimate, estimated := estimateBytes(quality, recipe, found)
-		if err = storageRoom(tx, storedQualityBudget(quality, recipe), estimate); errors.Is(err, ErrStorageFull) {
+		if err = room.admit(storedQualityBudget(quality, recipe), estimate); errors.Is(err, ErrStorageFull) {
 			out.Rejected = append(out.Rejected, Rejection{item, ReasonStorageFull})
 			refused++
 			continue
@@ -304,7 +305,7 @@ func (s *Service) submit(ctx context.Context, p identity.Principal, r Request, g
 // title's and has been given to a new one. Housekeeping would end it on its
 // next pass; a request for the new title must not be answered with it, or
 // refused by it, in the meantime.
-func retireStrays(ctx context.Context, tx *sql.Tx, key string, entity int64, item string, now int64) error {
+func retireStrays(ctx context.Context, tx *sql.Tx, room *storageAllowance, key string, entity int64, item string, now int64) error {
 	rows, e := tx.QueryContext(ctx, `SELECT id FROM download_preparations WHERE profile_key=? AND item_id=? AND item_public<>? AND state IN('queued','running','ready','paused','failed')`, key, entity, item)
 	if e != nil {
 		return e
@@ -318,12 +319,15 @@ func retireStrays(ctx context.Context, tx *sql.Tx, key string, entity int64, ite
 			return e
 		}
 	}
+	if len(ids) > 0 {
+		room.ended()
+	}
 	return nil
 }
 
 // restart puts a failed or ended claim back in the queue from nothing, under
 // the authority of the viewer asking now.
-func (s *Service) restart(ctx context.Context, tx *sql.Tx, p identity.Principal, current row, now int64) error {
+func (s *Service) restart(ctx context.Context, tx *sql.Tx, p identity.Principal, room *storageAllowance, current row, now int64) error {
 	var device string
 	e := tx.QueryRowContext(ctx, `SELECT device_id FROM download_preparation_authority WHERE preparation_id=?`, current.ID).Scan(&device)
 	if e != nil && !errors.Is(e, sql.ErrNoRows) {
@@ -342,7 +346,7 @@ func (s *Service) restart(ctx context.Context, tx *sql.Tx, p identity.Principal,
 	if e = tx.QueryRowContext(ctx, `SELECT recipe FROM download_preparations WHERE id=?`, current.ID).Scan(&recipe); e != nil {
 		return e
 	}
-	if e = storageRoom(tx, storedQualityBudget(current.Quality, recipe), current.Progress.BytesTotal); e != nil {
+	if e = room.admit(storedQualityBudget(current.Quality, recipe), current.Progress.BytesTotal); e != nil {
 		return e
 	}
 	if _, e = tx.ExecContext(ctx, `DELETE FROM download_grants WHERE preparation_id=?`, current.ID); e != nil {
@@ -450,7 +454,7 @@ func (s *Service) Act(ctx context.Context, p identity.Principal, id string, c Co
 			id = sibling
 			break
 		}
-		e = s.restart(ctx, tx, p, current, now)
+		e = s.restart(ctx, tx, p, newStorageAllowance(tx), current, now)
 	}
 	if e != nil {
 		return out, e

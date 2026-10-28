@@ -327,29 +327,60 @@ func (s *Service) UsagePage(ctx context.Context, p identity.Principal, all bool,
 	return out, gated3.Commit()
 }
 
-// storageRoom refuses admission of a converted download once the owner's
-// ceiling is reached. The check is inside the admitting transaction, so two
+// storageAllowance refuses admission of a converted download once the owner's
+// ceiling is reached. It belongs to one admitting transaction, so two
 // concurrent batches cannot both squeeze past the same remaining allowance.
-func storageRoom(tx *sql.Tx, quality string, want int64) error {
+//
+// The stored total is summed once per transaction, not once per item: each
+// admission adds its own claim, which keeps the total exact, or an
+// over-estimate once the transaction has ended claims (ended). An
+// over-estimate never admits past the ceiling, and the allowance sums again
+// before it refuses, so it never refuses what the ceiling has room for.
+type storageAllowance struct {
+	tx                    *sql.Tx
+	loaded, summed, exact bool
+	ceiling, reserved     int64
+}
+
+func newStorageAllowance(tx *sql.Tx) *storageAllowance { return &storageAllowance{tx: tx} }
+
+func (a *storageAllowance) admit(quality string, want int64) error {
 	if quality == QualityOriginal {
 		return nil
 	}
-	settings, e := readSettings(tx)
-	if e != nil {
-		return e
+	if !a.loaded {
+		settings, e := readSettings(a.tx)
+		if e != nil {
+			return e
+		}
+		a.ceiling, a.loaded = settings.MaxPreparedBytes, true
 	}
-	if settings.MaxPreparedBytes <= 0 {
+	if a.ceiling <= 0 {
 		return nil
 	}
-	var committed sql.NullInt64
-	if e = tx.QueryRow(`SELECT sum(bytes_total) FROM download_preparations WHERE state IN ` + storedClaims).Scan(&committed); e != nil {
-		return e
+	if !a.summed || a.reserved+want > a.ceiling && !a.exact {
+		if e := a.sum(); e != nil {
+			return e
+		}
 	}
-	if committed.Int64+want > settings.MaxPreparedBytes {
+	if a.reserved+want > a.ceiling {
 		return ErrStorageFull
 	}
+	a.reserved += want
 	return nil
 }
+
+func (a *storageAllowance) sum() error {
+	var committed sql.NullInt64
+	if e := a.tx.QueryRow(`SELECT sum(bytes_total) FROM download_preparations WHERE state IN ` + storedClaims).Scan(&committed); e != nil {
+		return e
+	}
+	a.reserved, a.summed, a.exact = committed.Int64, true, true
+	return nil
+}
+
+// ended notes that the transaction ended claims, so the total may now be high.
+func (a *storageAllowance) ended() { a.exact = false }
 
 const preparationColumns = `id,source_asset_id,item_public,library_id,profile_id,title_json,NOT (` + titleGone + `),quality,origin,batch_id,state,reason,artifact_kind,artifact_ref,artifact_digest,artifact_container,bytes_done,bytes_total,estimated,revision,created_ms,updated_ms,started_ms,ready_ms`
 

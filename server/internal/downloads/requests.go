@@ -471,6 +471,7 @@ func (s *Service) advanceRequest(ctx context.Context, id string) error {
 			return e
 		}
 		observeRequestBatch(ctx, "admit", len(members))
+		room := newStorageAllowance(tx)
 		for _, m := range members {
 			var allowed bool
 			if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_entities i WHERE i.public_id=pid_blob(?) AND (`+visible+`))`, append([]any{m.id}, args...)...).Scan(&allowed); e != nil {
@@ -480,7 +481,7 @@ func (s *Service) advanceRequest(ctx context.Context, id string) error {
 			if !allowed {
 				reason = ReasonItemDeleted
 			} else {
-				preparation, reason, e = s.admitRequestItem(ctx, tx, p, device, id, m.id, quality, musicQuality)
+				preparation, reason, e = s.admitRequestItem(ctx, tx, room, p, device, id, m.id, quality, musicQuality)
 				if e != nil {
 					return e
 				}
@@ -497,7 +498,7 @@ func (s *Service) advanceRequest(ctx context.Context, id string) error {
 		return e
 	})
 }
-func (s *Service) admitRequestItem(ctx context.Context, tx *sql.Tx, p identity.Principal, device, batch, item, quality string, musicDefault ...string) (string, string, error) {
+func (s *Service) admitRequestItem(ctx context.Context, tx *sql.Tx, room *storageAllowance, p identity.Principal, device, batch, item, quality string, musicDefault ...string) (string, string, error) {
 	entity, e := entityid.Resolve(ctx, tx, item)
 	if errors.Is(e, entityid.ErrNotFound) {
 		return "", ReasonItemDeleted, nil
@@ -507,7 +508,7 @@ func (s *Service) admitRequestItem(ctx context.Context, tx *sql.Tx, p identity.P
 	}
 	key := operations.ViewerKey(p)
 	now := s.millis()
-	if e = retireStrays(ctx, tx, key, entity, item, now); e != nil {
+	if e = retireStrays(ctx, tx, room, key, entity, item, now); e != nil {
 		return "", "", e
 	}
 	source, e := resolveSource(ctx, tx, item)
@@ -532,7 +533,7 @@ func (s *Service) admitRequestItem(ctx context.Context, tx *sql.Tx, p identity.P
 		// Asking for the whole season again is asking for the episode that
 		// failed last time to be tried again.
 		if existing.State == StateFailed {
-			if e = s.restart(ctx, tx, p, existing, now); errors.Is(e, ErrStorageFull) {
+			if e = s.restart(ctx, tx, p, room, existing, now); errors.Is(e, ErrStorageFull) {
 				return "", ReasonStorageFull, nil
 			} else if e != nil {
 				return "", "", e
@@ -548,7 +549,7 @@ func (s *Service) admitRequestItem(ctx context.Context, tx *sql.Tx, p identity.P
 		return "", reason, nil
 	}
 	estimate, estimated := estimateBytes(quality, recipe, source)
-	if e = storageRoom(tx, storedQualityBudget(quality, recipe), estimate); errors.Is(e, ErrStorageFull) {
+	if e = room.admit(storedQualityBudget(quality, recipe), estimate); errors.Is(e, ErrStorageFull) {
 		return "", ReasonStorageFull, nil
 	}
 	if e != nil {
