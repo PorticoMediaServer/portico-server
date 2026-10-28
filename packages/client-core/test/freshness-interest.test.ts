@@ -397,3 +397,131 @@ test('accounted results include non-enumerable and symbol data', () => {
   assert.ok(sharedResultBytes(Object.defineProperty({}, 'hidden', {value})) > SHARED_RESULT_BYTES);
   assert.ok(sharedResultBytes({[Symbol('hidden')]: value}) > SHARED_RESULT_BYTES);
 });
+
+for (const key of ['guide', 'preferences:web'] as const) {
+  test(`${key} floor survives switching groups, cohort release, wake and history eviction at its exact deadline`, async () => {
+    const c = clock(), hub = new FreshnessHub(c.env); let factories = 0;
+    const original = Object.assign(new Error('busy input'), {retryAfterSeconds: 7200});
+    const blocked: unknown[] = [], failures: unknown[] = [];
+    const make = (name: string, dependencies: readonly string[]): FreshnessInterest => hub.interest({name, dependencies, read: async ctx => {
+      try {
+        const result = await ctx.shared(key, async () => {
+          if (++factories !== 1) return {kind: 'ok'};
+          if (key === 'guide') throw original;
+          return {kind: 'unreadable', error: original};
+        });
+        if (result.kind === 'unreadable') { failures.push(result.error); return {kind: 'failed', error: result.error, retryable: true}; }
+        return answered;
+      } catch (error) {
+        if (isSharedReadSuperseded(error)) { blocked.push(error); throw error; }
+        failures.push(error); return {kind: 'failed', error, retryable: true};
+      }
+    }});
+    const first = make('server', server); first.invalidate(); await c.advance(400);
+    assert.equal(first.getState().deferredUntil, 7_200_400); assert.deepEqual(failures, [original]);
+    first.dispose(); // The entire original flight/result cohort has now gone away.
+    await c.advance(1000);
+    const second = make(key === 'guide' ? 'liveSources' : 'preferences',
+      key === 'guide' ? [dependsOn.list('liveSources')] : [dependsOn.settings('preferences')]);
+    second.invalidate(); await c.advance(400);
+    assert.equal(factories, 1); assert.equal(second.getState().deferredUntil, 7_200_400);
+    assert.equal(second.getState().failures, 0); assert.equal(second.getState().owed, true);
+    hub.setActive(false); hub.resync(); hub.note('eviction:'.repeat(70000)); await c.advance(1000); hub.setActive(true);
+    const third = make(key === 'guide' ? 'libraryChannels' : 'server-replacement',
+      key === 'guide' ? [dependsOn.list('libraryChannels')] : server);
+    third.invalidate(); await c.advance(400);
+    assert.equal(factories, 1); assert.equal(third.getState().deferredUntil, 7_200_400);
+    assert.ok(blocked.length >= 2 && blocked.every(isSharedReadSuperseded));
+    second.invalidate(); third.invalidate();
+    await c.advance(7_200_400 - c.env.now() - 1);
+    assert.equal(factories, 1); assert.equal(second.getState().deferredUntil, 7_200_400);
+    await c.advance(1);
+    assert.equal(factories, 2, 'both groups share one request at the original absolute deadline');
+    assert.equal(second.getState().owed, false); assert.equal(third.getState().owed, false);
+    assert.deepEqual(failures, [original], 'a blocked borrower never sees a replayed HTTP failure');
+    hub.dispose(); assert.equal(c.pending(), 0);
+  });
+
+  test(`${key} anchors Retry-After at response time despite delayed classification and later captured borrowers`, async () => {
+    const c = clock(); let random = 0, factories = 0;
+    const hub = new FreshnessHub({...c.env, random: () => [0, 1][random++] ?? 0}), classified = gate<void>();
+    const original = Object.assign(new Error('busy'), {retryAfterSeconds: 7200}); const errors: unknown[] = [];
+    const make = (name: string): FreshnessInterest => hub.interest({name, dependencies: server, read: async ctx => {
+      let error: unknown;
+      try {
+        const result = await ctx.shared(key, async () => {
+          factories++;
+          if (key === 'guide') throw original;
+          return {kind: 'unreadable', error: original};
+        });
+        error = result.error;
+      } catch (failure) {
+        if (isSharedReadSuperseded(failure)) throw failure;
+        error = failure;
+      }
+      errors.push(error); await classified.promise;
+      return {kind: 'failed', error, retryable: true};
+    }});
+    const a = make('first'), b = make('jittered'); a.invalidate(); b.invalidate();
+    await c.advance(500); assert.equal(factories, 1); assert.deepEqual(errors, [original, original]);
+    await c.advance(2000); classified.resolve(); await tick();
+    assert.equal(a.getState().deferredUntil, 7_200_400); assert.equal(b.getState().deferredUntil, 7_200_400);
+    a.dispose(); b.dispose();
+    const next = make('new-group'); next.invalidate(); await c.advance(400);
+    assert.equal(factories, 1); assert.equal(next.getState().deferredUntil, 7_200_400);
+    hub.dispose();
+  });
+
+  test(`${key} retains only a scalar floor when an oversized error/result cannot be cached`, async () => {
+    const c = clock(), hub = new FreshnessHub(c.env); let factories = 0;
+    const original = Object.assign(new Error('large error'), {retryAfterMs: 10000, payload: 'x'.repeat(SHARED_RESULT_BYTES)});
+    const make = (name: string): FreshnessInterest => hub.interest({name, dependencies: server, read: async ctx => {
+      const result = await ctx.shared(key, async () => {
+        factories++;
+        if (key === 'guide') throw original;
+        return {kind: 'unreadable', error: original};
+      });
+      return {kind: 'failed', error: result.error, retryable: true};
+    }});
+    const first = make('first'); first.invalidate(); await c.advance(400); first.dispose();
+    const next = make('next'); next.invalidate(); await c.advance(400);
+    assert.equal(factories, 1); assert.equal(next.getState().deferredUntil, 10400);
+    hub.dispose();
+  });
+
+  for (const retry of [{retryAfterSeconds: Infinity}, {retryAfterSeconds: Number.MAX_VALUE}, {retryAfterMs: Infinity}]) {
+    test(`${key} switching-group overflow floor saturates without inflation or early retry: ${Object.keys(retry)[0]}=${Object.values(retry)[0]}`, async () => {
+      const c = clock(), hub = new FreshnessHub(c.env); let factories = 0;
+      const original = Object.assign(new Error('overflow'), retry);
+      const make = (name: string): FreshnessInterest => hub.interest({name, dependencies: server, read: async ctx => {
+        const result = await ctx.shared(key, async () => {
+          factories++;
+          if (key === 'guide') throw original;
+          return {kind: 'unreadable', error: original};
+        });
+        return {kind: 'failed', error: result.error, retryable: true};
+      }});
+      const first = make('first'); first.invalidate(); await c.advance(400); first.dispose();
+      await c.advance(10000);
+      const next = make('new-group'); next.invalidate(); await c.advance(400);
+      assert.equal(next.getState().deferredUntil, Number.MAX_VALUE);
+      hub.setActive(false); hub.resync(); hub.note('eviction:'.repeat(70000)); hub.setActive(true); next.invalidate();
+      await c.advance(2_147_000_000 * 2);
+      assert.equal(factories, 1); assert.equal(next.getState().deferredUntil, Number.MAX_VALUE);
+      assert.ok(c.delays.every(ms => ms <= 2_147_000_000)); hub.dispose(); assert.equal(c.pending(), 0);
+    });
+  }
+}
+
+test('the two shared input floors remain independent', async () => {
+  const c = clock(), hub = new FreshnessHub(c.env); let guide = 0, preferences = 0;
+  const first = hub.interest({name: 'guide', dependencies: server, read: async ctx => {
+    await ctx.shared('guide', async () => { guide++; throw {retryAfterSeconds: 7200}; }); return answered;
+  }});
+  first.invalidate(); await c.advance(400); first.dispose();
+  const other = hub.interest({name: 'preferences', dependencies: server, read: async ctx => {
+    await ctx.shared('preferences:web', async () => ++preferences); return answered;
+  }});
+  other.invalidate(); await c.advance(400);
+  assert.deepEqual([guide, preferences], [1, 1]); assert.equal(other.getState().owed, false); hub.dispose();
+});
