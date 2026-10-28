@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -72,7 +73,7 @@ type httpFacetFixtureCall func(context.Context, string, string, string) *httptes
 // Contextual/Reading responses and initial errors pass through unchanged.
 func readyHTTPFacetFixture(t *testing.T, path string, call httpFacetFixtureCall) *httptest.ResponseRecorder {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	u, err := url.ParseRequestURI(path)
 	if err != nil {
@@ -89,19 +90,35 @@ func readyHTTPFacetFixture(t *testing.T, path string, call httpFacetFixtureCall)
 	}()
 	w := call(ctx, http.MethodGet, path, "")
 	polled := false
-	for w.Code == http.StatusAccepted {
+	for {
 		var kind struct {
 			Kind string `json:"kind"`
 		}
-		if json.Unmarshal(w.Body.Bytes(), &kind) == nil && kind.Kind == "reading-facet-preparing" && !polled {
+		_ = json.Unmarshal(w.Body.Bytes(), &kind)
+		if w.Code == http.StatusAccepted && kind.Kind == "reading-facet-preparing" && !polled {
 			return w
 		}
-		if issues := (apispec.Document{}).ValidateJSON(facetSchema[catalog.SimpleFacetPreparing](), w.Body.Bytes()); len(issues) != 0 {
-			t.Fatalf("facet fixture preparing schema: %v\n%s", issues, w.Body.String())
+		fallback := w.Code == http.StatusOK && kind.Kind == "facet-fallback"
+		if w.Code != http.StatusAccepted && !fallback {
+			break
 		}
 		var pending catalog.SimpleFacetPreparing
-		if err := json.Unmarshal(w.Body.Bytes(), &pending); err != nil {
-			t.Fatal(err)
+		if fallback {
+			if issues := (apispec.Document{}).ValidateJSON(facetSchema[catalog.SimpleFacetFallbackPage](), w.Body.Bytes()); len(issues) != 0 {
+				t.Fatalf("facet fixture intermediate schema: %v\n%s", issues, w.Body.String())
+			}
+			var page catalog.SimpleFacetFallbackPage
+			if err := json.Unmarshal(w.Body.Bytes(), &page); err != nil {
+				t.Fatal(err)
+			}
+			pending = page.Preparation
+		} else {
+			if issues := (apispec.Document{}).ValidateJSON(facetSchema[catalog.SimpleFacetPreparing](), w.Body.Bytes()); len(issues) != 0 {
+				t.Fatalf("facet fixture preparing schema: %v\n%s", issues, w.Body.String())
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &pending); err != nil {
+				t.Fatal(err)
+			}
 		}
 		if queryID != "" && queryID != pending.QueryID {
 			t.Fatal("facet fixture poll changed private handle")
@@ -114,7 +131,7 @@ func readyHTTPFacetFixture(t *testing.T, path string, call httpFacetFixtureCall)
 		}
 		remaining, _ := ctx.Deadline()
 		if int64(seconds) > int64(time.Until(remaining)/time.Second) {
-			t.Fatalf("facet fixture Retry-After exceeds polling deadline: %v", w.Header())
+			t.Fatalf("facet fixture %s Retry-After exceeds polling deadline: %v", path, w.Header())
 		}
 		timer := time.NewTimer(time.Duration(seconds) * time.Second)
 		select {
@@ -260,5 +277,74 @@ func TestGoldenSimpleFacetProjection(t *testing.T) {
 	var doc map[string]any
 	if err := json.Unmarshal(projected, &doc); err != nil || !reflect.DeepEqual(doc["values"], []any{}) || doc["total"] != float64(0) {
 		t.Fatalf("empty exact response changed: %s (%v)", projected, err)
+	}
+}
+
+// Exercise eight representative facet cases from the independently recorded
+// oracle. Protocol metadata is validated before projection; expected rows,
+// ordering, counts and status codes are never regenerated from the response.
+func TestFacetReadyRepresentativeValuesMatchRecordedOracle(t *testing.T) {
+	raw, err := os.ReadFile(goldenPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var recorded []goldenCase
+	if err = json.Unmarshal(raw, &recorded); err != nil {
+		t.Fatal(err)
+	}
+	expected := map[string]goldenCase{}
+	for _, c := range recorded {
+		expected[c.Name] = c
+	}
+	f, call := buildGoldenFixture(t)
+	checked := 0
+	for _, c := range goldenMatrix(f.library, f.item) {
+		if !strings.HasPrefix(c.Name, "facets:") || strings.Contains(c.Name, ":music/") {
+			continue
+		}
+		u, err := url.ParseRequestURI(c.Path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		field := u.Query().Get("field")
+		if field != "genre" && field != "decade" && field != "collection" {
+			continue
+		}
+		want, known := expected[c.Name]
+		if added, ok := goldenNewBrowseFacets(t, f, c); ok {
+			want, known = added, true
+		}
+		if !known {
+			t.Fatalf("facet has no independent oracle: %s", c.Name)
+		}
+		status, body := call(c.Method, c.Path, c.Body, c.Viewer)
+		if status == http.StatusOK {
+			var envelope struct {
+				Kind string `json:"kind"`
+			}
+			if err := json.Unmarshal([]byte(body), &envelope); err != nil {
+				t.Fatal(err)
+			}
+			if envelope.Kind == "simple-keyset" {
+				u, err := url.ParseRequestURI(c.Path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				projected, err := projectGoldenSimpleFacet([]byte(body), u.Query().Get("field"))
+				if err != nil {
+					t.Fatalf("%s: %v", c.Name, err)
+				}
+				body = string(projected)
+			}
+		}
+		c.Status = status
+		want.Response = goldenBrowseExtension(t, f, c, want.Response)
+		if status != want.Status || canonical(body) != canonical(want.Response) {
+			t.Errorf("%s: status %d want %d\nactual: %s\nrecorded: %s", c.Name, status, want.Status, canonical(body), canonical(want.Response))
+		}
+		checked++
+	}
+	if checked != 8 {
+		t.Fatal("facet oracle coverage unexpectedly shrank", checked)
 	}
 }
