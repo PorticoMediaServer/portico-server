@@ -55,6 +55,10 @@ export class SettingsPeopleClient {
     if (cursor) params.set('cursor', cursor);
     return this.call(routePath('get_admin_access_members') + '?' + params, 'GET', undefined, parseSettingsPeoplePage, signal);
   }
+  /** Parsed current-query first page. Installation and tail/detail ownership stay with the caller. */
+  refresh(query: SettingsPeopleQuery, signal?: AbortSignal): Promise<SettingsPeoplePage> {
+    return this.read(query, '', signal);
+  }
   person(accountId: string, signal?: AbortSignal): Promise<AccessMember> {
     if (!identifier(accountId)) invalid();
     return this.call(encodedRoutePath('get_admin_access_member', {id: encodeURIComponent(accountId)}), 'GET', undefined, raw => {const person = parseAccessMember(raw); if (person.accountId !== accountId) invalid(); return person;}, signal);
