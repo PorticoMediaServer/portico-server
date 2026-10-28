@@ -10365,7 +10365,7 @@ CREATE TABLE reading_path_scope(
  desired INTEGER NOT NULL DEFAULT 1,completed INTEGER NOT NULL DEFAULT 0,queued INTEGER NOT NULL DEFAULT 1 CHECK(queued IN(0,1)),
  served INTEGER NOT NULL DEFAULT 0,pending INTEGER NOT NULL DEFAULT 0 CHECK(pending>=0),
  seal_job TEXT NOT NULL DEFAULT '',seal_revision INTEGER NOT NULL DEFAULT 0,seal_cursor INTEGER NOT NULL DEFAULT 0,sealed INTEGER NOT NULL DEFAULT 0 CHECK(sealed IN(0,1)),reason TEXT NOT NULL DEFAULT '',
- parked INTEGER NOT NULL DEFAULT 0 CHECK(parked IN(0,1)),
+ parked INTEGER NOT NULL DEFAULT 0 CHECK(parked IN(0,1)),closure_seal INTEGER NOT NULL DEFAULT 0 CHECK(closure_seal>=0),
  UNIQUE(source_id,incarnation,root_prefix,directory_key,rule_version)) STRICT;
 CREATE INDEX reading_path_scope_source ON reading_path_scope(source_id,id);
 CREATE INDEX reading_path_scope_library ON reading_path_scope(library_id,id);
@@ -10395,7 +10395,7 @@ CREATE INDEX reading_path_availability_library ON reading_path_availability_pend
 CREATE TABLE reading_path_semantic_pending(library_id INTEGER PRIMARY KEY) STRICT;
 CREATE TABLE reading_path_build(
  id INTEGER PRIMARY KEY AUTOINCREMENT,scope_id INTEGER NOT NULL REFERENCES reading_path_scope(id),desired INTEGER NOT NULL,input_revision INTEGER NOT NULL,
- source_generation INTEGER NOT NULL,root_identity TEXT NOT NULL,job_id TEXT NOT NULL,coverage_revision INTEGER NOT NULL DEFAULT 0,
+ source_generation INTEGER NOT NULL,root_identity TEXT NOT NULL,job_id TEXT NOT NULL,coverage_revision INTEGER NOT NULL DEFAULT 0,closure_seal INTEGER NOT NULL DEFAULT 0 CHECK(closure_seal>=0),
  phase TEXT NOT NULL CHECK(phase IN('capture','stage','ready','flatten','cleanup','abort')),
  after_object TEXT NOT NULL DEFAULT '',after_item INTEGER NOT NULL DEFAULT 0,after_asset INTEGER NOT NULL DEFAULT 0,
  title_count INTEGER NOT NULL DEFAULT 0,non_series_count INTEGER NOT NULL DEFAULT 0,
@@ -10858,3 +10858,62 @@ CREATE TRIGGER browse_predicate_policy_delete AFTER DELETE ON policy
 CREATE TRIGGER browse_predicate_policy_update AFTER UPDATE OF server_id,revision,payload,expires_at ON policy
  WHEN OLD.server_id IS NOT NEW.server_id OR OLD.revision IS NOT NEW.revision OR OLD.payload IS NOT NEW.payload OR OLD.expires_at IS NOT NEW.expires_at
  BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+
+-- First-import observation proofs, never query results or byte authority.
+-- Lifetimes are detached from public authority; exact live fences are read at
+-- every unpublished Reading turn. A new job cannot reuse an old closure.
+CREATE TABLE inventory_reading_jobs(
+ job_id TEXT PRIMARY KEY REFERENCES inventory_runs(job_id),source_id TEXT NOT NULL,
+ incarnation TEXT NOT NULL,generation INTEGER NOT NULL,root_identity TEXT NOT NULL,root TEXT NOT NULL,
+ coverage_revision INTEGER NOT NULL DEFAULT 0 CHECK(coverage_revision>=0),renewing INTEGER NOT NULL DEFAULT 0 CHECK(renewing IN(0,1)),renew_after TEXT NOT NULL DEFAULT '',renew_fence TEXT NOT NULL DEFAULT '',last_seal INTEGER NOT NULL DEFAULT 0 CHECK(last_seal>=0)
+) WITHOUT ROWID, STRICT;
+CREATE INDEX inventory_reading_jobs_source ON inventory_reading_jobs(source_id,job_id);
+CREATE TABLE inventory_reading_directories(
+ job_id TEXT NOT NULL REFERENCES inventory_reading_jobs(job_id),relative_path TEXT NOT NULL,parent_path TEXT NOT NULL,top_level TEXT NOT NULL,
+ listing_eof INTEGER NOT NULL DEFAULT 0 CHECK(listing_eof IN(0,1)),children INTEGER NOT NULL DEFAULT 0 CHECK(children>=0),
+ phase TEXT NOT NULL DEFAULT 'listing' CHECK(phase IN('listing','verify','reconcile','coverage','seal','done','blocked')),
+ reconciled INTEGER NOT NULL DEFAULT 0 CHECK(reconciled IN(0,1)),propagated INTEGER NOT NULL DEFAULT 0 CHECK(propagated IN(0,1)),
+ identity TEXT NOT NULL DEFAULT '',revision TEXT NOT NULL DEFAULT '',
+ after_path TEXT NOT NULL DEFAULT '',after_object TEXT NOT NULL DEFAULT '',fence_path TEXT NOT NULL DEFAULT '',fence_object TEXT NOT NULL DEFAULT '',
+ missing_object TEXT NOT NULL DEFAULT '',missing_path TEXT NOT NULL DEFAULT '',absence_parent TEXT NOT NULL DEFAULT '',
+ issue_highwater INTEGER NOT NULL DEFAULT 0 CHECK(issue_highwater>=0),after_issue INTEGER NOT NULL DEFAULT 0,issue_revision INTEGER NOT NULL DEFAULT 0,
+ PRIMARY KEY(job_id,relative_path)
+) WITHOUT ROWID, STRICT;
+CREATE INDEX inventory_reading_directories_due ON inventory_reading_directories(job_id,phase,children,relative_path);
+CREATE INDEX inventory_reading_directories_parent ON inventory_reading_directories(job_id,parent_path,relative_path);
+CREATE INDEX inventory_objects_reading_closure ON inventory_objects(source_id,relative_path,id);
+CREATE TABLE inventory_reading_seals(
+ id INTEGER PRIMARY KEY AUTOINCREMENT,job_id TEXT NOT NULL REFERENCES inventory_reading_jobs(job_id),top_level TEXT NOT NULL,
+ source_id TEXT NOT NULL,incarnation TEXT NOT NULL,generation INTEGER NOT NULL,root_identity TEXT NOT NULL,root TEXT NOT NULL,
+ coverage_revision INTEGER NOT NULL,issue_revision INTEGER NOT NULL,issue_highwater INTEGER NOT NULL,
+ UNIQUE(job_id,top_level,issue_revision,coverage_revision)
+) STRICT;
+CREATE INDEX inventory_reading_seals_source ON inventory_reading_seals(source_id,job_id,top_level,id);
+-- Protecting coverage invalidates unactivated seals synchronously, before the
+-- existing bounded issue reducer runs. Do not walk scopes or directory trees.
+CREATE TRIGGER inventory_reading_issue_insert AFTER INSERT ON inventory_scan_issues WHEN NEW.protect=1 BEGIN
+ UPDATE inventory_reading_jobs SET coverage_revision=coverage_revision+1,renewing=1,renew_after='',renew_fence=COALESCE((SELECT relative_path FROM inventory_reading_directories WHERE job_id=NEW.job_id ORDER BY relative_path DESC LIMIT 1),'') WHERE job_id=NEW.job_id;
+END;
+CREATE TRIGGER inventory_reading_issue_update AFTER UPDATE OF job_id,relative_path,reason,protect ON inventory_scan_issues
+ WHEN (OLD.protect=1 OR NEW.protect=1) AND (OLD.job_id IS NOT NEW.job_id OR OLD.relative_path IS NOT NEW.relative_path OR OLD.reason IS NOT NEW.reason OR OLD.protect IS NOT NEW.protect) BEGIN
+ UPDATE inventory_reading_jobs SET coverage_revision=coverage_revision+1,renewing=1,renew_after='',renew_fence=COALESCE((SELECT relative_path FROM inventory_reading_directories d WHERE d.job_id=inventory_reading_jobs.job_id ORDER BY relative_path DESC LIMIT 1),'') WHERE job_id=OLD.job_id OR job_id=NEW.job_id;
+END;
+CREATE TRIGGER inventory_reading_issue_delete AFTER DELETE ON inventory_scan_issues WHEN OLD.protect=1 BEGIN
+ UPDATE inventory_reading_jobs SET coverage_revision=coverage_revision+1,renewing=1,renew_after='',renew_fence=COALESCE((SELECT relative_path FROM inventory_reading_directories WHERE job_id=OLD.job_id ORDER BY relative_path DESC LIMIT 1),'') WHERE job_id=OLD.job_id;
+END;
+CREATE TRIGGER inventory_reading_seal_wake AFTER INSERT ON inventory_reading_seals BEGIN
+ UPDATE inventory_reading_jobs SET last_seal=NEW.id WHERE job_id=NEW.job_id;
+ INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT cl.id,'wake',NEW.source_id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id WHERE s.id=NEW.source_id ON CONFLICT(library_id,kind,work_key) DO UPDATE SET requested=requested+1;
+END;
+
+-- Reduction can add coverage blocks without inserting a scan issue (e.g. an
+-- invalid Reading path). Invalidate and schedule the same finite reproof walk.
+CREATE TRIGGER inventory_reading_barrier_coverage AFTER UPDATE OF coverage_revision ON reading_path_source_barrier WHEN OLD.coverage_revision IS NOT NEW.coverage_revision BEGIN
+ UPDATE inventory_reading_jobs SET coverage_revision=coverage_revision+1,renewing=1,renew_after='',renew_fence=COALESCE((SELECT relative_path FROM inventory_reading_directories WHERE job_id=NEW.job_id ORDER BY relative_path DESC LIMIT 1),'') WHERE job_id=NEW.job_id;
+END;
+
+CREATE INDEX inventory_scan_issues_reading_coverage ON inventory_scan_issues(job_id,sequence) WHERE protect=1;
+CREATE INDEX inventory_reading_seals_job ON inventory_reading_seals(job_id,top_level,id);
+CREATE TRIGGER inventory_reading_seal_immutable BEFORE UPDATE ON inventory_reading_seals BEGIN
+ SELECT RAISE(ABORT,'Reading closure seals are immutable');
+END;

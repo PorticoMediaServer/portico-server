@@ -674,12 +674,12 @@ func pathWorkStep(ctx context.Context, tx *sql.Tx, limit int, turn int64) (int, 
 			done = n == 0
 		}
 	case "wake":
-		// A barrier change can only let parked scopes progress once the source
-		// is sealed, current and trusted. Otherwise the change that makes it so
-		// queues another wake, so nothing is re-probed in vain.
+		// Barrier changes and new closure seals queue a bounded wake. An OPEN
+		// source can now have proved top-level closures; each claim still
+		// requires its own exact seal. No parked scope is timer-polled.
 		if w.Phase == 0 {
 			var usable bool
-			err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM reading_path_source_barrier b JOIN library_sources src ON src.id=b.source_id WHERE b.source_id=? AND b.incarnation=src.incarnation AND b.source_generation=src.generation AND b.root_identity=src.root_identity AND b.root=src.root AND b.phase='sealed' AND b.reason='')`, w.Key).Scan(&usable)
+			err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM reading_path_source_barrier b JOIN library_sources src ON src.id=b.source_id WHERE b.source_id=? AND b.incarnation=src.incarnation AND b.source_generation=src.generation AND b.root_identity=src.root_identity AND b.root=src.root AND b.reason='' AND (b.phase='sealed' OR (b.phase='open' AND EXISTS(SELECT 1 FROM inventory_reading_jobs c JOIN inventory_reading_seals p ON p.id=c.last_seal WHERE c.job_id=b.job_id AND c.source_id=b.source_id AND p.job_id=c.job_id AND p.source_id=b.source_id AND p.issue_revision=c.coverage_revision AND p.coverage_revision=b.coverage_revision))))`, w.Key).Scan(&usable)
 			if err == nil && !usable {
 				done = true
 				break
@@ -787,15 +787,15 @@ func pathStrings(ctx context.Context, tx *sql.Tx, q string, args ...any) ([]stri
 }
 
 type pathScope struct {
-	ID, Library, Desired, Completed, Pending, SealCursor, Revision, Generation, SealRevision, CoverageRevision int64
-	Source, Incarnation, Root, Key, SealJob, Reason, Job, Barrier, BarrierReason, RootIdentity                 string
-	Sealed                                                                                                     bool
+	ID, Library, Desired, Completed, Pending, SealCursor, Revision, Generation, SealRevision, CoverageRevision, ClosureSeal int64
+	Source, Incarnation, Root, Key, SealJob, Reason, Job, Barrier, BarrierReason, RootIdentity                              string
+	Sealed                                                                                                                  bool
 }
 
 func pathScopeRead(ctx context.Context, tx *sql.Tx, id int64) (pathScope, error) {
 	var s pathScope
-	err := tx.QueryRowContext(ctx, `SELECT q.id,q.library_id,q.desired,q.completed,q.pending,q.seal_cursor,q.source_id,q.incarnation,q.root_prefix,q.directory_key,q.seal_job,q.reason,q.sealed,COALESCE(i.revision,0),COALESCE(b.job_id,''),COALESCE(b.phase,'open'),COALESCE(b.reason,''),COALESCE(src.generation,0),COALESCE(src.root_identity,''),q.seal_revision,COALESCE(b.coverage_revision,0)
- FROM reading_path_scope q LEFT JOIN reading_path_inputs i ON i.library_id=q.library_id LEFT JOIN reading_path_source_barrier b ON b.source_id=q.source_id LEFT JOIN library_sources src ON src.id=q.source_id WHERE q.id=?`, id).Scan(&s.ID, &s.Library, &s.Desired, &s.Completed, &s.Pending, &s.SealCursor, &s.Source, &s.Incarnation, &s.Root, &s.Key, &s.SealJob, &s.Reason, &s.Sealed, &s.Revision, &s.Job, &s.Barrier, &s.BarrierReason, &s.Generation, &s.RootIdentity, &s.SealRevision, &s.CoverageRevision)
+	err := tx.QueryRowContext(ctx, `SELECT q.id,q.library_id,q.desired,q.completed,q.pending,q.seal_cursor,q.source_id,q.incarnation,q.root_prefix,q.directory_key,q.seal_job,q.reason,q.sealed,COALESCE(i.revision,0),COALESCE(b.job_id,''),COALESCE(b.phase,'open'),COALESCE(b.reason,''),COALESCE(src.generation,0),COALESCE(src.root_identity,''),q.seal_revision,COALESCE(b.coverage_revision,0),q.closure_seal
+ FROM reading_path_scope q LEFT JOIN reading_path_inputs i ON i.library_id=q.library_id LEFT JOIN reading_path_source_barrier b ON b.source_id=q.source_id LEFT JOIN library_sources src ON src.id=q.source_id WHERE q.id=?`, id).Scan(&s.ID, &s.Library, &s.Desired, &s.Completed, &s.Pending, &s.SealCursor, &s.Source, &s.Incarnation, &s.Root, &s.Key, &s.SealJob, &s.Reason, &s.Sealed, &s.Revision, &s.Job, &s.Barrier, &s.BarrierReason, &s.Generation, &s.RootIdentity, &s.SealRevision, &s.CoverageRevision, &s.ClosureSeal)
 	return s, err
 }
 func scopeLive(ctx context.Context, tx *sql.Tx, s pathScope) (bool, error) {
@@ -815,8 +815,18 @@ func scopeReady(ctx context.Context, tx *sql.Tx, s pathScope) (string, error) {
 	if !current {
 		return "source_changed", nil
 	}
-	if s.Barrier != "sealed" {
+	if s.Barrier == "open" {
+		seal, err := pathClosureSeal(ctx, tx, s)
+		if err != nil {
+			return "", err
+		}
+		if seal == 0 || seal != s.ClosureSeal {
+			return "scan_open", nil
+		}
+	} else if s.Barrier != "sealed" {
 		return "scan_" + s.Barrier, nil
+	} else if s.ClosureSeal != 0 {
+		return "coverage_pending", nil
 	}
 	if s.BarrierReason != "" {
 		return s.BarrierReason, nil
@@ -1032,7 +1042,7 @@ func pathSealStep(ctx context.Context, tx *sql.Tx, s pathScope, limit int) (int,
 		n++
 	}
 	sealed := int(s.SealCursor) == len(keys)
-	_, err := tx.ExecContext(ctx, `UPDATE reading_path_scope SET seal_job=?,seal_revision=?,seal_cursor=?,sealed=?,reason=? WHERE id=?`, s.Job, s.CoverageRevision, s.SealCursor, sealed, s.Reason, s.ID)
+	_, err := tx.ExecContext(ctx, `UPDATE reading_path_scope SET seal_job=?,seal_revision=?,seal_cursor=?,sealed=?,reason=?,closure_seal=? WHERE id=?`, s.Job, s.CoverageRevision, s.SealCursor, sealed, s.Reason, s.ClosureSeal, s.ID)
 	if err == nil && sealed && s.Reason != "" {
 		err = pathReport(ctx, tx, s, s.Reason)
 	}
@@ -1112,7 +1122,14 @@ func pathClaim(ctx context.Context, tx *sql.Tx, c pathCandidate, turn, now int64
 		_, err = tx.ExecContext(ctx, `UPDATE reading_path_scope SET completed=desired,queued=0 WHERE id=?`, s.ID)
 		return 1, err
 	}
-	if s.Barrier == "sealed" && (s.SealJob != s.Job || !s.Sealed || s.SealRevision != s.CoverageRevision) {
+	closure := int64(0)
+	if s.Barrier == "open" {
+		closure, err = pathClosureSeal(ctx, tx, s)
+		if err != nil {
+			return 0, err
+		}
+	}
+	if (s.Barrier == "sealed" || closure != 0) && (s.SealJob != s.Job || !s.Sealed || s.SealRevision != s.CoverageRevision || s.ClosureSeal != closure) {
 		var pending bool
 		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM reading_path_dirty_work WHERE kind='blocks' AND work_key=?)`, s.Job).Scan(&pending); err != nil {
 			return 0, err
@@ -1123,6 +1140,12 @@ func pathClaim(ctx context.Context, tx *sql.Tx, c pathCandidate, turn, now int64
 		if _, err = tx.ExecContext(ctx, `UPDATE reading_path_scope SET served=? WHERE id=?`, turn, s.ID); err != nil {
 			return 0, err
 		}
+		if s.ClosureSeal != closure {
+			s.SealCursor = 0
+			s.Reason = ""
+			s.Sealed = false
+		}
+		s.ClosureSeal = closure
 		return pathSealStep(ctx, tx, s, limit)
 	}
 	reason, err := scopeReady(ctx, tx, s)
@@ -1148,7 +1171,7 @@ func pathClaim(ctx context.Context, tx *sql.Tx, c pathCandidate, turn, now int64
 		return 0, err
 	}
 	var bid int64
-	err = tx.QueryRowContext(ctx, `INSERT INTO reading_path_build(scope_id,desired,input_revision,source_generation,root_identity,job_id,coverage_revision,phase) VALUES(?,?,?,?,?,?,?,'capture') RETURNING id`, s.ID, s.Desired, s.Revision, s.Generation, s.RootIdentity, s.Job, s.CoverageRevision).Scan(&bid)
+	err = tx.QueryRowContext(ctx, `INSERT INTO reading_path_build(scope_id,desired,input_revision,source_generation,root_identity,job_id,coverage_revision,closure_seal,phase) VALUES(?,?,?,?,?,?,?,?,'capture') RETURNING id`, s.ID, s.Desired, s.Revision, s.Generation, s.RootIdentity, s.Job, s.CoverageRevision, s.ClosureSeal).Scan(&bid)
 	if err != nil {
 		return 0, err
 	}
@@ -1200,14 +1223,14 @@ func pathRetireInput(ctx context.Context, tx *sql.Tx, library int64) error {
 }
 
 type pathBuild struct {
-	ID, Scope, Desired, Revision, Generation, Item, Asset, Titles, NonSeries, Sequence, FlatItem, FlatAsset, CoverageRevision int64
-	RootIdentity, Job, Phase, Object                                                                                          string
+	ID, Scope, Desired, Revision, Generation, Item, Asset, Titles, NonSeries, Sequence, FlatItem, FlatAsset, CoverageRevision, ClosureSeal int64
+	RootIdentity, Job, Phase, Object                                                                                                       string
 }
 
 func pathBuildStep(ctx context.Context, tx *sql.Tx, id int64, limit int, now int64) (int, error) {
 	var b pathBuild
 	b.ID = id
-	err := tx.QueryRowContext(ctx, `SELECT scope_id,desired,input_revision,source_generation,root_identity,job_id,phase,after_object,after_item,after_asset,title_count,non_series_count,COALESCE(publish_sequence,0),after_flatten_item,after_flatten_asset,coverage_revision FROM reading_path_build WHERE id=?`, id).Scan(&b.Scope, &b.Desired, &b.Revision, &b.Generation, &b.RootIdentity, &b.Job, &b.Phase, &b.Object, &b.Item, &b.Asset, &b.Titles, &b.NonSeries, &b.Sequence, &b.FlatItem, &b.FlatAsset, &b.CoverageRevision)
+	err := tx.QueryRowContext(ctx, `SELECT scope_id,desired,input_revision,source_generation,root_identity,job_id,phase,after_object,after_item,after_asset,title_count,non_series_count,COALESCE(publish_sequence,0),after_flatten_item,after_flatten_asset,coverage_revision,closure_seal FROM reading_path_build WHERE id=?`, id).Scan(&b.Scope, &b.Desired, &b.Revision, &b.Generation, &b.RootIdentity, &b.Job, &b.Phase, &b.Object, &b.Item, &b.Asset, &b.Titles, &b.NonSeries, &b.Sequence, &b.FlatItem, &b.FlatAsset, &b.CoverageRevision, &b.ClosureSeal)
 	if err != nil {
 		return 0, err
 	}
@@ -1224,7 +1247,7 @@ func pathBuildStep(ctx context.Context, tx *sql.Tx, id int64, limit int, now int
 		if e != nil {
 			return 0, e
 		}
-		if reason != "" || !live || b.Desired != s.Desired || b.Revision != s.Revision || b.Generation != s.Generation || b.RootIdentity != s.RootIdentity || b.Job != s.Job || b.CoverageRevision != s.CoverageRevision {
+		if reason != "" || !live || b.Desired != s.Desired || b.Revision != s.Revision || b.Generation != s.Generation || b.RootIdentity != s.RootIdentity || b.Job != s.Job || b.CoverageRevision != s.CoverageRevision || b.ClosureSeal != s.ClosureSeal {
 			// Unpublished scratch is private, so the slot is free at once.
 			for _, q := range []string{`UPDATE reading_path_build SET phase='abort' WHERE id=?`, `UPDATE reading_path_slot SET build_id=NULL WHERE singleton=1 AND build_id=?`} {
 				if _, err = tx.ExecContext(ctx, q, id); err != nil {

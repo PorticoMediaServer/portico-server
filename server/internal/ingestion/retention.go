@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/dbwork"
 	"time"
 )
@@ -22,6 +23,19 @@ func (s *Service) PruneSource(ctx context.Context, source string) (bool, error) 
 	defer gated.Rollback()
 	tx := gated.Tx()
 	cutoff := time.Now().Add(-15 * time.Minute).UTC().Format(time.RFC3339Nano)
+	// Proofs are dismantled child-first, before either run/job retention or
+	// ordinary directory scratch retirement. Active/paused jobs retain them.
+	var closureJob string
+	err = tx.QueryRowContext(ctx, `SELECT c.job_id FROM inventory_reading_jobs c JOIN inventory_runs r ON r.job_id=c.job_id JOIN jobs j ON j.id=c.job_id WHERE c.source_id=? AND j.status NOT IN('queued','running','paused') AND COALESCE(nullif(r.finished_at,''),j.created_at)<? ORDER BY c.job_id LIMIT 1`, source, cutoff).Scan(&closureJob)
+	if err == nil {
+		if _, err = catalog.DrainReadingClosuresTx(ctx, tx, closureJob, 64); err != nil {
+			return false, err
+		}
+		return true, gated.Commit()
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return false, err
+	}
 	for _, table := range []string{"inventory_analysis_queue", "inventory_directories", "inventory_sidecar_changes", "subtitle_inventory_entries"} {
 		result, err := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE rowid IN(SELECT w.rowid FROM `+table+` w JOIN inventory_runs r ON r.job_id=w.job_id JOIN jobs j ON j.id=r.job_id WHERE r.source_id=? AND j.status NOT IN('queued','running','paused') AND COALESCE(nullif(r.finished_at,''),j.created_at)<? LIMIT ?)`, source, cutoff, scanRetentionBatch)
 		if err != nil {
@@ -109,6 +123,11 @@ func (s *Service) PruneSource(ctx context.Context, source string) (bool, error) 
 	}
 	if err != nil {
 		return false, err
+	}
+	if more, e := catalog.DrainReadingClosuresTx(ctx, tx, old, 64); e != nil {
+		return false, e
+	} else if more {
+		return true, gated.Commit()
 	}
 	// A very large old run is dismantled over many turns before its summary goes.
 	for _, table := range []string{"inventory_analysis_queue", "inventory_directories", "inventory_sidecar_changes", "inventory_scan_issues", "subtitle_inventory_entries", "analysis_stage_runs", "scan_queue"} {

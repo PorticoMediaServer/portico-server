@@ -207,6 +207,7 @@ func (s *Service) commitInventoryPageTx(ctx context.Context, tx *sql.Tx, job str
 	if err = tx.QueryRowContext(ctx, `SELECT kind FROM libraries WHERE id=?`, source.LibraryID).Scan(&libraryKind); err != nil {
 		return false, err
 	}
+	readingClosure := (libraryKind == "book" || libraryKind == "comic") && source.Kind == "local" && source.IdentityConfirmed
 	var policy ScanPolicy
 	if policy, err = ScanPolicyTx(ctx, tx, source.LibraryID); err != nil {
 		return false, err
@@ -226,6 +227,11 @@ func (s *Service) commitInventoryPageTx(ctx context.Context, tx *sql.Tx, job str
 			return false, err
 		}
 		return true, nil
+	}
+	if readingClosure {
+		if err = readingInventoryDirectoryTx(ctx, tx, job, relative); err != nil {
+			return false, err
+		}
 	}
 	// Register the current directory before its children so a link back to the
 	// root is recognized as an already visited identity rather than a conflict.
@@ -301,6 +307,11 @@ func (s *Service) commitInventoryPageTx(ctx context.Context, tx *sql.Tx, job str
 			if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO inventory_directories(job_id,relative_path,identity,revision) VALUES(?,?,?,?)`, job, child, v.ObjectIdentity, childRevision); err != nil {
 				return false, err
 			}
+			if readingClosure {
+				if err = readingInventoryDirectoryTx(ctx, tx, job, child); err != nil {
+					return false, err
+				}
+			}
 			continue
 		}
 		if err = observeSidecarTx(ctx, tx, job, source, child, v); err != nil {
@@ -366,6 +377,11 @@ func (s *Service) commitInventoryPageTx(ctx context.Context, tx *sql.Tx, job str
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE inventory_directories SET identity=?,revision=?,cursor=?,state=?,pages=pages+1 WHERE job_id=? AND relative_path=? AND cursor=?`, page.DirectoryIdentity, page.DirectoryRevision, page.NextCursor, state, job, relative, cursor); err != nil {
 		return false, err
+	}
+	if readingClosure {
+		if _, err = tx.ExecContext(ctx, `UPDATE inventory_reading_directories SET listing_eof=?,identity=?,revision=?,phase=CASE WHEN ? THEN 'verify' ELSE 'listing' END WHERE job_id=? AND relative_path=? AND phase='listing'`, page.Complete, page.DirectoryIdentity, page.DirectoryRevision, page.Complete, job, relative); err != nil {
+			return false, err
+		}
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE inventory_runs SET discovered=discovered+? WHERE job_id=?`, discovered, job); err != nil {
 		return false, err
