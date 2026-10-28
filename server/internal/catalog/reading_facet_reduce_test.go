@@ -162,6 +162,39 @@ func TestReadingFacetReductionSpellingUnicodeAndRejectedOwners(t *testing.T) {
 		t.Fatal(page)
 	} // owner tie: binary capitals first
 }
+func TestReadingFacetDeepCountOffsetRetainsOnlyPage(t *testing.T) {
+	labels := make([]string, 1000)
+	counts := make([]int, 1000)
+	expected := make([]readingFacetChoice, 1000)
+	for i := range labels {
+		labels[i] = fmt.Sprintf("Author-%04d", i)
+		counts[i] = i%13 + 1
+		expected[i] = readingFacetChoice{compactcatalog.ReadingValueKey(labels[i]), labels[i], counts[i]}
+	}
+	sort.Slice(expected, func(i, j int) bool {
+		if expected[i].count != expected[j].count {
+			return expected[i].count > expected[j].count
+		}
+		return expected[i].key < expected[j].key
+	})
+	r := runFixtureFacet(t, FacetRequest{Field: "author", Sort: "count", Offset: 995, Limit: 3}, &fixtureFacetInput{members: fixtureFacetMembers(labels, counts)})
+	page, _ := r.result()
+	if page.Total != 1000 || len(page.Values) != 3 || cap(r.page) > 4 || r.passes > bits.Len(13)+3 {
+		t.Fatal("deep offset grew memory or offset-dependent passes", page.Total, cap(r.page), r.passes)
+	}
+	for i, v := range page.Values {
+		if v.Value != expected[995+i].label || v.Count != expected[995+i].count {
+			t.Fatal("deep rank window differs", page.Values)
+		}
+	}
+	tied := fixtureFacetMembers([]string{"Space\tName", "SPACE NAME"}, []int{1, 1})
+	tie := runFixtureFacet(t, FacetRequest{Field: "author", Q: "s", Limit: 1}, &fixtureFacetInput{members: tied})
+	p, _ := tie.result()
+	if p.Values[0].Value != "SPACE NAME" {
+		t.Fatal("automatic binary tie changed", p)
+	}
+}
+
 func TestReadingFacetReductionWitnessAndLosslessScalar(t *testing.T) {
 	rows := fixtureFacetMembers([]string{"Label"}, []int{2})
 	r, err := newReadingFacetReduction(FacetRequest{Field: "author"}, "w", &fixtureFacetInput{members: rows}, 1<<20)
