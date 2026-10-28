@@ -137,3 +137,35 @@ test('MOB-111: a library can be created without its first scan; omission keeps t
  await s.createLibrary({name:'Quiet',kind:'movie',path:'/server/quiet',scanAfter:false});await s.createLibrary({name:'Normal',kind:'movie',path:'/server/normal'});
  assert.equal(bodies[0].scanAfter,false);assert.equal('scanAfter' in bodies[1],false);
  assert.throws(()=>s.createLibrary({name:'Bad',kind:'movie',path:'/server/bad',scanAfter:1 as never}));s.dispose?.();});
+
+test('quiet directory refresh retains the exact current page continuation, selected/jobs and mutation receipts',async()=>{
+ const paths:string[]=[];let fresh=false;
+ const s=service(async p=>{paths.push(p);const raw=data(p);if(p.startsWith('/v1/admin/libraries?'))return {...raw,items:[library(p.includes('cursor=')?'two':'one',fresh?'Fresh':'Before')],nextCursor:p.includes('cursor=')?'next-three':'next-two'};return raw;});
+ await s.loadLibraries();await s.nextLibraries();await s.selectLibrary('one');const before=s.getSnapshot(),op=before.directory;paths.length=0;fresh=true;
+ assert.deepEqual(await s.refreshDirectory(),{kind:'adopted'});const after=s.getSnapshot();
+ assert.deepEqual(paths,['/v1/admin/libraries?limit=40&cursor=next-two']);assert.equal(after.directory.cursor,op.cursor);assert.equal(after.directory.canPrevious,true);
+ assert.equal(after.directory.data!.items[0].name,'Fresh');assert.equal(after.directory.data!.nextCursor,'next-three');
+ assert.equal(after.selected,before.selected);assert.equal(after.jobs,before.jobs);assert.equal(after.mutation,before.mutation);assert.equal(after.selectedLibraryId,before.selectedLibraryId);
+ await s.previousLibraries();assert.equal(s.getSnapshot().directory.cursor,null);s.dispose();
+});
+
+test('quiet directory is independent of an active command and never cancels it',async()=>{
+ const write=deferred();let writeSignal:AbortSignal|undefined;
+ const s=service(async(p,m,_b,signal)=>{if(m==='POST'){writeSignal=signal;return write.promise;}return data(p);});
+ await s.loadLibraries();await s.selectLibrary('one');const pending=s.scan(),before=s.getSnapshot();
+ assert.deepEqual(await s.refreshDirectory(),{kind:'adopted'});assert.equal(s.getSnapshot().mutation,before.mutation);assert.equal(s.getSnapshot().selected,before.selected);assert.equal(writeSignal!.aborted,false);
+ write.resolve({id:'job-new',processed:0});await pending;s.dispose();
+});
+
+test('quiet directory failure retains original error and last window; newer paging and scope fence late reads',async()=>{
+ const error=Object.assign(new Error('cursor expired'),{code:'stale_continuation'});let mode='good',pending=deferred();
+ const s=service(async p=>{if(mode==='fail')throw error;if(mode==='wait')return pending.promise;return {...data(p),nextCursor:p.includes('cursor=')?'':'next'};});
+ await s.loadLibraries();mode='fail';const before=s.getSnapshot(),answer=await s.refreshDirectory();assert.equal(answer.kind,'unreadable');if(answer.kind==='unreadable')assert.equal(answer.error,error);assert.equal(s.getSnapshot(),before);
+ mode='wait';const old=s.refreshDirectory();mode='good';await s.nextLibraries();const page=s.getSnapshot();assert.deepEqual(await old,{kind:'deferred'});pending.resolve(data('/v1/admin/libraries'));assert.equal(s.getSnapshot(),page);
+ pending=deferred();mode='wait';const stale=s.refreshDirectory();s.setScope({...scope,viewerId:'new'},{request:async<T>()=>data('/v1/admin/libraries') as T});assert.deepEqual(await stale,{kind:'deferred'});assert.equal(s.getSnapshot().directory.data,null);pending.resolve(data('/v1/admin/libraries'));s.dispose();
+});
+
+test('quiet unloaded directory parses the first page and malformed replies never claim adoption',async()=>{
+ let malformed=true;const s=service(async p=>malformed?{revision:'wrong'}:data(p));const before=s.getSnapshot();assert.equal((await s.refreshDirectory()).kind,'unreadable');assert.equal(s.getSnapshot(),before);
+ malformed=false;assert.deepEqual(await s.refreshDirectory(),{kind:'adopted'});assert.equal(s.getSnapshot().directory.data!.items[0].id,'one');s.dispose();
+});
