@@ -45,6 +45,7 @@ func (s *Service) ListPage(ctx context.Context, job, directory, after string) (s
 // restarted scanner can use a smaller next page without skipping any names.
 // Replay is exact for the tuple (source listing, cursor, limit).
 func (s *Service) ListInventoryPage(ctx context.Context, job, directory, after string, limit int) (storage.RemotePage, error) {
+	ctx = listingContext(ctx, job)
 	if limit < 1 || limit > 128 {
 		return storage.RemotePage{}, storage.ErrRemoteLimit
 	}
@@ -79,7 +80,7 @@ func (s *Service) ListInventoryPage(ctx context.Context, job, directory, after s
 			c.ID = identity.Token()
 			// The library folder this scan (or its verification pass) is for,
 			// and the directory under it, go on the listing for retention.
-			_, err = dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `INSERT INTO remote_listing_sessions(id,job_id,source_id,generation,directory,created_at,inventory_source_id,incarnation,relative_path)
+			_, err = listingExec(ctx, s.db, `INSERT INTO remote_listing_sessions(id,job_id,source_id,generation,directory,created_at,inventory_source_id,incarnation,relative_path)
  SELECT ?1,?2,?3,?4,?5,?6,COALESCE(r.source_id,''),COALESCE(r.root_incarnation,''),CASE WHEN f.root IS NULL THEN '' WHEN ?5=f.root THEN '.' WHEN substr(?5,1,length(f.root)+1)=f.root||?7 THEN substr(?5,length(f.root)+2) ELSE '' END
  FROM (SELECT 1) LEFT JOIN inventory_runs r ON r.job_id=COALESCE((SELECT c.job_id FROM remote_inventory_checks c WHERE c.check_job=?2),?2) LEFT JOIN library_sources f ON f.id=r.source_id`, c.ID, job, b.ID, generation, directory, time.Now().Unix(), string(filepath.Separator))
 		}
@@ -151,7 +152,7 @@ func (s *Service) buildListing(ctx context.Context, b binding, relative, id, gen
 	}
 	capture, err := s.serveListingFenceTx(ctx, view.Tx(), b, relative, id, generation)
 	if err == nil {
-		err = nativeListingFence(ctx, view.Tx(), id, owner)
+		err = s.nativeListingFence(ctx, view.Tx(), id, owner)
 	}
 	view.Rollback()
 	if err != nil {

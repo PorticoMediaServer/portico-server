@@ -23,3 +23,9 @@ test('conversion capacity is actionable and retryable without exposing converter
  assert.match(playbackUserMessage({code:'conversion_capacity',message:'private session path'}),/Wait a moment or stop another stream/);
  assert.equal(playbackFailurePermanent({code:'conversion_capacity'}),false);
 });
+
+test('an offline storage source is named plainly and stays worth retrying',()=>{
+ assert.equal(playbackUserMessage({code:'storage_offline',message:'private mount /mnt/media is offline'}),'This title’s storage is offline right now.');
+ // Storage coming back needs no new request shape or sign-in: offer Try again.
+ assert.equal(playbackFailurePermanent({code:'storage_offline'}),false);
+});

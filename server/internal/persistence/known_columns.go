@@ -600,6 +600,9 @@ catalog_availability_work.asset_id
 catalog_availability_work.asset_path
 catalog_availability_work.asset_token
 catalog_availability_work.entity_id
+catalog_availability_work.fence_asset
+catalog_availability_work.fence_object
+catalog_availability_work.fence_source
 catalog_availability_work.has_asset
 catalog_availability_work.has_object
 catalog_availability_work.has_source
@@ -1143,6 +1146,7 @@ catalog_facet_source_fanouts.domain
 catalog_facet_source_fanouts.has_after
 catalog_facet_source_fanouts.revision
 catalog_facet_source_fanouts.source_id
+catalog_facet_source_state.availability_epoch
 catalog_facet_source_state.genre_epoch
 catalog_facet_source_state.policy_epoch
 catalog_facet_source_state.projection_epoch
@@ -1717,12 +1721,14 @@ catalog_upstream_sources.after_aux
 catalog_upstream_sources.after_id
 catalog_upstream_sources.after_key
 catalog_upstream_sources.domain
+catalog_upstream_sources.fence_entity
 catalog_upstream_sources.flags
 catalog_upstream_sources.has_after
 catalog_upstream_sources.inner_aux
 catalog_upstream_sources.inner_has
 catalog_upstream_sources.inner_id
 catalog_upstream_sources.inner_key
+catalog_upstream_sources.pass_revision
 catalog_upstream_sources.phase
 catalog_upstream_sources.revision
 catalog_upstream_sources.seen_inventory

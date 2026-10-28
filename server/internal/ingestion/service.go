@@ -35,6 +35,9 @@ type Job struct {
 type Service struct {
 	// remoteListings is where remote listing retention has got to per folder.
 	remoteListings remoteListingCursors
+	// Memory-only fair scheduling cursor; durable progress remains per source.
+	verificationAfter    string
+	verificationHasAfter bool
 
 	// The episode stage publishes artwork on this same durable inventory job.
 	EpisodeThumbnails func(context.Context, string, string, string, string, int64) (bool, string, error)
@@ -365,11 +368,14 @@ func (s *Service) Run(ctx context.Context) {
 	life = dbwork.WithClass(life, dbwork.ClassBackgroundMedia)
 	monitorDone := make(chan struct{})
 	supervise.Go("ingestion.monitor", func() { defer close(monitorDone); monitorRun(s, life) })
+	verificationDone := make(chan struct{})
+	supervise.Go("ingestion.verify", func() { defer close(verificationDone); s.runSourceVerification(life) })
 	var workers sync.WaitGroup
 	defer func() {
 		// One cleanup, in order: cancel this generation (which also releases the
-		// monitor and the worker loop), cancel the active quantums, then join
-		// both. A panic continues to the supervisor only after this returns.
+		// monitor, the verification walk and the worker loop), cancel the active
+		// quantums, then join them all. A panic continues to the supervisor only
+		// after this returns.
 		stopLife()
 		s.mu.Lock()
 		for _, cancel := range s.active {
@@ -378,6 +384,7 @@ func (s *Service) Run(ctx context.Context) {
 		s.mu.Unlock()
 		workers.Wait()
 		<-monitorDone
+		<-verificationDone
 	}()
 	// A scan is enqueued by a write, so the loop is woken by one. With nothing
 	// queued it asked the database three times a second for the life of the

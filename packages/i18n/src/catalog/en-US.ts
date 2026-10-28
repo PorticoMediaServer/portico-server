@@ -492,6 +492,7 @@ export const enUS = {
   'playback.message.access_revoked': 'Your access to this media has changed.',
   'playback.message.forbidden': 'Your profile does not have access to this media.',
   'playback.message.source_unavailable': 'This media source is unavailable. Try again when it reconnects.',
+  'playback.message.storage_offline': 'This title’s storage is offline right now.',
   'playback.message.source_changed': 'The media file changed. Open the title again to continue.',
   'playback.message.not_found': 'This media is no longer available.',
   'playback.message.owner_account_cap': 'Your account has reached its simultaneous stream limit. Stop another stream and try again.',

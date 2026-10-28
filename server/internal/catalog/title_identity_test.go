@@ -48,6 +48,9 @@ func markMissing(t *testing.T, c *catalogtest.Catalog, library, token string, wh
 		}
 		return MarkInventoryMissingTx(ctx, tx, source, "job-"+token, "object:"+token, when)
 	})
+	// Missing acceptance is a point write; await the source reducer before
+	// assertions about maintained missing-title/availability projections.
+	c.Drain()
 }
 
 func rows(t *testing.T, c *catalogtest.Catalog, query string, args ...any) int {
@@ -141,6 +144,7 @@ func TestATitleWithNoFilesStaysMissingAndAFileBringsItBack(t *testing.T) {
 	if again := attachMovie(t, c, "m", b, "/m/Ran.1985.Remastered.mkv", "Ran", 1985); again != film || c.Public(again) != public {
 		t.Fatal("the replacement did not re-attach to the missing title")
 	}
+	c.Drain()
 	if n := rows(t, c, `SELECT count(*) FROM catalog_missing_titles WHERE entity_id=?`, film); n != 0 {
 		t.Fatal("a title with a file again is still marked missing")
 	}
@@ -573,6 +577,7 @@ func TestRemovingAFolderMarksItsFilesMissing(t *testing.T) {
 		done, err = removeFolderBatchTx(ctx, tx, source)
 		return err
 	})
+	c.Drain()
 	if !done || rows(t, c, `SELECT count(*) FROM catalog_missing_titles WHERE entity_id=?`, film) != 1 {
 		t.Fatalf("the removed folder's title is not missing (done=%v)", done)
 	}

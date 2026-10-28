@@ -73,6 +73,10 @@ func v1ErrorDefinitions() []apierror.Definition {
 		{Code: "stream_limit_reached", Status: 409, Message: "This account is already playing as many streams as it is allowed.", Retry: apierror.Never},
 		{Code: "transcode_not_allowed", Status: 403, Message: "This title needs converting, and converting is turned off for this account.", Retry: apierror.Never},
 		{Code: "source_unavailable", Status: 503, Message: "The file for this title can't be reached right now.", Retry: apierror.SameRequest},
+		// The selected storage is offline, while the binding's identity, lifetime,
+		// root and authorization all still hold: the same request is worth retrying
+		// unchanged when the storage reconnects.
+		{Code: "storage_offline", Status: 503, Message: "This title’s storage is offline right now.", Retry: apierror.SameRequest},
 		{Code: "unsupported_media", Status: 422, Message: "This title can't be played on this device.", Retry: apierror.Never},
 		{Code: "connection_too_slow", Status: 422, Message: "Your connection to this server is too slow for this quality. Choose a lower quality or Automatic.", Retry: apierror.Never},
 		{Code: "feature_restricted", Status: 403, Message: "This feature is not permitted for this profile.", Retry: apierror.Never},
@@ -173,6 +177,8 @@ func v1Error(err error) error {
 	switch {
 	case errors.Is(err, catalog.ErrDiscSelectionChanged):
 		code = "revision_mismatch"
+	case errors.Is(err, storage.ErrStorageOffline):
+		code = "storage_offline"
 	case errors.Is(err, catalog.ErrSourceBusy), errors.Is(err, storage.ErrPlaybackSource), errors.Is(err, storage.ErrPlaybackTimeout), errors.Is(err, storage.ErrBusy):
 		code = "source_unavailable"
 	case errors.Is(err, catalog.ErrDiscPreparing):

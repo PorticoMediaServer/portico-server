@@ -79,7 +79,14 @@ func inventoryAbsenceHelper(r InventoryRequest, out io.Writer) error {
 
 func (c *Client) InventoryAbsence(ctx context.Context, key string, r InventoryRequest) (bool, error) {
 	if c.IsRemote(r.Root) {
-		return false, ErrRemoteCursor
+		absence, ok := c.Remote.(RemoteInventoryAbsence)
+		if !ok {
+			// Never turn "this build has no remote proof" into an absence: the
+			// walk keeps its cursor and its pending row. A local helper request
+			// on a virtual root would prove the wrong namespace.
+			return false, ErrRemoteCursor
+		}
+		return absence.InventoryAbsence(ctx, key, r)
 	}
 	var reply inventoryAbsence
 	if err := c.inventoryRequest(ctx, key, "inventory-absence", r, &reply); err != nil {
