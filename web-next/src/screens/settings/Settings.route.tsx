@@ -1,5 +1,6 @@
 import {Fragment, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
+import {transcodeLocationTarget} from '@core/presentation/transcode-location.ts';
 import {Button} from '../../kit/controls';
 import {useRouterState} from '@tanstack/react-router';
 import {peopleStreamLimits, settingsBinding} from '@core/presentation/settings-bindings.ts';
@@ -577,8 +578,7 @@ export function SettingsEntry() {
         if (row.id === 'streaming.transcodeLocation' && hardware) {
           // One stored directory, three drawn choices: the choice writes it, and
           // "folder" only reveals the path row that already holds it.
-          const directory = hardware.getSnapshot().capacity?.temporaryDirectory;
-          const target = value === 'separate' ? '' : value === 'memory' ? directory?.memoryPath : undefined;
+          const target = value === 'separate' || value === 'memory' || value === 'folder' ? transcodeLocationTarget(value, hardware.getSnapshot().capacity?.temporaryDirectory) : undefined;
           if (typeof target === 'string') {
             controller.change(settingsRowIndex.get('streaming.transcodeFolder')!.row, target, selected);
           }

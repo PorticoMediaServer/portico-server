@@ -2,6 +2,7 @@ import {defaultI18n, type MessageId} from '@i18n';
 import type {SettingsTableRow} from '../../../kit/settings/SettingsTable';
 import type {SettingPresentation} from '../../../kit/settings';
 import type {HardwareSnapshot} from './hardware-source';
+import {transcodeLocationChoice} from '@core/presentation/transcode-location.ts';
 
 const t = defaultI18n.t;
 
@@ -82,16 +83,10 @@ export function hardwareRowState(rowId: string, snapshot: HardwareSnapshot, stor
       // One stored directory, drawn as the frame's three choices. A RAM file
       // system this server cannot write to is not offered at all, so the choice
       // never promises storage the host does not have.
-      const directory = snapshot.capacity.temporaryDirectory;
-      const memory = directory.memoryPath;
-      // The stored directory decides the choice; the capacity document's own
-      // facts answer only until the runtime form has loaded.
-      const path = storedDirectory ?? (directory.fallback ? '' : directory.path);
-      const value = path === '' ? 'separate'
-        : memory && (path === memory || path.startsWith(memory + '/')) ? 'memory' : 'folder';
+      const {value, memoryAvailable} = transcodeLocationChoice(snapshot.capacity.temporaryDirectory, storedDirectory);
       const options = [
         {value: 'separate', label: t('next.settingsSpec.server.streaming.groups.2.rows.1.control.options.0.label'), hint: t('next.settingsSpec.server.streaming.groups.2.rows.1.control.options.0.hint')},
-        {value: 'memory', label: t('next.settingsSpec.server.streaming.groups.2.rows.1.control.options.1.label'), hint: t('next.settingsSpec.server.streaming.groups.2.rows.1.control.options.1.hint'), locked: !memory},
+        {value: 'memory', label: t('next.settingsSpec.server.streaming.groups.2.rows.1.control.options.1.label'), hint: t('next.settingsSpec.server.streaming.groups.2.rows.1.control.options.1.hint'), locked: !memoryAvailable},
         {value: 'folder', label: t('next.settingsSpec.server.streaming.groups.2.rows.1.control.options.2.label')},
       ];
       return {present: true, value, defaultValue: 'separate', choices: options};
