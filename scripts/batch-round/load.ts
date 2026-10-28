@@ -1,32 +1,33 @@
-/** Operator-only, UNRUN load driver. See load-README.md. Node >=22.18, no install/build. */
+/** Operator-only, UNRUN load driver. See load-README.md. Node 24.21.0, no install/build. */
 import {hostname, networkInterfaces} from 'node:os';
 import {open, constants} from 'node:fs/promises';
 import {pathToFileURL} from 'node:url';
 import {setTimeout as delay} from 'node:timers/promises';
-import {randomUUID} from 'node:crypto';
-import {HttpLocalApi} from '../../packages/client-core/src/index.ts';
+import {randomUUID, createHash} from 'node:crypto';
+import {type LocalSession} from '../../packages/client-core/src/index.ts';
+import {join} from 'node:path';
+import {FileMutationStore, lockMutationDirectory, mutationClient, savedBatch, finalStop} from './load-adapters.ts';
+import {readBrowsePage, releaseBrowseSelection, readReadingFacet} from '../../packages/client-core/src/browse-preparation.ts';
 import {validInstallationId} from '../../packages/client-core/src/installation.ts';
 import {capabilityDocumentProblem, type CapabilityDocument} from '../../packages/client-core/src/client-profile.ts';
-import {BrowseQueryBuilder, browsePath, browseCapabilitiesPath, parseBrowseCapabilities, parseBrowseResult} from '../../packages/client-core/src/browse.ts';
+import {BrowseQueryBuilder, browseFacetsPath, browseCapabilitiesPath, parseBrowseCapabilities} from '../../packages/client-core/src/browse.ts';
 import {SearchService, searchPath} from '../../packages/client-core/src/search.ts';
 import {HomeService} from '../../packages/client-core/src/home-service.ts';
-import {PERSONAL_BATCH_PATH, personalBatchBody, parsePersonalBatchReceipt} from '../../packages/client-core/src/personal-saved.ts';
 import {LibraryManagementService} from '../../packages/client-core/src/library-management.ts';
-import {SessionsClient} from '../../packages/client-core/src/playback-v1/sessions.ts';
 import {ObservationReporter} from '../../packages/client-core/src/playback-v1/observation.ts';
 import {CapabilityPublisher} from '../../packages/client-core/src/playback-v1/options.ts';
 import {EventsClient} from '../../packages/client-core/src/playback-v1/events.ts';
 import {readEventStream} from '../../packages/client-core/src/sse.ts';
 import {routePath} from '../../packages/contracts/src/route-paths.ts';
 
-type Identity = {accessToken: string; expiresAt: string; authority: 'local' | 'hosted'; accountId: string;
+type Identity = {accessToken: string; expiresAt: string; sessionFamilyId: string; tokenGeneration: string; authorizationHorizon: string; authority: 'local' | 'hosted'; accountId: string;
   profileId: string; deviceId: string; installationId: string; role: 'owner' | 'member'; capabilities: CapabilityDocument};
 type User = Identity & {libraryId: string; pivot: string; search: string; itemIds: string[];
-  bytesPerSecond: number; directVerifiedAt: string};
+  bytesPerSecond: number; directVerifiedAt: string; reading: {libraryId: string; pivot: string; facet: string}};
 export type Manifest = {version: 1; target: string; serverId: string; conversionMode: 'never';
   stateAdapterReceipt: string; owner: Identity & {libraryId: string}; quietMember: Identity; users: User[]};
 export type Options = {execute: boolean; selfCheck: boolean; users: number; seconds: number; ramp: number;
-  target?: string; manifest?: string; out?: string; label: string; window: string; hardwareUsers: number;
+  target?: string; manifest?: string; out?: string; mutationStore?: string; label: string; window: string; hardwareUsers: number;
   readP99: number; writeP99: number; observationGap: number};
 function fault(code: string): never {throw Object.assign(new Error(code), {code});}
 const id = (v: unknown): v is string => typeof v === 'string' && /^[A-Za-z0-9_.:-]{1,256}$/.test(v);
@@ -37,7 +38,7 @@ const aborted = (e: unknown) => ['AbortError', 'TimeoutError'].includes(String((
 export function options(args: string[]): Options {
   const flags = new Map<string, string>();
   const boolean = new Set(['execute', 'dry-run', 'self-check']);
-  const names = new Set(['users', 'seconds', 'ramp-seconds', 'target', 'manifest', 'out', 'label', 'operator-window',
+  const names = new Set(['users', 'seconds', 'ramp-seconds', 'target', 'manifest', 'out', 'mutation-store', 'label', 'operator-window',
     'hardware-users', 'read-p99-ms', 'write-p99-ms', 'observation-gap-ms', ...boolean]);
   for (let i = 0; i < args.length; i++) {
     const key = args[i].replace(/^--/, '');
@@ -55,14 +56,14 @@ export function options(args: string[]): Options {
   // Presence, including CI=false, is deliberately sufficient. No override exists.
   if (execute && ('CI' in process.env || 'GITHUB_ACTIONS' in process.env)) fault('execute_forbidden_in_ci');
   if (execute && (selfCheck || flags.has('dry-run'))) fault('conflicting_modes');
-  if (selfCheck && (flags.has('manifest') || flags.has('target'))) fault('self_check_has_no_private_input');
+  if (selfCheck && (flags.has('manifest') || flags.has('target') || flags.has('mutation-store'))) fault('self_check_has_no_private_input');
   const users = num('users', selfCheck ? 2 : 80, 2, 100), seconds = num('seconds', selfCheck ? 4 : 600, 4, 7200);
   if (![2, 80, 100].includes(users) || users === 2 && seconds !== 4 || selfCheck && (users !== 2 || seconds !== 4)) fault('unsupported_workload');
   const label = flags.get('label') ?? 'baseline', window = flags.get('operator-window') ?? 'none';
   if (!['baseline', 'scheduled-backup', 'manual-backup'].includes(label) || !/^[A-Za-z0-9_.:-]{1,80}$/.test(window)) fault('invalid_receipt_label');
   if (label !== 'baseline' && window === 'none') fault('backup_requires_operator_window');
   return {execute, selfCheck, users, seconds, ramp: num('ramp-seconds', users === 2 ? 1 : 30, 1, 600),
-    target: flags.get('target'), manifest: flags.get('manifest'), out: flags.get('out'), label, window,
+    target: flags.get('target'), manifest: flags.get('manifest'), out: flags.get('out'), mutationStore: flags.get('mutation-store'), label, window,
     hardwareUsers: num('hardware-users', 2, 1, 3), readP99: num('read-p99-ms', 2000, 10, 60000),
     writeP99: num('write-p99-ms', 2000, 10, 60000), observationGap: num('observation-gap-ms', 2500, 1500, 10000)};
 }
@@ -86,15 +87,16 @@ export function validateManifest(m: Manifest, o: Options) {
   const all = [m.owner, m.quietMember, ...m.users];
   for (const p of all) {
     if (!p || !['local', 'hosted'].includes(p.authority) || !['owner', 'member'].includes(p.role)
-      || ![p.accountId, p.profileId, p.deviceId].every(id) || !validInstallationId(p.installationId)
+      || ![p.accountId, p.profileId, p.deviceId, p.sessionFamilyId, p.tokenGeneration].every(id) || !validInstallationId(p.installationId)
       || typeof p.accessToken !== 'string' || !p.accessToken || /\s/.test(p.accessToken)
       || !Number.isFinite(Date.parse(p.expiresAt)) || Date.parse(p.expiresAt) < Date.now() + (o.ramp + o.seconds + 90) * 1000
+      || !Number.isFinite(Date.parse(p.authorizationHorizon)) || Date.parse(p.authorizationHorizon) < Date.parse(p.expiresAt)
       || capabilityDocumentProblem(p.capabilities)) fault('manifest_identity_or_capability_gap');
   }
-  for (const key of ['accessToken', 'accountId', 'profileId', 'deviceId', 'installationId'] as const)
+  for (const key of ['accessToken', 'accountId', 'profileId', 'deviceId', 'installationId', 'sessionFamilyId'] as const)
     if (new Set(all.map(p => p[key])).size !== all.length) fault('manifest_identities_must_be_distinct');
   if (m.owner.role !== 'owner' || m.quietMember.role !== 'member' || !id(m.owner.libraryId)) fault('manifest_owner_or_quiet_gap');
-  for (const u of m.users) if (u.role !== 'member' || !id(u.libraryId) || !id(u.pivot) || typeof u.search !== 'string'
+  for (const u of m.users) if (!u.reading || ![u.reading.libraryId, u.reading.pivot, u.reading.facet].every(id) || u.role !== 'member' || !id(u.libraryId) || !id(u.pivot) || typeof u.search !== 'string'
     || !u.search.trim() || u.search.length > 80 || !Array.isArray(u.itemIds) || !u.itemIds.length || u.itemIds.length > 20
     || !u.itemIds.every(id) || new Set(u.itemIds).size !== u.itemIds.length || !Number.isSafeInteger(u.bytesPerSecond)
     || u.bytesPerSecond < 1024 || u.bytesPerSecond > 16 * 1024 * 1024 || !Number.isFinite(Date.parse(u.directVerifiedAt))) fault('manifest_playable_item_gap');
@@ -160,15 +162,22 @@ export async function run(m: Manifest, o: Options, transport: typeof fetch = glo
     if (!response.ok) metrics.inc('wireHTTP' + (response.status >= 400 && response.status <= 599 ? response.status : 'Other'));
     return response;
   };
-  const client = (p: Identity) => {
-    const api = new HttpLocalApi(m.target, p.accessToken, scopedFetch(p));
-    const http = {send: (r: any) => api.requestRaw(r.path, r.method, {...r, signal: r.signal ?? signal, deadlineMs: r.deadlineMs ?? 5000})};
+  const clients: (Awaited<ReturnType<typeof mutationClient>> & {store: FileMutationStore})[] = [];
+  const client = async (p: Identity) => {
+    if (!o.mutationStore) fault('persistent_mutation_store_required');
+    const session: LocalSession = {accessToken: p.accessToken, expiresAt: p.expiresAt, sessionFamilyId: p.sessionFamilyId,
+      tokenGeneration: p.tokenGeneration, authorizationHorizon: p.authorizationHorizon, deviceId: p.deviceId, installationId: p.installationId,
+      viewer: {serverId: m.serverId, authority: p.authority, accountId: p.accountId, profileId: p.profileId, role: p.role}};
+    const name = createHash('sha256').update(JSON.stringify([m.target, m.serverId, p.authority, p.accountId, p.profileId, p.sessionFamilyId, p.deviceId])).digest('hex');
+    const store = new FileMutationStore(join(o.mutationStore, name + '.json'));
+    const c = await mutationClient(m.target, session, store, scopedFetch(p));
     const bound = {request: <T>(path: string, method = 'GET', body?: unknown, other?: AbortSignal) =>
-      api.request<T>(path, method, body, AbortSignal.any([signal, ...(other ? [other] : []), AbortSignal.timeout(5000)]))};
-    return {api, http, bound, sessions: new SessionsClient(http), fetch: scopedFetch(p)};
+      c.api.request<T>(path, method, body, AbortSignal.any([signal, ...(other ? [other] : []), AbortSignal.timeout(5000)])),
+      requestRaw: c.api.requestRaw.bind(c.api), acknowledgeUserMutation: c.api.acknowledgeUserMutation.bind(c.api)};
+    const result = {...c, store, bound, fetch: scopedFetch(p)}; clients.push(result); return result;
   };
   const scope = (p: Identity) => ({serverId: m.serverId, viewerId: JSON.stringify([p.authority, p.accountId, p.profileId])});
-  const verify = async (p: Identity, c: ReturnType<typeof client>) => metrics.measure('identity', async () => {
+  const verify = async (p: Identity, c: Awaited<ReturnType<typeof client>>) => metrics.measure('identity', async () => {
     const {viewer} = await c.api.me(AbortSignal.any([signal, AbortSignal.timeout(5000)]));
     if (!viewer || viewer.serverId !== m.serverId || viewer.accountId !== p.accountId || viewer.profileId !== p.profileId
       || viewer.authority !== p.authority || viewer.role !== p.role) fault('actual_identity_mismatch');
@@ -177,10 +186,10 @@ export async function run(m: Manifest, o: Options, transport: typeof fetch = glo
     if (current?.length !== 1 || current[0].id !== p.deviceId || current[0].installationId !== p.installationId) fault('actual_device_mismatch');
   });
   async function user(p: User, index: number) {
-    const c = client(p), home = new HomeService(c.bound, {timeoutMs: 5000, initialLimit: 20});
+    const c = await client(p), home = new HomeService(c.bound, {timeoutMs: 5000, initialLimit: 20});
     const search = new SearchService({api: c.bound, scope: scope(p), timeoutMs: 5000, pageSize: 20});
     const life = new AbortController(), local = AbortSignal.any([signal, life.signal]);
-    let sessionId: string | undefined, reporter: ObservationReporter | undefined, sampleTimer: ReturnType<typeof setInterval> | undefined;
+    let stop: ReturnType<typeof finalStop> | undefined, reporter: ObservationReporter | undefined, sampleTimer: ReturnType<typeof setInterval> | undefined;
     let draining: Promise<unknown> | undefined;
     const r: UserReceipt = {index, bytes: 0, observations: 0, maxObservationGapMs: 0, mediaStarted: false, mediaActive: false,
       startedAt: 0, lastAck: 0, expectedBytes: 0, stopped: false}; receipts.push(r);
@@ -195,8 +204,8 @@ export async function run(m: Manifest, o: Options, transport: typeof fetch = glo
       const body = new BrowseQueryBuilder(capabilities, p.pivot).limit(20).build();
       const itemId = p.itemIds[index % p.itemIds.length];
       const session = await metrics.measure('start', () => c.sessions.start({itemId}, {quality: {mode: 'original'}, subtitles: {trackId: null}, startFrom: 'beginning'}, randomUUID(), {
-        signal: local, capturePreparing: s => {sessionId = s.id; return () => c.sessions.stop(s.id, undefined, AbortSignal.timeout(5000));}}));
-      sessionId = session.id;
+        signal: local, capturePreparing: s => {stop = finalStop(c.sessions, s.id, s.presentation.generation); return () => stop!(undefined, AbortSignal.timeout(5000));}}));
+      stop = finalStop(c.sessions, session.id, session.presentation.generation);
       const presentation = session.presentation, decisions = Object.values(presentation.decision).filter(Boolean);
       if (session.itemId !== itemId || session.state !== 'playing' || presentation.mode !== 'direct'
         || !decisions.length || decisions.some(d => d!.action !== 'copy')) fault('direct_only_plan_required');
@@ -245,9 +254,23 @@ export async function run(m: Manifest, o: Options, transport: typeof fetch = glo
       // A failed drain retires this user; keep its rejection handled until joined below.
       void draining.catch(() => life.abort());
       let cycle = 0;
+      let pendingSaved: {operationId: string; items: {itemId: string; watchlisted: boolean}[]} | undefined;
       while (!local.aborted) {
         for (const [name, action] of [
-          ['browse', async () => {parseBrowseResult(await c.bound.request(browsePath(p.libraryId), 'POST', body));}],
+          ['browse', async () => {
+            const result = await readBrowsePage(c.bound, p.libraryId, body, {signal: local, isCurrent: () => !local.aborted});
+            releaseBrowseSelection(c.bound, p.libraryId, result.response);
+          }],
+          ['reading', async () => {
+            const capabilities = parseBrowseCapabilities(await c.bound.request(browseCapabilitiesPath(p.reading.libraryId, p.reading.pivot)));
+            if (capabilities.library.id !== p.reading.libraryId) fault('reading_library_mismatch');
+            const query = new BrowseQueryBuilder(capabilities, p.reading.pivot).limit(20).build();
+            const lifetime = {signal: local, isCurrent: () => !local.aborted};
+            const result = await readBrowsePage(c.bound, p.reading.libraryId, query, lifetime);
+            releaseBrowseSelection(c.bound, p.reading.libraryId, result.response);
+            const path = browseFacetsPath(p.reading.libraryId) + '?' + new URLSearchParams({field: p.reading.facet, pivot: p.reading.pivot, limit: '20'});
+            await readReadingFacet(c.bound, p.reading.libraryId, path, p.reading.facet, lifetime);
+          }],
           ['search', async () => {
             // SearchService builds searchPath and validates the echoed query, groups and scope.
             searchPath({q: p.search, record: false}, 20);
@@ -262,10 +285,11 @@ export async function run(m: Manifest, o: Options, transport: typeof fetch = glo
           await sleep(o.selfCheck ? 80 : 700 + (index * 97 + cycle * 31) % 500, local);
         }
         if (!local.aborted && cycle++ % 3 === 0) await metrics.measure('saved', async () => {
-          const operationId = randomUUID(), items = p.itemIds.slice(0, 3).map(itemId => ({itemId, watchlisted: cycle % 2 === 1}));
-          const receipt = parsePersonalBatchReceipt(await c.bound.request(PERSONAL_BATCH_PATH, 'PUT', personalBatchBody(operationId, items)), m.serverId, items.map(i => i.itemId));
-          if (receipt.operationId !== operationId || receipt.failed || receipt.updated !== items.length) fault('saved_receipt_failed');
-          metrics.inc('savedItems', receipt.updated);
+          pendingSaved ??= {operationId: randomUUID(), items: p.itemIds.slice(0, 3).map(itemId => ({itemId, watchlisted: cycle % 2 === 1}))};
+          const receipt = await savedBatch(c.api, m.serverId, pendingSaved.operationId, pendingSaved.items, local);
+          pendingSaved = undefined;
+          if (receipt.updated !== undefined) metrics.inc('savedItems', receipt.updated);
+          if (receipt.recovered) metrics.inc('savedRecoveredReceipts');
         }).catch(e => {if (aborted(e)) throw e;});
         await sleep(o.selfCheck ? 100 : 1000, local);
       }
@@ -275,13 +299,13 @@ export async function run(m: Manifest, o: Options, transport: typeof fetch = glo
       reporter?.stop(); home.dispose(); search.dispose(); life.abort();
       await draining?.catch(() => {});
       if (r.startedAt) r.maxObservationGapMs = Math.max(r.maxObservationGapMs, Math.min(end, now()) - r.lastAck);
-      if (sessionId) await metrics.measure('stop', async () => {
-        await c.sessions.stop(sessionId!, Math.floor(r.bytes / p.bytesPerSecond * 1000), AbortSignal.timeout(5000)); r.stopped = true;
+      if (stop) await metrics.measure('stop', async () => {
+        await stop!(Math.floor(r.bytes / p.bytesPerSecond * 1000), AbortSignal.timeout(5000)); r.stopped = true;
       }).catch(() => {});
     }
   }
   async function scanOwner() {
-    const c = client(m.owner), service = new LibraryManagementService({api: c.bound, scope: scope(m.owner), readRetries: 0, timeoutMs: 5000});
+    const c = await client(m.owner), service = new LibraryManagementService({api: c.bound, scope: scope(m.owner), readRetries: 0, timeoutMs: 5000});
     retired.push(() => service.dispose()); await verify(m.owner, c);
     await service.selectLibrary(m.owner.libraryId);
     while (!signal.aborted) {
@@ -294,7 +318,7 @@ export async function run(m: Manifest, o: Options, transport: typeof fetch = glo
     }
   }
   async function quietMember() {
-    const p = m.quietMember, c = client(p); await verify(p, c);
+    const p = m.quietMember, c = await client(p); await verify(p, c);
     const events = new EventsClient({http: c.http, openStream: async (after, receive, s) => {
       const local = AbortSignal.any([s, signal]);
       const task = metrics.measure('sse', async () => {
@@ -323,6 +347,7 @@ export async function run(m: Manifest, o: Options, transport: typeof fetch = glo
   } finally {
     controller.abort(); clearTimeout(deadline); retired.forEach(f => f());
     await Promise.allSettled([...streams]);
+    clients.forEach(c => c.coordinator.dispose());
     process.removeListener('SIGINT', interrupt); process.removeListener('SIGTERM', interrupt);
   }
   const achieved = receipts.filter(r => r.bytes > 0 && r.observations > 0).length;
@@ -331,18 +356,19 @@ export async function run(m: Manifest, o: Options, transport: typeof fetch = glo
     uninterrupted: !interrupted, users: achieved === o.users, plateauUsers: plateauUsers === o.users,
     mediaBytes: receipts.length === o.users && receipts.every(r => r.mediaStarted && r.bytes >= r.expectedBytes * .8),
     observations: receipts.every(r => r.observations >= Math.floor(o.seconds * .7) && r.maxObservationGapMs <= o.observationGap),
-    reads: ['browse', 'search', 'home'].every(enough), savedReceipts: enough('saved'),
+    reads: ['browse', 'reading', 'search', 'home'].every(enough), savedReceipts: enough('saved'),
     scanReceipts: (metrics.counters.scanReceipts ?? 0) >= (o.selfCheck ? 1 : Math.floor((o.ramp + o.seconds) / 60)),
     quietSSE: (metrics.counters.sseOpened ?? 0) > 0,
     cleanup: receipts.every(r => !r.mediaStarted || r.stopped),
+    mutationCustody: (await Promise.all(clients.map(c => c.store.read()))).every(state => state.entries.length === 0),
     noErrorsOrRefusals: !Object.values(metrics.ops).some(s => s.errors) && !Object.keys(metrics.counters).some(k => /Failures$|^wireHTTP/.test(k)),
-    readLatency: ['browse', 'search', 'home'].every(k => !!metrics.ops[k]?.latency.count && metrics.ops[k].latency.p99() <= o.readP99),
+    readLatency: ['browse', 'reading', 'search', 'home'].every(k => !!metrics.ops[k]?.latency.count && metrics.ops[k].latency.p99() <= o.readP99),
     writeLatency: ['saved', 'scan', 'claim', 'stop', 'observation'].every(k => !!metrics.ops[k]?.latency.count && metrics.ops[k].latency.p99() <= o.writeP99),
   };
   return {kind: o.selfCheck ? 'mock-transport-only' : 'simulated-client-load', label: o.label, operatorWindow: o.window,
     startedAt: wallStarted, elapsedSeconds: (now() - started) / 1000, requestedUsers: o.users, achievedUsers: achieved, plateauUsers,
     decoderAcceptance: false, deviceAcceptance: false, hardwareAcceptance: false, completeCampaignAcceptance: false,
-    gaps: ['hardware_only_launch_contract_unavailable', 'refresh_storage_adapter_not_supplied', 'conversion_mode_operator_precondition'],
+    gaps: ['hardware_only_launch_contract_unavailable', 'refresh_storage_adapter_not_supplied', 'conversion_mode_operator_precondition', '102_identity_provisioning_unproved', '5m_full_appstate_adapter_unproved'],
     thresholds: {readP99Ms: o.readP99, writeP99Ms: o.writeP99, observationGapMs: o.observationGap, minimumByteFraction: .8},
     gates, passed: Object.values(gates).every(Boolean), counters: metrics.counters, operations: metrics.receipt(),
     histogramUpperBoundsMs: bounds, users: receipts.map(({startedAt, lastAck, ...r}) => r)};
@@ -353,19 +379,21 @@ export async function main(args = process.argv.slice(2)) {
   if (!o.execute && !o.selfCheck) {
     console.log(JSON.stringify({state: 'UNRUN', mode: 'dry-run', users: o.users, seconds: o.seconds, rampSeconds: o.ramp,
       targetHost: '100.120.50.24', driver: 'mini2-or-portico-runner', label: o.label, operatorWindow: o.window,
-      requirements: ['explicit --execute', 'owned 0600 manifest', 'full appstate adapter', 'conversionMode=never', 'separate host observer'],
+      requirements: ['explicit --execute', 'owned 0600 manifest', 'owned 0700 persistent mutation-store directory', 'full appstate adapter', 'conversionMode=never', 'separate host observer'],
       hardwareOnly: 'unavailable: locally refused; never software fallback'})); return;
   }
+  if (process.versions.node !== '24.21.0') fault('node_24_21_0_required');
   requireDriver(o.selfCheck);
   let receipt: {passed: boolean};
   if (o.selfCheck) {
     const {selfCheck} = await import('./load-selfcheck.mjs'); receipt = await selfCheck(o);
   } else {
-    if (!o.manifest || !o.target || !o.out) fault('execute_requires_manifest_target_out');
+    if (!o.manifest || !o.target || !o.out || !o.mutationStore) fault('execute_requires_manifest_target_out_mutation_store');
     o.target = targetOrigin(o.target); const m = await privateManifest(o.manifest); m.target = targetOrigin(m.target); validateManifest(m, o);
     // Reserve evidence before starting any request. Never overwrite a previous run.
     const out = await open(o.out, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW, 0o600);
-    try {receipt = await run(m, o); await out.writeFile(JSON.stringify(receipt, null, 2) + '\n');} finally {await out.close();}
+    let unlock: (() => Promise<void>) | undefined;
+    try {unlock = await lockMutationDirectory(o.mutationStore); receipt = await run(m, o); await out.writeFile(JSON.stringify(receipt, null, 2) + '\n');} finally {await out.close(); await unlock?.();}
   }
   console.log(JSON.stringify(receipt)); if (!receipt.passed) process.exitCode = 1;
 }
