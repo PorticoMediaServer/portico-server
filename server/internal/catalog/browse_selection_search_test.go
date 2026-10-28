@@ -56,7 +56,7 @@ func TestSelectionLocalSearchBytesTokensAndMissingDocument(t *testing.T) {
 		var work selectionSearchWork
 		err := dbwork.WithReadSnapshot(context.Background(), db, func(ctx context.Context) error {
 			var err error
-			yes, err = s.WithContext(ctx).selectionBatchSearchMatches(p, id, &bytes, &work)
+			yes, err = s.WithContext(ctx).selectionBatchSearchMatches(p, id, &bytes, &work, nil)
 			return err
 		})
 		if err != nil {
