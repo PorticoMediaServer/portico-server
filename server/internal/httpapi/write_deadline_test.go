@@ -136,3 +136,129 @@ func shortDeadlines(t *testing.T, window, refresh time.Duration) func() {
 		mediaWriteDeadline, deadlineRefreshInterval, streamFrameDeadline = previousWindow, previousRefresh, previousFrame
 	}
 }
+
+// frameDeadlineRecorder records the order in which a framed write arms and
+// clears the write deadline, writes the frame and flushes it.
+type frameDeadlineRecorder struct {
+	http.ResponseWriter
+	order    *[]string
+	writeErr error
+	flushErr error
+}
+
+func (r *frameDeadlineRecorder) note(step string) { *r.order = append(*r.order, step) }
+
+func (r *frameDeadlineRecorder) SetWriteDeadline(deadline time.Time) error {
+	if deadline.IsZero() {
+		r.note("deadline:clear")
+	} else {
+		r.note("deadline")
+	}
+	return nil
+}
+
+func (r *frameDeadlineRecorder) Write(p []byte) (int, error) {
+	r.note("write")
+	if r.writeErr != nil {
+		return 0, r.writeErr
+	}
+	return len(p), nil
+}
+
+func (r *frameDeadlineRecorder) FlushError() error {
+	r.note("flush")
+	return r.flushErr
+}
+
+// The frame deadline bounds one frame, and is cleared once that frame has been
+// written and flushed. Leaving it armed after the flush is what turns a quiet
+// stream into a dead one: the events heartbeat is slower than the budget, and an
+// expired write deadline resets the stream in HTTP/2 rather than waiting for it.
+func TestAFrameDeadlineCoversTheFrameAndIsClearedAfterIt(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		writeErr error
+		flushErr error
+		want     string
+	}{
+		{name: "written and flushed", want: "deadline,write,flush,deadline:clear"},
+		{name: "write failed", writeErr: errors.New("peer gone"), want: "deadline,write,deadline:clear"},
+		{name: "flush failed", flushErr: errors.New("peer gone"), want: "deadline,write,flush,deadline:clear"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var order []string
+			recorder := &frameDeadlineRecorder{ResponseWriter: httptest.NewRecorder(), order: &order, writeErr: test.writeErr, flushErr: test.flushErr}
+			err := frameWrite(recorder, func(out io.Writer) (int, error) {
+				return io.WriteString(out, "event: message\ndata: {}\n\n")
+			})
+			wantErr := test.writeErr
+			if wantErr == nil {
+				wantErr = test.flushErr
+			}
+			if wantErr == nil && err != nil {
+				t.Fatalf("frame error: %v", err)
+			}
+			if wantErr != nil && !errors.Is(err, wantErr) {
+				t.Fatalf("frame error: %v, want %v", err, wantErr)
+			}
+			if got := strings.Join(order, ","); got != test.want {
+				t.Fatalf("frame steps: %s, want %s", got, test.want)
+			}
+		})
+	}
+	// A writer that cannot take a deadline still streams: the deadline is a
+	// reclamation mechanism, not a correctness one.
+	plain := httptest.NewRecorder()
+	if err := frameWrite(plain, func(out io.Writer) (int, error) { return io.WriteString(out, "event: message\n\n") }); err != nil {
+		t.Fatal(err)
+	}
+	if plain.Body.String() != "event: message\n\n" || !plain.Flushed {
+		t.Fatalf("undeadlined frame: %q flushed=%v", plain.Body.String(), plain.Flushed)
+	}
+}
+
+// The other half of the same mechanism: a client that stops reading still fails
+// its frame within the deadline, so the goroutine, its lane slot and its poller
+// are reclaimed rather than held until the OS notices.
+func TestAStreamWhoseClientStopsReadingIsReclaimedWithinTheFrameDeadline(t *testing.T) {
+	previous := streamFrameDeadline
+	streamFrameDeadline = 300 * time.Millisecond
+	defer func() { streamFrameDeadline = previous }()
+	type outcome struct {
+		frames int
+		err    error
+	}
+	finished := make(chan outcome, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(200)
+		frame := strings.Repeat("e", 32<<10) + "\n\n"
+		for sent := 0; sent < 1<<12; sent++ {
+			if err := frameWrite(w, func(out io.Writer) (int, error) {
+				return io.WriteString(out, frame)
+			}); err != nil {
+				finished <- outcome{sent, err}
+				return
+			}
+		}
+		finished <- outcome{1 << 12, nil}
+	}))
+	defer server.Close()
+	connection, err := net.Dial("tcp", strings.TrimPrefix(server.URL, "http://"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close()
+	if _, err = fmt.Fprintf(connection, "GET /v1/events HTTP/1.1\r\nHost: x\r\n\r\n"); err != nil {
+		t.Fatal(err)
+	}
+	// Read nothing at all from here on.
+	select {
+	case got := <-finished:
+		if got.err == nil {
+			t.Fatalf("a client that stopped reading accepted %d frames past the frame deadline", got.frames)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("a client that stopped reading held the stream past the frame deadline")
+	}
+}

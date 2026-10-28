@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"sync"
 	"time"
@@ -79,8 +80,7 @@ func (d Dependencies) adminLogEvents(recorder *servicelog.Recorder, streams *adm
 			return
 		}
 		defer streams.release(key)
-		flusher, ok := w.(http.Flusher)
-		if !ok {
+		if _, ok := w.(http.Flusher); !ok {
 			policyError(w, "stream_unavailable")
 			return
 		}
@@ -89,19 +89,22 @@ func (d Dependencies) adminLogEvents(recorder *servicelog.Recorder, streams *adm
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Accel-Buffering", "no")
-		frameDeadline(w)
-		w.WriteHeader(200)
-		flusher.Flush()
+		if err := frameWrite(w, func(io.Writer) (int, error) {
+			w.WriteHeader(200)
+			return 0, nil
+		}); err != nil {
+			return
+		}
 		frame := func(id, event string, body any) bool {
 			if ctx.Err() != nil {
 				return false
 			}
 			raw, _ := json.Marshal(body)
-			frameDeadline(w)
-			if _, err := fmt.Fprintf(w, "id: %s\nevent: %s\ndata: %s\n\n", id, event, raw); err != nil {
+			if err := frameWrite(w, func(out io.Writer) (int, error) {
+				return fmt.Fprintf(out, "id: %s\nevent: %s\ndata: %s\n\n", id, event, raw)
+			}); err != nil {
 				return false
 			}
-			flusher.Flush()
 			return true
 		}
 		if reset {
@@ -130,11 +133,11 @@ func (d Dependencies) adminLogEvents(recorder *servicelog.Recorder, streams *adm
 				if !authorized() {
 					return
 				}
-				frameDeadline(w)
-				if _, err := fmt.Fprint(w, ": keep-alive\n\n"); err != nil {
+				if err := frameWrite(w, func(out io.Writer) (int, error) {
+					return fmt.Fprint(out, ": keep-alive\n\n")
+				}); err != nil {
 					return
 				}
-				flusher.Flush()
 			case record, ok := <-records:
 				if !ok || !authorized() {
 					return

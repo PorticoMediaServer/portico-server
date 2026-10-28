@@ -392,3 +392,86 @@ func TestEventStreamPacesBudgetPagesAndResyncsFarBehindReaders(t *testing.T) {
 		t.Fatalf("far-behind reader: %+v", f)
 	}
 }
+
+// H09: a quiet /v1/events stream must outlive its own frame deadline. The public
+// listener is HTTP/2 over TLS, and there an expired write deadline does not wait
+// for the next heartbeat: it resets the stream, which the browser reports as
+// ERR_HTTP2_PROTOCOL_ERROR. The deadline used to be armed before every frame and
+// never cleared, so a heartbeat paced slower than the budget — 25 s against 20 s
+// — arrived after the stream had already been reset.
+func TestAQuietEventStreamOutlivesTheFrameDeadline(t *testing.T) {
+	previousFrame, previousHeartbeat := streamFrameDeadline, eventHeartbeat
+	streamFrameDeadline, eventHeartbeat = 120*time.Millisecond, 350*time.Millisecond
+	defer func() { streamFrameDeadline, eventHeartbeat = previousFrame, previousHeartbeat }()
+	d, _, _, member := notificationFixture(t)
+	d.Events = eventfeed.New(d.DB)
+	mux := http.NewServeMux()
+	d.foundationRoutes(mux)
+	server := httptest.NewUnstartedServer(mux)
+	server.EnableHTTP2 = true
+	server.StartTLS()
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	request, _ := http.NewRequestWithContext(ctx, "GET", server.URL+"/v1/events", nil)
+	request.Header.Set("Authorization", "Bearer "+member.AccessToken)
+	response, err := server.Client().Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != 200 || response.ProtoMajor != 2 {
+		t.Fatalf("stream: %d %s", response.StatusCode, response.Proto)
+	}
+	reader := bufio.NewReader(response.Body)
+	// A frame ends at its blank line. A comment-only frame — the heartbeat — is
+	// named by its comment, so both kinds are read the same way.
+	next := func() (string, time.Time) {
+		t.Helper()
+		kind := ""
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				t.Fatalf("the quiet stream ended: %v", err)
+			}
+			switch {
+			case strings.HasPrefix(line, ":"):
+				kind = strings.TrimSpace(strings.TrimPrefix(line, ":"))
+			case strings.HasPrefix(line, "event: "):
+				kind = strings.TrimSpace(strings.TrimPrefix(line, "event: "))
+			}
+			if line == "\n" {
+				return kind, time.Now()
+			}
+		}
+	}
+	var opened time.Time
+	for deadline := time.Now().Add(5 * time.Second); opened.IsZero(); {
+		if kind, at := next(); kind == "stream.opened" {
+			opened = at
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the stream never announced its position")
+		}
+	}
+	// Nothing happens now. One frame deadline passes in silence; the stream must
+	// still be there when the heartbeat is due.
+	kind, beat := next()
+	if kind != "heartbeat" {
+		t.Fatalf("quiet stream: %q after %s", kind, beat.Sub(opened))
+	}
+	if quiet := beat.Sub(opened); quiet <= streamFrameDeadline {
+		t.Fatalf("the first heartbeat came %s after the last frame, inside the %s frame deadline: the quiet window was never exercised", quiet, streamFrameDeadline)
+	}
+	// Each frame clears its own deadline, so the next quiet window is just as
+	// healthy as the first.
+	if kind, second := next(); kind != "heartbeat" || second.Sub(beat) <= streamFrameDeadline {
+		t.Fatalf("second quiet window: %q after %s", kind, second.Sub(beat))
+	}
+	// Alive is not enough: a real event still reaches the stream afterwards.
+	raiseNotice(t, d, notify.ProfileScope("local", "member", "member-profile"), "quiet", "Raised after the quiet window")
+	d.Events.Wake()
+	if kind, _ := next(); kind != "notification.changed" {
+		t.Fatalf("event after the quiet window: %q", kind)
+	}
+}
