@@ -228,6 +228,13 @@ func (s *Service) commitInventoryPageTx(ctx context.Context, tx *sql.Tx, job str
 		return false, err
 	}
 	discovered := 0
+	// A name the folder held last time can drop out of its cached children
+	// only through a changed revision or a skipped entry. Any page that skips
+	// one marks the folder for the sidecar phase's cache prune.
+	pruneParent := false
+	for _, issue := range page.Issues {
+		pruneParent = pruneParent || !issue.Protect
+	}
 	// Both old and new logical scopes are maintained by the normalized feed.
 	var movedOut map[string]bool
 	for _, v := range page.Entries {
@@ -240,10 +247,12 @@ func (s *Service) commitInventoryPageTx(ctx context.Context, tx *sql.Tx, job str
 			if err = InventoryIssueTx(ctx, tx, job, storage.InventoryIssue{Path: child, Reason: "ignored_name"}); err != nil {
 				return false, err
 			}
+			pruneParent = true
 			continue
 		}
 		if v.Directory {
 			if discs := naming.DiscLayout(filepath.ToSlash(child)); len(discs) > 0 {
+				pruneParent = true
 				// A title-bearing disc root belongs to the folder that holds
 				// BDMV or VIDEO_TS. The scan loop publishes that folder as one
 				// object after this page, if the host can admit a directory
@@ -325,7 +334,29 @@ func (s *Service) commitInventoryPageTx(ctx context.Context, tx *sql.Tx, job str
 	state = "pending"
 	if page.Complete {
 		state = "done"
+		var cachedRevision string
+		switch err = tx.QueryRowContext(ctx, `SELECT revision FROM inventory_directory_cache WHERE source_id=? AND incarnation=? AND relative_path=?`, source.ID, source.Incarnation, relative).Scan(&cachedRevision); {
+		case err == nil && cachedRevision != "":
+			pruneParent = pruneParent || cachedRevision != page.DirectoryRevision
+		case err == nil || errors.Is(err, sql.ErrNoRows):
+			// A folder never listed before (its row, if any, was written by
+			// its parent's page) can hold stale children only if its own row
+			// went while they stayed, as when its folder was disabled and
+			// enabled again: cached children this run did not see.
+			var orphans bool
+			if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_directory_cache INDEXED BY inventory_directory_children WHERE source_id=? AND incarnation=? AND parent_path=? AND relative_path<>'.' AND seen_job<>?)`, source.ID, source.Incarnation, relative, job).Scan(&orphans); err != nil {
+				return false, err
+			}
+			pruneParent = pruneParent || orphans
+		default:
+			return false, err
+		}
 		if _, err = tx.ExecContext(ctx, `INSERT INTO inventory_directory_cache(source_id,incarnation,relative_path,parent_path,identity,revision,seen_job) VALUES(?,?,?,?,?,?,?) ON CONFLICT(source_id,incarnation,relative_path) DO UPDATE SET identity=excluded.identity,revision=excluded.revision,seen_job=excluded.seen_job`, source.ID, source.Incarnation, relative, filepath.Dir(relative), page.DirectoryIdentity, page.DirectoryRevision, job); err != nil {
+			return false, err
+		}
+	}
+	if pruneParent {
+		if err = MarkDirectoryPruneTx(ctx, tx, source.ID, source.Incarnation, relative, job); err != nil {
 			return false, err
 		}
 	}
@@ -1157,5 +1188,14 @@ func (s *Service) AdoptLegacyInventoryTx(ctx context.Context, tx *sql.Tx, source
 	if err == nil {
 		err = compactcatalog.FlushReadingPathSemanticTx(ctx, tx)
 	}
+	return err
+}
+
+// MarkDirectoryPruneTx asks the sidecar phase to look again at the cached
+// child folders of parent: it may hold children it no longer has. The key
+// starts its walk from the front for job.
+func MarkDirectoryPruneTx(ctx context.Context, tx *sql.Tx, source, incarnation, parent, job string) error {
+	_, err := tx.ExecContext(ctx, `INSERT INTO inventory_directory_prune(source_id,incarnation,parent_path,job_id) VALUES(?,?,?,?)
+ ON CONFLICT(source_id,incarnation,parent_path) DO UPDATE SET job_id=excluded.job_id,state='ready',cursor_parent_revision='',cursor_relative_path='',saw_protected=0`, source, incarnation, parent, job)
 	return err
 }

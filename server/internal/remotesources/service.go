@@ -90,6 +90,11 @@ type Service struct {
 	captureRecovery string
 	capturesActive  map[string]bool
 	captureGrowth   map[string]*diskGrowthReservation
+	// Listing-cache prune windows; only the Run goroutine touches them, and a
+	// restart begins again from the start, which is one bounded pass.
+	pruneListings    listingPruneCursor
+	pruneChecks      orphanPruneCursor
+	pruneScanCursors orphanPruneCursor
 }
 type activeRead struct {
 	cancel context.CancelFunc
@@ -733,12 +738,16 @@ func (s *Service) Run(ctx context.Context) {
 		s.recoverCaptureCharges(ctx)
 		// One bounded page per wake, resumable until every row has been checked.
 		s.reconcileSourceCachePage(ctx)
+		// A removed source's files become unavailable a bounded slice per wake.
+		removalPending, _ := s.markRemovedSourceAssets(ctx)
 		// Completed/failed old scan listings are disposable adapter cache; current
-		// pending cursors keep their snapshots regardless of wall-clock age.
-		_, _ = dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `DELETE FROM remote_listing_sessions WHERE created_at<? AND NOT EXISTS(SELECT 1 FROM jobs j WHERE (j.id=remote_listing_sessions.job_id OR EXISTS(SELECT 1 FROM remote_inventory_checks c WHERE c.check_job=remote_listing_sessions.job_id AND c.job_id=j.id)) AND j.status IN ('queued','running','paused'))`, time.Now().Add(-24*time.Hour).Unix())
-		_, _ = dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `DELETE FROM remote_inventory_checks WHERE NOT EXISTS(SELECT 1 FROM remote_listing_sessions l WHERE l.id=remote_inventory_checks.listing_id)`)
-		_, _ = dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `DELETE FROM remote_scan_cursors WHERE NOT EXISTS(SELECT 1 FROM remote_listing_sessions s WHERE s.id=remote_scan_cursors.listing_id)`)
-		if contactPending {
+		// pending cursors keep their snapshots regardless of wall-clock age. The
+		// prune advances bounded windows, so a remaining batch wakes promptly.
+		prunePending := s.pruneListingCache(ctx)
+		if removalPending {
+			return time.Millisecond
+		}
+		if contactPending || prunePending {
 			return time.Second
 		}
 		return 0

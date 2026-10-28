@@ -8,7 +8,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"regexp"
 	"strconv"
@@ -285,31 +284,11 @@ func (s *Service) RemoveDAV(ctx context.Context, actor, id, op string, generatio
 		return zero, mounts.ErrCommandConflict
 	}
 	// Root tombstones remain so an empty virtual folder can never become proof of
-	// deletion. Explicit source removal marks only its associated bytes unavailable.
-	// A prefix range on the path index (substr() read every asset): the paths
-	// under root/ sort between root/ and root followed by the byte after /.
-	rows, err := tx.Query(`SELECT id FROM catalog_assets WHERE path=? OR path>=? AND path<?`, source.RootPath, source.RootPath+string(filepath.Separator), source.RootPath+string(rune(filepath.Separator)+1))
-	if err != nil {
+	// deletion. Explicit source removal marks only its associated bytes
+	// unavailable; that walk is queued here, with the tombstone, and done in
+	// bounded slices by the background loop (markRemovedSourceAssets).
+	if _, err = tx.Exec(`INSERT INTO remote_source_removals(source_id,root) VALUES(?,?) ON CONFLICT(source_id) DO UPDATE SET root=excluded.root,after_path=''`, id, source.RootPath); err != nil {
 		return zero, err
-	}
-	unavailable := []int64{}
-	for rows.Next() {
-		var asset int64
-		if err = rows.Scan(&asset); err != nil {
-			rows.Close()
-			return zero, err
-		}
-		unavailable = append(unavailable, asset)
-	}
-	if err = rows.Err(); err != nil {
-		rows.Close()
-		return zero, err
-	}
-	rows.Close()
-	for _, asset := range unavailable {
-		if err = compactcatalog.SetAssetAvailableTx(ctx, tx, asset, false); err != nil {
-			return zero, err
-		}
 	}
 	source.State = "removed"
 	source.Generation++

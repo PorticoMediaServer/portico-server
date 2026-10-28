@@ -3307,6 +3307,24 @@ CREATE TABLE inventory_directory_cache(
  incarnation TEXT NOT NULL,relative_path TEXT NOT NULL,parent_path TEXT NOT NULL,
  parent_revision TEXT NOT NULL DEFAULT '',identity TEXT NOT NULL DEFAULT '',revision TEXT NOT NULL DEFAULT '',seen_job TEXT NOT NULL DEFAULT '',
  PRIMARY KEY(source_id,incarnation,relative_path)) STRICT;
+-- A folder whose cached child folders may be stale: listed again at a changed
+-- revision, or listed with a name skipped, or under a cached folder that was
+-- removed. The sidecar phase reads its children from the cursor, in bounded
+-- windows, and removes those the folder no longer holds. job_id is the run
+-- the cursor belongs to (a plain token, not a reference, so a deferred key
+-- outlives its run). saw_protected is sticky across windows: a key that met
+-- a protected child is deferred to the next run rather than dropped.
+CREATE TABLE inventory_directory_prune(
+ source_id TEXT NOT NULL REFERENCES library_sources(id) ON DELETE CASCADE,
+ incarnation TEXT NOT NULL,
+ parent_path TEXT NOT NULL,
+ job_id TEXT NOT NULL,
+ state TEXT NOT NULL DEFAULT 'ready' CHECK(state IN('ready','deferred')),
+ cursor_parent_revision TEXT NOT NULL DEFAULT '',
+ cursor_relative_path TEXT NOT NULL DEFAULT '',
+ saw_protected INTEGER NOT NULL DEFAULT 0 CHECK(saw_protected IN(0,1)),
+ PRIMARY KEY(source_id,incarnation,parent_path)) STRICT;
+CREATE INDEX inventory_directory_prune_due ON inventory_directory_prune(source_id,incarnation,state,job_id,parent_path);
 CREATE TABLE playback_route_failures(
  session_hash TEXT NOT NULL REFERENCES authorization_family_tokens(token_hash) ON DELETE CASCADE,
  asset_id TEXT NOT NULL,
@@ -3764,6 +3782,13 @@ CREATE TABLE remote_sources(
  range_support TEXT NOT NULL DEFAULT 'unknown',origin TEXT NOT NULL DEFAULT '',insecure INTEGER NOT NULL DEFAULT 0,
  credential_present INTEGER NOT NULL DEFAULT 0,mount_id TEXT NOT NULL DEFAULT '',removed INTEGER NOT NULL DEFAULT 0,
  webdav_leaf_count INTEGER CHECK(webdav_leaf_count BETWEEN 0 AND 32)) STRICT;
+-- A removed source's files are marked unavailable in the background, a
+-- bounded slice of its path range at a time from after_path. The source is
+-- tombstoned first, so its old grants already fail; the row goes at the end.
+CREATE TABLE remote_source_removals(
+ source_id TEXT PRIMARY KEY REFERENCES remote_sources(id) ON DELETE CASCADE,
+ root TEXT NOT NULL,
+ after_path TEXT NOT NULL DEFAULT '') STRICT;
 CREATE TABLE remote_source_webdav_tests(
  source_id TEXT NOT NULL REFERENCES remote_sources(id) ON DELETE CASCADE,
  source_generation TEXT NOT NULL CHECK(length(source_generation)>0),
@@ -3867,7 +3892,12 @@ CREATE TRIGGER remote_source_capture_charge_delete AFTER DELETE ON remote_source
  SELECT RAISE(ABORT,'capture quota missing or negative') WHERE (SELECT capture_bytes FROM remote_source_capture_quota WHERE source_id=OLD.source_id) IS NULL OR (SELECT capture_bytes FROM remote_source_capture_quota WHERE source_id=OLD.source_id)<0;
 END;
 CREATE TABLE remote_source_operations(operation_id TEXT PRIMARY KEY,actor TEXT NOT NULL,fingerprint TEXT NOT NULL,response TEXT NOT NULL,created_at INTEGER NOT NULL) STRICT;
-CREATE TABLE remote_listing_sessions(id TEXT PRIMARY KEY,job_id TEXT NOT NULL,source_id TEXT NOT NULL,generation TEXT NOT NULL,directory TEXT NOT NULL,ready INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL,UNIQUE(job_id,directory)) STRICT;
+-- inventory_source_id, incarnation and relative_path name the library folder,
+-- its incarnation and the directory under it that the listing's scan was for,
+-- so retention can find a folder's listings and probe its directory cache by
+-- key. They are '' when the listing's job is not a folder's scan.
+CREATE TABLE remote_listing_sessions(id TEXT PRIMARY KEY,job_id TEXT NOT NULL,source_id TEXT NOT NULL,generation TEXT NOT NULL,directory TEXT NOT NULL,ready INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL,
+ inventory_source_id TEXT NOT NULL DEFAULT '',incarnation TEXT NOT NULL DEFAULT '',relative_path TEXT NOT NULL DEFAULT '',UNIQUE(job_id,directory)) STRICT;
 CREATE TABLE remote_native_listings(listing_id TEXT PRIMARY KEY REFERENCES remote_listing_sessions(id) ON DELETE CASCADE,owner TEXT NOT NULL,state TEXT NOT NULL CHECK(state IN('running','complete','failed')),error_code TEXT NOT NULL DEFAULT '',entries INTEGER NOT NULL DEFAULT 0,bytes INTEGER NOT NULL DEFAULT 0,updated_at INTEGER NOT NULL) STRICT;
 CREATE TABLE remote_listing_progress(listing_id TEXT PRIMARY KEY REFERENCES remote_listing_sessions(id) ON DELETE CASCADE,token BLOB,mode TEXT NOT NULL,steps INTEGER NOT NULL DEFAULT 0,restarted INTEGER NOT NULL DEFAULT 0) STRICT;
 CREATE TABLE remote_listing_entries(listing_id TEXT NOT NULL REFERENCES remote_listing_sessions(id) ON DELETE CASCADE,name TEXT NOT NULL,snapshot TEXT NOT NULL,PRIMARY KEY(listing_id,name)) STRICT;
@@ -4896,6 +4926,7 @@ CREATE INDEX dvr_recordings_rule ON dvr_recordings(rule_id,start_ms,id);
 CREATE INDEX remote_inventory_check_job ON remote_inventory_checks(check_job);
 CREATE INDEX remote_listing_retention ON remote_listing_sessions(created_at);
 CREATE INDEX remote_listing_directory_history ON remote_listing_sessions(source_id,directory,ready,created_at DESC,id DESC);
+CREATE INDEX remote_listing_inventory ON remote_listing_sessions(inventory_source_id,created_at,id);
 CREATE INDEX live_logo_jobs_due ON live_logo_jobs(state,next_attempt_ms,source_id);
 CREATE INDEX profile_show_recent ON profile_show_activity(profile_id,last_activity DESC,show_id);
 CREATE INDEX progress_home_profile_recent
@@ -6621,6 +6652,19 @@ CREATE TABLE inventory_path_notices(
  source_id TEXT NOT NULL REFERENCES library_sources(id) ON DELETE CASCADE,
  relative_path TEXT NOT NULL, created_ms INTEGER NOT NULL,
  PRIMARY KEY(source_id,relative_path)) WITHOUT ROWID, STRICT;
+-- Where a library or folder removal has got to, so each short transaction
+-- resumes from its place instead of re-reading what earlier ones finished.
+-- target is a library id or a folder (source) id; the row goes when it ends.
+CREATE TABLE catalog_removal_progress(
+ kind TEXT NOT NULL CHECK(kind IN('library','folder')),
+ target TEXT NOT NULL,
+ phase INTEGER NOT NULL DEFAULT 0 CHECK(phase BETWEEN 0 AND 5),
+ entity_kind INTEGER NOT NULL DEFAULT 0,
+ entity_cursor INTEGER NOT NULL DEFAULT 0,
+ object_cursor TEXT NOT NULL DEFAULT '',
+ walk_removed INTEGER NOT NULL DEFAULT 0 CHECK(walk_removed IN(0,1)),
+ walk_kept INTEGER NOT NULL DEFAULT 0 CHECK(walk_kept IN(0,1)),
+ PRIMARY KEY(kind,target)) WITHOUT ROWID, STRICT;
 CREATE TABLE inventory_run_targets(
  job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE, relative_path TEXT NOT NULL,
  PRIMARY KEY(job_id,relative_path)) WITHOUT ROWID, STRICT;

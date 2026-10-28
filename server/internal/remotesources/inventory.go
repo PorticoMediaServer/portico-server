@@ -66,7 +66,11 @@ func (s *Service) ListPage(ctx context.Context, job, directory, after string) (s
 		err = s.db.QueryRowContext(ctx, `SELECT id FROM remote_listing_sessions WHERE job_id=? AND directory=?`, job, directory).Scan(&c.ID)
 		if errors.Is(err, sql.ErrNoRows) {
 			c.ID = identity.Token()
-			_, err = dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `INSERT INTO remote_listing_sessions(id,job_id,source_id,generation,directory,created_at) VALUES(?,?,?,?,?,?)`, c.ID, job, b.ID, generation, directory, time.Now().Unix())
+			// The library folder this scan (or its verification pass) is for,
+			// and the directory under it, go on the listing for retention.
+			_, err = dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `INSERT INTO remote_listing_sessions(id,job_id,source_id,generation,directory,created_at,inventory_source_id,incarnation,relative_path)
+ SELECT ?1,?2,?3,?4,?5,?6,COALESCE(r.source_id,''),COALESCE(r.root_incarnation,''),CASE WHEN f.root IS NULL THEN '' WHEN ?5=f.root THEN '.' WHEN substr(?5,1,length(f.root)+1)=f.root||?7 THEN substr(?5,length(f.root)+2) ELSE '' END
+ FROM (SELECT 1) LEFT JOIN inventory_runs r ON r.job_id=COALESCE((SELECT c.job_id FROM remote_inventory_checks c WHERE c.check_job=?2),?2) LEFT JOIN library_sources f ON f.id=r.source_id`, c.ID, job, b.ID, generation, directory, time.Now().Unix(), string(filepath.Separator))
 		}
 		if err != nil {
 			return storage.RemotePage{}, err

@@ -33,6 +33,9 @@ type Job struct {
 	Jobs      []string `json:"jobs,omitempty"`
 }
 type Service struct {
+	// remoteListings is where remote listing retention has got to per folder.
+	remoteListings remoteListingCursors
+
 	// The episode stage publishes artwork on this same durable inventory job.
 	EpisodeThumbnails func(context.Context, string, string, string, string, int64) (bool, string, error)
 
@@ -507,13 +510,13 @@ func (s *Service) process(ctx context.Context, id, library string) {
 // scanPosition is where a run durably stands: its phase and cursors, its
 // counters, and the head of its pending directory and analysis queues.
 type scanPosition struct {
-	status, phase, verify, reconcile, directory, cursor, object, sidecar string
-	processed, analyzed, warnings                                        int64
+	status, phase, verify, reconcile, directory, cursor, object, sidecar, prune string
+	processed, analyzed, warnings                                               int64
 }
 
 func (s *Service) scanPosition(ctx context.Context, id string) (scanPosition, error) {
 	var p scanPosition
-	err := s.db.QueryRowContext(ctx, `SELECT j.status,r.phase,r.verify_cursor,r.reconcile_cursor,j.processed,r.analyzed,r.warnings,COALESCE((SELECT d.relative_path FROM inventory_directories d WHERE d.job_id=r.job_id AND d.state='pending' ORDER BY d.relative_path LIMIT 1),''),COALESCE((SELECT d.cursor FROM inventory_directories d WHERE d.job_id=r.job_id AND d.state='pending' ORDER BY d.relative_path LIMIT 1),''),COALESCE((SELECT q.object_id FROM inventory_analysis_queue q WHERE q.job_id=r.job_id AND q.state='pending' ORDER BY q.object_id LIMIT 1),''),COALESCE((SELECT c.relative_path||':'||c.cursor FROM inventory_sidecar_changes c WHERE c.job_id=r.job_id ORDER BY c.relative_path LIMIT 1),'') FROM inventory_runs r JOIN jobs j ON j.id=r.job_id WHERE r.job_id=?`, id).Scan(&p.status, &p.phase, &p.verify, &p.reconcile, &p.processed, &p.analyzed, &p.warnings, &p.directory, &p.cursor, &p.object, &p.sidecar)
+	err := s.db.QueryRowContext(ctx, `SELECT j.status,r.phase,r.verify_cursor,r.reconcile_cursor,j.processed,r.analyzed,r.warnings,COALESCE((SELECT d.relative_path FROM inventory_directories d WHERE d.job_id=r.job_id AND d.state='pending' ORDER BY d.relative_path LIMIT 1),''),COALESCE((SELECT d.cursor FROM inventory_directories d WHERE d.job_id=r.job_id AND d.state='pending' ORDER BY d.relative_path LIMIT 1),''),COALESCE((SELECT q.object_id FROM inventory_analysis_queue q WHERE q.job_id=r.job_id AND q.state='pending' ORDER BY q.object_id LIMIT 1),''),COALESCE((SELECT c.relative_path||':'||c.cursor FROM inventory_sidecar_changes c WHERE c.job_id=r.job_id ORDER BY c.relative_path LIMIT 1),''),COALESCE((SELECT k.job_id||':'||k.parent_path||':'||k.cursor_parent_revision||':'||k.cursor_relative_path FROM inventory_directory_prune k INDEXED BY inventory_directory_prune_due WHERE k.source_id=r.source_id AND k.incarnation=r.root_incarnation AND k.state='ready' ORDER BY k.job_id,k.parent_path LIMIT 1),'') FROM inventory_runs r JOIN jobs j ON j.id=r.job_id WHERE r.job_id=?`, id).Scan(&p.status, &p.phase, &p.verify, &p.reconcile, &p.processed, &p.analyzed, &p.warnings, &p.directory, &p.cursor, &p.object, &p.sidecar, &p.prune)
 	return p, err
 }
 

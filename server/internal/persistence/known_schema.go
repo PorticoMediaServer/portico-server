@@ -375,6 +375,7 @@ index inventory_changes_source
 index inventory_directories_pending
 index inventory_directories_visited
 index inventory_directory_children
+index inventory_directory_prune_due
 index inventory_disc_facts_asset
 index inventory_disc_title_requests_object_id_title_key_fk
 index inventory_integrity_runs
@@ -659,6 +660,7 @@ index rec_profile_signals_recent
 index rec_profile_signals_work
 index remote_inventory_check_job
 index remote_listing_directory_history
+index remote_listing_inventory
 index remote_listing_retention
 index remote_source_cache_lru
 index remote_source_captures_pending
@@ -939,6 +941,7 @@ table catalog_rec_member_work
 table catalog_rec_postings
 table catalog_related_facets
 table catalog_related_facets_previous
+table catalog_removal_progress
 table catalog_removed_title_revisions
 table catalog_retention_cursors
 table catalog_search_documents
@@ -1105,6 +1108,7 @@ table inventory_artwork_sources
 table inventory_changes
 table inventory_directories
 table inventory_directory_cache
+table inventory_directory_prune
 table inventory_disc_chapters
 table inventory_disc_clips
 table inventory_disc_facts
@@ -1507,6 +1511,7 @@ table remote_source_choice_refs
 table remote_source_contacts
 table remote_source_operations
 table remote_source_read_profiles
+table remote_source_removals
 table remote_source_settings
 table remote_source_webdav_tests
 table remote_sources

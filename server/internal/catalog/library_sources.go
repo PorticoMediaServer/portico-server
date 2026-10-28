@@ -541,6 +541,9 @@ func (s *Service) RemoveSource(ctx context.Context, library, id string, expected
 	if _, err = tx.ExecContext(ctx, `UPDATE library_sources SET enabled=0,health='removing',generation=generation+1,next_scan_at='' WHERE id=?`, id); err != nil {
 		return err
 	}
+	if err = clearRemovalProgressTx(ctx, tx, "folder", id); err != nil {
+		return err
+	}
 	if enqueue != nil {
 		if err = enqueue(ctx, tx, folderRemovalKind, id); err != nil {
 			return err

@@ -101,7 +101,7 @@ func TestManagedListingRetentionKeepsOneCurrentSnapshotAndLiveWork(t *testing.T)
 		id, job, generation string
 		stamp               int64
 	}{{"old-list", "remote-old", "old-generation", stamp}, {"latest-list", "retained-summary", "new-generation", stamp + 1}, {"live-list", "paused-job", "new-generation", stamp + 2}} {
-		f.exec(`INSERT INTO remote_listing_sessions(id,job_id,source_id,generation,directory,ready,created_at) VALUES(?,?, 'adapter',?,?,1,?)`, v.id, v.job, v.generation, f.root, v.stamp)
+		f.exec(`INSERT INTO remote_listing_sessions(id,job_id,source_id,generation,directory,ready,created_at,inventory_source_id,incarnation,relative_path) SELECT ?,?,'adapter',?,?,1,?,id,incarnation,'.' FROM library_sources WHERE id=?`, v.id, v.job, v.generation, f.root, v.stamp, f.source)
 	}
 	f.exec(`INSERT INTO jobs(id,library_id,status,created_at) VALUES('paused-job',?,'paused',?)`, f.library, old)
 	f.exec(`WITH RECURSIVE n(x) AS(SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<600) INSERT INTO remote_listing_entries(listing_id,name,snapshot) SELECT 'old-list','entry-'||x,'{}' FROM n`)

@@ -31,8 +31,20 @@ func (s *Service) PruneSource(ctx context.Context, source string) (bool, error) 
 			return true, gated.Commit()
 		}
 	}
-	for _, table := range []string{"inventory_directory_cache", "inventory_sidecars"} {
-		result, e := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE rowid IN(SELECT c.rowid FROM `+table+` c JOIN library_sources s ON s.id=c.source_id WHERE c.source_id=? AND (c.incarnation<>s.incarnation OR s.enabled=0) LIMIT ?)`, source, scanRetentionBatch)
+	// Rows of an earlier incarnation, or of a disabled folder, go. The
+	// current incarnation is skipped by key, so a folder with nothing to
+	// retire costs two index seeks rather than a read of its whole cache.
+	var enabled bool
+	var incarnation string
+	if err = tx.QueryRowContext(ctx, `SELECT enabled,incarnation FROM library_sources WHERE id=?`, source).Scan(&enabled, &incarnation); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return false, err
+	}
+	retired := `c.source_id=?1 AND (c.incarnation<?2 OR c.incarnation>?2)`
+	if !enabled {
+		retired = `c.source_id=?1`
+	}
+	for _, table := range []string{"inventory_directory_cache", "inventory_sidecars", "inventory_directory_prune"} {
+		result, e := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE rowid IN(SELECT c.rowid FROM `+table+` c WHERE `+retired+` LIMIT ?3)`, source, incarnation, scanRetentionBatch)
 		if e != nil {
 			return false, e
 		}
@@ -40,13 +52,7 @@ func (s *Service) PruneSource(ctx context.Context, source string) (bool, error) 
 			return true, gated.Commit()
 		}
 	}
-	if more, e := pruneRemoteInventoryTx(ctx, tx, source, cutoff); more || e != nil {
-		if e != nil {
-			return false, e
-		}
-		return true, gated.Commit()
-	}
-	if more, e := s.pruneOrphanRemoteInventory(ctx, tx, source); more || e != nil {
+	if more, e := s.pruneRemoteListingsTx(ctx, tx, source, cutoff); more || e != nil {
 		if e != nil {
 			return false, e
 		}

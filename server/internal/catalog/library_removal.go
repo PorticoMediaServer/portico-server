@@ -67,6 +67,7 @@ func (s *Service) RemoveLibrary(ctx context.Context, id, name string, expected i
 			`UPDATE library_sources SET enabled=0,health='removing',generation=generation+1,next_scan_at='' WHERE library_id=?`,
 			`UPDATE library_revisions SET revision=revision+1 WHERE library_id=?`,
 			`UPDATE library_configuration SET revision=revision+1 WHERE library_id=?`,
+			`DELETE FROM catalog_removal_progress WHERE kind='library' AND target=?`,
 		} {
 			if _, err := tx.ExecContext(ctx, q, id); err != nil {
 				return err
@@ -130,25 +131,64 @@ func (s *Service) removalStep(ctx context.Context, batch func(*sql.Tx) (bool, er
 	return out, nil
 }
 
+// removalProgress is where one removal has got to (catalog_removal_progress).
+type removalProgress struct {
+	kind, target string
+	phase        int
+	entityKind   int
+	entityCursor int64
+	objectCursor string
+	walkRemoved  bool
+	walkKept     bool
+}
+
+func loadRemovalProgressTx(ctx context.Context, tx *sql.Tx, kind, target string) (removalProgress, error) {
+	p := removalProgress{kind: kind, target: target}
+	err := tx.QueryRowContext(ctx, `SELECT phase,entity_kind,entity_cursor,object_cursor,walk_removed,walk_kept FROM catalog_removal_progress WHERE kind=? AND target=?`, kind, target).Scan(&p.phase, &p.entityKind, &p.entityCursor, &p.objectCursor, &p.walkRemoved, &p.walkKept)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = nil
+	}
+	return p, err
+}
+
+func (p removalProgress) saveTx(ctx context.Context, tx *sql.Tx) error {
+	_, err := tx.ExecContext(ctx, `INSERT INTO catalog_removal_progress(kind,target,phase,entity_kind,entity_cursor,object_cursor,walk_removed,walk_kept) VALUES(?,?,?,?,?,?,?,?)
+ ON CONFLICT(kind,target) DO UPDATE SET phase=excluded.phase,entity_kind=excluded.entity_kind,entity_cursor=excluded.entity_cursor,object_cursor=excluded.object_cursor,walk_removed=excluded.walk_removed,walk_kept=excluded.walk_kept`,
+		p.kind, p.target, p.phase, p.entityKind, p.entityCursor, p.objectCursor, p.walkRemoved, p.walkKept)
+	return err
+}
+
+func clearRemovalProgressTx(ctx context.Context, tx *sql.Tx, kind, target string) error {
+	_, err := tx.ExecContext(ctx, `DELETE FROM catalog_removal_progress WHERE kind=? AND target=?`, kind, target)
+	return err
+}
+
 // removeFolderBatchTx marks a few more of a removed folder's files missing.
-// A folder that was added back in the meantime is left alone.
+// A folder that was added back in the meantime is left alone. It walks the
+// folder's files once, in id order from a saved place: a file already missing
+// stays at the front of the index, so starting from the front each time
+// would read every finished file again.
 func removeFolderBatchTx(ctx context.Context, tx *sql.Tx, source string) (bool, error) {
 	var enabled bool
 	if err := tx.QueryRowContext(ctx, `SELECT enabled FROM library_sources WHERE id=?`, source).Scan(&enabled); err != nil {
 		return false, err
 	}
 	if enabled {
-		return true, nil
+		return true, clearRemovalProgressTx(ctx, tx, "folder", source)
 	}
-	type file struct{ object, token string }
-	rows, err := tx.QueryContext(ctx, `SELECT id,asset_id FROM inventory_objects INDEXED BY inventory_objects_source WHERE source_id=? AND retired=0 AND state<>'missing' ORDER BY id LIMIT ?`, source, removalBatch*4)
+	progress, err := loadRemovalProgressTx(ctx, tx, "folder", source)
+	if err != nil {
+		return false, err
+	}
+	type file struct{ object, token, state string }
+	rows, err := tx.QueryContext(ctx, `SELECT id,asset_id,state FROM inventory_objects INDEXED BY inventory_objects_source WHERE source_id=? AND retired=0 AND id>? ORDER BY id LIMIT ?`, source, progress.objectCursor, removalBatch*4)
 	if err != nil {
 		return false, err
 	}
 	var files []file
 	for rows.Next() {
 		var f file
-		if err = rows.Scan(&f.object, &f.token); err != nil {
+		if err = rows.Scan(&f.object, &f.token, &f.state); err != nil {
 			rows.Close()
 			return false, err
 		}
@@ -161,6 +201,9 @@ func removeFolderBatchTx(ctx context.Context, tx *sql.Tx, source string) (bool, 
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	for _, f := range files {
+		if f.state == "missing" {
+			continue
+		}
 		if _, err = tx.ExecContext(ctx, `UPDATE inventory_objects SET state='missing',missing_since=CASE WHEN missing_since='' THEN ? ELSE missing_since END WHERE id=?`, now, f.object); err != nil {
 			return false, err
 		}
@@ -182,12 +225,33 @@ func removeFolderBatchTx(ctx context.Context, tx *sql.Tx, source string) (bool, 
 			return false, err
 		}
 	}
-	return len(files) < removalBatch*4, nil
+	if len(files) < removalBatch*4 {
+		return true, clearRemovalProgressTx(ctx, tx, "folder", source)
+	}
+	progress.objectCursor = files[len(files)-1].object
+	return false, progress.saveTx(ctx, tx)
 }
 
+// The phases of taking a library apart, in order. Each is saved as it
+// finishes, so a batch never re-reads a phase that is done.
+const (
+	removalTitles = iota
+	removalFiles
+	removalBookkeeping
+	removalContainers
+	removalProjections
+	removalLibrary
+)
+
+// containerKindOrder is the order containers are taken apart in: seasons,
+// albums, books and collections before the shows, artists and authors that
+// hold them; then every other kind. A container that cannot go yet is tried
+// again on a later walk once something under it has gone.
+var containerKindOrder = []int{3, 6, 8, 10, 2, 5}
+
 // removeLibraryBatchTx does the next small piece of taking a library apart
-// and reports whether nothing is left to do. Each call finds its place from
-// what still exists, so a restart carries on where it stopped.
+// and reports whether nothing is left to do. Its place is saved with each
+// piece, so a restart carries on where it stopped.
 func removeLibraryBatchTx(ctx context.Context, tx *sql.Tx, library string) (bool, error) {
 	var handle int64
 	var retired bool
@@ -197,9 +261,46 @@ func removeLibraryBatchTx(ctx context.Context, tx *sql.Tx, library string) (bool
 	if !retired {
 		return true, nil
 	}
-	// 1. Everything that plays. Removing a title keeps each profile's state and
-	//    takes its emptied show, season, album or book with it.
-	titles, err := scanInt64s(tx.QueryContext(ctx, `SELECT e.id FROM catalog_entities e INDEXED BY catalog_entities_library JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1 WHERE e.library_id=? ORDER BY e.kind,e.id LIMIT ?`, handle, removalBatch))
+	progress, err := loadRemovalProgressTx(ctx, tx, "library", library)
+	if err != nil {
+		return false, err
+	}
+	for {
+		var more bool
+		switch progress.phase {
+		case removalTitles:
+			more, err = removeLibraryTitlesTx(ctx, tx, handle)
+		case removalFiles:
+			more, err = removeLibraryFilesTx(ctx, tx, library)
+		case removalBookkeeping:
+			more, err = removeLibraryBookkeepingTx(ctx, tx, library)
+		case removalContainers:
+			more, err = removeLibraryContainersTx(ctx, tx, handle, &progress)
+		case removalProjections:
+			var clear bool
+			clear, err = compactcatalog.ClearLibraryTx(ctx, tx, library, 64)
+			more = !clear
+		default:
+			return true, removeLibraryRowTx(ctx, tx, library)
+		}
+		if err != nil {
+			return false, err
+		}
+		if more {
+			return false, progress.saveTx(ctx, tx)
+		}
+		// A finished phase costs one indexed probe; the next phase starts in
+		// this same transaction only when the finished one did no work.
+		progress = removalProgress{kind: progress.kind, target: progress.target, phase: progress.phase + 1}
+	}
+}
+
+// 1. Everything that plays. Removing a title keeps each profile's state and
+// takes its emptied show, season, album or book with it. Each playable kind
+// is sought on its own, so the books and comics of a reading library, which
+// do not play, are never read here.
+func removeLibraryTitlesTx(ctx context.Context, tx *sql.Tx, handle int64) (bool, error) {
+	titles, err := scanInt64s(tx.QueryContext(ctx, `SELECT e.id FROM catalog_kinds k CROSS JOIN catalog_entities e INDEXED BY catalog_entities_library ON e.library_id=? AND e.kind=k.id WHERE k.playable=1 ORDER BY k.id,e.id LIMIT ?`, handle, removalBatch))
 	if err != nil {
 		return false, err
 	}
@@ -208,28 +309,39 @@ func removeLibraryBatchTx(ctx context.Context, tx *sql.Tx, library string) (bool
 			return false, err
 		}
 	}
-	if len(titles) > 0 {
-		return false, nil
-	}
-	// 2. Scan records for files that never became titles.
-	type file struct{ object, token string }
-	rows, err := tx.QueryContext(ctx, `SELECT o.id,o.asset_id FROM library_sources s CROSS JOIN inventory_objects o INDEXED BY inventory_objects_source ON o.source_id=s.id WHERE s.library_id=? ORDER BY o.id LIMIT ?`, library, removalBatch*4)
+	return len(titles) > 0, nil
+}
+
+// 2. Scan records for files that never became titles, one folder at a time.
+// Each batch deletes what it read, so the front of the index is always new.
+func removeLibraryFilesTx(ctx context.Context, tx *sql.Tx, library string) (bool, error) {
+	sources, err := librarySourceIDsTx(ctx, tx, library)
 	if err != nil {
 		return false, err
 	}
+	type file struct{ object, token string }
 	var files []file
-	for rows.Next() {
-		var f file
-		if err = rows.Scan(&f.object, &f.token); err != nil {
-			rows.Close()
+	for _, source := range sources {
+		rows, err := tx.QueryContext(ctx, `SELECT id,asset_id FROM inventory_objects INDEXED BY inventory_objects_source WHERE source_id=? ORDER BY retired,id LIMIT ?`, source, removalBatch*4-len(files))
+		if err != nil {
 			return false, err
 		}
-		files = append(files, f)
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		return false, err
+		for rows.Next() {
+			var f file
+			if err = rows.Scan(&f.object, &f.token); err != nil {
+				rows.Close()
+				return false, err
+			}
+			files = append(files, f)
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return false, err
+		}
+		if len(files) == removalBatch*4 {
+			break
+		}
 	}
 	for _, f := range files {
 		if _, err = tx.ExecContext(ctx, `DELETE FROM inventory_analysis_queue WHERE object_id=?`, f.object); err != nil {
@@ -252,10 +364,30 @@ func removeLibraryBatchTx(ctx context.Context, tx *sql.Tx, library string) (bool
 			}
 		}
 	}
-	if len(files) > 0 {
-		return false, nil
+	return len(files) > 0, nil
+}
+
+func librarySourceIDsTx(ctx context.Context, tx *sql.Tx, library string) ([]string, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM library_sources WHERE library_id=? ORDER BY id`, library)
+	if err != nil {
+		return nil, err
 	}
-	// 3. Scan bookkeeping, a bounded slice at a time.
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err = rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// 3. Scan bookkeeping, and every other row that hangs off the library or
+// its folders in numbers, a bounded slice at a time. What is left for the
+// last statements to delete, or to cascade, is a handful of rows.
+func removeLibraryBookkeepingTx(ctx context.Context, tx *sql.Tx, library string) (bool, error) {
 	for _, q := range []string{
 		`DELETE FROM inventory_directories WHERE rowid IN(SELECT d.rowid FROM jobs j INDEXED BY jobs_library_directory CROSS JOIN inventory_directories d ON d.job_id=j.id WHERE j.library_id=?1 LIMIT 2000)`,
 		`DELETE FROM scan_queue WHERE rowid IN(SELECT q.rowid FROM jobs j INDEXED BY jobs_library_directory CROSS JOIN scan_queue q ON q.job_id=j.id WHERE j.library_id=?1 LIMIT 2000)`,
@@ -266,55 +398,138 @@ func removeLibraryBatchTx(ctx context.Context, tx *sql.Tx, library string) (bool
 			return false, e
 		}
 		if n, _ := res.RowsAffected(); n > 0 {
-			return false, nil
+			return true, nil
 		}
 	}
-	// 4. What is left of the catalogue: containers nobody plays from any more.
-	//    One that something still refers to stays behind, out of sight.
-	containers, err := scanInt64s(tx.QueryContext(ctx, `SELECT id FROM catalog_entities INDEXED BY catalog_entities_library WHERE library_id=? ORDER BY CASE kind WHEN 3 THEN 0 WHEN 6 THEN 1 WHEN 8 THEN 2 WHEN 10 THEN 3 WHEN 2 THEN 4 WHEN 5 THEN 5 ELSE 6 END,id LIMIT 400`, handle))
+	sources, err := librarySourceIDsTx(ctx, tx, library)
 	if err != nil {
 		return false, err
 	}
-	removed := 0
-	for _, id := range containers {
-		if _, err = tx.ExecContext(ctx, `SAVEPOINT library_container`); err != nil {
+	refs, err := bulkReferences(ctx, tx)
+	if err != nil {
+		return false, err
+	}
+	for _, ref := range refs {
+		ids := []any{library}
+		if ref.parent == "library_sources" {
+			ids = ids[:0]
+			for _, source := range sources {
+				ids = append(ids, source)
+			}
+		}
+		for _, id := range ids {
+			res, e := tx.ExecContext(ctx, `DELETE FROM "`+ref.table+`" WHERE `+ref.key+` IN(SELECT `+ref.keyColumns+` FROM "`+ref.table+`" WHERE "`+ref.column+`"=? LIMIT 2000)`, id)
+			if e != nil {
+				return false, e
+			}
+			if n, _ := res.RowsAffected(); n > 0 {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
+// 4. What is left of the catalogue: containers nobody plays from any more,
+// one kind at a time from a saved place. One that something still refers to
+// stays behind, out of sight. A walk that removed something and also had to
+// keep something is followed by another, since a show goes once its seasons
+// have and an artist once its albums have.
+func removeLibraryContainersTx(ctx context.Context, tx *sql.Tx, handle int64, progress *removalProgress) (bool, error) {
+	kinds, err := containerKinds(ctx, tx)
+	if err != nil {
+		return false, err
+	}
+	const containerBatch = 64
+	for progress.entityKind < len(kinds) {
+		containers, err := scanInt64s(tx.QueryContext(ctx, `SELECT id FROM catalog_entities INDEXED BY catalog_entities_library WHERE library_id=? AND kind=? AND id>? ORDER BY id LIMIT ?`, handle, kinds[progress.entityKind], progress.entityCursor, containerBatch))
+		if err != nil {
 			return false, err
 		}
-		e := forceRemoveContainerTx(ctx, tx, id)
+		for _, id := range containers {
+			removed, e := removeLibraryContainerTx(ctx, tx, id)
+			if e != nil {
+				return false, e
+			}
+			if removed {
+				progress.walkRemoved = true
+			} else {
+				progress.walkKept = true
+			}
+			progress.entityCursor = id
+		}
+		if len(containers) == containerBatch {
+			return true, nil
+		}
+		progress.entityKind++
+		progress.entityCursor = 0
+		if len(containers) > 0 {
+			return true, nil
+		}
+	}
+	if progress.walkRemoved && progress.walkKept {
+		*progress = removalProgress{kind: progress.kind, target: progress.target, phase: progress.phase}
+		return true, nil
+	}
+	return false, nil
+}
+
+func containerKinds(ctx context.Context, tx *sql.Tx) ([]int, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM catalog_kinds ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	kinds := append([]int(nil), containerKindOrder...)
+	first := map[int]bool{}
+	for _, kind := range containerKindOrder {
+		first[kind] = true
+	}
+	for rows.Next() {
+		var kind int
+		if err = rows.Scan(&kind); err != nil {
+			return nil, err
+		}
+		if !first[kind] {
+			kinds = append(kinds, kind)
+		}
+	}
+	return kinds, rows.Err()
+}
+
+// removeLibraryContainerTx removes one container and reports whether it went.
+func removeLibraryContainerTx(ctx context.Context, tx *sql.Tx, id int64) (bool, error) {
+	if _, err := tx.ExecContext(ctx, `SAVEPOINT library_container`); err != nil {
+		return false, err
+	}
+	e := forceRemoveContainerTx(ctx, tx, id)
+	if e != nil {
+		// Something outside the catalogue still names it: those references
+		// go with it, since nothing can reach the library any more.
+		if _, err := tx.ExecContext(ctx, `ROLLBACK TO library_container`); err != nil {
+			return false, err
+		}
+		if e = clearReferencesTx(ctx, tx, "catalog_entities", id); e == nil {
+			e = forceRemoveContainerTx(ctx, tx, id)
+		}
 		if e != nil {
-			// Something outside the catalogue still names it: those references
-			// go with it, since nothing can reach the library any more.
-			if _, err = tx.ExecContext(ctx, `ROLLBACK TO library_container`); err != nil {
+			if _, err := tx.ExecContext(ctx, `ROLLBACK TO library_container`); err != nil {
 				return false, err
 			}
-			if e = clearReferencesTx(ctx, tx, "catalog_entities", id); e == nil {
-				e = forceRemoveContainerTx(ctx, tx, id)
-			}
-			if e != nil {
-				if _, err = tx.ExecContext(ctx, `ROLLBACK TO library_container`); err != nil {
-					return false, err
-				}
-			}
-		}
-		if e == nil {
-			removed++
-		}
-		if _, err = tx.ExecContext(ctx, `RELEASE library_container`); err != nil {
-			return false, err
 		}
 	}
-	if removed > 0 {
-		// Another pass: a show goes once its seasons have, an artist once its albums have.
-		return false, nil
-	}
-	if clear, err := compactcatalog.ClearLibraryTx(ctx, tx, library, 64); err != nil {
+	if _, err := tx.ExecContext(ctx, `RELEASE library_container`); err != nil {
 		return false, err
-	} else if !clear {
-		return false, nil
 	}
-	// 5. The library itself. Its folders are freed for another library first,
-	//    so the rows that remain can never get in the way of adding it again.
+	return e == nil, nil
+}
+
+// 5. The library itself. Its folders are freed for another library first,
+// so the rows that remain can never get in the way of adding it again.
+func removeLibraryRowTx(ctx context.Context, tx *sql.Tx, library string) error {
 	for _, q := range []string{
+		`DELETE FROM catalog_removal_progress WHERE kind='folder' AND target IN(SELECT id FROM library_sources WHERE library_id=?1)`,
+		`DELETE FROM catalog_removal_progress WHERE kind='library' AND target=?1`,
 		`DELETE FROM inventory_operation_jobs WHERE job_id IN(SELECT id FROM jobs WHERE library_id=?1)`,
 		`DELETE FROM inventory_runs WHERE job_id IN(SELECT id FROM jobs WHERE library_id=?1)`,
 		`DELETE FROM jobs WHERE library_id=?1`,
@@ -328,26 +543,26 @@ func removeLibraryBatchTx(ctx context.Context, tx *sql.Tx, library string) (bool
 		`UPDATE libraries SET root='removed:'||id WHERE id=?1 AND root NOT LIKE 'removed:%'`,
 		`UPDATE catalog_libraries SET root='removed:'||library_id WHERE library_id=?1 AND root NOT LIKE 'removed:%'`,
 	} {
-		if _, err = tx.ExecContext(ctx, q, library); err != nil {
-			return false, err
+		if _, err := tx.ExecContext(ctx, q, library); err != nil {
+			return err
 		}
 	}
 	// Rows elsewhere that still name the library by either id, and that the
 	// steps above do not know about, go too; a removed library leaves no row.
-	if err = clearReferencesTx(ctx, tx, "libraries", library); err != nil {
-		return false, err
+	if err := clearReferencesTx(ctx, tx, "libraries", library); err != nil {
+		return err
 	}
 	var catalogHandle int64
-	if err = tx.QueryRowContext(ctx, `SELECT id FROM catalog_libraries WHERE library_id=?`, library).Scan(&catalogHandle); err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return false, err
+	if err := tx.QueryRowContext(ctx, `SELECT id FROM catalog_libraries WHERE library_id=?`, library).Scan(&catalogHandle); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
 	}
 	if catalogHandle != 0 {
-		if err = clearReferencesTx(ctx, tx, "catalog_libraries", catalogHandle); err != nil {
-			return false, err
+		if err := clearReferencesTx(ctx, tx, "catalog_libraries", catalogHandle); err != nil {
+			return err
 		}
 	}
-	if _, err = tx.ExecContext(ctx, `SAVEPOINT library_row`); err != nil {
-		return false, err
+	if _, err := tx.ExecContext(ctx, `SAVEPOINT library_row`); err != nil {
+		return err
 	}
 	gone := true
 	for _, q := range []string{
@@ -363,12 +578,12 @@ func removeLibraryBatchTx(ctx context.Context, tx *sql.Tx, library string) (bool
 		}
 	}
 	if !gone {
-		if _, err = tx.ExecContext(ctx, `ROLLBACK TO library_row`); err != nil {
-			return false, err
+		if _, err := tx.ExecContext(ctx, `ROLLBACK TO library_row`); err != nil {
+			return err
 		}
 	}
-	_, err = tx.ExecContext(ctx, `RELEASE library_row`)
-	return true, err
+	_, err := tx.ExecContext(ctx, `RELEASE library_row`)
+	return err
 }
 
 // referenceColumns lists, per parent table, every child (table, column) whose
@@ -405,6 +620,90 @@ func restrictingReferences(ctx context.Context, tx *sql.Tx, parent string) ([][2
 		referenceColumns.byParent = found
 	}
 	return referenceColumns.byParent[parent], nil
+}
+
+// bulkReference is a table whose rows name a library or one of its folders
+// and can be many: the removal empties it in bounded slices before the last
+// statements, which would otherwise delete or cascade over all of it at once.
+type bulkReference struct {
+	parent, table, column string
+	// key selects one slice: rowid, or the primary key of a WITHOUT ROWID table.
+	key, keyColumns string
+}
+
+var bulkReferenceList = struct {
+	sync.Mutex
+	refs []bulkReference
+	read bool
+}{}
+
+// bulkReferences lists every table that refers to libraries or library_sources
+// through a single-column foreign key that is not unique, that nothing else
+// refers to (so deleting its rows can neither fail nor cascade further), and
+// that is not one of the rows the removal takes apart in its own order. The
+// schema is fixed for the life of the process, so it is read once.
+func bulkReferences(ctx context.Context, tx *sql.Tx) ([]bulkReference, error) {
+	bulkReferenceList.Lock()
+	defer bulkReferenceList.Unlock()
+	if bulkReferenceList.read {
+		return bulkReferenceList.refs, nil
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT f."table",m.name,f."from",instr(upper(m.sql),'WITHOUT ROWID')>0 FROM sqlite_schema m JOIN pragma_foreign_key_list(m.name) f
+ WHERE m.type='table' AND f."table" IN('libraries','library_sources')
+ AND m.name NOT IN('catalog_libraries','jobs','library_sources','library_scan_policies','inventory_runs','inventory_source_active','inventory_objects')
+ AND NOT EXISTS(SELECT 1 FROM pragma_foreign_key_list(m.name) g WHERE g.id=f.id AND g.seq>0)
+ AND NOT EXISTS(SELECT 1 FROM sqlite_schema o JOIN pragma_foreign_key_list(o.name) r WHERE o.type='table' AND r."table"=m.name)
+ AND NOT EXISTS(SELECT 1 FROM pragma_table_info(m.name) c WHERE c.pk=1 AND c.name=f."from" AND (SELECT count(*) FROM pragma_table_info(m.name) WHERE pk>0)=1)
+ AND NOT EXISTS(SELECT 1 FROM pragma_index_list(m.name) i WHERE i."unique"=1 AND (SELECT count(*) FROM pragma_index_info(i.name))=1 AND (SELECT name FROM pragma_index_info(i.name))=f."from")
+ ORDER BY f."table",m.name,f."from"`)
+	if err != nil {
+		return nil, err
+	}
+	var refs []bulkReference
+	var withoutRowid []bool
+	for rows.Next() {
+		var ref bulkReference
+		var noRowid bool
+		if err = rows.Scan(&ref.parent, &ref.table, &ref.column, &noRowid); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		refs = append(refs, ref)
+		withoutRowid = append(withoutRowid, noRowid)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	for i := range refs {
+		refs[i].key, refs[i].keyColumns = "rowid", "rowid"
+		if !withoutRowid[i] {
+			continue
+		}
+		columns, err := tx.QueryContext(ctx, `SELECT name FROM pragma_table_info(?) WHERE pk>0 ORDER BY pk`, refs[i].table)
+		if err != nil {
+			return nil, err
+		}
+		var key []string
+		for columns.Next() {
+			var name string
+			if err = columns.Scan(&name); err != nil {
+				columns.Close()
+				return nil, err
+			}
+			key = append(key, `"`+name+`"`)
+		}
+		err = columns.Err()
+		columns.Close()
+		if err != nil {
+			return nil, err
+		}
+		refs[i].keyColumns = strings.Join(key, ",")
+		refs[i].key = "(" + refs[i].keyColumns + ")"
+	}
+	bulkReferenceList.refs, bulkReferenceList.read = refs, true
+	return refs, nil
 }
 
 // clearReferencesTx deletes the rows that still name one row of parent
