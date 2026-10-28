@@ -53,6 +53,14 @@ func certificateFixtureOn(t *testing.T, f *sqlFixture) (*sqlFixture, *Certificat
 	if e != nil {
 		t.Fatal(e)
 	}
+	// Existing certificate fixtures replace the ordinary transport per scenario.
+	// Keep their synthetic route replies on that same isolated fixture.
+	routeFixture := claimRoundTrip(func(r *http.Request) (*http.Response, error) {
+		return transport.client.Transport.RoundTrip(r)
+	})
+	transport.routeIPv4.Transport = routeFixture
+	transport.routeIPv6.Transport = routeFixture
+	t.Cleanup(transport.CloseIdleConnections)
 	m, e := NewCertificateManager(ctx, f.store, runner, transport, f.dir, CertificateOptions{})
 	if e != nil || m.bootError != "" {
 		t.Fatal("local certificate initialization", e)

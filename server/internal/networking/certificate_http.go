@@ -8,6 +8,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"net/netip"
 	"strings"
 	"time"
 )
@@ -97,6 +98,23 @@ func (t *HTTPTransport) certificateCall(ctx context.Context, v Intent, operation
 		return ErrInvalid
 	}
 	defer clear(raw)
+	client := t.client
+	if operation == "route" {
+		var publication struct {
+			Address string `json:"address"`
+		}
+		if json.Unmarshal(raw, &publication) != nil || publication.Address == "" || !validCertificateAddress(publication.Address) {
+			return ErrInvalid
+		}
+		address, e := netip.ParseAddr(publication.Address)
+		if e != nil {
+			return ErrInvalid
+		}
+		client = t.routeIPv6
+		if address.Is4() {
+			client = t.routeIPv4
+		}
+	}
 	callCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
 	req, e := http.NewRequestWithContext(callCtx, method, t.origin+path, bytes.NewReader(raw))
@@ -115,7 +133,7 @@ func (t *HTTPTransport) certificateCall(ctx context.Context, v Intent, operation
 	if e = checkClaimRequest(ctx); e != nil {
 		return e
 	}
-	response, e := t.client.Do(req)
+	response, e := client.Do(req)
 	if e != nil {
 		return ErrUnavailable
 	}

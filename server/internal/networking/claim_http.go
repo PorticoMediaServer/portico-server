@@ -28,6 +28,8 @@ type CredentialReader interface {
 type HTTPTransport struct {
 	origin      string
 	client      *http.Client
+	routeIPv4   *http.Client
+	routeIPv6   *http.Client
 	credentials CredentialReader
 }
 
@@ -39,9 +41,25 @@ func NewHTTPTransport(origin string, credentials CredentialReader) (*HTTPTranspo
 	if !validAudience(origin) || credentials == nil {
 		return nil, ErrInvalid
 	}
+	return &HTTPTransport{
+		origin: origin, credentials: credentials,
+		client: newClaimHTTPClient(""), routeIPv4: newClaimHTTPClient("tcp4"), routeIPv6: newClaimHTTPClient("tcp6"),
+	}, nil
+}
+
+func newClaimHTTPClient(network string) *http.Client {
+	dial := (&net.Dialer{Timeout: 4 * time.Second, KeepAlive: 30 * time.Second}).DialContext
+	if network != "" {
+		// A separate transport owns each route family so an idle connection from
+		// ordinary control traffic or the other family can never be reused.
+		baseDial := dial
+		dial = func(ctx context.Context, _ string, address string) (net.Conn, error) {
+			return baseDial(ctx, network, address)
+		}
+	}
 	rt := &http.Transport{
 		Proxy:                 nil,
-		DialContext:           (&net.Dialer{Timeout: 4 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+		DialContext:           dial,
 		TLSClientConfig:       &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: devHostedRoots},
 		TLSHandshakeTimeout:   4 * time.Second,
 		ResponseHeaderTimeout: 4 * time.Second,
@@ -50,12 +68,18 @@ func NewHTTPTransport(origin string, credentials CredentialReader) (*HTTPTranspo
 		MaxResponseHeaderBytes: claimHTTPBound,
 		DisableCompression:     true,
 	}
-	return &HTTPTransport{origin: origin, credentials: credentials, client: &http.Client{
+	return &http.Client{
 		Transport: rt, Timeout: 8 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}}, nil
+	}
 }
-func (t *HTTPTransport) CloseIdleConnections() { t.client.CloseIdleConnections() }
+func (t *HTTPTransport) CloseIdleConnections() {
+	for _, client := range []*http.Client{t.client, t.routeIPv4, t.routeIPv6} {
+		if client != nil {
+			client.CloseIdleConnections()
+		}
+	}
+}
 
 type proofEnvelope struct {
 	Payload   string `json:"payload"`
