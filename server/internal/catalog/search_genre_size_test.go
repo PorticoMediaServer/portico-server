@@ -88,7 +88,7 @@ func TestGenreMaintainedRepresentationPhysicalSize(t *testing.T) {
 	// 256 ordinary genres at the same four-membership/target coefficient gives
 	// 51,200 capped refs and 6,400 retained targets, independent of catalogue N.
 	projection := 8 * (total(one) - total(empty))
-	t.Logf("256-genre projection one basis=%d bytes (%.2f MiB), two=%.2f MiB; shared value-walk excluded and charged separately", projection, float64(projection)/(1<<20), 2*float64(projection)/(1<<20))
+	t.Logf("256-genre projection one basis=%d bytes (%.2f MiB), two=%.2f MiB; shared value-walk excluded and charged separately", projection, float64(projection)/(1<<20), 8*float64(total(two)-total(empty))/(1<<20))
 	if projection > 20<<20 {
 		t.Fatal("candidate projection exceeds root review threshold", projection)
 	}
