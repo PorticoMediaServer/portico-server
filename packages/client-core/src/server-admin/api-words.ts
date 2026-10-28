@@ -1,4 +1,4 @@
-import {routePath} from "../../../contracts/src/routes.ts";
+import {routePath} from "../../../contracts/src/route-paths.ts";
 /**
  * API keys, personal access tokens and webhooks in words, once for every client: what a key may
  * do, when it stops working, why it stopped, which events a webhook can be sent and how a

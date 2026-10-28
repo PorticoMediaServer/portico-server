@@ -1,4 +1,4 @@
-import {routePath} from "../../contracts/src/routes.ts";
+import {routePath} from "../../contracts/src/route-paths.ts";
 /**
  * Recommendation feedback (Recommendations plan P5): "Not interested" on a recommendation card and
  * "Reset recommendations" in Privacy.

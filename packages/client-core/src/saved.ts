@@ -1,7 +1,7 @@
 import {parseSavedReadingGroupCard, type SavedReadingGroupCard} from './reading-saved-group.ts';
 import {validateHomeEntry} from './home.ts';
-import type {RouteResponse} from "../../contracts/src/routes.ts";
-import {routePath, encodedRoutePath} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/route-paths.ts";
+import {routePath, encodedRoutePath} from "../../contracts/src/route-paths.ts";
 import {wireDurations} from './wire-units.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import {firstOfEach, keepReadable, noteSkipped, oneOfOr} from './tolerant.ts';

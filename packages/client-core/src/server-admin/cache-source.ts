@@ -1,5 +1,5 @@
 import {decodePostEmptyDataCacheResponse} from '../../../contracts/src/decoders.ts';
-import {routePath} from '../../../contracts/src/routes.ts';
+import {routePath} from '../../../contracts/src/route-paths.ts';
 export type CacheTransport = Readonly<{request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T>}>;
 
 type Snapshot = Readonly<{phase: 'ready' | 'busy' | 'scheduled' | 'uncertain'}>;

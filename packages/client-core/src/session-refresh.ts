@@ -1,5 +1,5 @@
-import type {RouteResponse} from "../../contracts/src/routes.ts";
-import {routePath} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/route-paths.ts";
+import {routePath} from "../../contracts/src/route-paths.ts";
 /**
  * Keeps a device-bound server sign-in alive (lane C, 939a746: 15-minute access tokens with a
  * rotating refresh credential, `POST /v1/auth/refresh`).

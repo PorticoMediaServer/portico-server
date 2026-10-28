@@ -1,4 +1,4 @@
-import {encodedRoutePath, routePath} from "../../contracts/src/routes.ts";
+import {encodedRoutePath, routePath} from "../../contracts/src/route-paths.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 /** Canonical person pages. The server owns person identity, credit membership, ordering and
  * paging; this module only rejects a payload that does not match what it asked for. */

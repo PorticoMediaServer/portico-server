@@ -1,4 +1,4 @@
-import {encodedRoutePath} from "../../../contracts/src/routes.ts";
+import {encodedRoutePath} from "../../../contracts/src/route-paths.ts";
 import {watchedWords} from './card-caption.ts';
 /**
  * The entry actions menu (card "⋯", long press, right-click), one model for every client (CON-24).

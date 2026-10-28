@@ -1,4 +1,4 @@
-import {encodedRoutePath} from '../../contracts/src/routes.ts';
+import {encodedRoutePath} from '../../contracts/src/route-paths.ts';
 import {parseLyricsView, type LyricsView, type LyricRevision} from './lyrics.ts';
 import type {RepairScope, RepairTarget} from './metadata-repair.ts';
 

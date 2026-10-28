@@ -1,8 +1,8 @@
 import {expectedRemoteSource,type ExpectedRemoteSource} from './remote-source-selection.ts';
 import {parseLibrarySummary} from './library-summary.ts';
 import type {LibrarySummary} from './library-summary.ts';
-import type {RouteResponse} from "../../contracts/src/routes.ts";
-import {encodedRoutePath, routePath} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/route-paths.ts";
+import {encodedRoutePath, routePath} from "../../contracts/src/route-paths.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import {firstOfEach,keepReadable,noteSkipped,oneOfOr} from './tolerant.ts';
 /** Owner-only library administration. Source paths stay in scoped memory; commands are never auto-replayed. */

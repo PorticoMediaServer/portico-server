@@ -1,5 +1,6 @@
 import {throwIfAborted} from './abort-lifetime.ts';
-import {routeBody,routePath,encodedRoutePath,type RouteRequest} from '../../contracts/src/routes.ts';
+import {routeBody} from '../../contracts/src/routes.ts';
+import {routePath, encodedRoutePath, type RouteRequest} from '../../contracts/src/route-paths.ts';
 import {CodedError,unreadableServerResponse} from './server-messages.ts';
 import {currentUTCTimestamp} from './local-session.ts';
 import {parseDirectSignIn,type DirectSignIn,type ProfileAPI,type ManagementCapabilities} from './profile-management.ts';

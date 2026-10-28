@@ -1,4 +1,4 @@
-import {encodedRoutePath, routePath} from "../../contracts/src/routes.ts";
+import {encodedRoutePath, routePath} from "../../contracts/src/route-paths.ts";
 import {wireDurations} from './wire-units.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 /** One listening policy for a proved account/profile/server/device lane.

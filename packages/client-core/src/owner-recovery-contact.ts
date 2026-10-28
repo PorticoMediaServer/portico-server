@@ -1,4 +1,4 @@
-import {routePath} from '../../contracts/src/routes.ts';
+import {routePath} from '../../contracts/src/route-paths.ts';
 import {RouteError, probeRoute, routeOrigin, routeJSON, serverPin, type RouteCrypto} from './route-identity.ts';
 import {parseServerSignIn} from './sign-in.ts';
 

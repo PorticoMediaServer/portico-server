@@ -1,6 +1,6 @@
 import {parseReportInterval,verifyReportInterval,reportQuery,type ReportContext,type ReportInterval} from './report-context.ts';
-import type {RouteResponse} from "../../contracts/src/routes.ts";
-import {routePath} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/route-paths.ts";
+import {routePath} from "../../contracts/src/route-paths.ts";
 import {wireDurations} from './wire-units.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import {firstOfEach, keepReadable, noteSkipped} from './tolerant.ts';

@@ -1,5 +1,6 @@
-import type {RouteResponse} from "../../contracts/src/routes.ts";
-import {encodedRoutePath, routePattern} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/route-paths.ts";
+import {routePattern} from "../../contracts/src/routes.ts";
+import {encodedRoutePath} from "../../contracts/src/route-paths.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import {keepReadable} from './tolerant.ts';
 /** Owner repairs are current-view CAS commands. A lost response is reconciled, never replayed. */

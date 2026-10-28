@@ -1,6 +1,6 @@
-import {encodedRoutePath, routePath} from '../../contracts/src/routes.ts';
+import {encodedRoutePath, routePath} from '../../contracts/src/route-paths.ts';
 import {decodeGetAdminAccessMembersResponse, decodePostAdminAccessMembersBulkResponse} from '../../contracts/src/decoders.ts';
-import type {RouteResponse, RouteRequest} from '../../contracts/src/routes.ts';
+import type {RouteResponse, RouteRequest} from '../../contracts/src/route-paths.ts';
 import {parseAccessMember, parseLimitsDocument, type AccessMember, type AccessTier, type MemberLimits} from './server-administration.ts';
 import {randomId} from './random-id.ts';
 

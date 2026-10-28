@@ -1,7 +1,7 @@
 import {readLibraryChannels, readLibraryTemplates, type LibraryChannel, type LibraryChannelTemplate} from '../library-channels.ts';
 import type {ChannelApi} from '../channel-guide.ts';
 import {decodeGetAdminLibraryChannelsIdHealthResponse} from '../../../contracts/src/decoders.ts';
-import {encodedRoutePath} from '../../../contracts/src/routes.ts';
+import {encodedRoutePath} from '../../../contracts/src/route-paths.ts';
 import type {GetAdminLibraryChannelsIdHealthResponse} from '../../../contracts/src/types.ts';
 export type ChannelHealth = GetAdminLibraryChannelsIdHealthResponse['result'];
 export type LibraryChannelsSnapshot = Readonly<{phase:'idle'|'loading'|'ready'|'error'; channels?:readonly LibraryChannel[]; templates?:readonly LibraryChannelTemplate[]; templatesLoading:boolean; templatesError:boolean; selected?:LibraryChannel; health?:ChannelHealth; healthLoading:boolean; healthError:boolean}>;

@@ -1,4 +1,4 @@
-import {encodedRoutePath} from '../../../contracts/src/routes.ts';
+import {encodedRoutePath} from '../../../contracts/src/route-paths.ts';
 import {ConsoleClient, type FeedbackReport, type FeedbackStatus, type ConsoleAPI} from '../console.ts';
 import type {ReportTransport} from '../client-reports.ts';
 

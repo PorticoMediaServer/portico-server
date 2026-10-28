@@ -1,4 +1,4 @@
-import {routePath} from "../../../contracts/src/routes.ts";
+import {routePath} from "../../../contracts/src/route-paths.ts";
 /**
  * The one event feed (spec §15; style guide amendment 8; Public API ARCH-API-07): `/v1/events` as
  * SSE, with a long-poll fallback (`GET /v1/events?after=<id>&waitMs=25000` → `{events, nextAfter}`).

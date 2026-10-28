@@ -1,7 +1,7 @@
 import {routeBody} from "../../contracts/src/routes.ts";
 import {parseSourceChoiceApplicableFields,parseSourceChoiceBaseline,parseSourceChoiceDefinitions,sourceChoiceAccepted,sourceChoiceAdopt,sourceChoiceCommand,sourceChoicePutBody,type SourceChoiceAcceptance,type SourceChoiceBaseline,type SourceChoiceCommand,type SourceChoiceComparison,type SourceChoiceDefinition,type SourceChoiceField} from './remote-source-choice.ts';
-import type {RouteResponse} from "../../contracts/src/routes.ts";
-import {routePath, encodedRoutePath} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/route-paths.ts";
+import {routePath, encodedRoutePath} from "../../contracts/src/route-paths.ts";
 /** Owner-only source metadata and operation recovery. Credentials exist only in an
  * explicit in-flight request, never in snapshots, storage, URLs or retry queues. */
 import type {ContentScope,LibraryContentApi} from './library-content.ts';

@@ -1,7 +1,8 @@
 import {sameCastController,sameCastRemote,type CastControllerStamp,type CastRemoteIdentity} from './remote-identity.ts';
 import {castBinding,castContext,castScopeEqual,castProofKey,readCastProof,type CastControllerContext,type CastControllerBinding,type CastControllerProof} from './controller-proof.ts';
-import {encodedRoutePath,routeBody} from "../../../contracts/src/routes.ts";
-import {routePath} from "../../../contracts/src/routes.ts";
+import {routeBody} from "../../../contracts/src/routes.ts";
+import {encodedRoutePath} from "../../../contracts/src/route-paths.ts";
+import {routePath} from "../../../contracts/src/route-paths.ts";
 /**
  * The Portico Cast sender, one implementation for every platform. The platform finds a Cast
  * device and opens a session (web: the Chrome Cast SDK picker; Apple: `PorticoCast` over a

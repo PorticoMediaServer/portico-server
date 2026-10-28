@@ -1,9 +1,9 @@
 import {throwIfAborted} from './abort-lifetime.ts';
 import type {RouteResponse as HostedRouteResponse} from "../../contracts/src/hosted/routes.ts";
 import {routeBody} from "../../contracts/src/routes.ts";
-import type {RouteResponse} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/route-paths.ts";
 import {routePath as hostedRoutePath, encodedRoutePath as hostedEncodedRoutePath} from "../../contracts/src/hosted/routes.ts";
-import {routePath} from "../../contracts/src/routes.ts";
+import {routePath} from "../../contracts/src/route-paths.ts";
 import {hostedGate} from './hosted-gate.ts';
 import {ApiError,HttpLocalApi,type HostedServer,type LocalSession} from './index.ts';
 import {credentialLock,installationIdentity} from './installation.ts';

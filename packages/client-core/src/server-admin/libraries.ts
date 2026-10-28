@@ -1,5 +1,5 @@
 import {expectedRemoteSource} from '../remote-source-selection.ts';
-import {encodedRoutePath,routePath} from '../../../contracts/src/routes.ts';
+import {encodedRoutePath,routePath} from '../../../contracts/src/route-paths.ts';
 import {parseLibraryDocument,type LibraryAdminDocument,type LibrarySettings} from '../administration.ts';
 import {parseInventorySource,type InventorySource,type SourceSettings} from '../library-inventory.ts';
 import {durationIntent} from '../wire-units.ts';

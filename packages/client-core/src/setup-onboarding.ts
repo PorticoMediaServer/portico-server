@@ -1,5 +1,5 @@
 import {routeBody} from "../../contracts/src/routes.ts";
-import {routePath} from "../../contracts/src/routes.ts";
+import {routePath} from "../../contracts/src/route-paths.ts";
 import {randomId} from './random-id.ts';
 import {ApiError,HttpLocalApi,type LocalSession} from './index.ts';
 import {parseLocalSession} from './local-session.ts';

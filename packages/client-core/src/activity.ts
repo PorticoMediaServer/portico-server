@@ -1,4 +1,4 @@
-import {routePath, encodedRoutePath} from "../../contracts/src/routes.ts";
+import {routePath, encodedRoutePath} from "../../contracts/src/route-paths.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import {wireDurations} from './wire-units.ts';
 /** Owner Activity observations. No playback grants, credential storage, or automatic command replay. */

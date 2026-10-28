@@ -1,7 +1,7 @@
 import {routeBody} from "../../contracts/src/routes.ts";
 import {isStaleAnswer} from './freshness-actions.ts';
-import type {RouteResponse} from "../../contracts/src/routes.ts";
-import {routePath} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/route-paths.ts";
+import {routePath} from "../../contracts/src/route-paths.ts";
 import {wireDurations} from './wire-units.ts';
 /**
  * API keys, personal access tokens, outbound webhooks, and the two routes that

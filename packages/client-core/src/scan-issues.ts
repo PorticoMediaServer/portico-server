@@ -1,5 +1,5 @@
-import type {RouteResponse} from "../../contracts/src/routes.ts";
-import {encodedRoutePath} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/route-paths.ts";
+import {encodedRoutePath} from "../../contracts/src/route-paths.ts";
 /** Owner-only scan diagnostics. Paths stay scoped to this response and are not
  * added to viewer library status or persistent client caches. */
 export type ScanIssue=Readonly<{sequence:number;line:number;path:string;reason:string;category?:'damaged'|'unsupported'|'not-media';messageKey:string;warning:boolean}>;

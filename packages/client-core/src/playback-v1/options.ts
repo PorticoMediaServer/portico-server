@@ -1,4 +1,4 @@
-import {encodedRoutePath, routePath} from "../../../contracts/src/routes.ts";
+import {encodedRoutePath, routePath} from "../../../contracts/src/route-paths.ts";
 /**
  * Playback options (spec §4.1) and device capabilities (§3).
  *

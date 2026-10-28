@@ -1,4 +1,5 @@
-import {routePath, routeBody} from '../../../contracts/src/routes.ts';
+import {routeBody} from '../../../contracts/src/routes.ts';
+import {routePath} from '../../../contracts/src/route-paths.ts';
 import type {LibraryContentApi} from '../library-content.ts';
 
 export type RecordingRootStatus = Readonly<{revision: number; requested: string; effective: string; pendingRestart: boolean; operatorControlled: boolean}>;

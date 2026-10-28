@@ -1,4 +1,5 @@
-import {routePath, routePrefix} from '../../contracts/src/routes.ts';
+import {routePrefix} from '../../contracts/src/routes.ts';
+import {routePath} from '../../contracts/src/route-paths.ts';
 import {parseClaimStatus, type ClaimExpected, type ClaimStatus} from './claim-onboarding.ts';
 import type {HttpLocalApi} from './index.ts';
 import type {ServerPin} from './route-identity.ts';

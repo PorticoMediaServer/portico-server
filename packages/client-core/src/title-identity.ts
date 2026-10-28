@@ -1,6 +1,6 @@
 import {routeBody} from "../../contracts/src/routes.ts";
-import type {RouteResponse} from "../../contracts/src/routes.ts";
-import {routePath, encodedRoutePath} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/route-paths.ts";
+import {routePath, encodedRoutePath} from "../../contracts/src/route-paths.ts";
 /** Titles as things in their own right: titles whose files are gone from disk,
  * saying two titles are one, and removing a library. Owner only. These routes
  * are on the typed registry, so their answers are plain JSON (no envelope). */

@@ -1,6 +1,6 @@
 import {throwIfAborted} from '../abort-lifetime.ts';
 import {decodeGetAdminLibrariesIdSonicAnalysisResponse} from '../../../contracts/src/decoders.ts';
-import {encodedRoutePath} from '../../../contracts/src/routes.ts';
+import {encodedRoutePath} from '../../../contracts/src/route-paths.ts';
 import type {GetAdminLibrariesIdSonicAnalysisResponse} from '../../../contracts/src/types.ts';
 import type {LibraryContentApi} from '../library-content.ts';
 

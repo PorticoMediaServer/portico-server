@@ -1,7 +1,7 @@
 import {routePath as developmentRoutePath} from "../../contracts/src/development/routes.ts";
 import {routeBody} from "../../contracts/src/routes.ts";
-import type {RouteResponse} from "../../contracts/src/routes.ts";
-import {routePath, encodedRoutePath} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/route-paths.ts";
+import {routePath, encodedRoutePath} from "../../contracts/src/route-paths.ts";
 import {CodedError,unreadableServerResponse} from './server-messages.ts';
 import {parseLocalSession,currentUTCTimestamp} from './local-session.ts';
 import type {LocalSession} from './index.ts';

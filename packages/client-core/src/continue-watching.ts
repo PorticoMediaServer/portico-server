@@ -1,4 +1,4 @@
-import {encodedRoutePath} from "../../contracts/src/routes.ts";
+import {encodedRoutePath} from "../../contracts/src/route-paths.ts";
 /**
  * X-12: Remove from Continue Watching, on the server's own dismissal (api/home.md, "Continue
  * Watching dismissal"): `PUT /v1/items/{id}/personal-state {continueDismissed: true}` takes the

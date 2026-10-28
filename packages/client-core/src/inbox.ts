@@ -1,6 +1,6 @@
 import {routeBody} from "../../contracts/src/routes.ts";
-import type {RouteResponse} from "../../contracts/src/routes.ts";
-import {routePath} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/route-paths.ts";
+import {routePath} from "../../contracts/src/route-paths.ts";
 import {randomId} from './random-id.ts';
 /** The viewer's notification inbox and the feedback dialog, as framework-free services shared
  * by the web and Apple clients.

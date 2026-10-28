@@ -1,4 +1,4 @@
-import {routePath} from "../../../contracts/src/routes.ts";
+import {routePath} from "../../../contracts/src/route-paths.ts";
 /**
  * Shared guide adapter: current servers page globally ordered channel rows and
  * summarize sources without loading programmes; visible programme blocks name

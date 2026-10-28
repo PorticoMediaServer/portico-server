@@ -1,5 +1,5 @@
 import {parseInventorySource,type InventorySource} from './library-inventory.ts';
-import {encodedRoutePath} from "../../contracts/src/routes.ts";
+import {encodedRoutePath} from "../../contracts/src/route-paths.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import type {Alert} from './console.ts';
 import {firstOfEach,keepReadable,noteSkipped,oneOf,oneOfOr} from './tolerant.ts';

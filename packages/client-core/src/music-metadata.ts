@@ -1,8 +1,8 @@
 import type {MessageId, MessageValues} from '../../i18n/src/index.ts';
 import {serviceText} from './presentation/service-text.ts';
 import {routeBody} from "../../contracts/src/routes.ts";
-import type {RouteResponse} from "../../contracts/src/routes.ts";
-import {encodedRoutePath} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/route-paths.ts";
+import {encodedRoutePath} from "../../contracts/src/route-paths.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import {keepReadable,noteSkipped} from './tolerant.ts';
 /** Bounded music/local-book projections. No provider requests or client ranking. */

@@ -1,6 +1,6 @@
 import {parseDiscMediaFacts, type DiscMediaFacts} from './disc-media-facts.ts';
-import type {RouteResponse} from "../../contracts/src/routes.ts";
-import {encodedRoutePath} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/route-paths.ts";
+import {encodedRoutePath} from "../../contracts/src/route-paths.ts";
 import {wireDurations,wireDisplayDurations,durationIntent} from './wire-units.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import {parseLocalBook,parseLocalAudioPolicy,type LocalAudioPolicy,type LocalBookMetadata} from "./music-metadata.ts";

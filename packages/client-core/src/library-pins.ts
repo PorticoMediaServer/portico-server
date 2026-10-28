@@ -1,4 +1,4 @@
-import {routePath,encodedRoutePath} from '../../contracts/src/routes.ts';
+import {routePath,encodedRoutePath} from '../../contracts/src/route-paths.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import {firstOfEach,keepReadable} from './tolerant.ts';
 /** Pinned libraries and pinned-resource order. The arrangement is server state:

@@ -1,7 +1,8 @@
 import {parseSettingsConfiguration} from './settings-configuration.ts';
 import {canonicalQualityLadder,canonicalMusicQualityLadder} from '../../contracts/src/types.ts';
 import {reportQuery,verifyReportInterval,type ReportContext} from './report-context.ts';
-import {routePath, routePrefix, encodedRoutePath} from "../../contracts/src/routes.ts";
+import {routePrefix} from "../../contracts/src/routes.ts";
+import {routePath, encodedRoutePath} from "../../contracts/src/route-paths.ts";
 import {parseFFmpegValidation,type FFmpegValidation} from './storage-status.ts';
 import {wireInstants} from './wire-units.ts';
 /** Selected-server operations wire contract. No Hosted transport is accepted. */

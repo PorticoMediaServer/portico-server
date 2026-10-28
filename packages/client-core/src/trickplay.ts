@@ -1,4 +1,4 @@
-import {encodedRoutePath} from "../../contracts/src/routes.ts";
+import {encodedRoutePath} from "../../contracts/src/route-paths.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import {wireDurations} from './wire-units.ts';
 /** Trickplay set descriptors and their delivery URLs.

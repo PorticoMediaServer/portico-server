@@ -1,7 +1,7 @@
 import {parseMusicTechnicalFacts, type MusicTechnicalFacts} from './music-facts.ts';
 import {parseMusicBadges, type MusicFormatBadge} from './music-badges.ts';
-import type {RouteResponse} from "../../contracts/src/routes.ts";
-import {encodedRoutePath} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/route-paths.ts";
+import {encodedRoutePath} from "../../contracts/src/route-paths.ts";
 import {wireDurations,wireDisplayDurations} from './wire-units.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import {listeningData,parseBookProgress,type BookProgress,type ListeningViewerScope,parseListeningJourney,type ListeningJourney} from './listening.ts';

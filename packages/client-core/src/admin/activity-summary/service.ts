@@ -1,4 +1,4 @@
-import {routePath} from '../../../../contracts/src/routes.ts';
+import {routePath} from '../../../../contracts/src/route-paths.ts';
 import {utcOrderKey} from '../../local-session.ts';
 import {call} from '../../playback-v1/http.ts';
 import type {EventsClient} from '../../playback-v1/events.ts';

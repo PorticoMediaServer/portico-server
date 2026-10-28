@@ -1,10 +1,10 @@
 
 import type { RouteContracts } from './types.ts';
 
-export type RouteId = typeof routes[number]['id'];
-type RouteFor<I extends RouteId> = Extract<typeof routes[number], {readonly id: I}>;
+export type RouteId = keyof typeof routePaths;
+type RoutePattern<I extends RouteId> = typeof routePaths[I];
 type ParameterNames<P extends string> = P extends `${string}{${infer K}}${infer Rest}` ? K | ParameterNames<Rest> : never;
-export type RouteParameters<I extends RouteId> = { readonly [K in ParameterNames<RouteFor<I>['path']>]: string | number };
+export type RouteParameters<I extends RouteId> = { readonly [K in ParameterNames<RoutePattern<I>>]: string | number };
 export type RouteRequest<I extends RouteId> = RouteContracts[I]['request'];
 export type RouteResponse<I extends RouteId> = RouteContracts[I]['response'];
 declare const routeContract: unique symbol;
@@ -40,5 +40,5 @@ type WireInput<T> = T extends readonly unknown[] ? readonly WireInput<T[number]>
 export function routeBody<I extends RouteId>(_operation: I, body: Partial<WireInput<RouteRequest<I>>>): Partial<WireInput<RouteRequest<I>>> { return body; }
 
 export const apiRoot = '/v1/';
-export function routePattern<I extends RouteId>(id: I): RouteFor<I>['path'] {const route=byId.get(id);if(!route)throw new Error('Unknown API operation');return route as RouteFor<I>['path'];}
+export function routePattern<I extends RouteId>(id: I): RoutePattern<I> {const route=byId.get(id);if(!route)throw new Error('Unknown API operation');return route as RoutePattern<I>;}
 export function routePrefix<I extends RouteId>(id: I, segments: number): string {return routePattern(id).split('/').slice(0, segments + 1).join('/') + '/';}

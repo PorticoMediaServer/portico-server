@@ -1,5 +1,5 @@
 import {routeBody} from "../../../contracts/src/routes.ts";
-import {routePath} from "../../../contracts/src/routes.ts";
+import {routePath} from "../../../contracts/src/route-paths.ts";
 import type {ConsoleClient, RuntimeSettings, SettingsDocument} from '../console.ts';
 import {parseConnectivityStatus, parseLogSettings, type ConnectivityPolicy, type ConnectivityStatus, type LogSettings, type LogDetailMinutes} from '../server-administration.ts';
 import {parseDVRDocument, parseEnvelope, parseLiveDefaultsDocument, folderTemplateProblems, type DVRDefaults, type DVRDocument, type LiveDefaults} from '../administration.ts';

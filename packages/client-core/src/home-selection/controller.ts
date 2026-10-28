@@ -7,7 +7,7 @@ import {DetailService} from '../detail.ts';
 import {channelOperationId, saveChannelPreference} from '../channel-guide.ts';
 import {getContainerState, setContainerFlag, setContainerState, containerKinds, type ContainerKind} from '../container-state.ts';
 import {deletionAllowed, parseDeletePreview, parseDeleteResult} from '../administration.ts';
-import {routePath} from '../../../contracts/src/routes.ts';
+import {routePath} from '../../../contracts/src/route-paths.ts';
 import {validBulkEdit, validateBulkReceipt, type BulkEdit} from '../metadata-bulk.ts';
 import {fetchBulkMetadataPreview, metadataPreviewTargets, type BulkMetadataPreviewRequest} from './metadata-preview.ts';
 import {HomeSelectionDestinations} from './destinations.ts';

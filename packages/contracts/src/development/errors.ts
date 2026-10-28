@@ -13,6 +13,12 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "account_locked",
+    "status": 429,
+    "message": "The request could not be completed.",
+    "retry": "never"
+  },
+  {
     "code": "account_move_waiting",
     "status": 403,
     "message": "This account is waiting to move. Use its move link or code.",
@@ -46,6 +52,12 @@ export const errors = [
     "code": "artwork_pending",
     "status": 404,
     "message": "Artwork is not available yet.",
+    "retry": "same_request"
+  },
+  {
+    "code": "authentication_busy",
+    "status": 503,
+    "message": "The request could not be completed.",
     "retry": "same_request"
   },
   {
@@ -166,6 +178,12 @@ export const errors = [
     "code": "credential_unavailable",
     "status": 403,
     "message": "API keys and access tokens are not available for this sign-in.",
+    "retry": "never"
+  },
+  {
+    "code": "current_password_incorrect",
+    "status": 403,
+    "message": "The request could not be completed.",
     "retry": "never"
   },
   {
@@ -451,6 +469,12 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "metadata_conflict",
+    "status": 409,
+    "message": "Metadata changed. Reload and review your decision.",
+    "retry": "never"
+  },
+  {
     "code": "metadata_unavailable",
     "status": 503,
     "message": "Metadata is temporarily unavailable.",
@@ -517,6 +541,18 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "owner_reset_expired",
+    "status": 410,
+    "message": "This code has expired. Codes last 15 minutes. Write a new file to get another.",
+    "retry": "never"
+  },
+  {
+    "code": "owner_reset_file_unavailable",
+    "status": 503,
+    "message": "Portico could not write the reset file. Check that the server's data folder can be written to, then try again.",
+    "retry": "never"
+  },
+  {
     "code": "participant_incompatible",
     "status": 409,
     "message": "That member is not ready to host.",
@@ -526,6 +562,24 @@ export const errors = [
     "code": "password_change_required",
     "status": 403,
     "message": "Change your password before continuing.",
+    "retry": "never"
+  },
+  {
+    "code": "personal_needs_resolution",
+    "status": 409,
+    "message": "The request could not be completed.",
+    "retry": "never"
+  },
+  {
+    "code": "personal_needs_review",
+    "status": 409,
+    "message": "The request could not be completed.",
+    "retry": "never"
+  },
+  {
+    "code": "personal_state_conflict",
+    "status": 409,
+    "message": "The request could not be completed.",
     "retry": "never"
   },
   {
@@ -562,6 +616,12 @@ export const errors = [
     "code": "prepared_expired",
     "status": 410,
     "message": "The prepared next item expired.",
+    "retry": "never"
+  },
+  {
+    "code": "profile_changed",
+    "status": 409,
+    "message": "The request could not be completed.",
     "retry": "never"
   },
   {
@@ -604,6 +664,12 @@ export const errors = [
     "code": "receiver_required",
     "status": 403,
     "message": "Only the receiving device may do that.",
+    "retry": "never"
+  },
+  {
+    "code": "recording_root_request_expired",
+    "status": 410,
+    "message": "This request expired. Start again.",
     "retry": "never"
   },
   {
@@ -661,6 +727,12 @@ export const errors = [
     "retry": "after_refresh"
   },
   {
+    "code": "search_busy",
+    "status": 429,
+    "message": "Too many searches are already running. Try again in a moment.",
+    "retry": "same_request"
+  },
+  {
     "code": "seek_unavailable",
     "status": 409,
     "message": "That position isn't in the channel's buffer.",
@@ -697,9 +769,21 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "source_changed",
+    "status": 409,
+    "message": "The request could not be completed.",
+    "retry": "after_refresh"
+  },
+  {
     "code": "source_credentials_required",
     "status": 422,
     "message": "The provider refused these credentials. Enter them again.",
+    "retry": "never"
+  },
+  {
+    "code": "source_folders_unsupported",
+    "status": 422,
+    "message": "Folder browsing inside a mounted source is not available on this server.",
     "retry": "never"
   },
   {
@@ -727,9 +811,45 @@ export const errors = [
     "retry": "after_refresh"
   },
   {
+    "code": "storage_allocation_recovery_required",
+    "status": 409,
+    "message": "Review the storage configuration before trying again.",
+    "retry": "after_refresh"
+  },
+  {
+    "code": "storage_command_capacity",
+    "status": 429,
+    "message": "There are too many requests. Try again shortly.",
+    "retry": "same_request"
+  },
+  {
+    "code": "storage_command_conflict",
+    "status": 409,
+    "message": "This information changed. Refresh and try again.",
+    "retry": "after_refresh"
+  },
+  {
+    "code": "storage_executable_invalid",
+    "status": 400,
+    "message": "That isn't rclone. Choose the rclone program.",
+    "retry": "never"
+  },
+  {
+    "code": "storage_executable_too_old",
+    "status": 400,
+    "message": "This rclone is too old. Choose a newer rclone.",
+    "retry": "never"
+  },
+  {
     "code": "storage_full",
     "status": 409,
     "message": "There is not enough storage for this download.",
+    "retry": "never"
+  },
+  {
+    "code": "storage_operation_expired",
+    "status": 410,
+    "message": "This request expired. Start again.",
     "retry": "never"
   },
   {
@@ -847,9 +967,33 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "timeout",
+    "status": 503,
+    "message": "The operation timed out. Retry shortly.",
+    "retry": "same_request"
+  },
+  {
     "code": "transcode_not_allowed",
     "status": 403,
     "message": "This title needs converting, and converting is turned off for this account.",
+    "retry": "never"
+  },
+  {
+    "code": "two_factor_invalid",
+    "status": 403,
+    "message": "The request could not be completed.",
+    "retry": "never"
+  },
+  {
+    "code": "two_factor_missing",
+    "status": 409,
+    "message": "The request could not be completed.",
+    "retry": "never"
+  },
+  {
+    "code": "two_factor_required",
+    "status": 401,
+    "message": "Authentication is required.",
     "retry": "never"
   },
   {

@@ -2,8 +2,8 @@ import {canonicalQualityLadder} from '../../contracts/src/types.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import {decodeGetContainerDownloadOptionsResponse} from "../../contracts/src/decoders.ts";
 import {routeBody} from "../../contracts/src/routes.ts";
-import type {RouteResponse} from "../../contracts/src/routes.ts";
-import {routePath, encodedRoutePath} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/route-paths.ts";
+import {routePath, encodedRoutePath} from "../../contracts/src/route-paths.ts";
 import {randomId} from './random-id.ts';
 import {mergeRevalidatedList} from './freshness-actions.ts';
 /** The server side of downloads, as one framework-free service shared by web and Apple: what

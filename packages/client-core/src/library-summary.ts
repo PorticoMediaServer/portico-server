@@ -1,5 +1,5 @@
-import {routePath} from '../../contracts/src/routes.ts';
-import type {RouteResponse} from '../../contracts/src/routes.ts';
+import {routePath} from '../../contracts/src/route-paths.ts';
+import type {RouteResponse} from '../../contracts/src/route-paths.ts';
 import {noteSkipped} from './tolerant.ts';
 export type LibraryPublicationKind='book'|'magazine'|'newspaper';
 /** Explicitly classified, visible Reading titles; separate from the library's ebook total. */

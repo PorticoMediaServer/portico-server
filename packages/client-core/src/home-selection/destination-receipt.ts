@@ -1,4 +1,4 @@
-import {routePath} from '../../../contracts/src/routes.ts';
+import {routePath} from '../../../contracts/src/route-paths.ts';
 import {isJobTerminal, parseJob, type Job, type JobFailure} from '../bulk-jobs.ts';
 import type {HomeApi} from '../home.ts';
 import {validateContentEntry, type ContentEntry} from '../library-content.ts';

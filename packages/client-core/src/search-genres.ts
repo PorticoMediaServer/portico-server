@@ -1,5 +1,5 @@
 import {decodeGetSearchGenresResponse} from '../../contracts/src/decoders.ts';
-import {routePath, type RouteResponse} from '../../contracts/src/routes.ts';
+import {routePath, type RouteResponse} from '../../contracts/src/route-paths.ts';
 import type {BrowseRequestBody} from './browse.ts';
 import type {LibraryContentApi} from './library-content.ts';
 import {unreadableServerResponse} from './server-messages.ts';

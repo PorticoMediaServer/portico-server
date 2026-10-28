@@ -1,4 +1,4 @@
-import {routePath, encodedRoutePath} from "../../../contracts/src/routes.ts";
+import {routePath, encodedRoutePath} from "../../../contracts/src/route-paths.ts";
 import {decodeStartPlaybackSessionResponse} from '../../../contracts/src/decoders.ts';
 import type {StartPlaybackSessionResponse} from '../../../contracts/src/types.ts';
 /**

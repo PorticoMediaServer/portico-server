@@ -1,7 +1,7 @@
 import {throwIfAborted} from './abort-lifetime.ts';
 import {routeBody} from "../../contracts/src/routes.ts";
-import type {RouteResponse} from "../../contracts/src/routes.ts";
-import {routePath} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/route-paths.ts";
+import {routePath} from "../../contracts/src/route-paths.ts";
 import {parseBackupsDocument,parseEnvelope,type BackupsDocument,type RestoreSource,type RestoreStaged} from './administration.ts';
 
 /** Typed clients for the spec §4 backup routes (`Spec — Backups (Plex model).md`).

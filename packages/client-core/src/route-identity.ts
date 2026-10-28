@@ -1,4 +1,4 @@
-import {routePath} from "../../contracts/src/routes.ts";
+import {routePath} from "../../contracts/src/route-paths.ts";
 /** P09 connection evidence. None of these values grants a viewer or media lease. */
 export type ServerPin = Readonly<{serverId:string;publicKey:string;fingerprint:string}>;
 /** Verified route identity plus optional authorization of exact TLS leaf certificates. */

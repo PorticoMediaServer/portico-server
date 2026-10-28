@@ -1,5 +1,5 @@
 import {listMissingTitles, parseMissingEmptied, type MissingTitlesPage, type MissingEmptied, type TitleIdentityApi} from '../title-identity.ts';
-import {routePath} from '../../../contracts/src/routes.ts';
+import {routePath} from '../../../contracts/src/route-paths.ts';
 
 export type MissingSnapshot = Readonly<{phase: 'idle'|'loading'|'ready'|'error'; page?: MissingTitlesPage; busy: boolean; removed?: MissingEmptied; error?: 'read'|'remove'}>;
 const empty: MissingSnapshot = Object.freeze({phase: 'idle', busy: false});

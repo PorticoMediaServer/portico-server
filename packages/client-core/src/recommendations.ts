@@ -1,5 +1,5 @@
-import type {RouteResponse} from "../../contracts/src/routes.ts";
-import {encodedRoutePath, routePath} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/route-paths.ts";
+import {encodedRoutePath, routePath} from "../../contracts/src/route-paths.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 /** Viewer suggestions and per-item related rows. Reasons, ranking and row shape are server-authored. */
 import {validateContentEntry, type ContentEntry} from './library-content.ts';

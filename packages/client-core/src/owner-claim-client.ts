@@ -1,5 +1,5 @@
 import {throwIfAborted} from './abort-lifetime.ts';
-import {routePath} from '../../contracts/src/routes.ts';
+import {routePath} from '../../contracts/src/route-paths.ts';
 import type {HttpLocalApi} from './index.ts';
 import type {ClaimExpected} from './claim-onboarding.ts';
 import {installationIdentity, validInstallationId} from './installation.ts';

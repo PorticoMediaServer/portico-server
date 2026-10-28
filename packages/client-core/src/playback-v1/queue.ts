@@ -1,4 +1,4 @@
-import {routePath, encodedRoutePath} from "../../../contracts/src/routes.ts";
+import {routePath, encodedRoutePath} from "../../../contracts/src/route-paths.ts";
 /**
  * Queues (spec §8; Server Media ARCH-MEDIA-03/04/05). A queue is server-owned: selector segments
  * frozen into snapshots at Play, addressed by stable entry ids, read in windows of at most 200

@@ -1,4 +1,4 @@
-import {routePath} from "../../../contracts/src/routes.ts";
+import {routePath} from "../../../contracts/src/route-paths.ts";
 /**
  * The rules behind the Server pages' panels that are not a settings document: what a broadcast
  * may carry, how a WebDAV dialog maps onto the server's credential rules, when "remove what's
