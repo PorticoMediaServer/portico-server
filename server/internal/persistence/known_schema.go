@@ -1130,6 +1130,7 @@ table library_preferences
 table library_revisions
 table library_scan_policies
 table library_sonic_settings
+table library_source_progress
 table library_sources
 table listening_book_groups
 table listening_book_series

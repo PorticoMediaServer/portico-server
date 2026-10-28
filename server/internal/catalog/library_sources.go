@@ -240,7 +240,7 @@ func ScanPolicyTx(ctx context.Context, tx *sql.Tx, library string) (ScanPolicy, 
 	return musicLoudnessPolicy(ctx, tx, library, p)
 }
 
-const sourceColumns = `id,library_id,kind,name,configured_root,root,classification,generation,health,enabled,follow_symlinks,interval_seconds,next_scan_at,last_complete_at,last_progress_at,root_identity,incarnation,identity_confirmed`
+const sourceColumns = `id,library_id,kind,name,configured_root,root,classification,generation,health,enabled,follow_symlinks,interval_seconds,next_scan_at,last_complete_at,COALESCE((SELECT p.last_progress_at FROM library_source_progress AS p WHERE p.source_id=library_sources.id),'') AS last_progress_at,root_identity,incarnation,identity_confirmed`
 
 func scanLibrarySource(row interface{ Scan(...any) error }) (LibrarySource, error) {
 	var v LibrarySource

@@ -2254,10 +2254,15 @@ CREATE TABLE library_sources (
  enabled INTEGER NOT NULL DEFAULT 1, follow_symlinks INTEGER NOT NULL DEFAULT 0,
  interval_seconds INTEGER NOT NULL DEFAULT 0 CHECK(interval_seconds=0 OR interval_seconds>=900),
  next_scan_at TEXT NOT NULL DEFAULT '', last_complete_job TEXT NOT NULL DEFAULT '',
- last_complete_at TEXT NOT NULL DEFAULT '', last_integrity_at TEXT NOT NULL DEFAULT '', changes_pruned_sequence INTEGER NOT NULL DEFAULT 0, last_progress_at TEXT NOT NULL DEFAULT '',
+ last_complete_at TEXT NOT NULL DEFAULT '', last_integrity_at TEXT NOT NULL DEFAULT '', changes_pruned_sequence INTEGER NOT NULL DEFAULT 0,
  remote_source_id TEXT REFERENCES remote_sources(id),
  double_check_job TEXT NOT NULL DEFAULT '',
  UNIQUE(library_id,root)
+) STRICT;
+CREATE TABLE library_source_progress (
+ source_id TEXT NOT NULL PRIMARY KEY
+  REFERENCES library_sources(id) ON DELETE CASCADE,
+ last_progress_at TEXT NOT NULL DEFAULT ''
 ) STRICT;
 CREATE TABLE library_scan_policies (
  library_id TEXT PRIMARY KEY REFERENCES libraries(id), revision INTEGER NOT NULL DEFAULT 1,

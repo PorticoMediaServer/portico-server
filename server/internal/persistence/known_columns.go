@@ -2743,6 +2743,8 @@ library_scan_policies.trickplay_tile_width
 library_sonic_settings.enabled
 library_sonic_settings.library_id
 library_sonic_settings.revision
+library_source_progress.last_progress_at
+library_source_progress.source_id
 library_sources.changes_pruned_sequence
 library_sources.classification
 library_sources.configured_root
@@ -2759,7 +2761,6 @@ library_sources.kind
 library_sources.last_complete_at
 library_sources.last_complete_job
 library_sources.last_integrity_at
-library_sources.last_progress_at
 library_sources.library_id
 library_sources.name
 library_sources.next_scan_at
