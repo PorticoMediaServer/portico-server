@@ -276,15 +276,18 @@ test('choice Advanced preview preserves inapplicable original values; it grants 
 
 test('retired and successor openings cannot adopt each other’s drafts or late receipts', async () => {
   const oldReply = deferred<unknown>(), nextReply = deferred<unknown>();
-  const old = fixture({put: () => oldReply.promise}), next = fixture({put: () => nextReply.promise});
+  const oldSent = deferred<void>(), nextSent = deferred<void>();
+  const old = fixture({put: () => {oldSent.resolve();return oldReply.promise;}}),
+    next = fixture({put: () => {nextSent.resolve();return nextReply.promise;}});
   await old.opening.load();const oldDraft = old.draft();
   const oldSave = old.opening.save(oldDraft, old.opening.getSnapshot());
-  await Promise.resolve();await Promise.resolve();old.opening.retire();
+  await oldSent.promise;old.opening.retire();
+  assert.equal(old.calls.filter(call => call.method === 'PUT').length, 1, 'retirement follows actual original dispatch');
   await next.opening.load();const nextDraft = next.draft();
   next.opening.changeConsent(oldDraft, true);next.opening.edit(oldDraft, {connections: 9});
   assert.equal(next.draft(), nextDraft);
   const nextSave = next.opening.save(nextDraft, next.opening.getSnapshot());
-  await Promise.resolve();await Promise.resolve();
+  await nextSent.promise;
   oldReply.resolve(receipt());await oldSave;
   assert.equal(old.opening.getSnapshot().kind, 'retired');
   assert.equal(next.opening.getSnapshot().kind, 'saving', 'old completion cannot release a successor flight');

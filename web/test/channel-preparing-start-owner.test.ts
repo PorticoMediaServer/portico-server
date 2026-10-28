@@ -113,7 +113,9 @@ function controlFixture() {
   const timers: Timers = {setTimer(fn) {const id = {};jobs.set(id, fn);return id;}, clearTimer(id) {jobs.delete(id);}};
   const replies: Promise<ReturnType<typeof response>>[] = [];
   const control = new V1ChannelControl({key: () => 'actual-channel-key', timers, http: {send: async request => {
-    calls.push(request);return await (replies.shift() ?? Promise.resolve(response({retryAfterMs: 500})));
+    calls.push(request);
+    if (request.method === 'DELETE') return {status: 204, headers: {}};
+    return await (replies.shift() ?? Promise.resolve(response({retryAfterMs: 500})));
   }}});
   const installed: string[] = [];
   const bound = ownedWebChannels(control, f.reg, () => f.current);
@@ -173,6 +175,11 @@ test('the public pre-install claim registers a genuine accepted channel before s
     // to acquire and retire this same id, even without media attachment yet.
     const later = f.reg.beginChannel(f.original('later-key'), f.current);
     await later.retireUninstalled({id: 'original_channel', generation: 1});later.finish();assert.equal(f.cleanupCalls.length, 0);
+    f.control.close();await settle();
+    const stops = f.calls.filter(call => call.method === 'DELETE');
+    assert.equal(stops.length, 1, 'the installed channel retires exactly once');
+    assert.equal(stops[0]!.path, '/v1/playback/sessions/original_channel');
+    assert.deepEqual(stops[0]!.body, {generation: 1}, 'normal teardown retains the exact installed generation');
   } finally {f.control.close();f.reg.dispose();f.owner.dispose();}
 });
 

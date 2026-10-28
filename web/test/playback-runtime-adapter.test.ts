@@ -1,7 +1,8 @@
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {registerHooks} from 'node:module';
-import {HttpLocalApi} from '@core/index.ts';
+import {HttpLocalApi, isUserMutationKey} from '@core/index.ts';
+import {routePath} from '../../packages/contracts/src/route-paths.ts';
 import {FakePlaybackServer, fakeHttp} from '@core/playback-v1/testing/fake-server.ts';
 import type {V1Request, V1Response} from '@core/playback-v1/http.ts';
 import type {ServerEvent} from '@core/playback-v1/types.ts';
@@ -555,17 +556,42 @@ function castController(t: TestContext, f: ReturnType<typeof setup>) {
 test('WEB002 the MAIN SDK, canonical sender and mounted runtime retain through picker, receiver ACK and stopped continuation', async t => {
   const f = setup(t); await f.runtime.play('movie', 25); await f.arrive();
   const local = f.hls.instances.at(-1)!, first = f.runtime.getSnapshot(), sessionId = first.session!.id;
-  f.intercept(async (request, response) => request.path === '/v1/cast/bootstrap'
+  f.api.setUserMutationSession({accessToken: 'cast-test-token', expiresAt: '2099-01-01T00:00:00Z', authorizationHorizon: '2099-01-02T00:00:00Z',
+    tokenGeneration: '1', sessionFamilyId: 'family', deviceId: 'sender-device', viewer: {...viewer, role: 'member'}});
+  const policy = deferred();t.after(() => policy.resolve());
+  f.intercept(async (request, response) => {
+    if (request.path === routePath('get_user_mutation_policy')) {
+      assert.equal(request.headers?.authorization, 'Bearer cast-test-token');
+      await policy.hold();
+      return {status: 200, headers: {}, body: {serverTimeMs: Date.now(), retiredBeforeMs: 0}};
+    }
+    return request.path === '/v1/cast/bootstrap'
     ? {status: 200, headers: {}, body: {bootstrap: {id: 'cbs_1', code: 'ABC123', state: 'pending', transfer: {id: 'cbs_1', state: 'pending'}}}}
     : request.method === 'GET' && request.path === '/v1/cast/bootstrap/cbs_1'
       ? {status: 200, headers: {}, body: {bootstrap: {id: 'cbs_1', transfer: {id: 'cbs_1', state: 'committed', itemId: 'movie', playbackState: 'playing'}}}}
-      : response);
+      : response;
+  });
+  const stored = new Map<string, string>(), previousStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', {configurable: true, value: {
+    getItem: (key: string) => stored.get(key) ?? null, setItem: (key: string, value: string) => {stored.set(key, value);},
+    get length() {return stored.size;}, key: (index: number) => [...stored.keys()][index] ?? null, removeItem: (key: string) => {stored.delete(key);},
+  }});
+  t.after(() => {if (previousStorage) Object.defineProperty(globalThis, 'localStorage', previousStorage);else delete (globalThis as Record<string, unknown>).localStorage;});
   const messages: Record<string, unknown>[] = [], listeners = new Set<(namespace: string, body: string) => void>();
+  let dispatched!: () => void;const stopDispatched = new Promise<void>(resolve => {dispatched = resolve;});
   const reply = (body: unknown) => { for (const listener of [...listeners]) listener('urn:x-cast:tv.getportico.portico', JSON.stringify(body)); };
   let picks = 0, selected: CastSession | null = null;
   const session: CastSession = {
     getCastDevice: () => ({friendlyName: 'Living Room'}),
-    sendMessage: async (_namespace, message) => { messages.push(message as Record<string, unknown>); },
+    sendMessage: async (_namespace, message) => {
+      const command = message as Record<string, unknown>;
+      if (command.type === 'stop') {
+        assert.equal(isUserMutationKey(String(command.requestId)), true);
+        const retained = [...stored].filter(([key]) => key.startsWith('portico.cast.stop:')).flatMap(([,value]) => JSON.parse(value));
+        assert.ok(retained.some(record => record.key === command.requestId && record.state === 'pending' && JSON.stringify(record.target) === JSON.stringify(command.target)), 'exact Stop identity is durable before SDK dispatch');
+      }
+      messages.push(command);if (command.type === 'stop') dispatched();
+    },
     addMessageListener: (_namespace, listener) => { listeners.add(listener); },
     removeMessageListener: (_namespace, listener) => { listeners.delete(listener); }, endSession() {},
   };
@@ -602,6 +628,10 @@ test('WEB002 the MAIN SDK, canonical sender and mounted runtime retain through p
   assert.equal(controller.getSnapshot().remote!.positionSeconds, 57);
   controller.seek(controller.getSnapshot().remote!, 100); assert.equal(controller.getSnapshot().remote!.positionSeconds, 57);
   controller.stop(controller.getSnapshot().remote!);
+  await policy.started;
+  assert.equal(messages.some(message => message.type === 'stop'), false, 'Stop waits for the original authenticated key policy');
+  assert.equal(f.runtime.retainsMedia(), true);
+  policy.resolve();await stopDispatched;
   const stop=messages.find(message=>message.type==='stop')!;assert.ok(stop.target);
   reply({type:'stopped',requestId:stop.requestId,target:stop.target,positionSeconds:57,durationSeconds:3186});
   assert.equal(controller.getSnapshot().remote!.phase, 'stopped'); assert.equal(controller.getSnapshot().remote!.positionSeconds, 57);

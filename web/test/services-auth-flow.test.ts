@@ -313,3 +313,33 @@ test('created and collision-refreshed registration aliases cannot retarget held 
   assert.equal(calls.length,1);release();await second;
   assert.deepEqual(calls[1],{id:'original',input:{code:'',username:'available',displayName:'Name'}});assert.deepEqual(reads,['original']);assert.equal(p.completed(),1);flow.dispose();
 });
+
+// Services viewTx projects a verified login as onboarding even when its
+// identity is already linked and no username needs to be chosen.
+for (const provider of ['google', 'apple'] as const) test(provider+' existing-account callback completes the Services onboarding projection once', async () => {
+  const p = port(), completed: string[] = [], gestures: (boolean | undefined)[] = [];
+  p.value.client.transaction = async () => ({transactionId: 'original', provider, mode: 'login', status: 'onboarding', expiresAt: new Date(Date.now()+60000).toISOString(), contactVerified: true, needsUsername: false, mfaRequired: false});
+  p.value.client.complete = async (id, input) => {completed.push(id); assert.deepEqual(input, {}); return {} as never;};
+  const flow = new ServicesAuthFlow(p.value, gesture => gestures.push(gesture));
+  await flow.initialize(); await flow.initialize();
+  assert.deepEqual(completed, ['original']); assert.equal(p.authenticated(), 1); assert.deepEqual(gestures, [false]);
+  flow.dispose();
+});
+for (const variant of [
+  {status: 'onboarding', contactVerified: false, mode: 'login'},
+  {status: 'started', contactVerified: true, mode: 'login'},
+  {status: 'exchanging', contactVerified: true, mode: 'login'},
+  {status: 'contact_pending', contactVerified: false, mode: 'login'},
+  {status: 'onboarding', contactVerified: true, mode: 'reauthenticate'},
+  {status: 'onboarding', contactVerified: true, mode: 'link'},
+] as const) test('callback projection does not complete '+JSON.stringify(variant), async () => {
+  const p=port(); let completions=0;
+  p.value.client.transaction=async()=>({transactionId:'original',provider:'google',expiresAt:new Date(Date.now()+60000).toISOString(),needsUsername:false,mfaRequired:false,...variant});
+  p.value.client.complete=async()=>{completions++;return {} as never;};
+  const flow=new ServicesAuthFlow(p.value,p.done);await flow.initialize();assert.equal(completions,0);assert.equal(p.authenticated(),0);flow.dispose();
+});
+test('existing-account onboarding completion preserves the MFA challenge boundary', async()=>{
+  const p=port();p.value.client.transaction=async()=>({transactionId:'original',provider:'google',mode:'login',status:'onboarding',expiresAt:new Date(Date.now()+60000).toISOString(),needsUsername:false,contactVerified:true,mfaRequired:true});
+  p.value.client.complete=async()=>{throw new MFARequiredError({mfaRequired:true,challengeId:'challenge',challengeToken:'private',expiresAt:'2030-01-01T00:00:00Z'});};
+  const flow=new ServicesAuthFlow(p.value,p.done);await flow.initialize();assert.equal(flow.getSnapshot().mode,'factor');assert.equal(p.completed(),0);assert.doesNotMatch(JSON.stringify(flow.getSnapshot()),/private/);flow.dispose();
+});

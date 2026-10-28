@@ -1,4 +1,4 @@
-import {routes} from '../../contracts/src/routes.ts';
+import {apiRoot, routes} from '../../contracts/src/routes.ts';
 /** Reviewed P2-51 cohort. Paths and methods always come from the generated registry. */
 export const userMutationRouteIds = [
   'put_admin_backup_settings',
@@ -62,7 +62,7 @@ const reviewed = new Set<string>(userMutationRouteIds);
 export const userMutationRoutes = routes.filter(route => reviewed.has(route.id));
 if (userMutationRoutes.length !== userMutationRouteIds.length) throw new Error('Missing generated user-mutation route.');
 export function userMutationRoute(path: string, method: string) {
- if (!path.startsWith('/v1/') || /[#\\]/.test(path)) return undefined;
+ if (!path.startsWith(apiRoot) || /[#\\]/.test(path)) return undefined;
  const segments = path.split('?')[0].split('/');
  return userMutationRoutes.find(route => route.method === method && (() => {
   const pattern = route.path.split('/');

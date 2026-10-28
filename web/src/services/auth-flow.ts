@@ -109,7 +109,9 @@ export class ServicesAuthFlow {
         if (tx.needsUsername && tx.contactVerified) {
           this.transaction = tx; this.publish({mode: 'provider', provider: tx.provider, suggestedName: tx.suggestedName, verifiedEmail: tx.verifiedEmail}); return;
         }
-        if (tx.status === 'verified' && !tx.needsUsername) {
+        // Services also projects a verified, already linked login as
+        // onboarding. That state needs completion, but no username form.
+        if (!tx.needsUsername && (tx.status === 'verified' || tx.status === 'onboarding' && tx.contactVerified)) {
           await this.authenticate(inner => this.account.client.complete(tx.transactionId, {}, AbortSignal.any([inner, signal]))); return;
         }
       }
