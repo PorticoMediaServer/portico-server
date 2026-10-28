@@ -65,7 +65,7 @@ export function hardwareRowState(rowId: string, snapshot: HardwareSnapshot, stor
   const devices = hardware.devices.length > 0;
   switch (rowId) {
     case 'streaming.transcodeStatus': {
-      // The drawn status line: where conversions are written and whether this
+      // The disk fallback/spill folder and whether this
       // server can write there, from the same capacity read the rest of the page
       // uses. A directory with no measured free space says the path only.
       const directory = snapshot.capacity.temporaryDirectory;
