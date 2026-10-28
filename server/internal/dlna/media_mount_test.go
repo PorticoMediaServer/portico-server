@@ -84,10 +84,15 @@ SELECT 'mounted-object',s.id,a.token,s.incarnation,'Heat.mkv','remote-object:opa
 	// An unchanged catalog row cannot bypass either current source health or
 	// the mount registry at the actual storage acquisition boundary.
 	f.c.Exec(`UPDATE library_sources SET health='offline' WHERE id='films'`)
-	if w := f.request(http.MethodGet, "/dlna/media/"+token, "192.168.1.20", ""); w.Code != http.StatusNotFound {
-		t.Fatalf("offline mapped source: %d", w.Code)
+	if w := f.request(http.MethodGet, "/dlna/media/"+token, "192.168.1.20", ""); w.Code != http.StatusServiceUnavailable || w.Header().Get("Retry-After") != "2" || w.Body.String() != http.StatusText(http.StatusServiceUnavailable)+"\n" {
+		t.Fatalf("offline mapped source: %d retry=%q body=%q", w.Code, w.Header().Get("Retry-After"), w.Body.String())
 	}
 	f.c.Exec(`UPDATE library_sources SET health='ready' WHERE id='films'`)
+	reconnected := httptest.NewRecorder()
+	f.server.ServeHTTP(reconnected, r.Clone(r.Context()))
+	if reconnected.Code != http.StatusPartialContent || reconnected.Body.String() != "4567" {
+		t.Fatalf("reconnected mapped source: %d %q", reconnected.Code, reconnected.Body.String())
+	}
 	f.server.Storage.MountedRoot = nil
 	if w := f.request(http.MethodGet, "/dlna/media/"+token, "192.168.1.20", ""); w.Code != http.StatusConflict {
 		t.Fatalf("remote source without physical registry: %d", w.Code)
