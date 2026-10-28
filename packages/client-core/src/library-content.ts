@@ -17,7 +17,10 @@ export type ContentRoute = Readonly<{ sort?: string; direction?: 'asc' | 'desc';
 export type ContentScope = Readonly<{ viewerId: string; serverId: string }>;
 /** One caller opening's signal and its own currentness predicate. */
 export type ContentReadContext = Readonly<{ signal: AbortSignal; isCurrent: () => boolean }>;
-export interface LibraryContentApi { request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T> }
+export interface LibraryContentApi {
+  request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T>;
+  requestRaw?(path: string, method: string, options?: Readonly<{headers?: Readonly<Record<string, string>>; body?: unknown; signal?: AbortSignal; deadlineMs?: number; singleAttempt?: boolean}>): Promise<import('./read-preparation.ts').PreparationResponse>;
+}
 export type ContentEntryKind = 'ebook' | 'comic' | 'movie' | 'show' | 'season' | 'episode' | 'artist' | 'album' | 'song' | 'book' | 'audiobook_file' | 'chapter' | 'collection' | 'category' | 'author' | 'book_series' | 'disc' | 'extra' | 'playlist' | 'radio';
 /** `params` fill a parameterised heading (a Discover personal row: "{genre} for you"); name it with `serverTextLabel`. */
 export type ContentHeading = Readonly<{ key: string; fallback: string; params?: Readonly<Record<string, string>> }>;
