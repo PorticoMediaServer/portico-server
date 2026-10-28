@@ -9,6 +9,12 @@ export function captureServicesEntry(page: Pick<Location, 'href' | 'replace' | '
   history: Pick<History, 'state' | 'replaceState'>, expectedHostedOrigin: string) {
   const native = dispatchNativeAccountReturn(page, history, expectedHostedOrigin);
   if (native) return {native};
+  const url = new URL(page.href);
+  if (['/', '/account'].includes(url.pathname) && !url.hash && [...url.searchParams.keys()].length === 1 && url.searchParams.has('identityError')) {
+    const value = url.searchParams.get('identityError');
+    history.replaceState(null, '', '/');
+    return {providerFailure: value === 'google' || value === 'apple' ? value : 'unknown'} as const;
+  }
   const signIn = captureHostedSignIn(page, history, expectedHostedOrigin);
   if (signIn) return {signIn};
   const owner = captureHostedOwnerClaim(page, history, expectedHostedOrigin);

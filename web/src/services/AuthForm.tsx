@@ -10,11 +10,11 @@ import {servicesI18n} from './i18n';
 import styles from './services.module.css';
 import signInStyles from './services-signin-r46.module.css';
 
-type Props = {account: ServicesAccount; onSignedIn: (gesture?: boolean) => void; initialMode?: 'signin' | 'create' | 'forgot'; initialUsername?: string; embedded?: boolean; invitation?: boolean; heading?: ReactNode; lead?: ReactNode; before?: ReactNode; after?: ReactNode};
+type Props = {providerFailure?: 'google' | 'apple' | 'unknown'; account: ServicesAccount; onSignedIn: (gesture?: boolean) => void; initialMode?: 'signin' | 'create' | 'forgot'; initialUsername?: string; embedded?: boolean; invitation?: boolean; heading?: ReactNode; lead?: ReactNode; before?: ReactNode; after?: ReactNode};
 export function ServicesAuthForm(props: Props) {
-  const {account, initialMode = 'signin'} = props;
+  const {account, initialMode = 'signin', providerFailure} = props;
   const complete = useRef(props.onSignedIn); complete.current = props.onSignedIn;
-  const create = useCallback(() => new ServicesAuthFlow(account, gesture => complete.current(gesture), initialMode), [account, initialMode]);
+  const create = useCallback(() => new ServicesAuthFlow(account, gesture => complete.current(gesture), initialMode, undefined, providerFailure), [account, initialMode, providerFailure]);
   const bound = useAccountResource(create);
   if (!bound) return props.embedded ? null : <ServicesAuthStage><></></ServicesAuthStage>;
   return <MountedAuthForm key={bound.id} {...props} flow={bound.value} />;

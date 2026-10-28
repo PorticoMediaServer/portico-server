@@ -67,3 +67,13 @@ test('a malformed or scrubbed /join never falls back to the typed entry', () => 
   const query = {href: origin + '/join?next=1', pathname: '/join', hash: '', search: '?next=1', replace() {}};
   assert.deepEqual(captureServicesEntry(query, {state: null, replaceState() {}}, origin), {join: undefined, invalidContinuation: true});
 });
+
+test('provider failures are scrubbed into a bounded display hint before any saved continuation is read', () => {
+  for(const [path,value,expected] of [['/','google','google'],['/','apple','apple'],['/account','1','unknown']] as const){
+    const page={href:origin+path+'?identityError='+value,pathname:path,search:'?identityError='+value,hash:'',replace(){throw new Error('unexpected redirect');}};
+    let target:unknown;
+    const result=captureServicesEntry(page,{state:null,replaceState:(_s,_u,url)=>{target=url;}},origin);
+    assert.equal(result.providerFailure,expected);assert.equal(target,'/');
+    assert.equal(result.signIn,undefined);assert.equal(result.capture,undefined);
+  }
+});

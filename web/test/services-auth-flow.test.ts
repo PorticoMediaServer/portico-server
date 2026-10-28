@@ -10,6 +10,7 @@ function port() {
   let authenticated = 0, completed = 0;
   const calls: unknown[][] = [];
   const value = {
+    api: {origin: 'https://web.getportico.tv'},
     client: {
       options: async () => options,
       transaction: async () => null,
@@ -169,15 +170,27 @@ test('a failed original provider transaction draws a stopped choice without comp
   assert.equal(flow.getSnapshot().verifiedEmail, undefined); assert.equal(p.authenticated(), 0); assert.equal(completions, 0);
   flow.go('signin'); assert.equal(flow.getSnapshot().mode, 'signin'); assert.equal(p.completed(), 0); flow.dispose();
 });
-test('retry from a terminal provider choice creates a fresh transaction request identity', async () => {
-  const p = port(), requests: string[] = [], destinations: string[] = [];
-  p.value.client.transaction = async () => ({transactionId: 'failed-original', provider: 'apple', mode: 'login', status: 'failed', expiresAt: new Date(Date.now() + 60000).toISOString(), contactVerified: false, needsUsername: false, mfaRequired: false});
-  p.value.client.start = async (_provider, input) => {requests.push(input.requestId); return {transactionId: 'new-original', mode: 'login', expiresAt: new Date(Date.now() + 60000).toISOString(), authorizationUrl: 'https://provider.example/authorize'};};
-  const flow = new ServicesAuthFlow(p.value, p.done, 'signin', url => {destinations.push(url);}); await flow.initialize();
-  await flow.provider('apple'); await flow.provider('apple');
-  assert.equal(requests.length, 2); assert.notEqual(requests[0], requests[1]); assert.deepEqual(destinations, ['https://provider.example/authorize','https://provider.example/authorize']);
-  assert.equal(p.authenticated(), 0); flow.dispose();
+test('provider login navigates synchronously without waiting for a request or saved-session work', async () => {
+  const p = port(), destinations: string[] = [];
+  p.value.client.start = async () => {throw new Error('provider start must be a navigation');};
+  const flow = new ServicesAuthFlow(p.value, p.done, 'signin', url => {destinations.push(url);});
+  const pending=flow.provider('google');
+  assert.deepEqual(destinations,['https://web.getportico.tv/auth/sso/google/start']);
+  await pending; await flow.provider('apple');
+  assert.equal(destinations[1],'https://web.getportico.tv/auth/sso/apple/start');
+  assert.equal(p.authenticated(),0); flow.dispose();
 });
+test('navigation failures remain visible and stopped callbacks do not resume stale transactions',async()=>{
+  const p=port();let privateReads=0;
+  p.value.client.transaction=async()=>{privateReads++;throw new Error('unrelated transaction');};
+  p.value.client.registration=async()=>{privateReads++;throw new Error('unrelated registration');};
+  const flow=new ServicesAuthFlow(p.value,p.done,'signin',()=>{throw new Error('navigation refused');},'google');
+  await flow.initialize();assert.equal(privateReads,0);assert.equal(flow.getSnapshot().mode,'provider-stopped');
+  assert.equal(flow.getSnapshot().provider,'google');
+  await flow.provider('google');assert.match(String(flow.getSnapshot().error),/navigation refused/);
+  assert.equal(flow.getSnapshot().busy,false);flow.dispose();
+});
+
 
 
 function providerRetryPort() {

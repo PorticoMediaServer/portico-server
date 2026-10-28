@@ -25,7 +25,7 @@ import {OwnerApprovalPage} from './OwnerApprovalPage';
 import {SetupApprovalPage} from './SetupApprovalPage';
 import {HostedSetupApproval} from '../screens/setup/HostedSetupApproval';
 
-type Context = {account: ServicesAccount; bootstrap: ServicesBootstrap; invalidContinuation: boolean; join?: JoinLink; plainShortJoin?: boolean; identityTransaction?: string};
+type Context = {account: ServicesAccount; bootstrap: ServicesBootstrap; invalidContinuation: boolean; providerFailure?: 'google' | 'apple' | 'unknown'; join?: JoinLink; plainShortJoin?: boolean; identityTransaction?: string};
 const root = createRootRouteWithContext<Context>()({component: ServicesRoot, notFoundComponent: InvalidLink});
 const home = createRoute({getParentRoute: () => root, path: '/', component: HomeRoute});
 const workspace = createRoute({getParentRoute: () => root, path: '/account', component: AccountRoute,
@@ -45,14 +45,14 @@ function makeRouter(context: Context) {
   return createRouter({routeTree: root.addChildren([home, workspace, device, reset, resetPassword, verify, claim, invitation]), context});
 }
 // This router's types stay local. The server app remains the only global TanStack Register.
-export function ServicesApp({capture, invalidContinuation, join, plainShortJoin, signIn, owner, identityTransaction}: {capture?: LinkCapture; invalidContinuation?: boolean; join?: JoinLink; plainShortJoin?: boolean; signIn?: SignInCapture; owner?: HostedOwnerClaimCapture; identityTransaction?: string} = {}) {
+export function ServicesApp({capture, invalidContinuation, join, plainShortJoin, signIn, owner, identityTransaction, providerFailure}: {capture?: LinkCapture; invalidContinuation?: boolean; join?: JoinLink; plainShortJoin?: boolean; signIn?: SignInCapture; owner?: HostedOwnerClaimCapture; identityTransaction?: string; providerFailure?: 'google' | 'apple' | 'unknown'} = {}) {
   // main.tsx captures and scrubs intake once, before React. A discarded render
   // must not reread a scrubbed URL or allocate a terminal bootstrap controller.
   const create = useCallback(() => {
     const account = servicesAccount(), bootstrap = new ServicesBootstrap(account, servicesLinkStore, capture, {origin: location.origin, capture: signIn},
       location.pathname === '/claim' ? {origin: location.origin, capture: owner} : undefined);
-    return {account, bootstrap, router: makeRouter({account, bootstrap, invalidContinuation: invalidContinuation === true, join, plainShortJoin, identityTransaction}), dispose: () => bootstrap.dispose()};
-  }, [capture, invalidContinuation, join, plainShortJoin, signIn, owner, identityTransaction]);
+    return {account, bootstrap, router: makeRouter({account, bootstrap, invalidContinuation: invalidContinuation === true, join, plainShortJoin, identityTransaction, providerFailure}), dispose: () => bootstrap.dispose()};
+  }, [capture, invalidContinuation, join, plainShortJoin, signIn, owner, identityTransaction, providerFailure]);
   const bound = useAccountResource(create);
   return <><IconSprite />{bound ? <MountedServicesRouter key={bound.id} value={bound.value} /> : <ServicesAuthStage><></></ServicesAuthStage>}</>;
 }
@@ -80,13 +80,14 @@ function useAccount() {
   return {account, session: state.session, ended: state.phase === 'signedOut' && Boolean(state.error)};
 }
 function HomeRoute() {
+  const {providerFailure} = root.useRouteContext<ServicesRouter>();
   const {account, session, ended} = useAccount();
   const {t} = servicesI18n();
   const [authenticating, setAuthenticating] = useState(() => !session);
   useEffect(() => { if (!session) setAuthenticating(true); }, [session]);
   // Explicit recovery/create links do not resume a different transaction from the cookie.
   const mode = new URLSearchParams(location.search).get('mode');
-  if (!session || authenticating) return <ServicesAuthForm account={account} before={ended ? <ServicesNotice>{t('services.signin.ended')}</ServicesNotice> : undefined} initialMode={mode === 'forgot' || mode === 'create' ? mode : 'signin'} onSignedIn={() => setAuthenticating(false)} />;
+  if (!session || authenticating) return <ServicesAuthForm account={account} providerFailure={providerFailure} before={ended ? <ServicesNotice>{t('services.signin.ended')}</ServicesNotice> : undefined} initialMode={mode === 'forgot' || mode === 'create' ? mode : 'signin'} onSignedIn={() => setAuthenticating(false)} />;
   return <ServicesHomePage account={account} session={session} />;
 }
 function AccountRoute() {
