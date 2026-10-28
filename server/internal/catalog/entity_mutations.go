@@ -11,9 +11,9 @@ import (
 	"portico.local/server/internal/dbwork"
 )
 
-// One last pin may synchronously change 10,000 recording memberships and
-// their singleton accounting. It is never shared with a second entity or
-// physical deletion. Pages is telemetry, not a P2-54 WAL source proof.
+// One actual pin mutation retains its accepted boundary while prospective
+// recording counts are prepared and folded through separate bounded writers.
+// It never shares a turn with another entity or physical deletion.
 // Private preparation changes <=11 count facts plus its state/lease points;
 // accepted folding changes <=11 base rows +11 private rows +1 state row. The
 // pin flip has only point trigger effects; it never updates the release tracks.

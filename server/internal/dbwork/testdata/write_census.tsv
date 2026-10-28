@@ -397,6 +397,10 @@ internal/metadata/library_agent.go	(*Service).SetLibraryAgent	Begin	ClassFrom(ct
 internal/metadata/local_audio_policy.go	(*Service).UpdateLocalBookPolicy	Begin	ClassBackgroundMedia	-
 internal/metadata/lookup_fanout.go	(*Service).LookupFanoutStep	Begin	ClassBackgroundMedia	lookupFanoutPlan
 internal/metadata/lookup_fanout.go	(*Service).lookupFanoutBackoff	Begin	ClassBackgroundMedia	-
+internal/metadata/mb_accounting_transition.go	(*Service).mbAbortPrivateAccounting	WithWriteTx	ClassBackgroundMedia	-
+internal/metadata/mb_accounting_transition.go	(*Service).mbAccountingMaintenance	WithWriteTx	ClassBackgroundMedia	-
+internal/metadata/mb_accounting_transition.go	(*Service).mbFinishAcceptedAccounting	WithWriteTx	ClassBackgroundMedia	-
+internal/metadata/mb_accounting_transition.go	(*Service).mbPrepareAccounting	WithWriteTx	ClassBackgroundMedia	-	×2
 internal/metadata/mb_candidates.go	(*Service).mbStoreCandidates	Begin	ClassBackgroundMedia	-
 internal/metadata/mb_claim.go	(*Service).claimMB	Begin	ClassBackgroundMedia	-
 internal/metadata/mb_lifecycle.go	(*Service).mbReconcileAlbums	Begin	ClassBackgroundMedia	-

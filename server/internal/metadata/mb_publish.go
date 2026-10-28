@@ -14,9 +14,10 @@ import (
 	"portico.local/server/internal/metadataprovider"
 )
 
-// A pin move is indivisible: accepting the new release and releasing the old
-// one can change up to 20,000 recording counters, each with a singleton update.
-// This is the explicitly approved SRV023 exception, not the normal 160-row turn.
+// Preserve the approved SRV023 final-publication exception and its historical
+// limits. Prospective count facts now prepare/fold in separate raw11 turns;
+// the final pin, domain publication and exact cap check remain atomic. These
+// telemetry limits are not a qualified physical WAL profile.
 var mbPublicationAccountingPlan = dbwork.WritePlan{
 	Name: "musicbrainz-publication-accounting", Rows: 50_000, Pages: 4096, VMOps: 8_000_000,
 	Why: "one atomic old/new accepted-release pin move, each already capped at 10,000 tracks; exact final budget refusal must roll back the pin and its accounting together",
