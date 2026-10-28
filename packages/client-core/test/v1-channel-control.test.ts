@@ -591,3 +591,23 @@ for (const refusal of ['false', 'throw', 'retire'] as const) {
     } finally {control.close();}
   });
 }
+
+test('channel close reports a refused Stop without leaving its completion barrier unhandled', async () => {
+  const server = new ChannelServer(), errors: string[] = [];
+  let deletes = 0;
+  const control = new V1ChannelControl({pollMs: 5, key: () => 'channel-refused-stop-0001', http: {
+    send: async request => {
+      if (request.method === 'DELETE') {deletes++;throw new Error('Playback authority retired.');}
+      return server.send(request);
+    },
+    acknowledgeUserMutation: id => server.acknowledgeUserMutation(id),
+  }});
+  try {
+    await control.open(channel, {state: () => {}, error: value => {errors.push(value);}});
+    control.close();
+    await settle();
+    assert.equal(deletes, 1);
+    assert.equal(errors.length, 1, 'the original Stop refusal reaches the owner');
+    assert.deepEqual(server.consumed, [], 'refusal cannot consume an unconfirmed Stop');
+  } finally {control.close();}
+});

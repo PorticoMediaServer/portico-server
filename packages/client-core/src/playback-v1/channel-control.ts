@@ -357,6 +357,9 @@ export class V1ChannelControl implements ChannelPlayback {
       return response;
     });
     this.stopping = Promise.all([this.stopping.catch(() => {}), work]);
+    // The barrier tracks completion even when there is no later open to await
+    // it. The original work promise still reports refusal to its caller.
+    void this.stopping.catch(() => {});
     return work;
   }
 
