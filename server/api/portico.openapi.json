@@ -10640,6 +10640,9 @@
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "memoryCap": {
+                "type": "string"
+              },
               "musicAwayQuality": {
                 "type": "string"
               },
@@ -10875,6 +10878,9 @@
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "transcodeLocation": {
+                "type": "string"
+              },
               "trustedProxies": {
                 "items": {
                   "type": "string"
@@ -10919,9 +10925,11 @@
               "planningPolicy",
               "throttleBufferMs",
               "playedRetentionMs",
+              "transcodeLocation",
               "temporaryDirectory",
               "ffmpegPath",
               "sessionStorageMiB",
+              "memoryCap",
               "maxConcurrentSessions",
               "maxHardwareSessions",
               "maxSoftwareSessions",
@@ -11139,6 +11147,9 @@
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "memoryCap": {
+                    "type": "string"
                   },
                   "musicAwayQuality": {
                     "type": "string"
@@ -11375,6 +11386,9 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "transcodeLocation": {
+                    "type": "string"
+                  },
                   "trustedProxies": {
                     "items": {
                       "type": "string"
@@ -11419,9 +11433,11 @@
                   "planningPolicy",
                   "throttleBufferMs",
                   "playedRetentionMs",
+                  "transcodeLocation",
                   "temporaryDirectory",
                   "ffmpegPath",
                   "sessionStorageMiB",
+                  "memoryCap",
                   "maxConcurrentSessions",
                   "maxHardwareSessions",
                   "maxSoftwareSessions",
@@ -11656,6 +11672,9 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "memoryCap": {
+                    "type": "string"
+                  },
                   "musicAwayQuality": {
                     "type": "string"
                   },
@@ -11891,6 +11910,9 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "transcodeLocation": {
+                    "type": "string"
+                  },
                   "trustedProxies": {
                     "items": {
                       "type": "string"
@@ -11935,9 +11957,11 @@
                   "planningPolicy",
                   "throttleBufferMs",
                   "playedRetentionMs",
+                  "transcodeLocation",
                   "temporaryDirectory",
                   "ffmpegPath",
                   "sessionStorageMiB",
+                  "memoryCap",
                   "maxConcurrentSessions",
                   "maxHardwareSessions",
                   "maxSoftwareSessions",
@@ -20764,6 +20788,159 @@
         ],
         "type": "object"
       },
+      "DeleteAdminAccessMembersIdProfilesProfileAvatarRequest": {
+        "properties": {
+          "expectedRevision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expectedRevision"
+        ],
+        "type": "object"
+      },
+      "DeleteAdminAccessMembersIdProfilesProfileAvatarResponse": {
+        "properties": {
+          "allowedLibraries": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "art": {
+            "type": "string"
+          },
+          "avatar": {
+            "properties": {
+              "profileId": {
+                "type": "string"
+              },
+              "sourceMime": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "version": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "profileId",
+              "version",
+              "updatedAt",
+              "sourceMime",
+              "url"
+            ],
+            "type": "object"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pinRequired": {
+            "type": "boolean"
+          },
+          "pinRevision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "position": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "primary": {
+            "type": "boolean"
+          },
+          "restrictions": {
+            "properties": {
+              "allowDownloads": {
+                "type": "boolean"
+              },
+              "allowDvr": {
+                "type": "boolean"
+              },
+              "allowLiveTv": {
+                "type": "boolean"
+              },
+              "allowUnrated": {
+                "type": "boolean"
+              },
+              "allowWatchTogether": {
+                "type": "boolean"
+              },
+              "blockedLabels": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "maximumAge": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maximumAgeRating": {
+                "type": "string"
+              },
+              "profileId": {
+                "type": "string"
+              },
+              "ratingSystem": {
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "profileId",
+              "ratingSystem",
+              "maximumAgeRating",
+              "maximumAge",
+              "allowUnrated",
+              "blockedLabels",
+              "allowDownloads",
+              "allowLiveTv",
+              "allowDvr",
+              "allowWatchTogether",
+              "revision"
+            ],
+            "type": "object"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "primary",
+          "position",
+          "art",
+          "revision",
+          "pinRevision",
+          "pinRequired",
+          "allowedLibraries",
+          "restrictions"
+        ],
+        "type": "object"
+      },
       "DeleteAdminBackupRequest": {
         "properties": {},
         "type": "object"
@@ -25903,6 +26080,14 @@
         ],
         "type": "object"
       },
+      "GetAdminAccessMembersIdProfilesProfileAvatarRequest": {
+        "properties": {},
+        "type": "object"
+      },
+      "GetAdminAccessMembersIdProfilesProfileAvatarResponse": {
+        "format": "binary",
+        "type": "string"
+      },
       "GetAdminAccessMembersIdProfilesRequest": {
         "properties": {},
         "type": "object"
@@ -25923,6 +26108,35 @@
                 },
                 "art": {
                   "type": "string"
+                },
+                "avatar": {
+                  "properties": {
+                    "profileId": {
+                      "type": "string"
+                    },
+                    "sourceMime": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "profileId",
+                    "version",
+                    "updatedAt",
+                    "sourceMime",
+                    "url"
+                  ],
+                  "type": "object"
                 },
                 "id": {
                   "type": "string"
@@ -27109,6 +27323,28 @@
               "reason": {
                 "type": "string"
               },
+              "recovery": {
+                "properties": {
+                  "damagedTables": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "indexesRebuilt": {
+                    "type": "boolean"
+                  },
+                  "removedRows": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "salvaged": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              },
               "schemaVersion": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -27158,6 +27394,28 @@
                       "integrity": {
                         "type": "string"
                       },
+                      "recovery": {
+                        "properties": {
+                          "damagedTables": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "indexesRebuilt": {
+                            "type": "boolean"
+                          },
+                          "removedRows": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "salvaged": {
+                            "type": "boolean"
+                          }
+                        },
+                        "type": "object"
+                      },
                       "schemaVersion": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -27202,12 +27460,16 @@
               "jobId": {
                 "type": "string"
               },
+              "kind": {
+                "type": "string"
+              },
               "phase": {
                 "type": "string"
               }
             },
             "required": [
               "jobId",
+              "kind",
               "phase",
               "bytesDone",
               "bytesTotal"
@@ -35970,6 +36232,16 @@
               "lifecycle": {
                 "type": "string"
               },
+              "memoryPlacementsRefused": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "memorySpills": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "outputPolicy": {
                 "type": "string"
               },
@@ -36130,6 +36402,8 @@
               "conversionLimitSource",
               "outputPolicy",
               "hostConversionCapacity",
+              "memorySpills",
+              "memoryPlacementsRefused",
               "conversionsRefused",
               "hardwareFallbacks",
               "fragmentedOutput",
@@ -38163,6 +38437,9 @@
                       }
                     ]
                   },
+                  "memoryAvailable": {
+                    "type": "boolean"
+                  },
                   "memoryPath": {
                     "type": "string"
                   },
@@ -38178,7 +38455,8 @@
                   "ready",
                   "freeBytes",
                   "fallback",
-                  "memoryPath"
+                  "memoryPath",
+                  "memoryAvailable"
                 ],
                 "type": "object"
               },
@@ -39443,6 +39721,170 @@
                 },
                 "albumArtistId": {
                   "type": "string"
+                },
+                "homeActions": {
+                  "properties": {
+                    "collection": {
+                      "type": "boolean"
+                    },
+                    "delete": {
+                      "type": "boolean"
+                    },
+                    "details": {
+                      "type": "boolean"
+                    },
+                    "download": {
+                      "type": "boolean"
+                    },
+                    "editMetadata": {
+                      "type": "boolean"
+                    },
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "myList": {
+                      "type": "boolean"
+                    },
+                    "notInterested": {
+                      "type": "boolean"
+                    },
+                    "play": {
+                      "type": "boolean"
+                    },
+                    "played": {
+                      "type": "boolean"
+                    },
+                    "playlist": {
+                      "type": "boolean"
+                    },
+                    "queue": {
+                      "type": "boolean"
+                    },
+                    "rating": {
+                      "type": "boolean"
+                    },
+                    "refreshMetadata": {
+                      "type": "boolean"
+                    },
+                    "removeFromContinue": {
+                      "type": "boolean"
+                    },
+                    "selection": {
+                      "properties": {
+                        "collection": {
+                          "type": "boolean"
+                        },
+                        "delete": {
+                          "type": "boolean"
+                        },
+                        "download": {
+                          "type": "boolean"
+                        },
+                        "edit": {
+                          "type": "boolean"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "myList": {
+                          "type": "boolean"
+                        },
+                        "play": {
+                          "type": "boolean"
+                        },
+                        "playlist": {
+                          "type": "boolean"
+                        },
+                        "queue": {
+                          "type": "boolean"
+                        },
+                        "refresh": {
+                          "type": "boolean"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "play",
+                        "queue",
+                        "playlist",
+                        "collection",
+                        "myList",
+                        "favorite",
+                        "watched",
+                        "download",
+                        "edit",
+                        "refresh",
+                        "delete"
+                      ],
+                      "type": "object"
+                    },
+                    "state": {
+                      "properties": {
+                        "containerRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "personalRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "rating": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        },
+                        "watchlisted": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "watchlisted",
+                        "favorite",
+                        "watched",
+                        "rating",
+                        "personalRevision",
+                        "containerRevision"
+                      ],
+                      "type": "object"
+                    },
+                    "watched": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "play",
+                    "queue",
+                    "playlist",
+                    "collection",
+                    "myList",
+                    "favorite",
+                    "watched",
+                    "played",
+                    "rating",
+                    "editMetadata",
+                    "refreshMetadata",
+                    "delete",
+                    "download",
+                    "details",
+                    "state",
+                    "selection"
+                  ],
+                  "type": "object"
                 },
                 "id": {
                   "type": "string"
@@ -42973,6 +43415,9 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "memoryCap": {
+                    "type": "string"
+                  },
                   "musicAwayQuality": {
                     "type": "string"
                   },
@@ -43208,6 +43653,9 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "transcodeLocation": {
+                    "type": "string"
+                  },
                   "trustedProxies": {
                     "items": {
                       "type": "string"
@@ -43252,9 +43700,11 @@
                   "planningPolicy",
                   "throttleBufferMs",
                   "playedRetentionMs",
+                  "transcodeLocation",
                   "temporaryDirectory",
                   "ffmpegPath",
                   "sessionStorageMiB",
+                  "memoryCap",
                   "maxConcurrentSessions",
                   "maxHardwareSessions",
                   "maxSoftwareSessions",
@@ -43489,6 +43939,9 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "memoryCap": {
+                    "type": "string"
+                  },
                   "musicAwayQuality": {
                     "type": "string"
                   },
@@ -43724,6 +44177,9 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "transcodeLocation": {
+                    "type": "string"
+                  },
                   "trustedProxies": {
                     "items": {
                       "type": "string"
@@ -43768,9 +44224,11 @@
                   "planningPolicy",
                   "throttleBufferMs",
                   "playedRetentionMs",
+                  "transcodeLocation",
                   "temporaryDirectory",
                   "ffmpegPath",
                   "sessionStorageMiB",
+                  "memoryCap",
                   "maxConcurrentSessions",
                   "maxHardwareSessions",
                   "maxSoftwareSessions",
@@ -218630,6 +219088,35 @@
           "art": {
             "type": "string"
           },
+          "avatar": {
+            "properties": {
+              "profileId": {
+                "type": "string"
+              },
+              "sourceMime": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "version": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "profileId",
+              "version",
+              "updatedAt",
+              "sourceMime",
+              "url"
+            ],
+            "type": "object"
+          },
           "id": {
             "type": "string"
           },
@@ -222630,6 +223117,158 @@
         ],
         "type": "object"
       },
+      "PostAdminAccessMembersIdProfilesProfileAvatarRequest": {
+        "properties": {
+          "image": {
+            "format": "binary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "image"
+        ],
+        "type": "object"
+      },
+      "PostAdminAccessMembersIdProfilesProfileAvatarResponse": {
+        "properties": {
+          "allowedLibraries": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "art": {
+            "type": "string"
+          },
+          "avatar": {
+            "properties": {
+              "profileId": {
+                "type": "string"
+              },
+              "sourceMime": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "version": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "profileId",
+              "version",
+              "updatedAt",
+              "sourceMime",
+              "url"
+            ],
+            "type": "object"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pinRequired": {
+            "type": "boolean"
+          },
+          "pinRevision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "position": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "primary": {
+            "type": "boolean"
+          },
+          "restrictions": {
+            "properties": {
+              "allowDownloads": {
+                "type": "boolean"
+              },
+              "allowDvr": {
+                "type": "boolean"
+              },
+              "allowLiveTv": {
+                "type": "boolean"
+              },
+              "allowUnrated": {
+                "type": "boolean"
+              },
+              "allowWatchTogether": {
+                "type": "boolean"
+              },
+              "blockedLabels": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "maximumAge": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maximumAgeRating": {
+                "type": "string"
+              },
+              "profileId": {
+                "type": "string"
+              },
+              "ratingSystem": {
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "profileId",
+              "ratingSystem",
+              "maximumAgeRating",
+              "maximumAge",
+              "allowUnrated",
+              "blockedLabels",
+              "allowDownloads",
+              "allowLiveTv",
+              "allowDvr",
+              "allowWatchTogether",
+              "revision"
+            ],
+            "type": "object"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "primary",
+          "position",
+          "art",
+          "revision",
+          "pinRevision",
+          "pinRequired",
+          "allowedLibraries",
+          "restrictions"
+        ],
+        "type": "object"
+      },
       "PostAdminAccessMembersIdProfilesProfilePinResetRequest": {
         "properties": {
           "expectedRevision": {
@@ -222653,6 +223292,35 @@
           },
           "art": {
             "type": "string"
+          },
+          "avatar": {
+            "properties": {
+              "profileId": {
+                "type": "string"
+              },
+              "sourceMime": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "version": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "profileId",
+              "version",
+              "updatedAt",
+              "sourceMime",
+              "url"
+            ],
+            "type": "object"
           },
           "id": {
             "type": "string"
@@ -254891,6 +255559,35 @@
           },
           "art": {
             "type": "string"
+          },
+          "avatar": {
+            "properties": {
+              "profileId": {
+                "type": "string"
+              },
+              "sourceMime": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "version": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "profileId",
+              "version",
+              "updatedAt",
+              "sourceMime",
+              "url"
+            ],
+            "type": "object"
           },
           "id": {
             "type": "string"
@@ -291886,6 +292583,9 @@
                       }
                     ]
                   },
+                  "memoryAvailable": {
+                    "type": "boolean"
+                  },
                   "memoryPath": {
                     "type": "string"
                   },
@@ -291901,7 +292601,8 @@
                   "ready",
                   "freeBytes",
                   "fallback",
-                  "memoryPath"
+                  "memoryPath",
+                  "memoryAvailable"
                 ],
                 "type": "object"
               },
@@ -298637,6 +299338,35 @@
                           "art": {
                             "type": "string"
                           },
+                          "avatar": {
+                            "properties": {
+                              "profileId": {
+                                "type": "string"
+                              },
+                              "sourceMime": {
+                                "type": "string"
+                              },
+                              "updatedAt": {
+                                "type": "string"
+                              },
+                              "url": {
+                                "type": "string"
+                              },
+                              "version": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "profileId",
+                              "version",
+                              "updatedAt",
+                              "sourceMime",
+                              "url"
+                            ],
+                            "type": "object"
+                          },
                           "id": {
                             "type": "string"
                           },
@@ -298859,6 +299589,35 @@
                     "art": {
                       "type": "string"
                     },
+                    "avatar": {
+                      "properties": {
+                        "profileId": {
+                          "type": "string"
+                        },
+                        "sourceMime": {
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        },
+                        "url": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "profileId",
+                        "version",
+                        "updatedAt",
+                        "sourceMime",
+                        "url"
+                      ],
+                      "type": "object"
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -299013,6 +299772,608 @@
         "x-scope": "admin"
       }
     },
+    "/v1/admin/access/members/{id}/profiles/{profileId}/avatar": {
+      "delete": {
+        "operationId": "delete_admin_access_members_id_profiles_profile_avatar",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "profileId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "expectedRevision"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "allowedLibraries": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "art": {
+                      "type": "string"
+                    },
+                    "avatar": {
+                      "properties": {
+                        "profileId": {
+                          "type": "string"
+                        },
+                        "sourceMime": {
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        },
+                        "url": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "profileId",
+                        "version",
+                        "updatedAt",
+                        "sourceMime",
+                        "url"
+                      ],
+                      "type": "object"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "pinRequired": {
+                      "type": "boolean"
+                    },
+                    "pinRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "position": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "primary": {
+                      "type": "boolean"
+                    },
+                    "restrictions": {
+                      "properties": {
+                        "allowDownloads": {
+                          "type": "boolean"
+                        },
+                        "allowDvr": {
+                          "type": "boolean"
+                        },
+                        "allowLiveTv": {
+                          "type": "boolean"
+                        },
+                        "allowUnrated": {
+                          "type": "boolean"
+                        },
+                        "allowWatchTogether": {
+                          "type": "boolean"
+                        },
+                        "blockedLabels": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "maximumAge": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "maximumAgeRating": {
+                          "type": "string"
+                        },
+                        "profileId": {
+                          "type": "string"
+                        },
+                        "ratingSystem": {
+                          "type": "string"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "profileId",
+                        "ratingSystem",
+                        "maximumAgeRating",
+                        "maximumAge",
+                        "allowUnrated",
+                        "blockedLabels",
+                        "allowDownloads",
+                        "allowLiveTv",
+                        "allowDvr",
+                        "allowWatchTogether",
+                        "revision"
+                      ],
+                      "type": "object"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "primary",
+                    "position",
+                    "art",
+                    "revision",
+                    "pinRevision",
+                    "pinRequired",
+                    "allowedLibraries",
+                    "restrictions"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Delete another person's profile picture",
+        "x-access": "admin_scope",
+        "x-admission": "admin",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "revision_mismatch",
+          "avatar_unsupported",
+          "avatar_not_found",
+          "internal",
+          "database_busy",
+          "writer_capacity"
+        ],
+        "x-lane": "default",
+        "x-max-body-bytes": 4096,
+        "x-scope": "admin"
+      },
+      "get": {
+        "operationId": "get_admin_access_members_id_profiles_profile_avatar",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "profileId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "v",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "size",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Get another person's profile picture",
+        "x-access": "admin_scope",
+        "x-admission": "admin",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "revision_mismatch",
+          "avatar_unsupported",
+          "avatar_not_found",
+          "internal",
+          "database_busy"
+        ],
+        "x-lane": "default",
+        "x-scope": "admin"
+      },
+      "post": {
+        "operationId": "post_admin_access_members_id_profiles_profile_avatar",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "profileId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "expectedRevision",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "image/jpeg": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "image/png": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "image": {
+                    "format": "binary",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "image"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "allowedLibraries": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "art": {
+                      "type": "string"
+                    },
+                    "avatar": {
+                      "properties": {
+                        "profileId": {
+                          "type": "string"
+                        },
+                        "sourceMime": {
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        },
+                        "url": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "profileId",
+                        "version",
+                        "updatedAt",
+                        "sourceMime",
+                        "url"
+                      ],
+                      "type": "object"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "pinRequired": {
+                      "type": "boolean"
+                    },
+                    "pinRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "position": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "primary": {
+                      "type": "boolean"
+                    },
+                    "restrictions": {
+                      "properties": {
+                        "allowDownloads": {
+                          "type": "boolean"
+                        },
+                        "allowDvr": {
+                          "type": "boolean"
+                        },
+                        "allowLiveTv": {
+                          "type": "boolean"
+                        },
+                        "allowUnrated": {
+                          "type": "boolean"
+                        },
+                        "allowWatchTogether": {
+                          "type": "boolean"
+                        },
+                        "blockedLabels": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "maximumAge": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "maximumAgeRating": {
+                          "type": "string"
+                        },
+                        "profileId": {
+                          "type": "string"
+                        },
+                        "ratingSystem": {
+                          "type": "string"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "profileId",
+                        "ratingSystem",
+                        "maximumAgeRating",
+                        "maximumAge",
+                        "allowUnrated",
+                        "blockedLabels",
+                        "allowDownloads",
+                        "allowLiveTv",
+                        "allowDvr",
+                        "allowWatchTogether",
+                        "revision"
+                      ],
+                      "type": "object"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "primary",
+                    "position",
+                    "art",
+                    "revision",
+                    "pinRevision",
+                    "pinRequired",
+                    "allowedLibraries",
+                    "restrictions"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Post another person's profile picture",
+        "x-access": "admin_scope",
+        "x-admission": "admin",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "revision_mismatch",
+          "avatar_unsupported",
+          "avatar_not_found",
+          "internal",
+          "database_busy",
+          "writer_capacity"
+        ],
+        "x-lane": "default",
+        "x-max-body-bytes": 5242880,
+        "x-scope": "admin"
+      }
+    },
     "/v1/admin/access/members/{id}/profiles/{profileId}/pin-reset": {
       "post": {
         "operationId": "post_admin_access_members_id_profiles_profile_pin_reset",
@@ -299068,6 +300429,35 @@
                     },
                     "art": {
                       "type": "string"
+                    },
+                    "avatar": {
+                      "properties": {
+                        "profileId": {
+                          "type": "string"
+                        },
+                        "sourceMime": {
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        },
+                        "url": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "profileId",
+                        "version",
+                        "updatedAt",
+                        "sourceMime",
+                        "url"
+                      ],
+                      "type": "object"
                     },
                     "id": {
                       "type": "string"
@@ -299313,6 +300703,35 @@
                     },
                     "art": {
                       "type": "string"
+                    },
+                    "avatar": {
+                      "properties": {
+                        "profileId": {
+                          "type": "string"
+                        },
+                        "sourceMime": {
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        },
+                        "url": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "profileId",
+                        "version",
+                        "updatedAt",
+                        "sourceMime",
+                        "url"
+                      ],
+                      "type": "object"
                     },
                     "id": {
                       "type": "string"
@@ -301382,6 +302801,28 @@
                         "reason": {
                           "type": "string"
                         },
+                        "recovery": {
+                          "properties": {
+                            "damagedTables": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "indexesRebuilt": {
+                              "type": "boolean"
+                            },
+                            "removedRows": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "salvaged": {
+                              "type": "boolean"
+                            }
+                          },
+                          "type": "object"
+                        },
                         "schemaVersion": {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
@@ -301431,6 +302872,28 @@
                                 "integrity": {
                                   "type": "string"
                                 },
+                                "recovery": {
+                                  "properties": {
+                                    "damagedTables": {
+                                      "items": {
+                                        "type": "string"
+                                      },
+                                      "type": "array"
+                                    },
+                                    "indexesRebuilt": {
+                                      "type": "boolean"
+                                    },
+                                    "removedRows": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "salvaged": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "type": "object"
+                                },
                                 "schemaVersion": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -301475,12 +302938,16 @@
                         "jobId": {
                           "type": "string"
                         },
+                        "kind": {
+                          "type": "string"
+                        },
                         "phase": {
                           "type": "string"
                         }
                       },
                       "required": [
                         "jobId",
+                        "kind",
                         "phase",
                         "bytesDone",
                         "bytesTotal"
@@ -306460,6 +307927,9 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "memoryCap": {
+                              "type": "string"
+                            },
                             "musicAwayQuality": {
                               "type": "string"
                             },
@@ -306695,6 +308165,9 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "transcodeLocation": {
+                              "type": "string"
+                            },
                             "trustedProxies": {
                               "items": {
                                 "type": "string"
@@ -306739,9 +308212,11 @@
                             "planningPolicy",
                             "throttleBufferMs",
                             "playedRetentionMs",
+                            "transcodeLocation",
                             "temporaryDirectory",
                             "ffmpegPath",
                             "sessionStorageMiB",
+                            "memoryCap",
                             "maxConcurrentSessions",
                             "maxHardwareSessions",
                             "maxSoftwareSessions",
@@ -306976,6 +308451,9 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "memoryCap": {
+                              "type": "string"
+                            },
                             "musicAwayQuality": {
                               "type": "string"
                             },
@@ -307211,6 +308689,9 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "transcodeLocation": {
+                              "type": "string"
+                            },
                             "trustedProxies": {
                               "items": {
                                 "type": "string"
@@ -307255,9 +308736,11 @@
                             "planningPolicy",
                             "throttleBufferMs",
                             "playedRetentionMs",
+                            "transcodeLocation",
                             "temporaryDirectory",
                             "ffmpegPath",
                             "sessionStorageMiB",
+                            "memoryCap",
                             "maxConcurrentSessions",
                             "maxHardwareSessions",
                             "maxSoftwareSessions",
@@ -307568,6 +309051,9 @@
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "memoryCap": {
+                        "type": "string"
+                      },
                       "musicAwayQuality": {
                         "type": "string"
                       },
@@ -307803,6 +309289,9 @@
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "transcodeLocation": {
+                        "type": "string"
+                      },
                       "trustedProxies": {
                         "items": {
                           "type": "string"
@@ -307847,9 +309336,11 @@
                       "planningPolicy",
                       "throttleBufferMs",
                       "playedRetentionMs",
+                      "transcodeLocation",
                       "temporaryDirectory",
                       "ffmpegPath",
                       "sessionStorageMiB",
+                      "memoryCap",
                       "maxConcurrentSessions",
                       "maxHardwareSessions",
                       "maxSoftwareSessions",
@@ -308075,6 +309566,9 @@
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "memoryCap": {
+                              "type": "string"
                             },
                             "musicAwayQuality": {
                               "type": "string"
@@ -308311,6 +309805,9 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "transcodeLocation": {
+                              "type": "string"
+                            },
                             "trustedProxies": {
                               "items": {
                                 "type": "string"
@@ -308355,9 +309852,11 @@
                             "planningPolicy",
                             "throttleBufferMs",
                             "playedRetentionMs",
+                            "transcodeLocation",
                             "temporaryDirectory",
                             "ffmpegPath",
                             "sessionStorageMiB",
+                            "memoryCap",
                             "maxConcurrentSessions",
                             "maxHardwareSessions",
                             "maxSoftwareSessions",
@@ -308592,6 +310091,9 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "memoryCap": {
+                              "type": "string"
+                            },
                             "musicAwayQuality": {
                               "type": "string"
                             },
@@ -308827,6 +310329,9 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "transcodeLocation": {
+                              "type": "string"
+                            },
                             "trustedProxies": {
                               "items": {
                                 "type": "string"
@@ -308871,9 +310376,11 @@
                             "planningPolicy",
                             "throttleBufferMs",
                             "playedRetentionMs",
+                            "transcodeLocation",
                             "temporaryDirectory",
                             "ffmpegPath",
                             "sessionStorageMiB",
+                            "memoryCap",
                             "maxConcurrentSessions",
                             "maxHardwareSessions",
                             "maxSoftwareSessions",
@@ -339750,6 +341257,16 @@
                         "lifecycle": {
                           "type": "string"
                         },
+                        "memoryPlacementsRefused": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "memorySpills": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
                         "outputPolicy": {
                           "type": "string"
                         },
@@ -339910,6 +341427,8 @@
                         "conversionLimitSource",
                         "outputPolicy",
                         "hostConversionCapacity",
+                        "memorySpills",
+                        "memoryPlacementsRefused",
                         "conversionsRefused",
                         "hardwareFallbacks",
                         "fragmentedOutput",
@@ -346929,6 +348448,9 @@
                                 }
                               ]
                             },
+                            "memoryAvailable": {
+                              "type": "boolean"
+                            },
                             "memoryPath": {
                               "type": "string"
                             },
@@ -346944,7 +348466,8 @@
                             "ready",
                             "freeBytes",
                             "fallback",
-                            "memoryPath"
+                            "memoryPath",
+                            "memoryAvailable"
                           ],
                           "type": "object"
                         },
@@ -347480,6 +349003,9 @@
                                 }
                               ]
                             },
+                            "memoryAvailable": {
+                              "type": "boolean"
+                            },
                             "memoryPath": {
                               "type": "string"
                             },
@@ -347495,7 +349021,8 @@
                             "ready",
                             "freeBytes",
                             "fallback",
-                            "memoryPath"
+                            "memoryPath",
+                            "memoryAvailable"
                           ],
                           "type": "object"
                         },
@@ -350912,6 +352439,170 @@
                           },
                           "albumArtistId": {
                             "type": "string"
+                          },
+                          "homeActions": {
+                            "properties": {
+                              "collection": {
+                                "type": "boolean"
+                              },
+                              "delete": {
+                                "type": "boolean"
+                              },
+                              "details": {
+                                "type": "boolean"
+                              },
+                              "download": {
+                                "type": "boolean"
+                              },
+                              "editMetadata": {
+                                "type": "boolean"
+                              },
+                              "favorite": {
+                                "type": "boolean"
+                              },
+                              "myList": {
+                                "type": "boolean"
+                              },
+                              "notInterested": {
+                                "type": "boolean"
+                              },
+                              "play": {
+                                "type": "boolean"
+                              },
+                              "played": {
+                                "type": "boolean"
+                              },
+                              "playlist": {
+                                "type": "boolean"
+                              },
+                              "queue": {
+                                "type": "boolean"
+                              },
+                              "rating": {
+                                "type": "boolean"
+                              },
+                              "refreshMetadata": {
+                                "type": "boolean"
+                              },
+                              "removeFromContinue": {
+                                "type": "boolean"
+                              },
+                              "selection": {
+                                "properties": {
+                                  "collection": {
+                                    "type": "boolean"
+                                  },
+                                  "delete": {
+                                    "type": "boolean"
+                                  },
+                                  "download": {
+                                    "type": "boolean"
+                                  },
+                                  "edit": {
+                                    "type": "boolean"
+                                  },
+                                  "favorite": {
+                                    "type": "boolean"
+                                  },
+                                  "myList": {
+                                    "type": "boolean"
+                                  },
+                                  "play": {
+                                    "type": "boolean"
+                                  },
+                                  "playlist": {
+                                    "type": "boolean"
+                                  },
+                                  "queue": {
+                                    "type": "boolean"
+                                  },
+                                  "refresh": {
+                                    "type": "boolean"
+                                  },
+                                  "watched": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": [
+                                  "play",
+                                  "queue",
+                                  "playlist",
+                                  "collection",
+                                  "myList",
+                                  "favorite",
+                                  "watched",
+                                  "download",
+                                  "edit",
+                                  "refresh",
+                                  "delete"
+                                ],
+                                "type": "object"
+                              },
+                              "state": {
+                                "properties": {
+                                  "containerRevision": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "favorite": {
+                                    "type": "boolean"
+                                  },
+                                  "personalRevision": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "rating": {
+                                    "anyOf": [
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "watched": {
+                                    "type": "boolean"
+                                  },
+                                  "watchlisted": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": [
+                                  "watchlisted",
+                                  "favorite",
+                                  "watched",
+                                  "rating",
+                                  "personalRevision",
+                                  "containerRevision"
+                                ],
+                                "type": "object"
+                              },
+                              "watched": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "play",
+                              "queue",
+                              "playlist",
+                              "collection",
+                              "myList",
+                              "favorite",
+                              "watched",
+                              "played",
+                              "rating",
+                              "editMetadata",
+                              "refreshMetadata",
+                              "delete",
+                              "download",
+                              "details",
+                              "state",
+                              "selection"
+                            ],
+                            "type": "object"
                           },
                           "id": {
                             "type": "string"
@@ -372044,12 +373735,6 @@
               }
             },
             "image/png": {
-              "schema": {
-                "format": "binary",
-                "type": "string"
-              }
-            },
-            "image/webp": {
               "schema": {
                 "format": "binary",
                 "type": "string"
@@ -482721,6 +484406,78 @@
                 ],
                 "type": "object"
               }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "companion": {
+                    "contentEncoding": "base64",
+                    "format": "byte",
+                    "type": "string"
+                  },
+                  "content": {
+                    "type": "string"
+                  },
+                  "data": {
+                    "contentEncoding": "base64",
+                    "format": "byte",
+                    "type": "string"
+                  },
+                  "default": {
+                    "type": "boolean"
+                  },
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "forced": {
+                    "type": "boolean"
+                  },
+                  "format": {
+                    "type": "string"
+                  },
+                  "language": {
+                    "type": "string"
+                  },
+                  "offsetUs": {
+                    "type": "string"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "render": {
+                    "type": "string"
+                  },
+                  "resourceId": {
+                    "type": "string"
+                  },
+                  "rights": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "string"
+                  },
+                  "sourceId": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "sourceId",
+                  "expectedRevision",
+                  "scope",
+                  "format",
+                  "language",
+                  "title",
+                  "rights",
+                  "offsetUs"
+                ],
+                "type": "object"
+              }
             }
           },
           "required": true
@@ -484057,6 +485814,78 @@
         "requestBody": {
           "content": {
             "application/json": {
+              "schema": {
+                "properties": {
+                  "companion": {
+                    "contentEncoding": "base64",
+                    "format": "byte",
+                    "type": "string"
+                  },
+                  "content": {
+                    "type": "string"
+                  },
+                  "data": {
+                    "contentEncoding": "base64",
+                    "format": "byte",
+                    "type": "string"
+                  },
+                  "default": {
+                    "type": "boolean"
+                  },
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "forced": {
+                    "type": "boolean"
+                  },
+                  "format": {
+                    "type": "string"
+                  },
+                  "language": {
+                    "type": "string"
+                  },
+                  "offsetUs": {
+                    "type": "string"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "render": {
+                    "type": "string"
+                  },
+                  "resourceId": {
+                    "type": "string"
+                  },
+                  "rights": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "string"
+                  },
+                  "sourceId": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "sourceId",
+                  "expectedRevision",
+                  "scope",
+                  "format",
+                  "language",
+                  "title",
+                  "rights",
+                  "offsetUs"
+                ],
+                "type": "object"
+              }
+            },
+            "multipart/form-data": {
               "schema": {
                 "properties": {
                   "companion": {

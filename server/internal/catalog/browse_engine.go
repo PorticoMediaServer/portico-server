@@ -408,11 +408,21 @@ func (s *Service) browseRevision(request BrowseRequest, pivot browsePivot, sorts
 		}
 		extra += "\x00" + fence
 	}
-	witness, err := s.browseExactWitness(request.Library, request.Profile, request.Restrictions)
+	// Only Reading continuations reuse exact live-predicate totals. Ordinary
+	// browse keeps its serving/order revision: a raw decoration change must
+	// not invalidate P2-13's published-generation continuation. Prepared
+	// whole-view aggregates bind their complete witness separately.
+	reading, err := s.readingBrowseScope(request.Library)
 	if err != nil {
 		return "", err
 	}
-	extra += "\x00" + witness
+	if reading != nil {
+		witness, err := s.browseExactWitness(request.Library, request.Profile, request.Restrictions)
+		if err != nil {
+			return "", err
+		}
+		extra += "\x00" + witness
+	}
 	extra += s.relativeBrowseFence(request.Query)
 	digest := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%s\x00%s\x00%s\x00%s\x00%d\x00%d\x00%s", request.Library, pivot.ID, request.ViewerFence, queryFingerprint(request.Query)+"\x00display:"+request.HomeRowDisplay, canonicalSort(sorts), revision.Catalog, revision.Viewer, extra)))
 	return "browse_" + hex.EncodeToString(digest[:]), nil

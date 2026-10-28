@@ -10430,6 +10430,9 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "memoryCap": {
+            "type": "string"
+          },
           "musicAwayQuality": {
             "type": "string"
           },
@@ -10653,6 +10656,9 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "transcodeLocation": {
+            "type": "string"
+          },
           "trustedProxies": {
             "items": {
               "type": "string"
@@ -10697,9 +10703,11 @@ export const schemas = {
           "planningPolicy",
           "throttleBufferMs",
           "playedRetentionMs",
+          "transcodeLocation",
           "temporaryDirectory",
           "ffmpegPath",
           "sessionStorageMiB",
+          "memoryCap",
           "maxConcurrentSessions",
           "maxHardwareSessions",
           "maxSoftwareSessions",
@@ -10917,6 +10925,9 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "memoryCap": {
+                "type": "string"
               },
               "musicAwayQuality": {
                 "type": "string"
@@ -11141,6 +11152,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "transcodeLocation": {
+                "type": "string"
+              },
               "trustedProxies": {
                 "items": {
                   "type": "string"
@@ -11185,9 +11199,11 @@ export const schemas = {
               "planningPolicy",
               "throttleBufferMs",
               "playedRetentionMs",
+              "transcodeLocation",
               "temporaryDirectory",
               "ffmpegPath",
               "sessionStorageMiB",
+              "memoryCap",
               "maxConcurrentSessions",
               "maxHardwareSessions",
               "maxSoftwareSessions",
@@ -11422,6 +11438,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "memoryCap": {
+                "type": "string"
+              },
               "musicAwayQuality": {
                 "type": "string"
               },
@@ -11645,6 +11664,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "transcodeLocation": {
+                "type": "string"
+              },
               "trustedProxies": {
                 "items": {
                   "type": "string"
@@ -11689,9 +11711,11 @@ export const schemas = {
               "planningPolicy",
               "throttleBufferMs",
               "playedRetentionMs",
+              "transcodeLocation",
               "temporaryDirectory",
               "ffmpegPath",
               "sessionStorageMiB",
+              "memoryCap",
               "maxConcurrentSessions",
               "maxHardwareSessions",
               "maxSoftwareSessions",
@@ -18824,6 +18848,159 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "DeleteAdminAccessMembersIdProfilesProfileAvatarRequest": {
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "DeleteAdminAccessMembersIdProfilesProfileAvatarResponse": {
+    "properties": {
+      "allowedLibraries": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "art": {
+        "type": "string"
+      },
+      "avatar": {
+        "properties": {
+          "profileId": {
+            "type": "string"
+          },
+          "sourceMime": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "version": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "profileId",
+          "version",
+          "updatedAt",
+          "sourceMime",
+          "url"
+        ],
+        "type": "object"
+      },
+      "id": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "pinRequired": {
+        "type": "boolean"
+      },
+      "pinRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "position": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "primary": {
+        "type": "boolean"
+      },
+      "restrictions": {
+        "properties": {
+          "allowDownloads": {
+            "type": "boolean"
+          },
+          "allowDvr": {
+            "type": "boolean"
+          },
+          "allowLiveTv": {
+            "type": "boolean"
+          },
+          "allowUnrated": {
+            "type": "boolean"
+          },
+          "allowWatchTogether": {
+            "type": "boolean"
+          },
+          "blockedLabels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "maximumAge": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "maximumAgeRating": {
+            "type": "string"
+          },
+          "profileId": {
+            "type": "string"
+          },
+          "ratingSystem": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "profileId",
+          "ratingSystem",
+          "maximumAgeRating",
+          "maximumAge",
+          "allowUnrated",
+          "blockedLabels",
+          "allowDownloads",
+          "allowLiveTv",
+          "allowDvr",
+          "allowWatchTogether",
+          "revision"
+        ],
+        "type": "object"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "id",
+      "name",
+      "primary",
+      "position",
+      "art",
+      "revision",
+      "pinRevision",
+      "pinRequired",
+      "allowedLibraries",
+      "restrictions"
+    ],
+    "type": "object"
+  },
   "DeleteAdminBackupRequest": {
     "properties": {},
     "required": [],
@@ -23726,6 +23903,15 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetAdminAccessMembersIdProfilesProfileAvatarRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetAdminAccessMembersIdProfilesProfileAvatarResponse": {
+    "format": "binary",
+    "type": "string"
+  },
   "GetAdminAccessMembersIdProfilesRequest": {
     "properties": {},
     "required": [],
@@ -23747,6 +23933,35 @@ export const schemas = {
             },
             "art": {
               "type": "string"
+            },
+            "avatar": {
+              "properties": {
+                "profileId": {
+                  "type": "string"
+                },
+                "sourceMime": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "version": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "profileId",
+                "version",
+                "updatedAt",
+                "sourceMime",
+                "url"
+              ],
+              "type": "object"
             },
             "id": {
               "type": "string"
@@ -24928,6 +25143,29 @@ export const schemas = {
           "reason": {
             "type": "string"
           },
+          "recovery": {
+            "properties": {
+              "damagedTables": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "indexesRebuilt": {
+                "type": "boolean"
+              },
+              "removedRows": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "salvaged": {
+                "type": "boolean"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
           "schemaVersion": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -24977,6 +25215,29 @@ export const schemas = {
                   "integrity": {
                     "type": "string"
                   },
+                  "recovery": {
+                    "properties": {
+                      "damagedTables": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "indexesRebuilt": {
+                        "type": "boolean"
+                      },
+                      "removedRows": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "salvaged": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [],
+                    "type": "object"
+                  },
                   "schemaVersion": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -25021,12 +25282,16 @@ export const schemas = {
           "jobId": {
             "type": "string"
           },
+          "kind": {
+            "type": "string"
+          },
           "phase": {
             "type": "string"
           }
         },
         "required": [
           "jobId",
+          "kind",
           "phase",
           "bytesDone",
           "bytesTotal"
@@ -33640,6 +33905,16 @@ export const schemas = {
           "lifecycle": {
             "type": "string"
           },
+          "memoryPlacementsRefused": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "memorySpills": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "outputPolicy": {
             "type": "string"
           },
@@ -33770,6 +34045,8 @@ export const schemas = {
           "conversionLimitSource",
           "outputPolicy",
           "hostConversionCapacity",
+          "memorySpills",
+          "memoryPlacementsRefused",
           "conversionsRefused",
           "hardwareFallbacks",
           "fragmentedOutput",
@@ -35679,6 +35956,9 @@ export const schemas = {
                 "nullable": true,
                 "type": "integer"
               },
+              "memoryAvailable": {
+                "type": "boolean"
+              },
               "memoryPath": {
                 "type": "string"
               },
@@ -35694,7 +35974,8 @@ export const schemas = {
               "ready",
               "freeBytes",
               "fallback",
-              "memoryPath"
+              "memoryPath",
+              "memoryAvailable"
             ],
             "type": "object"
           },
@@ -36960,6 +37241,164 @@ export const schemas = {
             },
             "albumArtistId": {
               "type": "string"
+            },
+            "homeActions": {
+              "properties": {
+                "collection": {
+                  "type": "boolean"
+                },
+                "delete": {
+                  "type": "boolean"
+                },
+                "details": {
+                  "type": "boolean"
+                },
+                "download": {
+                  "type": "boolean"
+                },
+                "editMetadata": {
+                  "type": "boolean"
+                },
+                "favorite": {
+                  "type": "boolean"
+                },
+                "myList": {
+                  "type": "boolean"
+                },
+                "notInterested": {
+                  "type": "boolean"
+                },
+                "play": {
+                  "type": "boolean"
+                },
+                "played": {
+                  "type": "boolean"
+                },
+                "playlist": {
+                  "type": "boolean"
+                },
+                "queue": {
+                  "type": "boolean"
+                },
+                "rating": {
+                  "type": "boolean"
+                },
+                "refreshMetadata": {
+                  "type": "boolean"
+                },
+                "removeFromContinue": {
+                  "type": "boolean"
+                },
+                "selection": {
+                  "properties": {
+                    "collection": {
+                      "type": "boolean"
+                    },
+                    "delete": {
+                      "type": "boolean"
+                    },
+                    "download": {
+                      "type": "boolean"
+                    },
+                    "edit": {
+                      "type": "boolean"
+                    },
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "myList": {
+                      "type": "boolean"
+                    },
+                    "play": {
+                      "type": "boolean"
+                    },
+                    "playlist": {
+                      "type": "boolean"
+                    },
+                    "queue": {
+                      "type": "boolean"
+                    },
+                    "refresh": {
+                      "type": "boolean"
+                    },
+                    "watched": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "play",
+                    "queue",
+                    "playlist",
+                    "collection",
+                    "myList",
+                    "favorite",
+                    "watched",
+                    "download",
+                    "edit",
+                    "refresh",
+                    "delete"
+                  ],
+                  "type": "object"
+                },
+                "state": {
+                  "properties": {
+                    "containerRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "personalRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "rating": {
+                      "nullable": true,
+                      "type": "number"
+                    },
+                    "watched": {
+                      "type": "boolean"
+                    },
+                    "watchlisted": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "watchlisted",
+                    "favorite",
+                    "watched",
+                    "rating",
+                    "personalRevision",
+                    "containerRevision"
+                  ],
+                  "type": "object"
+                },
+                "watched": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "play",
+                "queue",
+                "playlist",
+                "collection",
+                "myList",
+                "favorite",
+                "watched",
+                "played",
+                "rating",
+                "editMetadata",
+                "refreshMetadata",
+                "delete",
+                "download",
+                "details",
+                "state",
+                "selection"
+              ],
+              "type": "object"
             },
             "id": {
               "type": "string"
@@ -40481,6 +40920,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "memoryCap": {
+                "type": "string"
+              },
               "musicAwayQuality": {
                 "type": "string"
               },
@@ -40704,6 +41146,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "transcodeLocation": {
+                "type": "string"
+              },
               "trustedProxies": {
                 "items": {
                   "type": "string"
@@ -40748,9 +41193,11 @@ export const schemas = {
               "planningPolicy",
               "throttleBufferMs",
               "playedRetentionMs",
+              "transcodeLocation",
               "temporaryDirectory",
               "ffmpegPath",
               "sessionStorageMiB",
+              "memoryCap",
               "maxConcurrentSessions",
               "maxHardwareSessions",
               "maxSoftwareSessions",
@@ -40985,6 +41432,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "memoryCap": {
+                "type": "string"
+              },
               "musicAwayQuality": {
                 "type": "string"
               },
@@ -41208,6 +41658,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "transcodeLocation": {
+                "type": "string"
+              },
               "trustedProxies": {
                 "items": {
                   "type": "string"
@@ -41252,9 +41705,11 @@ export const schemas = {
               "planningPolicy",
               "throttleBufferMs",
               "playedRetentionMs",
+              "transcodeLocation",
               "temporaryDirectory",
               "ffmpegPath",
               "sessionStorageMiB",
+              "memoryCap",
               "maxConcurrentSessions",
               "maxHardwareSessions",
               "maxSoftwareSessions",
@@ -196965,6 +197420,35 @@ export const schemas = {
       "art": {
         "type": "string"
       },
+      "avatar": {
+        "properties": {
+          "profileId": {
+            "type": "string"
+          },
+          "sourceMime": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "version": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "profileId",
+          "version",
+          "updatedAt",
+          "sourceMime",
+          "url"
+        ],
+        "type": "object"
+      },
       "id": {
         "type": "string"
       },
@@ -200910,6 +201394,158 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PostAdminAccessMembersIdProfilesProfileAvatarRequest": {
+    "properties": {
+      "image": {
+        "format": "binary",
+        "type": "string"
+      }
+    },
+    "required": [
+      "image"
+    ],
+    "type": "object"
+  },
+  "PostAdminAccessMembersIdProfilesProfileAvatarResponse": {
+    "properties": {
+      "allowedLibraries": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "art": {
+        "type": "string"
+      },
+      "avatar": {
+        "properties": {
+          "profileId": {
+            "type": "string"
+          },
+          "sourceMime": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "version": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "profileId",
+          "version",
+          "updatedAt",
+          "sourceMime",
+          "url"
+        ],
+        "type": "object"
+      },
+      "id": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "pinRequired": {
+        "type": "boolean"
+      },
+      "pinRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "position": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "primary": {
+        "type": "boolean"
+      },
+      "restrictions": {
+        "properties": {
+          "allowDownloads": {
+            "type": "boolean"
+          },
+          "allowDvr": {
+            "type": "boolean"
+          },
+          "allowLiveTv": {
+            "type": "boolean"
+          },
+          "allowUnrated": {
+            "type": "boolean"
+          },
+          "allowWatchTogether": {
+            "type": "boolean"
+          },
+          "blockedLabels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "maximumAge": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "maximumAgeRating": {
+            "type": "string"
+          },
+          "profileId": {
+            "type": "string"
+          },
+          "ratingSystem": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "profileId",
+          "ratingSystem",
+          "maximumAgeRating",
+          "maximumAge",
+          "allowUnrated",
+          "blockedLabels",
+          "allowDownloads",
+          "allowLiveTv",
+          "allowDvr",
+          "allowWatchTogether",
+          "revision"
+        ],
+        "type": "object"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "id",
+      "name",
+      "primary",
+      "position",
+      "art",
+      "revision",
+      "pinRevision",
+      "pinRequired",
+      "allowedLibraries",
+      "restrictions"
+    ],
+    "type": "object"
+  },
   "PostAdminAccessMembersIdProfilesProfilePinResetRequest": {
     "properties": {
       "expectedRevision": {
@@ -200933,6 +201569,35 @@ export const schemas = {
       },
       "art": {
         "type": "string"
+      },
+      "avatar": {
+        "properties": {
+          "profileId": {
+            "type": "string"
+          },
+          "sourceMime": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "version": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "profileId",
+          "version",
+          "updatedAt",
+          "sourceMime",
+          "url"
+        ],
+        "type": "object"
       },
       "id": {
         "type": "string"
@@ -232940,6 +233605,35 @@ export const schemas = {
       },
       "art": {
         "type": "string"
+      },
+      "avatar": {
+        "properties": {
+          "profileId": {
+            "type": "string"
+          },
+          "sourceMime": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "version": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "profileId",
+          "version",
+          "updatedAt",
+          "sourceMime",
+          "url"
+        ],
+        "type": "object"
       },
       "id": {
         "type": "string"
@@ -269266,6 +269960,9 @@ export const schemas = {
                 "nullable": true,
                 "type": "integer"
               },
+              "memoryAvailable": {
+                "type": "boolean"
+              },
               "memoryPath": {
                 "type": "string"
               },
@@ -269281,7 +269978,8 @@ export const schemas = {
               "ready",
               "freeBytes",
               "fallback",
-              "memoryPath"
+              "memoryPath",
+              "memoryAvailable"
             ],
             "type": "object"
           },

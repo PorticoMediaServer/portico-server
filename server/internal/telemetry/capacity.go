@@ -33,6 +33,8 @@ type TranscodeSettings struct {
 	PlayedRetentionMs       int
 	SessionStorageMiB       int
 	TemporaryDirectory      string
+	MemoryCap               string
+	TranscodeLocation       string
 	MaxConcurrentSessions   int
 	MaxHardwareSessions     int
 	MaxSoftwareSessions     int
@@ -156,11 +158,10 @@ type TemporaryDirectory struct {
 	// own state directory is used. It is the one condition that tells a container
 	// owner the conversion directory was never mapped.
 	Fallback bool `json:"fallback"`
-	// Memory is the RAM file system a conversion directory can use on this
-	// platform, offered only when it exists and this server can write to it. An
-	// empty value means there is none to offer: a client must leave that choice
-	// out rather than draw one the server cannot honour.
-	Memory string `json:"memoryPath"`
+	// Memory identifies the candidate RAM file system. Whether this host can
+	// safely use it is a separate server fact.
+	Memory          string `json:"memoryPath"`
+	MemoryAvailable bool   `json:"memoryAvailable"`
 }
 
 // Report is the wire shape of GET /v1/admin/transcode/capacity.
@@ -196,6 +197,9 @@ type Capacity struct {
 	// precedence over the legacy state/configured directory composition.
 	Directory *string
 	Now       func() time.Time
+	// MemoryAvailable uses the same conservative admission predicate as playback.
+	// A missing callback leaves memory unavailable.
+	MemoryAvailable func(path, memoryCap string) bool
 	// Run is the reporter seam, so tests compose a report without executables.
 	Run func(ctx context.Context, name string, args ...string) (string, error)
 
@@ -260,6 +264,10 @@ func (c *Capacity) Report(ctx context.Context, s TranscodeSettings, sessions Ses
 		Dependencies:       dependencies,
 		Warnings:           []string{},
 		ObservedAt:         now,
+	}
+	out.TemporaryDirectory.Memory = memoryTranscodeDirectory()
+	if c.MemoryAvailable != nil {
+		out.TemporaryDirectory.MemoryAvailable = c.MemoryAvailable(out.TemporaryDirectory.Memory, s.MemoryCap)
 	}
 	if out.Toolchain != nil {
 		if missing := out.Toolchain.MissingRequired(); len(missing) > 0 {

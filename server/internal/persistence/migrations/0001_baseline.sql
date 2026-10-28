@@ -1637,6 +1637,24 @@ CREATE TRIGGER compact_visibility_blocks_rating_move AFTER UPDATE OF class_id,ge
  UPDATE compact_visibility_blocks SET total=1024 WHERE (class_id,generation,library_id,kind,ordering,sort_value,entity_id)=(SELECT class_id,generation,library_id,kind,ordering,sort_value,entity_id FROM compact_visibility_blocks INDEXED BY compact_visibility_blocks_full WHERE class_id=NEW.class_id AND generation=NEW.generation AND library_id=NEW.library_id AND kind=NEW.kind AND ordering=4 AND total>2048 LIMIT 1);
 END;
 CREATE TABLE configuration(key TEXT PRIMARY KEY,value TEXT NOT NULL) STRICT;
+-- The running backup's artwork hold (backup/holds.go). While the one row
+-- exists, no collector deletes an artwork file: the backup's database copy may
+-- name it. A row from a process that is no longer running is that process's
+-- interrupted backup, removed at start-up.
+CREATE TABLE backup_blob_holds(
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+ backup_id TEXT NOT NULL UNIQUE,process_epoch TEXT NOT NULL,
+ scratch_token TEXT NOT NULL UNIQUE,created_ms INTEGER NOT NULL,
+ state TEXT NOT NULL CHECK(state IN('copying','files','publishing'))) STRICT;
+-- A moved state folder's path rebase, while it runs (persistence/rebase.go):
+-- the exact old and new folders, the registry it follows, the registered column
+-- it has reached and the last row finished there. Gone once it completes.
+CREATE TABLE state_rebase_jobs(
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+ old_prefix TEXT NOT NULL,new_prefix TEXT NOT NULL,
+ registry_version INTEGER NOT NULL CHECK(registry_version>0),
+ phase INTEGER NOT NULL CHECK(phase>=0),after_rowid INTEGER NOT NULL DEFAULT 0,
+ started_ms INTEGER NOT NULL) STRICT;
 CREATE TABLE accounts(id TEXT PRIMARY KEY,username TEXT NOT NULL UNIQUE,email TEXT NOT NULL DEFAULT '',display_name TEXT NOT NULL DEFAULT '',password_hash BLOB NOT NULL,profile_id TEXT NOT NULL,epoch INTEGER NOT NULL DEFAULT 1) STRICT;
 CREATE TABLE libraries(id TEXT PRIMARY KEY,name TEXT NOT NULL,kind TEXT NOT NULL,root TEXT NOT NULL UNIQUE, position INTEGER NOT NULL DEFAULT 0) STRICT;
 CREATE TABLE metadata_jobs(item_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,status TEXT NOT NULL DEFAULT 'pending',attempts INTEGER NOT NULL DEFAULT 0,next_attempt TEXT NOT NULL DEFAULT '',error TEXT NOT NULL DEFAULT '') STRICT;
@@ -1649,7 +1667,7 @@ CREATE TABLE playback_artifacts(session_id TEXT PRIMARY KEY,directory TEXT NOT N
 CREATE TABLE playback_requests(account_id TEXT NOT NULL,profile_id TEXT NOT NULL,request_id TEXT NOT NULL,item_id INTEGER NOT NULL,response TEXT NOT NULL,PRIMARY KEY(account_id,profile_id,request_id)) STRICT;
 CREATE TABLE progress(profile_id TEXT NOT NULL,item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,position INTEGER NOT NULL,unit INTEGER NOT NULL DEFAULT 0 CHECK(unit BETWEEN 0 AND 99),completed INTEGER NOT NULL DEFAULT 0 CHECK(completed IN(0,1)),playback_id TEXT NOT NULL,PRIMARY KEY(profile_id,item_id)) STRICT;
 CREATE TABLE library_network_policy(library_id TEXT PRIMARY KEY REFERENCES libraries(id) ON DELETE CASCADE,revision INTEGER NOT NULL,approvals_json TEXT NOT NULL) STRICT;
-CREATE TABLE remote_playback(session_id TEXT PRIMARY KEY REFERENCES playback_sessions(id) ON DELETE CASCADE,descriptor_digest TEXT NOT NULL,network_revision INTEGER NOT NULL) STRICT;
+CREATE TABLE remote_playback(session_id TEXT PRIMARY KEY REFERENCES playback_sessions(id) ON DELETE CASCADE,descriptor_digest TEXT NOT NULL,network_revision INTEGER NOT NULL,facts_json TEXT NOT NULL CHECK(length(facts_json) BETWEEN 2 AND 65536)) STRICT;
 CREATE TABLE book_resume(profile_id TEXT NOT NULL,book_id INTEGER NOT NULL REFERENCES catalog_entities(id),item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,playback_id TEXT NOT NULL,position INTEGER NOT NULL,unit INTEGER NOT NULL DEFAULT 0 CHECK(unit BETWEEN 0 AND 99),completed INTEGER NOT NULL DEFAULT 0 CHECK(completed IN(0,1)),PRIMARY KEY(profile_id,book_id)) STRICT;
 CREATE TABLE audio_tag_evidence(library_id TEXT NOT NULL REFERENCES libraries(id),asset_id TEXT NOT NULL REFERENCES catalog_assets(token),field TEXT NOT NULL,source TEXT NOT NULL,value TEXT NOT NULL,PRIMARY KEY(library_id,asset_id,field)) STRICT;
 CREATE TABLE audio_source_metadata(library_id TEXT NOT NULL REFERENCES libraries(id),asset_id TEXT NOT NULL REFERENCES catalog_assets(token),issue TEXT NOT NULL DEFAULT '',PRIMARY KEY(library_id,asset_id)) STRICT;
@@ -1791,6 +1809,20 @@ CREATE TABLE audio_local_evidence(
   field TEXT NOT NULL,source TEXT NOT NULL,value TEXT NOT NULL,
   source_revision TEXT NOT NULL,size INTEGER NOT NULL,modified_ns INTEGER NOT NULL,observed_at TEXT NOT NULL,
   PRIMARY KEY(library_id,asset_id,ordinal)) STRICT;
+-- File-owned audio metadata is separate from sidecar-adjusted projections.
+CREATE TABLE audio_file_metadata(
+ asset_id TEXT PRIMARY KEY REFERENCES catalog_assets(token) ON DELETE CASCADE,
+ source_revision TEXT NOT NULL,size INTEGER NOT NULL,modified_ns INTEGER NOT NULL,
+ chapter_status TEXT NOT NULL,artwork_key TEXT NOT NULL,issue TEXT NOT NULL,artwork_issue TEXT NOT NULL) STRICT;
+CREATE INDEX audio_file_metadata_artwork_key ON audio_file_metadata(artwork_key,asset_id) WHERE artwork_key<>'';
+CREATE TABLE audio_file_tags(
+ asset_id TEXT NOT NULL REFERENCES audio_file_metadata(asset_id) ON DELETE CASCADE,
+ field TEXT NOT NULL,value TEXT NOT NULL,PRIMARY KEY(asset_id,field)) STRICT;
+CREATE TABLE audio_file_chapters(
+ asset_id TEXT NOT NULL REFERENCES audio_file_metadata(asset_id) ON DELETE CASCADE,
+ kind TEXT NOT NULL CHECK(kind IN('chapter','cue')),
+ ordinal INTEGER NOT NULL CHECK(ordinal>=0 AND ordinal<4096),title TEXT NOT NULL,
+ start_seconds REAL NOT NULL,end_seconds REAL NOT NULL,PRIMARY KEY(asset_id,kind,ordinal)) STRICT;
 CREATE TABLE music_acoustid_health(
   singleton INTEGER PRIMARY KEY CHECK(singleton=1),configuration_digest TEXT NOT NULL,reason TEXT NOT NULL,observed_at TEXT NOT NULL) STRICT;
 CREATE TABLE music_match_observations(
@@ -2148,7 +2180,15 @@ CREATE TABLE playback_vod_intervals(
  PRIMARY KEY(session_id,ordinal)) STRICT;
 CREATE TABLE asset_chapter_facts(asset_id TEXT PRIMARY KEY REFERENCES catalog_assets(token) ON DELETE CASCADE,revision INTEGER NOT NULL,size INTEGER NOT NULL,modified_ns INTEGER NOT NULL,status TEXT NOT NULL,fingerprint TEXT NOT NULL) STRICT;
 CREATE TABLE asset_chapters(asset_id TEXT NOT NULL REFERENCES asset_chapter_facts(asset_id) ON DELETE CASCADE,chapter_index INTEGER NOT NULL,title TEXT NOT NULL,start_seconds REAL NOT NULL,end_seconds REAL NOT NULL,PRIMARY KEY(asset_id,chapter_index)) STRICT;
-CREATE TABLE playback_source_pins(session_id TEXT PRIMARY KEY REFERENCES playback_sessions(id) ON DELETE CASCADE,asset_id TEXT NOT NULL,size INTEGER NOT NULL,modified_ns INTEGER NOT NULL) STRICT;
+CREATE TABLE playback_source_pins(
+ session_id TEXT PRIMARY KEY REFERENCES playback_sessions(id) ON DELETE CASCADE,
+ asset_id TEXT NOT NULL,size INTEGER NOT NULL,modified_ns INTEGER NOT NULL,
+ binding TEXT NOT NULL DEFAULT 'none' CHECK(binding IN('inventory','mounted','none')),
+ source_id TEXT NOT NULL DEFAULT '',inventory_object_id TEXT NOT NULL DEFAULT '',
+ root TEXT NOT NULL DEFAULT '',root_identity TEXT NOT NULL DEFAULT '',
+ relative_path TEXT NOT NULL DEFAULT '',object_identity TEXT NOT NULL DEFAULT '',
+ follow_symlinks INTEGER NOT NULL DEFAULT 0 CHECK(follow_symlinks IN(0,1))
+) STRICT;
 CREATE TABLE authorization_session_families(
  id TEXT PRIMARY KEY,
  server_id TEXT NOT NULL CHECK(length(server_id)>0),
@@ -6563,6 +6603,45 @@ CREATE INDEX IF NOT EXISTS ported_artwork_jobs_entity ON artwork_jobs(kind,entit
 CREATE TRIGGER revision_entities_INSERT AFTER INSERT ON catalog_entities BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id=(SELECT cl.library_id FROM catalog_libraries cl WHERE cl.id=NEW.library_id);END;
 CREATE TRIGGER revision_entities_DELETE AFTER DELETE ON catalog_entities BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id=(SELECT cl.library_id FROM catalog_libraries cl WHERE cl.id=OLD.library_id);END;
 CREATE TRIGGER revision_entities_UPDATE AFTER UPDATE ON catalog_entities BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id IN(SELECT cl.library_id FROM catalog_libraries cl WHERE cl.id IN(OLD.library_id,NEW.library_id));END;
+-- Cross-page metadata previews fence on the selected libraries' existing
+-- content revision. These close editor-input gaps; progress/heartbeats do not
+-- touch this fence. Every update targets only the old/new entity libraries.
+CREATE TRIGGER bulk_preview_metadata_owner_fields_insert AFTER INSERT ON metadata_owner_fields BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id IN(NEW.entity_id));END;
+CREATE TRIGGER bulk_preview_metadata_owner_fields_update AFTER UPDATE ON metadata_owner_fields BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id IN(OLD.entity_id,NEW.entity_id));END;
+CREATE TRIGGER bulk_preview_metadata_owner_fields_delete AFTER DELETE ON metadata_owner_fields BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id IN(OLD.entity_id));END;
+CREATE TRIGGER bulk_preview_metadata_relationship_decisions_insert AFTER INSERT ON metadata_relationship_decisions BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id IN(NEW.entity_id));END;
+CREATE TRIGGER bulk_preview_metadata_relationship_decisions_update AFTER UPDATE ON metadata_relationship_decisions BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id IN(OLD.entity_id,NEW.entity_id));END;
+CREATE TRIGGER bulk_preview_metadata_relationship_decisions_delete AFTER DELETE ON metadata_relationship_decisions BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id IN(OLD.entity_id));END;
+CREATE TRIGGER bulk_preview_metadata_owner_history_insert AFTER INSERT ON metadata_owner_history BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id IN(NEW.entity_id));END;
+CREATE TRIGGER bulk_preview_metadata_owner_history_update AFTER UPDATE ON metadata_owner_history BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id IN(OLD.entity_id,NEW.entity_id));END;
+CREATE TRIGGER bulk_preview_metadata_owner_history_delete AFTER DELETE ON metadata_owner_history BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id IN(OLD.entity_id));END;
+CREATE TRIGGER bulk_preview_catalog_item_details_insert AFTER INSERT ON catalog_item_details BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id IN(NEW.entity_id));END;
+CREATE TRIGGER bulk_preview_catalog_item_details_delete AFTER DELETE ON catalog_item_details BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id IN(OLD.entity_id));END;
+CREATE TRIGGER bulk_preview_catalog_item_details_update AFTER UPDATE ON catalog_item_details WHEN OLD.entity_id IS NOT NEW.entity_id BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id IN(OLD.entity_id,NEW.entity_id));END;
+CREATE TRIGGER bulk_preview_catalog_shows_insert AFTER INSERT ON catalog_shows BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id IN(NEW.entity_id));END;
+CREATE TRIGGER bulk_preview_catalog_shows_delete AFTER DELETE ON catalog_shows BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id IN(OLD.entity_id));END;
+CREATE TRIGGER bulk_preview_catalog_shows_update AFTER UPDATE ON catalog_shows WHEN OLD.entity_id IS NOT NEW.entity_id BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id IN(OLD.entity_id,NEW.entity_id));END;
+CREATE TRIGGER bulk_preview_catalog_artists_insert AFTER INSERT ON catalog_artists BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id IN(NEW.entity_id));END;
+CREATE TRIGGER bulk_preview_catalog_artists_delete AFTER DELETE ON catalog_artists BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id IN(OLD.entity_id));END;
+CREATE TRIGGER bulk_preview_catalog_artists_update AFTER UPDATE ON catalog_artists WHEN OLD.entity_id IS NOT NEW.entity_id BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id IN(OLD.entity_id,NEW.entity_id));END;
+CREATE TRIGGER bulk_preview_catalog_albums_insert AFTER INSERT ON catalog_albums BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id IN(NEW.entity_id));END;
+CREATE TRIGGER bulk_preview_catalog_albums_delete AFTER DELETE ON catalog_albums BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id IN(OLD.entity_id));END;
+CREATE TRIGGER bulk_preview_catalog_albums_update AFTER UPDATE ON catalog_albums WHEN OLD.entity_id IS NOT NEW.entity_id BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id IN(OLD.entity_id,NEW.entity_id));END;
+CREATE TRIGGER bulk_preview_catalog_books_insert AFTER INSERT ON catalog_books BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id IN(NEW.entity_id));END;
+CREATE TRIGGER bulk_preview_catalog_books_delete AFTER DELETE ON catalog_books BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id IN(OLD.entity_id));END;
+CREATE TRIGGER bulk_preview_catalog_books_update AFTER UPDATE ON catalog_books WHEN OLD.entity_id IS NOT NEW.entity_id BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id IN(OLD.entity_id,NEW.entity_id));END;
+CREATE TRIGGER bulk_preview_metadata_publication_heads_insert AFTER INSERT ON metadata_publication_heads BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id IN(NEW.item_id));END;
+CREATE TRIGGER bulk_preview_metadata_publication_heads_update AFTER UPDATE ON metadata_publication_heads BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id IN(OLD.item_id,NEW.item_id));END;
+CREATE TRIGGER bulk_preview_metadata_publication_heads_delete AFTER DELETE ON metadata_publication_heads BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id IN(OLD.item_id));END;
+CREATE TRIGGER bulk_preview_tvdb_publication_heads_insert AFTER INSERT ON tvdb_publication_heads BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id IN(NEW.show_id));END;
+CREATE TRIGGER bulk_preview_tvdb_publication_heads_update AFTER UPDATE ON tvdb_publication_heads BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id IN(OLD.show_id,NEW.show_id));END;
+CREATE TRIGGER bulk_preview_tvdb_publication_heads_delete AFTER DELETE ON tvdb_publication_heads BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id IN(OLD.show_id));END;
+CREATE TRIGGER bulk_preview_mb_album_heads_insert AFTER INSERT ON mb_album_heads BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id IN(NEW.album_id));END;
+CREATE TRIGGER bulk_preview_mb_album_heads_update AFTER UPDATE ON mb_album_heads BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id IN(OLD.album_id,NEW.album_id));END;
+CREATE TRIGGER bulk_preview_mb_album_heads_delete AFTER DELETE ON mb_album_heads BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id IN(OLD.album_id));END;
+CREATE TRIGGER bulk_preview_catalog_terms_label AFTER UPDATE OF label ON catalog_terms WHEN OLD.label IS NOT NEW.label BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_entity_terms t JOIN catalog_entities e ON e.id=t.entity_id JOIN catalog_libraries l ON l.id=e.library_id WHERE t.term_id IN(OLD.id,NEW.id));END;
+CREATE TRIGGER bulk_preview_catalog_libraries_update AFTER UPDATE OF library_id,retired ON catalog_libraries BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id IN(OLD.library_id,NEW.library_id);END;
+
 CREATE TRIGGER revision_albums_UPDATE AFTER UPDATE ON catalog_albums BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id=(SELECT cl.library_id FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=NEW.entity_id);END;
 CREATE TRIGGER revision_artists_UPDATE AFTER UPDATE ON catalog_artists BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id=(SELECT cl.library_id FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=NEW.entity_id);END;
 CREATE TRIGGER revision_books_UPDATE AFTER UPDATE ON catalog_books BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id=(SELECT cl.library_id FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=NEW.entity_id);END;
@@ -9038,6 +9117,8 @@ CREATE TABLE server_settings(singleton INTEGER PRIMARY KEY CHECK(singleton=1), u
  "temporaryDirectory" TEXT,
  "ffmpegPath" TEXT,
  "sessionStorageMiB" INTEGER,
+ "memoryCap" TEXT,
+ "transcodeLocation" TEXT,
  "maxConcurrentSessions" INTEGER,
  "maxHardwareSessions" INTEGER,
  "maxSoftwareSessions" INTEGER,
@@ -10323,7 +10404,7 @@ CREATE TABLE reading_path_scope(
  desired INTEGER NOT NULL DEFAULT 1,completed INTEGER NOT NULL DEFAULT 0,queued INTEGER NOT NULL DEFAULT 1 CHECK(queued IN(0,1)),
  served INTEGER NOT NULL DEFAULT 0,pending INTEGER NOT NULL DEFAULT 0 CHECK(pending>=0),
  seal_job TEXT NOT NULL DEFAULT '',seal_revision INTEGER NOT NULL DEFAULT 0,seal_cursor INTEGER NOT NULL DEFAULT 0,sealed INTEGER NOT NULL DEFAULT 0 CHECK(sealed IN(0,1)),reason TEXT NOT NULL DEFAULT '',
- parked INTEGER NOT NULL DEFAULT 0 CHECK(parked IN(0,1)),
+ parked INTEGER NOT NULL DEFAULT 0 CHECK(parked IN(0,1)),closure_seal INTEGER NOT NULL DEFAULT 0 CHECK(closure_seal>=0),
  UNIQUE(source_id,incarnation,root_prefix,directory_key,rule_version)) STRICT;
 CREATE INDEX reading_path_scope_source ON reading_path_scope(source_id,id);
 CREATE INDEX reading_path_scope_library ON reading_path_scope(library_id,id);
@@ -10353,7 +10434,7 @@ CREATE INDEX reading_path_availability_library ON reading_path_availability_pend
 CREATE TABLE reading_path_semantic_pending(library_id INTEGER PRIMARY KEY) STRICT;
 CREATE TABLE reading_path_build(
  id INTEGER PRIMARY KEY AUTOINCREMENT,scope_id INTEGER NOT NULL REFERENCES reading_path_scope(id),desired INTEGER NOT NULL,input_revision INTEGER NOT NULL,
- source_generation INTEGER NOT NULL,root_identity TEXT NOT NULL,job_id TEXT NOT NULL,coverage_revision INTEGER NOT NULL DEFAULT 0,
+ source_generation INTEGER NOT NULL,root_identity TEXT NOT NULL,job_id TEXT NOT NULL,coverage_revision INTEGER NOT NULL DEFAULT 0,closure_seal INTEGER NOT NULL DEFAULT 0 CHECK(closure_seal>=0),
  phase TEXT NOT NULL CHECK(phase IN('capture','stage','ready','flatten','cleanup','abort')),
  after_object TEXT NOT NULL DEFAULT '',after_item INTEGER NOT NULL DEFAULT 0,after_asset INTEGER NOT NULL DEFAULT 0,
  title_count INTEGER NOT NULL DEFAULT 0,non_series_count INTEGER NOT NULL DEFAULT 0,
@@ -10816,3 +10897,62 @@ CREATE TRIGGER browse_predicate_policy_delete AFTER DELETE ON policy
 CREATE TRIGGER browse_predicate_policy_update AFTER UPDATE OF server_id,revision,payload,expires_at ON policy
  WHEN OLD.server_id IS NOT NEW.server_id OR OLD.revision IS NOT NEW.revision OR OLD.payload IS NOT NEW.payload OR OLD.expires_at IS NOT NEW.expires_at
  BEGIN UPDATE catalog_browse_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+
+-- First-import observation proofs, never query results or byte authority.
+-- Lifetimes are detached from public authority; exact live fences are read at
+-- every unpublished Reading turn. A new job cannot reuse an old closure.
+CREATE TABLE inventory_reading_jobs(
+ job_id TEXT PRIMARY KEY REFERENCES inventory_runs(job_id),source_id TEXT NOT NULL,
+ incarnation TEXT NOT NULL,generation INTEGER NOT NULL,root_identity TEXT NOT NULL,root TEXT NOT NULL,
+ coverage_revision INTEGER NOT NULL DEFAULT 0 CHECK(coverage_revision>=0),renewing INTEGER NOT NULL DEFAULT 0 CHECK(renewing IN(0,1)),renew_after TEXT NOT NULL DEFAULT '',renew_fence TEXT NOT NULL DEFAULT '',last_seal INTEGER NOT NULL DEFAULT 0 CHECK(last_seal>=0)
+) WITHOUT ROWID, STRICT;
+CREATE INDEX inventory_reading_jobs_source ON inventory_reading_jobs(source_id,job_id);
+CREATE TABLE inventory_reading_directories(
+ job_id TEXT NOT NULL REFERENCES inventory_reading_jobs(job_id),relative_path TEXT NOT NULL,parent_path TEXT NOT NULL,top_level TEXT NOT NULL,
+ listing_eof INTEGER NOT NULL DEFAULT 0 CHECK(listing_eof IN(0,1)),children INTEGER NOT NULL DEFAULT 0 CHECK(children>=0),
+ phase TEXT NOT NULL DEFAULT 'listing' CHECK(phase IN('listing','verify','reconcile','coverage','seal','done','blocked')),
+ reconciled INTEGER NOT NULL DEFAULT 0 CHECK(reconciled IN(0,1)),propagated INTEGER NOT NULL DEFAULT 0 CHECK(propagated IN(0,1)),
+ identity TEXT NOT NULL DEFAULT '',revision TEXT NOT NULL DEFAULT '',
+ after_path TEXT NOT NULL DEFAULT '',after_object TEXT NOT NULL DEFAULT '',fence_path TEXT NOT NULL DEFAULT '',fence_object TEXT NOT NULL DEFAULT '',
+ missing_object TEXT NOT NULL DEFAULT '',missing_path TEXT NOT NULL DEFAULT '',absence_parent TEXT NOT NULL DEFAULT '',
+ issue_highwater INTEGER NOT NULL DEFAULT 0 CHECK(issue_highwater>=0),after_issue INTEGER NOT NULL DEFAULT 0,issue_revision INTEGER NOT NULL DEFAULT 0,
+ PRIMARY KEY(job_id,relative_path)
+) WITHOUT ROWID, STRICT;
+CREATE INDEX inventory_reading_directories_due ON inventory_reading_directories(job_id,phase,children,relative_path);
+CREATE INDEX inventory_reading_directories_parent ON inventory_reading_directories(job_id,parent_path,relative_path);
+CREATE INDEX inventory_objects_reading_closure ON inventory_objects(source_id,relative_path,id);
+CREATE TABLE inventory_reading_seals(
+ id INTEGER PRIMARY KEY AUTOINCREMENT,job_id TEXT NOT NULL REFERENCES inventory_reading_jobs(job_id),top_level TEXT NOT NULL,
+ source_id TEXT NOT NULL,incarnation TEXT NOT NULL,generation INTEGER NOT NULL,root_identity TEXT NOT NULL,root TEXT NOT NULL,
+ coverage_revision INTEGER NOT NULL,issue_revision INTEGER NOT NULL,issue_highwater INTEGER NOT NULL,
+ UNIQUE(job_id,top_level,issue_revision,coverage_revision)
+) STRICT;
+CREATE INDEX inventory_reading_seals_source ON inventory_reading_seals(source_id,job_id,top_level,id);
+-- Protecting coverage invalidates unactivated seals synchronously, before the
+-- existing bounded issue reducer runs. Do not walk scopes or directory trees.
+CREATE TRIGGER inventory_reading_issue_insert AFTER INSERT ON inventory_scan_issues WHEN NEW.protect=1 BEGIN
+ UPDATE inventory_reading_jobs SET coverage_revision=coverage_revision+1,renewing=1,renew_after='',renew_fence=COALESCE((SELECT relative_path FROM inventory_reading_directories WHERE job_id=NEW.job_id ORDER BY relative_path DESC LIMIT 1),'') WHERE job_id=NEW.job_id;
+END;
+CREATE TRIGGER inventory_reading_issue_update AFTER UPDATE OF job_id,relative_path,reason,protect ON inventory_scan_issues
+ WHEN (OLD.protect=1 OR NEW.protect=1) AND (OLD.job_id IS NOT NEW.job_id OR OLD.relative_path IS NOT NEW.relative_path OR OLD.reason IS NOT NEW.reason OR OLD.protect IS NOT NEW.protect) BEGIN
+ UPDATE inventory_reading_jobs SET coverage_revision=coverage_revision+1,renewing=1,renew_after='',renew_fence=COALESCE((SELECT relative_path FROM inventory_reading_directories d WHERE d.job_id=inventory_reading_jobs.job_id ORDER BY relative_path DESC LIMIT 1),'') WHERE job_id=OLD.job_id OR job_id=NEW.job_id;
+END;
+CREATE TRIGGER inventory_reading_issue_delete AFTER DELETE ON inventory_scan_issues WHEN OLD.protect=1 BEGIN
+ UPDATE inventory_reading_jobs SET coverage_revision=coverage_revision+1,renewing=1,renew_after='',renew_fence=COALESCE((SELECT relative_path FROM inventory_reading_directories WHERE job_id=OLD.job_id ORDER BY relative_path DESC LIMIT 1),'') WHERE job_id=OLD.job_id;
+END;
+CREATE TRIGGER inventory_reading_seal_wake AFTER INSERT ON inventory_reading_seals BEGIN
+ UPDATE inventory_reading_jobs SET last_seal=NEW.id WHERE job_id=NEW.job_id;
+ INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT cl.id,'wake',NEW.source_id FROM library_sources s JOIN catalog_libraries cl ON cl.library_id=s.library_id WHERE s.id=NEW.source_id ON CONFLICT(library_id,kind,work_key) DO UPDATE SET requested=requested+1;
+END;
+
+-- Reduction can add coverage blocks without inserting a scan issue (e.g. an
+-- invalid Reading path). Invalidate and schedule the same finite reproof walk.
+CREATE TRIGGER inventory_reading_barrier_coverage AFTER UPDATE OF coverage_revision ON reading_path_source_barrier WHEN OLD.coverage_revision IS NOT NEW.coverage_revision BEGIN
+ UPDATE inventory_reading_jobs SET coverage_revision=coverage_revision+1,renewing=1,renew_after='',renew_fence=COALESCE((SELECT relative_path FROM inventory_reading_directories WHERE job_id=NEW.job_id ORDER BY relative_path DESC LIMIT 1),'') WHERE job_id=NEW.job_id;
+END;
+
+CREATE INDEX inventory_scan_issues_reading_coverage ON inventory_scan_issues(job_id,sequence) WHERE protect=1;
+CREATE INDEX inventory_reading_seals_job ON inventory_reading_seals(job_id,top_level,id);
+CREATE TRIGGER inventory_reading_seal_immutable BEFORE UPDATE ON inventory_reading_seals BEGIN
+ SELECT RAISE(ABORT,'Reading closure seals are immutable');
+END;

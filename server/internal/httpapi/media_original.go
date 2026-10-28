@@ -32,7 +32,7 @@ func (d Dependencies) serveOriginal(w http.ResponseWriter, r *http.Request, gran
 		reader := &guardedReader{Reader: response.Body, check: newStreamAuthority(check).check}
 		body := withRollingDeadline(w)
 		defer body.release()
-		_ = remotemedia.CopyResponse(body, response, reader)
+		_ = remotemedia.CopyResponseAs(body, response, reader, response.Header.Get("Content-Type"))
 		if reader.readError != nil && r.Context().Err() == nil {
 			d.Playback.RemoteReadFailed(grant)
 		}

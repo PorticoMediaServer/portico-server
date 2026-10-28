@@ -364,3 +364,42 @@ func webCapabilities() map[string]any {
 func nativeEngine(caps map[string]any) map[string]any {
 	return caps["engines"].(map[string]any)["native"].(map[string]any)
 }
+
+// confirmPlaybackInventory supplies the same root and object evidence as a
+// completed local scan, without running a scanner in an HTTP protocol fixture.
+func confirmPlaybackInventory(t *testing.T, f *v1Fixture, object string) {
+	t.Helper()
+	var source, root, path string
+	if err := f.db.QueryRow(`SELECT s.id,s.root,a.path FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id JOIN catalog_assets a ON a.token=o.asset_id WHERE o.id=?`, object).Scan(&source, &root, &path); err != nil {
+		t.Fatal(err)
+	}
+	directory, err := os.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer directory.Close()
+	rootIdentity, err := storage.FileObjectIdentity(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	objectIdentity, err := storage.FileObjectIdentity(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	objectIdentity = storage.StableObjectIdentity(objectIdentity, rootIdentity)
+	relative, err := filepath.Rel(root, path)
+	if err != nil || !filepath.IsLocal(relative) {
+		t.Fatalf("inventory path: %q (%v)", relative, err)
+	}
+	f.catalogTest.Exec(`UPDATE library_sources SET root_identity=?,identity_confirmed=1,health='ready' WHERE id=?`, rootIdentity, source)
+	f.catalogTest.Exec(`UPDATE inventory_objects SET relative_path=?,object_identity=?,size=?,modified_ns=? WHERE id=?`, relative, objectIdentity, info.Size(), info.ModTime().UnixNano(), object)
+}

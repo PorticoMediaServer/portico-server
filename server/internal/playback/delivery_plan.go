@@ -320,6 +320,20 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	if in.Source != nil {
 		source = *in.Source
 	}
+	if in.Remote || source.Remote {
+		// The server opens a STRM, never the player (JUSTIN #7). It is planned
+		// from the facts the server measured like any other file; an original
+		// it can relay as it is goes through the remote relay, and every other
+		// route reads the remote window input, which the source container
+		// "strm" selects.
+		defer func() {
+			p.SourceContainer = "strm"
+			if err == nil && p.Mode == "direct" {
+				p.Mode = "remote"
+				p.ReasonCodes = append(p.ReasonCodes, ReasonRemotePreflightCompatible)
+			}
+		}()
+	}
 	client := in.Client
 	if client.Version == 0 {
 		client = BaselineClientProfile()
@@ -441,15 +455,6 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 		p.AudioStream = audio.Index
 		trace.Audio = traceAudioSource(audio, chosenBy, len(source.Audio))
 	}
-	if in.Remote && !in.BurnIn {
-		p.Mode = "remote"
-		p.Reason = ReasonRemotePreflightCompatible
-		p.ReasonCodes = []string{ReasonRemotePreflightCompatible}
-		p.OutputContainer = "mp4" // Remote admission uses InspectRemoteMP4.
-		trace.Routes = append(trace.Routes, RouteEvaluation{Route: string(DeliveryOriginal), Transport: TransportDirect, Admissible: true, Chosen: true, Rejections: []RouteRejection{}})
-		return p, nil
-	}
-
 	audioOnly := video == nil
 	height := 0
 	if video != nil {

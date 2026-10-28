@@ -8,6 +8,7 @@ import {listeningData,parseBookProgress,type BookProgress,type ListeningViewerSc
 import {parseBrowseNode,type BrowseNode,type BrowseSortSelection} from './browse.ts';
 import {firstOfEach,keepReadable,noteSkipped,oneOfOr} from './tolerant.ts';
 import {mergeRevalidatedList} from './freshness-actions.ts';
+import {parseHomeActions, type HomeActions} from './home.ts';
 import type {FetchPage} from './collections/windowed.ts';
 /** Transport/state for server-authored semantic projections. No client ranking or grouping. */
 export type ContentView = 'discover' | 'browse' | 'collections' | 'categories' | 'show' | 'season' | 'artist' | 'album' | 'book' | 'collection' | 'releases' | 'songs' | 'authors' | 'series' | 'author' | 'book_series' | 'disc';
@@ -24,6 +25,8 @@ export type ContentHeading = Readonly<{ key: string; fallback: string; params?: 
  * obtain their own viewer-fenced mark response; progress never supplies this. */
 export type ReadingEntryMark = Readonly<{itemId: string; read: boolean; revision: number}>;
 export type ContentEntry = Readonly<{
+  /** A displayed container's aggregate selection offers on Browse and content pages (MOB-030). An offer grants nothing by itself. */
+  homeActions?: HomeActions;
   /** The original admitted radio seed; a radio card is not a catalogue song. */
   radioSeed?: Readonly<{id: string; kind: 'artist' | 'album' | 'song'}>;
   pageCount?: number;
@@ -205,6 +208,10 @@ function entry(v: unknown): ContentEntry {
     if (badges) row.badges = badges; else left('entry.badges', v.badges);
   }
   if (v.libraryId !== undefined) { if (!id(v.libraryId)) invalid(); row.libraryId = v.libraryId; }
+  if (v.homeActions !== undefined && ['show', 'season', 'album', 'artist', 'book', 'collection'].includes(v.kind as string)) {
+    const actions = parseHomeActions(v.homeActions);
+    if (actions) row.homeActions = actions; else left('entry.homeActions', v.homeActions);
+  }
   if (synopsis(v.overview)) row.overview = v.overview; else left('entry.overview', v.overview);
   for (const field of ['subtitle', 'posterUrl', 'backdropUrl', 'stillUrl'] as const) {
     if (string(v[field], 4096)) row[field] = v[field] as string; else left('entry.' + field, v[field]);

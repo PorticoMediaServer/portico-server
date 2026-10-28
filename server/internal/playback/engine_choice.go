@@ -46,9 +46,9 @@ func planDevice(in DeliveryInput) (DeliveryPlan, error) {
 	}
 	engine := ""
 	switch {
-	case !hasMPV || audioOnly || in.Remote:
-		// Music is rendered by the client's own audio engine, and a remote
-		// source is handed to the platform player as a plain URL.
+	case !hasMPV || audioOnly:
+		// Music is rendered by the client's own audio engine. A STRM is served
+		// by this server like any other file, so either engine can take it.
 		engine = EngineNative
 	case doc.EngineSetting == EngineSettingNative:
 		engine = EngineNative
@@ -57,7 +57,7 @@ func planDevice(in DeliveryInput) (DeliveryPlan, error) {
 	}
 	if engine != "" {
 		p, err := run(engine, "")
-		if err != nil && hasMPV && !audioOnly && !in.Remote {
+		if err != nil && hasMPV && !audioOnly {
 			if fallback, fallbackErr := run(other(engine), NoteEngineFallback); fallbackErr == nil {
 				return fallback, nil
 			}

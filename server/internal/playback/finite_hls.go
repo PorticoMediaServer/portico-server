@@ -207,8 +207,8 @@ func (f *FiniteHLS) publishPreparation(ctx context.Context, id string, a *finite
 	defer release()
 	manifest := finiteManifest(source)
 	hash := fmt.Sprintf("%x", sha256.Sum256(manifest))
-	dir := filepath.Join(f.h.root, id)
-	if err = os.MkdirAll(dir, 0700); err != nil {
+	dir, err := f.h.createOutput(id, false)
+	if err != nil {
 		return err
 	}
 	// All file preparation and recursive cleanup own a newly allocated private
@@ -286,7 +286,7 @@ func (f *FiniteHLS) publishPreparation(ctx context.Context, id string, a *finite
 			return err
 		}
 	}
-	if _, err = tx.Exec(`INSERT INTO playback_artifacts(session_id,directory,status) VALUES(?,?,'building') ON CONFLICT(session_id) DO UPDATE SET status='building',error=''`, id, dir); err != nil {
+	if _, err = tx.Exec(`INSERT INTO playback_artifacts(session_id,directory,status) VALUES(?,?,'building') ON CONFLICT(session_id) DO UPDATE SET directory=excluded.directory,status='building',error=''`, id, dir); err != nil {
 		return err
 	}
 	// Only bounded metadata/no-clobber publication occurs inside this same
@@ -502,7 +502,7 @@ func (f *FiniteHLS) produce(id string, a *finiteActor, index int) (resultErr err
 	if err != nil {
 		return err
 	}
-	path := filepath.Join(f.h.root, id, fmt.Sprintf("segment-%06d.ts", index))
+	path := filepath.Join(f.h.outputDir(id), fmt.Sprintf("segment-%06d.ts", index))
 	// Link is no-clobber, unlike Rename. A crashed pre-commit publication may be
 	// adopted only if its bytes match this deterministic generation's output.
 	if err = os.Link(window.Path, path); err != nil {
@@ -535,7 +535,7 @@ func (f *FiniteHLS) file(ctx context.Context, id, name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	path := filepath.Join(f.h.root, id, name)
+	path := filepath.Join(f.h.outputDir(id), name)
 	if name == "master.m3u8" {
 		return path, nil
 	}

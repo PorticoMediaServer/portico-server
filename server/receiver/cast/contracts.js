@@ -7448,6 +7448,7 @@ var PorticoCastContracts = (function(exports) {
 							"minimum": -9007199254740991,
 							"type": "integer"
 						},
+						"memoryCap": { "type": "string" },
 						"musicAwayQuality": { "type": "string" },
 						"name": { "type": "string" },
 						"notificationDays": {
@@ -7643,6 +7644,7 @@ var PorticoCastContracts = (function(exports) {
 							"minimum": -9007199254740991,
 							"type": "integer"
 						},
+						"transcodeLocation": { "type": "string" },
 						"trustedProxies": {
 							"items": { "type": "string" },
 							"type": "array"
@@ -7679,9 +7681,11 @@ var PorticoCastContracts = (function(exports) {
 						"planningPolicy",
 						"throttleBufferMs",
 						"playedRetentionMs",
+						"transcodeLocation",
 						"temporaryDirectory",
 						"ffmpegPath",
 						"sessionStorageMiB",
+						"memoryCap",
 						"maxConcurrentSessions",
 						"maxHardwareSessions",
 						"maxSoftwareSessions",
@@ -7847,6 +7851,7 @@ var PorticoCastContracts = (function(exports) {
 									"minimum": -9007199254740991,
 									"type": "integer"
 								},
+								"memoryCap": { "type": "string" },
 								"musicAwayQuality": { "type": "string" },
 								"name": { "type": "string" },
 								"notificationDays": {
@@ -8042,6 +8047,7 @@ var PorticoCastContracts = (function(exports) {
 									"minimum": -9007199254740991,
 									"type": "integer"
 								},
+								"transcodeLocation": { "type": "string" },
 								"trustedProxies": {
 									"items": { "type": "string" },
 									"type": "array"
@@ -8078,9 +8084,11 @@ var PorticoCastContracts = (function(exports) {
 								"planningPolicy",
 								"throttleBufferMs",
 								"playedRetentionMs",
+								"transcodeLocation",
 								"temporaryDirectory",
 								"ffmpegPath",
 								"sessionStorageMiB",
+								"memoryCap",
 								"maxConcurrentSessions",
 								"maxHardwareSessions",
 								"maxSoftwareSessions",
@@ -8250,6 +8258,7 @@ var PorticoCastContracts = (function(exports) {
 									"minimum": -9007199254740991,
 									"type": "integer"
 								},
+								"memoryCap": { "type": "string" },
 								"musicAwayQuality": { "type": "string" },
 								"name": { "type": "string" },
 								"notificationDays": {
@@ -8445,6 +8454,7 @@ var PorticoCastContracts = (function(exports) {
 									"minimum": -9007199254740991,
 									"type": "integer"
 								},
+								"transcodeLocation": { "type": "string" },
 								"trustedProxies": {
 									"items": { "type": "string" },
 									"type": "array"
@@ -8481,9 +8491,11 @@ var PorticoCastContracts = (function(exports) {
 								"planningPolicy",
 								"throttleBufferMs",
 								"playedRetentionMs",
+								"transcodeLocation",
 								"temporaryDirectory",
 								"ffmpegPath",
 								"sessionStorageMiB",
+								"memoryCap",
 								"maxConcurrentSessions",
 								"maxHardwareSessions",
 								"maxSoftwareSessions",
@@ -13586,6 +13598,117 @@ var PorticoCastContracts = (function(exports) {
 			"required": ["webhook"],
 			"type": "object"
 		},
+		"DeleteAdminAccessMembersIdProfilesProfileAvatarRequest": {
+			"properties": { "expectedRevision": {
+				"maximum": 9007199254740991,
+				"minimum": -9007199254740991,
+				"type": "integer"
+			} },
+			"required": ["expectedRevision"],
+			"type": "object"
+		},
+		"DeleteAdminAccessMembersIdProfilesProfileAvatarResponse": {
+			"properties": {
+				"allowedLibraries": {
+					"items": { "type": "string" },
+					"type": "array"
+				},
+				"art": { "type": "string" },
+				"avatar": {
+					"properties": {
+						"profileId": { "type": "string" },
+						"sourceMime": { "type": "string" },
+						"updatedAt": { "type": "string" },
+						"url": { "type": "string" },
+						"version": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						}
+					},
+					"required": [
+						"profileId",
+						"version",
+						"updatedAt",
+						"sourceMime",
+						"url"
+					],
+					"type": "object"
+				},
+				"id": { "type": "string" },
+				"name": { "type": "string" },
+				"pinRequired": { "type": "boolean" },
+				"pinRevision": {
+					"maximum": 9007199254740991,
+					"minimum": -9007199254740991,
+					"type": "integer"
+				},
+				"position": {
+					"maximum": 9007199254740991,
+					"minimum": -9007199254740991,
+					"type": "integer"
+				},
+				"primary": { "type": "boolean" },
+				"restrictions": {
+					"properties": {
+						"allowDownloads": { "type": "boolean" },
+						"allowDvr": { "type": "boolean" },
+						"allowLiveTv": { "type": "boolean" },
+						"allowUnrated": { "type": "boolean" },
+						"allowWatchTogether": { "type": "boolean" },
+						"blockedLabels": {
+							"items": { "type": "string" },
+							"type": "array"
+						},
+						"maximumAge": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						},
+						"maximumAgeRating": { "type": "string" },
+						"profileId": { "type": "string" },
+						"ratingSystem": { "type": "string" },
+						"revision": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						}
+					},
+					"required": [
+						"profileId",
+						"ratingSystem",
+						"maximumAgeRating",
+						"maximumAge",
+						"allowUnrated",
+						"blockedLabels",
+						"allowDownloads",
+						"allowLiveTv",
+						"allowDvr",
+						"allowWatchTogether",
+						"revision"
+					],
+					"type": "object"
+				},
+				"revision": {
+					"maximum": 9007199254740991,
+					"minimum": -9007199254740991,
+					"type": "integer"
+				}
+			},
+			"required": [
+				"id",
+				"name",
+				"primary",
+				"position",
+				"art",
+				"revision",
+				"pinRevision",
+				"pinRequired",
+				"allowedLibraries",
+				"restrictions"
+			],
+			"type": "object"
+		},
 		"DeleteAdminBackupRequest": {
 			"properties": {},
 			"required": [],
@@ -17276,6 +17399,15 @@ var PorticoCastContracts = (function(exports) {
 			],
 			"type": "object"
 		},
+		"GetAdminAccessMembersIdProfilesProfileAvatarRequest": {
+			"properties": {},
+			"required": [],
+			"type": "object"
+		},
+		"GetAdminAccessMembersIdProfilesProfileAvatarResponse": {
+			"format": "binary",
+			"type": "string"
+		},
 		"GetAdminAccessMembersIdProfilesRequest": {
 			"properties": {},
 			"required": [],
@@ -17292,6 +17424,27 @@ var PorticoCastContracts = (function(exports) {
 								"type": "array"
 							},
 							"art": { "type": "string" },
+							"avatar": {
+								"properties": {
+									"profileId": { "type": "string" },
+									"sourceMime": { "type": "string" },
+									"updatedAt": { "type": "string" },
+									"url": { "type": "string" },
+									"version": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									}
+								},
+								"required": [
+									"profileId",
+									"version",
+									"updatedAt",
+									"sourceMime",
+									"url"
+								],
+								"type": "object"
+							},
 							"id": { "type": "string" },
 							"name": { "type": "string" },
 							"pinRequired": { "type": "boolean" },
@@ -18128,6 +18281,23 @@ var PorticoCastContracts = (function(exports) {
 						"operationId": { "type": "string" },
 						"outcome": { "type": "string" },
 						"reason": { "type": "string" },
+						"recovery": {
+							"properties": {
+								"damagedTables": {
+									"items": { "type": "string" },
+									"type": "array"
+								},
+								"indexesRebuilt": { "type": "boolean" },
+								"removedRows": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"salvaged": { "type": "boolean" }
+							},
+							"required": [],
+							"type": "object"
+						},
 						"schemaVersion": {
 							"maximum": 9007199254740991,
 							"minimum": -9007199254740991,
@@ -18160,6 +18330,23 @@ var PorticoCastContracts = (function(exports) {
 								"validation": {
 									"properties": {
 										"integrity": { "type": "string" },
+										"recovery": {
+											"properties": {
+												"damagedTables": {
+													"items": { "type": "string" },
+													"type": "array"
+												},
+												"indexesRebuilt": { "type": "boolean" },
+												"removedRows": {
+													"maximum": 9007199254740991,
+													"minimum": -9007199254740991,
+													"type": "integer"
+												},
+												"salvaged": { "type": "boolean" }
+											},
+											"required": [],
+											"type": "object"
+										},
 										"schemaVersion": {
 											"maximum": 9007199254740991,
 											"minimum": -9007199254740991,
@@ -18199,10 +18386,12 @@ var PorticoCastContracts = (function(exports) {
 							"type": "integer"
 						},
 						"jobId": { "type": "string" },
+						"kind": { "type": "string" },
 						"phase": { "type": "string" }
 					},
 					"required": [
 						"jobId",
+						"kind",
 						"phase",
 						"bytesDone",
 						"bytesTotal"
@@ -21538,6 +21727,7 @@ var PorticoCastContracts = (function(exports) {
 							"items": {
 								"properties": {
 									"accountName": { "type": "string" },
+									"canRecord": { "type": "boolean" },
 									"owner": {
 										"properties": {
 											"accountId": { "type": "string" },
@@ -21551,12 +21741,19 @@ var PorticoCastContracts = (function(exports) {
 										],
 										"type": "object"
 									},
-									"profileName": { "type": "string" }
+									"profileName": { "type": "string" },
+									"revision": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									}
 								},
 								"required": [
 									"owner",
 									"accountName",
-									"profileName"
+									"profileName",
+									"canRecord",
+									"revision"
 								],
 								"type": "object"
 							},
@@ -21588,7 +21785,6 @@ var PorticoCastContracts = (function(exports) {
 					"items": {
 						"properties": {
 							"enabled": { "type": "boolean" },
-							"inheritProfiles": { "type": "boolean" },
 							"owner": {
 								"properties": {
 									"accountId": { "type": "string" },
@@ -21611,7 +21807,6 @@ var PorticoCastContracts = (function(exports) {
 						"required": [
 							"owner",
 							"enabled",
-							"inheritProfiles",
 							"revision"
 						],
 						"type": "object"
@@ -23941,9 +24136,18 @@ var PorticoCastContracts = (function(exports) {
 									"group": { "type": "string" },
 									"guideChannelId": { "type": "string" },
 									"hidden": { "type": "boolean" },
+									"mark": {
+										"properties": {
+											"seed": { "type": "string" },
+											"text": { "type": "string" }
+										},
+										"required": ["text", "seed"],
+										"type": "object"
+									},
 									"name": { "type": "string" },
 									"number": { "type": "string" },
 									"overridden": { "type": "boolean" },
+									"overrideNumber": { "type": "string" },
 									"position": {
 										"maximum": 9007199254740991,
 										"minimum": -9007199254740991,
@@ -23960,16 +24164,24 @@ var PorticoCastContracts = (function(exports) {
 									"guideChannelId",
 									"hidden",
 									"position",
-									"overridden"
+									"overridden",
+									"mark",
+									"overrideNumber"
 								],
 								"type": "object"
 							},
 							"type": "array"
 						},
 						"nextCursor": { "type": "string" },
+						"revision": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						},
 						"sourceId": { "type": "string" }
 					},
 					"required": [
+						"revision",
 						"sourceId",
 						"generation",
 						"items",
@@ -25007,6 +25219,16 @@ var PorticoCastContracts = (function(exports) {
 							"type": "integer"
 						},
 						"lifecycle": { "type": "string" },
+						"memoryPlacementsRefused": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						},
+						"memorySpills": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						},
 						"outputPolicy": { "type": "string" },
 						"recentFailures": {
 							"items": {
@@ -25117,6 +25339,8 @@ var PorticoCastContracts = (function(exports) {
 						"conversionLimitSource",
 						"outputPolicy",
 						"hostConversionCapacity",
+						"memorySpills",
+						"memoryPlacementsRefused",
 						"conversionsRefused",
 						"hardwareFallbacks",
 						"fragmentedOutput",
@@ -26607,6 +26831,7 @@ var PorticoCastContracts = (function(exports) {
 									"nullable": true,
 									"type": "integer"
 								},
+								"memoryAvailable": { "type": "boolean" },
 								"memoryPath": { "type": "string" },
 								"path": { "type": "string" },
 								"ready": { "type": "boolean" }
@@ -26616,7 +26841,8 @@ var PorticoCastContracts = (function(exports) {
 								"ready",
 								"freeBytes",
 								"fallback",
-								"memoryPath"
+								"memoryPath",
+								"memoryAvailable"
 							],
 							"type": "object"
 						},
@@ -27490,6 +27716,104 @@ var PorticoCastContracts = (function(exports) {
 						"properties": {
 							"albumArtist": { "type": "string" },
 							"albumArtistId": { "type": "string" },
+							"homeActions": {
+								"properties": {
+									"collection": { "type": "boolean" },
+									"delete": { "type": "boolean" },
+									"details": { "type": "boolean" },
+									"download": { "type": "boolean" },
+									"editMetadata": { "type": "boolean" },
+									"favorite": { "type": "boolean" },
+									"myList": { "type": "boolean" },
+									"notInterested": { "type": "boolean" },
+									"play": { "type": "boolean" },
+									"played": { "type": "boolean" },
+									"playlist": { "type": "boolean" },
+									"queue": { "type": "boolean" },
+									"rating": { "type": "boolean" },
+									"refreshMetadata": { "type": "boolean" },
+									"removeFromContinue": { "type": "boolean" },
+									"selection": {
+										"properties": {
+											"collection": { "type": "boolean" },
+											"delete": { "type": "boolean" },
+											"download": { "type": "boolean" },
+											"edit": { "type": "boolean" },
+											"favorite": { "type": "boolean" },
+											"myList": { "type": "boolean" },
+											"play": { "type": "boolean" },
+											"playlist": { "type": "boolean" },
+											"queue": { "type": "boolean" },
+											"refresh": { "type": "boolean" },
+											"watched": { "type": "boolean" }
+										},
+										"required": [
+											"play",
+											"queue",
+											"playlist",
+											"collection",
+											"myList",
+											"favorite",
+											"watched",
+											"download",
+											"edit",
+											"refresh",
+											"delete"
+										],
+										"type": "object"
+									},
+									"state": {
+										"properties": {
+											"containerRevision": {
+												"maximum": 9007199254740991,
+												"minimum": -9007199254740991,
+												"type": "integer"
+											},
+											"favorite": { "type": "boolean" },
+											"personalRevision": {
+												"maximum": 9007199254740991,
+												"minimum": -9007199254740991,
+												"type": "integer"
+											},
+											"rating": {
+												"nullable": true,
+												"type": "number"
+											},
+											"watched": { "type": "boolean" },
+											"watchlisted": { "type": "boolean" }
+										},
+										"required": [
+											"watchlisted",
+											"favorite",
+											"watched",
+											"rating",
+											"personalRevision",
+											"containerRevision"
+										],
+										"type": "object"
+									},
+									"watched": { "type": "boolean" }
+								},
+								"required": [
+									"play",
+									"queue",
+									"playlist",
+									"collection",
+									"myList",
+									"favorite",
+									"watched",
+									"played",
+									"rating",
+									"editMetadata",
+									"refreshMetadata",
+									"delete",
+									"download",
+									"details",
+									"state",
+									"selection"
+								],
+								"type": "object"
+							},
 							"id": { "type": "string" },
 							"libraryId": { "type": "string" },
 							"posterUrl": { "type": "string" },
@@ -30030,6 +30354,7 @@ var PorticoCastContracts = (function(exports) {
 									"minimum": -9007199254740991,
 									"type": "integer"
 								},
+								"memoryCap": { "type": "string" },
 								"musicAwayQuality": { "type": "string" },
 								"name": { "type": "string" },
 								"notificationDays": {
@@ -30225,6 +30550,7 @@ var PorticoCastContracts = (function(exports) {
 									"minimum": -9007199254740991,
 									"type": "integer"
 								},
+								"transcodeLocation": { "type": "string" },
 								"trustedProxies": {
 									"items": { "type": "string" },
 									"type": "array"
@@ -30261,9 +30587,11 @@ var PorticoCastContracts = (function(exports) {
 								"planningPolicy",
 								"throttleBufferMs",
 								"playedRetentionMs",
+								"transcodeLocation",
 								"temporaryDirectory",
 								"ffmpegPath",
 								"sessionStorageMiB",
+								"memoryCap",
 								"maxConcurrentSessions",
 								"maxHardwareSessions",
 								"maxSoftwareSessions",
@@ -30433,6 +30761,7 @@ var PorticoCastContracts = (function(exports) {
 									"minimum": -9007199254740991,
 									"type": "integer"
 								},
+								"memoryCap": { "type": "string" },
 								"musicAwayQuality": { "type": "string" },
 								"name": { "type": "string" },
 								"notificationDays": {
@@ -30628,6 +30957,7 @@ var PorticoCastContracts = (function(exports) {
 									"minimum": -9007199254740991,
 									"type": "integer"
 								},
+								"transcodeLocation": { "type": "string" },
 								"trustedProxies": {
 									"items": { "type": "string" },
 									"type": "array"
@@ -30664,9 +30994,11 @@ var PorticoCastContracts = (function(exports) {
 								"planningPolicy",
 								"throttleBufferMs",
 								"playedRetentionMs",
+								"transcodeLocation",
 								"temporaryDirectory",
 								"ffmpegPath",
 								"sessionStorageMiB",
+								"memoryCap",
 								"maxConcurrentSessions",
 								"maxHardwareSessions",
 								"maxSoftwareSessions",
@@ -35499,6 +35831,7 @@ var PorticoCastContracts = (function(exports) {
 														"provenance": { "type": "string" },
 														"recordAvailable": { "type": "boolean" },
 														"recordUnavailableReason": { "type": "string" },
+														"serverHidden": { "type": "boolean" },
 														"sourceId": { "type": "string" },
 														"tuneAvailable": { "type": "boolean" },
 														"tuneUnavailableReason": { "type": "string" }
@@ -35518,6 +35851,7 @@ var PorticoCastContracts = (function(exports) {
 														"recordAvailable",
 														"favorite",
 														"hidden",
+														"serverHidden",
 														"preferenceRevision"
 													],
 													"type": "object"
@@ -35766,6 +36100,7 @@ var PorticoCastContracts = (function(exports) {
 									"provenance": { "type": "string" },
 									"recordAvailable": { "type": "boolean" },
 									"recordUnavailableReason": { "type": "string" },
+									"serverHidden": { "type": "boolean" },
 									"sourceId": { "type": "string" },
 									"tuneAvailable": { "type": "boolean" },
 									"tuneUnavailableReason": { "type": "string" }
@@ -35785,6 +36120,7 @@ var PorticoCastContracts = (function(exports) {
 									"recordAvailable",
 									"favorite",
 									"hidden",
+									"serverHidden",
 									"preferenceRevision"
 								],
 								"type": "object"
@@ -35974,6 +36310,7 @@ var PorticoCastContracts = (function(exports) {
 									"provenance": { "type": "string" },
 									"recordAvailable": { "type": "boolean" },
 									"recordUnavailableReason": { "type": "string" },
+									"serverHidden": { "type": "boolean" },
 									"sourceId": { "type": "string" },
 									"tuneAvailable": { "type": "boolean" },
 									"tuneUnavailableReason": { "type": "string" }
@@ -35993,6 +36330,7 @@ var PorticoCastContracts = (function(exports) {
 									"recordAvailable",
 									"favorite",
 									"hidden",
+									"serverHidden",
 									"preferenceRevision"
 								],
 								"type": "object"
@@ -36188,6 +36526,7 @@ var PorticoCastContracts = (function(exports) {
 									"provenance": { "type": "string" },
 									"recordAvailable": { "type": "boolean" },
 									"recordUnavailableReason": { "type": "string" },
+									"serverHidden": { "type": "boolean" },
 									"sourceId": { "type": "string" },
 									"tuneAvailable": { "type": "boolean" },
 									"tuneUnavailableReason": { "type": "string" }
@@ -36207,6 +36546,7 @@ var PorticoCastContracts = (function(exports) {
 									"recordAvailable",
 									"favorite",
 									"hidden",
+									"serverHidden",
 									"preferenceRevision"
 								],
 								"type": "object"
@@ -36416,6 +36756,7 @@ var PorticoCastContracts = (function(exports) {
 													"provenance": { "type": "string" },
 													"recordAvailable": { "type": "boolean" },
 													"recordUnavailableReason": { "type": "string" },
+													"serverHidden": { "type": "boolean" },
 													"sourceId": { "type": "string" },
 													"tuneAvailable": { "type": "boolean" },
 													"tuneUnavailableReason": { "type": "string" }
@@ -36435,6 +36776,7 @@ var PorticoCastContracts = (function(exports) {
 													"recordAvailable",
 													"favorite",
 													"hidden",
+													"serverHidden",
 													"preferenceRevision"
 												],
 												"type": "object"
@@ -36677,6 +37019,7 @@ var PorticoCastContracts = (function(exports) {
 									"provenance": { "type": "string" },
 									"recordAvailable": { "type": "boolean" },
 									"recordUnavailableReason": { "type": "string" },
+									"serverHidden": { "type": "boolean" },
 									"sourceId": { "type": "string" },
 									"tuneAvailable": { "type": "boolean" },
 									"tuneUnavailableReason": { "type": "string" }
@@ -36696,6 +37039,7 @@ var PorticoCastContracts = (function(exports) {
 									"recordAvailable",
 									"favorite",
 									"hidden",
+									"serverHidden",
 									"preferenceRevision"
 								],
 								"type": "object"
@@ -39733,6 +40077,7 @@ var PorticoCastContracts = (function(exports) {
 																	"provenance": { "type": "string" },
 																	"recordAvailable": { "type": "boolean" },
 																	"recordUnavailableReason": { "type": "string" },
+																	"serverHidden": { "type": "boolean" },
 																	"sourceId": { "type": "string" },
 																	"tuneAvailable": { "type": "boolean" },
 																	"tuneUnavailableReason": { "type": "string" }
@@ -39752,6 +40097,7 @@ var PorticoCastContracts = (function(exports) {
 																	"recordAvailable",
 																	"favorite",
 																	"hidden",
+																	"serverHidden",
 																	"preferenceRevision"
 																],
 																"type": "object"
@@ -43976,6 +44322,7 @@ var PorticoCastContracts = (function(exports) {
 														"provenance": { "type": "string" },
 														"recordAvailable": { "type": "boolean" },
 														"recordUnavailableReason": { "type": "string" },
+														"serverHidden": { "type": "boolean" },
 														"sourceId": { "type": "string" },
 														"tuneAvailable": { "type": "boolean" },
 														"tuneUnavailableReason": { "type": "string" }
@@ -43995,6 +44342,7 @@ var PorticoCastContracts = (function(exports) {
 														"recordAvailable",
 														"favorite",
 														"hidden",
+														"serverHidden",
 														"preferenceRevision"
 													],
 													"type": "object"
@@ -50600,6 +50948,7 @@ var PorticoCastContracts = (function(exports) {
 														"provenance": { "type": "string" },
 														"recordAvailable": { "type": "boolean" },
 														"recordUnavailableReason": { "type": "string" },
+														"serverHidden": { "type": "boolean" },
 														"sourceId": { "type": "string" },
 														"tuneAvailable": { "type": "boolean" },
 														"tuneUnavailableReason": { "type": "string" }
@@ -50619,6 +50968,7 @@ var PorticoCastContracts = (function(exports) {
 														"recordAvailable",
 														"favorite",
 														"hidden",
+														"serverHidden",
 														"preferenceRevision"
 													],
 													"type": "object"
@@ -54843,6 +55193,7 @@ var PorticoCastContracts = (function(exports) {
 											"provenance": { "type": "string" },
 											"recordAvailable": { "type": "boolean" },
 											"recordUnavailableReason": { "type": "string" },
+											"serverHidden": { "type": "boolean" },
 											"sourceId": { "type": "string" },
 											"tuneAvailable": { "type": "boolean" },
 											"tuneUnavailableReason": { "type": "string" }
@@ -54862,6 +55213,7 @@ var PorticoCastContracts = (function(exports) {
 											"recordAvailable",
 											"favorite",
 											"hidden",
+											"serverHidden",
 											"preferenceRevision"
 										],
 										"type": "object"
@@ -65312,6 +65664,7 @@ var PorticoCastContracts = (function(exports) {
 																	"provenance": { "type": "string" },
 																	"recordAvailable": { "type": "boolean" },
 																	"recordUnavailableReason": { "type": "string" },
+																	"serverHidden": { "type": "boolean" },
 																	"sourceId": { "type": "string" },
 																	"tuneAvailable": { "type": "boolean" },
 																	"tuneUnavailableReason": { "type": "string" }
@@ -65331,6 +65684,7 @@ var PorticoCastContracts = (function(exports) {
 																	"recordAvailable",
 																	"favorite",
 																	"hidden",
+																	"serverHidden",
 																	"preferenceRevision"
 																],
 																"type": "object"
@@ -69555,6 +69909,7 @@ var PorticoCastContracts = (function(exports) {
 														"provenance": { "type": "string" },
 														"recordAvailable": { "type": "boolean" },
 														"recordUnavailableReason": { "type": "string" },
+														"serverHidden": { "type": "boolean" },
 														"sourceId": { "type": "string" },
 														"tuneAvailable": { "type": "boolean" },
 														"tuneUnavailableReason": { "type": "string" }
@@ -69574,6 +69929,7 @@ var PorticoCastContracts = (function(exports) {
 														"recordAvailable",
 														"favorite",
 														"hidden",
+														"serverHidden",
 														"preferenceRevision"
 													],
 													"type": "object"
@@ -73832,6 +74188,7 @@ var PorticoCastContracts = (function(exports) {
 														"provenance": { "type": "string" },
 														"recordAvailable": { "type": "boolean" },
 														"recordUnavailableReason": { "type": "string" },
+														"serverHidden": { "type": "boolean" },
 														"sourceId": { "type": "string" },
 														"tuneAvailable": { "type": "boolean" },
 														"tuneUnavailableReason": { "type": "string" }
@@ -73851,6 +74208,7 @@ var PorticoCastContracts = (function(exports) {
 														"recordAvailable",
 														"favorite",
 														"hidden",
+														"serverHidden",
 														"preferenceRevision"
 													],
 													"type": "object"
@@ -78075,6 +78433,7 @@ var PorticoCastContracts = (function(exports) {
 											"provenance": { "type": "string" },
 											"recordAvailable": { "type": "boolean" },
 											"recordUnavailableReason": { "type": "string" },
+											"serverHidden": { "type": "boolean" },
 											"sourceId": { "type": "string" },
 											"tuneAvailable": { "type": "boolean" },
 											"tuneUnavailableReason": { "type": "string" }
@@ -78094,6 +78453,7 @@ var PorticoCastContracts = (function(exports) {
 											"recordAvailable",
 											"favorite",
 											"hidden",
+											"serverHidden",
 											"preferenceRevision"
 										],
 										"type": "object"
@@ -92882,6 +93242,7 @@ var PorticoCastContracts = (function(exports) {
 									],
 									"type": "object"
 								},
+								"enabled": { "type": "boolean" },
 								"enabledChannels": {
 									"items": { "type": "string" },
 									"type": "array"
@@ -92970,6 +93331,39 @@ var PorticoCastContracts = (function(exports) {
 									"required": ["enabled", "overwriteExisting"],
 									"type": "object"
 								},
+								"remote": {
+									"properties": {
+										"confirmedLanRoots": {
+											"items": { "type": "string" },
+											"type": "array"
+										},
+										"guideUrl": { "type": "string" },
+										"guideUrlRedacted": { "type": "boolean" },
+										"kind": { "type": "string" },
+										"ownerLimit": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"password": { "type": "string" },
+										"refreshMs": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"useDiscoveredCapacity": { "type": "boolean" },
+										"username": { "type": "string" }
+									},
+									"required": [
+										"kind",
+										"guideUrl",
+										"guideUrlRedacted",
+										"refreshMs",
+										"ownerLimit",
+										"useDiscoveredCapacity"
+									],
+									"type": "object"
+								},
 								"retryWindowMs": {
 									"maximum": 9007199254740991,
 									"minimum": -9007199254740991,
@@ -92982,7 +93376,8 @@ var PorticoCastContracts = (function(exports) {
 									"nullable": true,
 									"type": "integer"
 								},
-								"userAgent": { "type": "string" }
+								"userAgent": { "type": "string" },
+								"viewerAccess": { "type": "string" }
 							},
 							"required": [
 								"enabledGroups",
@@ -117519,6 +117914,7 @@ var PorticoCastContracts = (function(exports) {
 																	"provenance": { "type": "string" },
 																	"recordAvailable": { "type": "boolean" },
 																	"recordUnavailableReason": { "type": "string" },
+																	"serverHidden": { "type": "boolean" },
 																	"sourceId": { "type": "string" },
 																	"tuneAvailable": { "type": "boolean" },
 																	"tuneUnavailableReason": { "type": "string" }
@@ -117538,6 +117934,7 @@ var PorticoCastContracts = (function(exports) {
 																	"recordAvailable",
 																	"favorite",
 																	"hidden",
+																	"serverHidden",
 																	"preferenceRevision"
 																],
 																"type": "object"
@@ -121762,6 +122159,7 @@ var PorticoCastContracts = (function(exports) {
 														"provenance": { "type": "string" },
 														"recordAvailable": { "type": "boolean" },
 														"recordUnavailableReason": { "type": "string" },
+														"serverHidden": { "type": "boolean" },
 														"sourceId": { "type": "string" },
 														"tuneAvailable": { "type": "boolean" },
 														"tuneUnavailableReason": { "type": "string" }
@@ -121781,6 +122179,7 @@ var PorticoCastContracts = (function(exports) {
 														"recordAvailable",
 														"favorite",
 														"hidden",
+														"serverHidden",
 														"preferenceRevision"
 													],
 													"type": "object"
@@ -126040,6 +126439,7 @@ var PorticoCastContracts = (function(exports) {
 														"provenance": { "type": "string" },
 														"recordAvailable": { "type": "boolean" },
 														"recordUnavailableReason": { "type": "string" },
+														"serverHidden": { "type": "boolean" },
 														"sourceId": { "type": "string" },
 														"tuneAvailable": { "type": "boolean" },
 														"tuneUnavailableReason": { "type": "string" }
@@ -126059,6 +126459,7 @@ var PorticoCastContracts = (function(exports) {
 														"recordAvailable",
 														"favorite",
 														"hidden",
+														"serverHidden",
 														"preferenceRevision"
 													],
 													"type": "object"
@@ -130283,6 +130684,7 @@ var PorticoCastContracts = (function(exports) {
 											"provenance": { "type": "string" },
 											"recordAvailable": { "type": "boolean" },
 											"recordUnavailableReason": { "type": "string" },
+											"serverHidden": { "type": "boolean" },
 											"sourceId": { "type": "string" },
 											"tuneAvailable": { "type": "boolean" },
 											"tuneUnavailableReason": { "type": "string" }
@@ -130302,6 +130704,7 @@ var PorticoCastContracts = (function(exports) {
 											"recordAvailable",
 											"favorite",
 											"hidden",
+											"serverHidden",
 											"preferenceRevision"
 										],
 										"type": "object"
@@ -140058,6 +140461,27 @@ var PorticoCastContracts = (function(exports) {
 					"type": "array"
 				},
 				"art": { "type": "string" },
+				"avatar": {
+					"properties": {
+						"profileId": { "type": "string" },
+						"sourceMime": { "type": "string" },
+						"updatedAt": { "type": "string" },
+						"url": { "type": "string" },
+						"version": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						}
+					},
+					"required": [
+						"profileId",
+						"version",
+						"updatedAt",
+						"sourceMime",
+						"url"
+					],
+					"type": "object"
+				},
 				"id": { "type": "string" },
 				"name": { "type": "string" },
 				"pinRequired": { "type": "boolean" },
@@ -142922,6 +143346,116 @@ var PorticoCastContracts = (function(exports) {
 			"required": ["accountIds", "action"],
 			"type": "object"
 		},
+		"PostAdminAccessMembersIdProfilesProfileAvatarRequest": {
+			"properties": { "image": {
+				"format": "binary",
+				"type": "string"
+			} },
+			"required": ["image"],
+			"type": "object"
+		},
+		"PostAdminAccessMembersIdProfilesProfileAvatarResponse": {
+			"properties": {
+				"allowedLibraries": {
+					"items": { "type": "string" },
+					"type": "array"
+				},
+				"art": { "type": "string" },
+				"avatar": {
+					"properties": {
+						"profileId": { "type": "string" },
+						"sourceMime": { "type": "string" },
+						"updatedAt": { "type": "string" },
+						"url": { "type": "string" },
+						"version": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						}
+					},
+					"required": [
+						"profileId",
+						"version",
+						"updatedAt",
+						"sourceMime",
+						"url"
+					],
+					"type": "object"
+				},
+				"id": { "type": "string" },
+				"name": { "type": "string" },
+				"pinRequired": { "type": "boolean" },
+				"pinRevision": {
+					"maximum": 9007199254740991,
+					"minimum": -9007199254740991,
+					"type": "integer"
+				},
+				"position": {
+					"maximum": 9007199254740991,
+					"minimum": -9007199254740991,
+					"type": "integer"
+				},
+				"primary": { "type": "boolean" },
+				"restrictions": {
+					"properties": {
+						"allowDownloads": { "type": "boolean" },
+						"allowDvr": { "type": "boolean" },
+						"allowLiveTv": { "type": "boolean" },
+						"allowUnrated": { "type": "boolean" },
+						"allowWatchTogether": { "type": "boolean" },
+						"blockedLabels": {
+							"items": { "type": "string" },
+							"type": "array"
+						},
+						"maximumAge": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						},
+						"maximumAgeRating": { "type": "string" },
+						"profileId": { "type": "string" },
+						"ratingSystem": { "type": "string" },
+						"revision": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						}
+					},
+					"required": [
+						"profileId",
+						"ratingSystem",
+						"maximumAgeRating",
+						"maximumAge",
+						"allowUnrated",
+						"blockedLabels",
+						"allowDownloads",
+						"allowLiveTv",
+						"allowDvr",
+						"allowWatchTogether",
+						"revision"
+					],
+					"type": "object"
+				},
+				"revision": {
+					"maximum": 9007199254740991,
+					"minimum": -9007199254740991,
+					"type": "integer"
+				}
+			},
+			"required": [
+				"id",
+				"name",
+				"primary",
+				"position",
+				"art",
+				"revision",
+				"pinRevision",
+				"pinRequired",
+				"allowedLibraries",
+				"restrictions"
+			],
+			"type": "object"
+		},
 		"PostAdminAccessMembersIdProfilesProfilePinResetRequest": {
 			"properties": { "expectedRevision": {
 				"maximum": 9007199254740991,
@@ -142938,6 +143472,27 @@ var PorticoCastContracts = (function(exports) {
 					"type": "array"
 				},
 				"art": { "type": "string" },
+				"avatar": {
+					"properties": {
+						"profileId": { "type": "string" },
+						"sourceMime": { "type": "string" },
+						"updatedAt": { "type": "string" },
+						"url": { "type": "string" },
+						"version": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						}
+					},
+					"required": [
+						"profileId",
+						"version",
+						"updatedAt",
+						"sourceMime",
+						"url"
+					],
+					"type": "object"
+				},
 				"id": { "type": "string" },
 				"name": { "type": "string" },
 				"pinRequired": { "type": "boolean" },
@@ -165860,6 +166415,27 @@ var PorticoCastContracts = (function(exports) {
 					"type": "array"
 				},
 				"art": { "type": "string" },
+				"avatar": {
+					"properties": {
+						"profileId": { "type": "string" },
+						"sourceMime": { "type": "string" },
+						"updatedAt": { "type": "string" },
+						"url": { "type": "string" },
+						"version": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						}
+					},
+					"required": [
+						"profileId",
+						"version",
+						"updatedAt",
+						"sourceMime",
+						"url"
+					],
+					"type": "object"
+				},
 				"id": { "type": "string" },
 				"name": { "type": "string" },
 				"pinRequired": { "type": "boolean" },
@@ -166514,7 +167090,6 @@ var PorticoCastContracts = (function(exports) {
 		"PutAdminDvrRecordingPermissionsRequest": {
 			"properties": {
 				"enabled": { "type": "boolean" },
-				"inheritProfiles": { "type": "boolean" },
 				"owner": {
 					"properties": {
 						"accountId": { "type": "string" },
@@ -166537,7 +167112,6 @@ var PorticoCastContracts = (function(exports) {
 			"required": [
 				"owner",
 				"enabled",
-				"inheritProfiles",
 				"revision"
 			],
 			"type": "object"
@@ -166548,7 +167122,6 @@ var PorticoCastContracts = (function(exports) {
 				"result": {
 					"properties": {
 						"enabled": { "type": "boolean" },
-						"inheritProfiles": { "type": "boolean" },
 						"owner": {
 							"properties": {
 								"accountId": { "type": "string" },
@@ -166571,7 +167144,6 @@ var PorticoCastContracts = (function(exports) {
 					"required": [
 						"owner",
 						"enabled",
-						"inheritProfiles",
 						"revision"
 					],
 					"type": "object"
@@ -167247,9 +167819,18 @@ var PorticoCastContracts = (function(exports) {
 									"group": { "type": "string" },
 									"guideChannelId": { "type": "string" },
 									"hidden": { "type": "boolean" },
+									"mark": {
+										"properties": {
+											"seed": { "type": "string" },
+											"text": { "type": "string" }
+										},
+										"required": ["text", "seed"],
+										"type": "object"
+									},
 									"name": { "type": "string" },
 									"number": { "type": "string" },
 									"overridden": { "type": "boolean" },
+									"overrideNumber": { "type": "string" },
 									"position": {
 										"maximum": 9007199254740991,
 										"minimum": -9007199254740991,
@@ -167266,16 +167847,24 @@ var PorticoCastContracts = (function(exports) {
 									"guideChannelId",
 									"hidden",
 									"position",
-									"overridden"
+									"overridden",
+									"mark",
+									"overrideNumber"
 								],
 								"type": "object"
 							},
 							"type": "array"
 						},
 						"nextCursor": { "type": "string" },
+						"revision": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						},
 						"sourceId": { "type": "string" }
 					},
 					"required": [
+						"revision",
 						"sourceId",
 						"generation",
 						"items",
@@ -169536,6 +170125,7 @@ var PorticoCastContracts = (function(exports) {
 										"provenance": { "type": "string" },
 										"recordAvailable": { "type": "boolean" },
 										"recordUnavailableReason": { "type": "string" },
+										"serverHidden": { "type": "boolean" },
 										"sourceId": { "type": "string" },
 										"tuneAvailable": { "type": "boolean" },
 										"tuneUnavailableReason": { "type": "string" }
@@ -169555,6 +170145,7 @@ var PorticoCastContracts = (function(exports) {
 										"recordAvailable",
 										"favorite",
 										"hidden",
+										"serverHidden",
 										"preferenceRevision"
 									],
 									"type": "object"
@@ -180071,6 +180662,7 @@ var PorticoCastContracts = (function(exports) {
 							],
 							"type": "object"
 						},
+						"enabled": { "type": "boolean" },
 						"enabledChannels": {
 							"items": { "type": "string" },
 							"type": "array"
@@ -180159,6 +180751,39 @@ var PorticoCastContracts = (function(exports) {
 							"required": ["enabled", "overwriteExisting"],
 							"type": "object"
 						},
+						"remote": {
+							"properties": {
+								"confirmedLanRoots": {
+									"items": { "type": "string" },
+									"type": "array"
+								},
+								"guideUrl": { "type": "string" },
+								"guideUrlRedacted": { "type": "boolean" },
+								"kind": { "type": "string" },
+								"ownerLimit": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"password": { "type": "string" },
+								"refreshMs": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"useDiscoveredCapacity": { "type": "boolean" },
+								"username": { "type": "string" }
+							},
+							"required": [
+								"kind",
+								"guideUrl",
+								"guideUrlRedacted",
+								"refreshMs",
+								"ownerLimit",
+								"useDiscoveredCapacity"
+							],
+							"type": "object"
+						},
 						"retryWindowMs": {
 							"maximum": 9007199254740991,
 							"minimum": -9007199254740991,
@@ -180171,7 +180796,8 @@ var PorticoCastContracts = (function(exports) {
 							"nullable": true,
 							"type": "integer"
 						},
-						"userAgent": { "type": "string" }
+						"userAgent": { "type": "string" },
+						"viewerAccess": { "type": "string" }
 					},
 					"required": [
 						"enabledGroups",
@@ -180305,6 +180931,7 @@ var PorticoCastContracts = (function(exports) {
 									],
 									"type": "object"
 								},
+								"enabled": { "type": "boolean" },
 								"enabledChannels": {
 									"items": { "type": "string" },
 									"type": "array"
@@ -180393,6 +181020,39 @@ var PorticoCastContracts = (function(exports) {
 									"required": ["enabled", "overwriteExisting"],
 									"type": "object"
 								},
+								"remote": {
+									"properties": {
+										"confirmedLanRoots": {
+											"items": { "type": "string" },
+											"type": "array"
+										},
+										"guideUrl": { "type": "string" },
+										"guideUrlRedacted": { "type": "boolean" },
+										"kind": { "type": "string" },
+										"ownerLimit": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"password": { "type": "string" },
+										"refreshMs": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"useDiscoveredCapacity": { "type": "boolean" },
+										"username": { "type": "string" }
+									},
+									"required": [
+										"kind",
+										"guideUrl",
+										"guideUrlRedacted",
+										"refreshMs",
+										"ownerLimit",
+										"useDiscoveredCapacity"
+									],
+									"type": "object"
+								},
 								"retryWindowMs": {
 									"maximum": 9007199254740991,
 									"minimum": -9007199254740991,
@@ -180405,7 +181065,8 @@ var PorticoCastContracts = (function(exports) {
 									"nullable": true,
 									"type": "integer"
 								},
-								"userAgent": { "type": "string" }
+								"userAgent": { "type": "string" },
+								"viewerAccess": { "type": "string" }
 							},
 							"required": [
 								"enabledGroups",
@@ -192486,6 +193147,7 @@ var PorticoCastContracts = (function(exports) {
 									"nullable": true,
 									"type": "integer"
 								},
+								"memoryAvailable": { "type": "boolean" },
 								"memoryPath": { "type": "string" },
 								"path": { "type": "string" },
 								"ready": { "type": "boolean" }
@@ -192495,7 +193157,8 @@ var PorticoCastContracts = (function(exports) {
 								"ready",
 								"freeBytes",
 								"fallback",
-								"memoryPath"
+								"memoryPath",
+								"memoryAvailable"
 							],
 							"type": "object"
 						},

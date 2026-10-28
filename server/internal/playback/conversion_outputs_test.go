@@ -36,7 +36,7 @@ func conversionOutputFixture(t *testing.T) (*sql.DB, *HLS, string) {
 	if _, err := db.Exec(`UPDATE playback_sessions SET mode='hls' WHERE id='output-test'`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`INSERT INTO playback_source_pins VALUES('output-test',?,1,1)`, token); err != nil {
+	if _, err := db.Exec(`INSERT INTO playback_source_pins(session_id,asset_id,size,modified_ns) VALUES('output-test',?,1,1)`, token); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(filepath.Join(h.root, "output-test"), 0700); err != nil {
@@ -217,7 +217,7 @@ func TestMPEGTSHasASequentialCopyTimeline(t *testing.T) {
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatal(err, string(output))
 	}
-	timeline, err := probeCopyTimeline(ctx, probe, &assets.PlaybackInput{Argument: source}, 19)
+	timeline, err := probeCopyTimeline(ctx, localTimelineProbe(probe, &assets.PlaybackInput{Argument: source}), localPacketTimelineProbe(probe, &assets.PlaybackInput{Argument: source}), 19)
 	if err != nil || timeline == nil || timeline.count() < 3 {
 		t.Fatal(timeline, err)
 	}
@@ -251,7 +251,7 @@ func TestMPEGTSSeekRestartsOnIndexedPacket(t *testing.T) {
 		}
 	}
 	run([]string{"-v", "error", "-f", "lavfi", "-i", "testsrc2=s=160x90:r=24:d=19", "-c:v", "libx264", "-preset", "ultrafast", "-threads", "2", "-g", "96", "-sc_threshold", "0", "-f", "mpegts", source})
-	timeline, err := probeCopyTimeline(ctx, probe, &assets.PlaybackInput{Argument: source}, 19)
+	timeline, err := probeCopyTimeline(ctx, localTimelineProbe(probe, &assets.PlaybackInput{Argument: source}), localPacketTimelineProbe(probe, &assets.PlaybackInput{Argument: source}), 19)
 	if err != nil {
 		t.Fatal(err)
 	}

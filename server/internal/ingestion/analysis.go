@@ -786,6 +786,7 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 // probe: which operations it must redo, and the embedded subtitle tracks and
 // timing that probe recorded.
 type localRefresh struct {
+	audio          *assets.Facts
 	kind           string
 	done           []string
 	metadata, subs bool
@@ -794,7 +795,7 @@ type localRefresh struct {
 	timingKnown    bool
 }
 
-// localRefreshEvidence decides whether a queued video file needs only its
+// localRefreshEvidence decides whether a queued media file needs only its
 // local metadata and subtitle discovery redone (S6). That is the case when its
 // analysis is of this exact revision with the probe and playback analysis
 // recorded, and the only allowed basic operations missing are local_metadata
@@ -837,6 +838,23 @@ func (s *Service) localRefreshEvidence(ctx context.Context, source catalog.Libra
 	if err != nil {
 		return nil, err
 	}
+	if r.kind == "music" || r.kind == "audiobook" {
+		if !r.metadata {
+			return nil, nil
+		}
+		r.audio, err = s.catalog.InventoryAudioFileMetadata(ctx, object, revision)
+		if err != nil || r.audio == nil || r.audio.AudioCodec == "" {
+			return nil, err
+		}
+		if r.audio.ArtworkKey != "" && s.LocalMetadata != nil {
+			cached, _, cacheErr := s.LocalMetadata.Open(r.audio.ArtworkKey)
+			if cacheErr != nil {
+				return nil, nil
+			}
+			cached.Close()
+		}
+		return &r, nil
+	}
 	if r.kind != "movie" && r.kind != "tv" && r.kind != "anime" || videoCodec == "" {
 		return nil, nil
 	}
@@ -849,7 +867,7 @@ func (s *Service) localRefreshEvidence(ctx context.Context, source catalog.Libra
 	return &r, nil
 }
 
-// refreshLocalMetadata re-reads a video file's local metadata and subtitle
+// refreshLocalMetadata re-reads a file's local metadata and subtitle
 // sidecars without probing it again, and publishes them with
 // CommitInventoryLocalRefresh. The reads are the basic path's own, under the
 // same scan read witness, and the file must still be this revision before and
@@ -862,9 +880,13 @@ func (s *Service) refreshLocalMetadata(parent, ctx context.Context, job, object,
 		if err = s.analysisAllowed(ctx, job, source.LibraryID, policy.Revision, "local_metadata"); err != nil {
 			return nil
 		}
-		f = s.LocalMetadata.VideoNFO(readContext("local_metadata"), source.LibraryID, source.ResolvedPath, path, r.kind, f)
-		if r.kind == "movie" {
-			f = s.LocalMetadata.MovieArtwork(readContext("local_metadata"), source.LibraryID, path, f)
+		if r.audio != nil {
+			f = s.LocalMetadata.PrepareAudioSidecars(readContext("local_metadata"), source.LibraryID, r.kind, source.ResolvedPath, path, *r.audio)
+		} else {
+			f = s.LocalMetadata.VideoNFO(readContext("local_metadata"), source.LibraryID, source.ResolvedPath, path, r.kind, f)
+			if r.kind == "movie" {
+				f = s.LocalMetadata.MovieArtwork(readContext("local_metadata"), source.LibraryID, path, f)
+			}
 		}
 		season := -1
 		if r.kind == "tv" || r.kind == "anime" {
@@ -882,12 +904,14 @@ func (s *Service) refreshLocalMetadata(parent, ctx context.Context, job, object,
 		if len(extra) > 0 {
 			f.ArtworkExtra = extra
 		}
-		f.ArtworkCandidates, f.ArtworkCandidatesObserved = s.LocalMetadata.ReadArtworkCandidates(readContext("local_metadata"), source.LibraryID, r.kind, source.ResolvedPath, path, season)
+		if r.audio == nil {
+			f.ArtworkCandidates, f.ArtworkCandidatesObserved = s.LocalMetadata.ReadArtworkCandidates(readContext("local_metadata"), source.LibraryID, r.kind, source.ResolvedPath, path, season)
+		}
 		if f.LocalMetadataIssue == "" {
 			completed = append(completed, "local_metadata")
 		}
 	}
-	if r.subs {
+	if r.subs && r.audio == nil {
 		if err = s.analysisAllowed(ctx, job, source.LibraryID, policy.Revision, "subtitles"); err != nil {
 			return nil
 		}
@@ -897,6 +921,10 @@ func (s *Service) refreshLocalMetadata(parent, ctx context.Context, job, object,
 			completed = append(completed, "subtitles")
 		}
 	}
+	if r.subs && r.audio != nil {
+		completed = append(completed, "subtitles")
+	}
+
 	if ctx.Err() != nil {
 		return nil
 	}

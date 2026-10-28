@@ -68,14 +68,15 @@ export type BackupKind='scheduled'|'manual'|'pre-restore';
 // TODO(be backups): switch to generated types once apigen publishes the spec §4 routes.
 // The shapes below are hand-written from `Spec — Backups (Plex model).md` §4 and §6.2.
 export type BackupSummary=Readonly<{id:string;createdAt:string;kind:BackupKind;schemaVersion:number;serverVersion:string;bytes:number;path:string;encrypted?:boolean}>;
-export type BackupRunning=Readonly<{jobId:string;phase:string;bytesDone:number;bytesTotal:number}>;
+export type BackupRunning=Readonly<{jobId:string;kind?:'manual'|'scheduled';phase:string;bytesDone:number;bytesTotal:number}>;
 export type RestoreOutcome='restored'|'rolled_back';
-export type LastRestore=Readonly<{at:string;outcome:RestoreOutcome;reason:string;jobId?:string;schemaVersion?:number}>;
+export type RestoreRecovery=Readonly<{indexesRebuilt?:boolean;salvaged?:boolean;damagedTables?:readonly string[];removedRows?:number}>;
+export type LastRestore=Readonly<{at:string;outcome:RestoreOutcome;reason:string;jobId?:string;schemaVersion?:number;recovery?:RestoreRecovery}>;
 export type BackupResult=Readonly<{jobId:string;backupId?:string;outcome:'completed'|'failed';errorCode?:string}>;
 export type BackupsDocument=Readonly<{lastBackup?:BackupResult;backups:readonly BackupSummary[];running?:BackupRunning;restore?:RestoreProgress;lastRestore?:LastRestore}>;
 export type RestoreSource=Readonly<{backupId:string}|{path:string}>;
 export type RestoreProgress=Readonly<{jobId:string;phase:string;bytesDone:number;bytesTotal:number;result?:RestoreStaged;errorCode?:string}>;
-export type RestoreStaged=Readonly<{staged:true;restartRequired:true;validation:Readonly<{schemaVersion:number;integrity:'ok'}>}>;
+export type RestoreStaged=Readonly<{staged:true;restartRequired:true;validation:Readonly<{schemaVersion:number;integrity:'ok'|'recovered';recovery?:RestoreRecovery}>}>;
 /** The 4xx codes POST /v1/admin/backups/restore answers with (spec §4); `insufficient_disk` is shared with start. */
 export const RESTORE_REFUSAL_CODES=Object.freeze(['restore_lock_unavailable','restore_source_invalid','restore_pre_release','restore_integrity_failed','restore_not_portico','insufficient_disk'] as const);
 export type RestoreRefusalCode=typeof RESTORE_REFUSAL_CODES[number];
@@ -394,7 +395,7 @@ export function parseBackupsDocument(v:unknown):BackupsDocument{
  }
  if(v.running!==undefined&&v.running!==null){
   const r=v.running;
-  if(object(r)&&filled(r.jobId,128)&&text(r.phase,128)&&count(r.bytesDone)&&count(r.bytesTotal))doc.running=Object.freeze({jobId:r.jobId,phase:r.phase,bytesDone:r.bytesDone,bytesTotal:r.bytesTotal});
+  if(object(r)&&filled(r.jobId,128)&&text(r.phase,128)&&count(r.bytesDone)&&count(r.bytesTotal))doc.running=Object.freeze({jobId:r.jobId,...(r.kind==='manual'||r.kind==='scheduled'?{kind:r.kind}:{}),phase:r.phase,bytesDone:r.bytesDone,bytesTotal:r.bytesTotal});
  }
  if(v.restore!==undefined&&v.restore!==null){
   const r=v.restore;
@@ -402,17 +403,21 @@ export function parseBackupsDocument(v:unknown):BackupsDocument{
  }
  if(v.lastRestore!==undefined&&v.lastRestore!==null){
   const r=v.lastRestore;
-  if(object(r)&&text(r.at,64)&&restoreOutcomes.includes(r.outcome as RestoreOutcome))doc.lastRestore=Object.freeze({at:r.at,outcome:r.outcome as RestoreOutcome,reason:text(r.reason,1024)?r.reason as string:'',...(filled(r.jobId,128)?{jobId:r.jobId as string}:{}),...(count(r.schemaVersion)?{schemaVersion:r.schemaVersion as number}:{})});
+  if(object(r)&&text(r.at,64)&&restoreOutcomes.includes(r.outcome as RestoreOutcome))doc.lastRestore=Object.freeze({at:r.at,outcome:r.outcome as RestoreOutcome,reason:text(r.reason,1024)?r.reason as string:'',...(filled(r.jobId,128)?{jobId:r.jobId as string}:{}),...(count(r.schemaVersion)?{schemaVersion:r.schemaVersion as number}:{}),...(r.recovery!==undefined?{recovery:parseRestoreRecovery(r.recovery)}:{})});
  }
  return Object.freeze(doc);
 }
 
-/** parseRestoreStaged reads the POST /v1/admin/backups/restore receipt. A mutation receipt is
- * strict: anything but `{staged: true, restartRequired: true, validation: {schemaVersion, integrity: "ok"}}`
- * is refused rather than treated as a restore. */
+function parseRestoreRecovery(v:unknown):RestoreRecovery{
+ if(!object(v)||(v.indexesRebuilt!==undefined&&typeof v.indexesRebuilt!=='boolean')||(v.salvaged!==undefined&&typeof v.salvaged!=='boolean')||(v.removedRows!==undefined&&!count(v.removedRows)))invalid('restore recovery');
+ const damagedTables=v.damagedTables===undefined?undefined:list(v.damagedTables,1000,'damaged tables').map(table=>{if(!filled(table))invalid('damaged table');return table;});
+ return Object.freeze({...(v.indexesRebuilt!==undefined?{indexesRebuilt:v.indexesRebuilt as boolean}:{}),...(v.salvaged!==undefined?{salvaged:v.salvaged as boolean}:{}),...(damagedTables?{damagedTables:Object.freeze(damagedTables)}:{}),...(v.removedRows!==undefined?{removedRows:v.removedRows as number}:{})});
+}
+
+/** parseRestoreStaged accepts only a checked or recovered database staged for restart. */
 export function parseRestoreStaged(v:unknown):RestoreStaged{
- if(!object(v)||v.staged!==true||v.restartRequired!==true||!object(v.validation)||!count(v.validation.schemaVersion)||v.validation.integrity!=='ok')invalid('restore receipt');
- return Object.freeze({staged:true,restartRequired:true,validation:Object.freeze({schemaVersion:v.validation.schemaVersion as number,integrity:'ok' as const})});
+ if(!object(v)||v.staged!==true||v.restartRequired!==true||!object(v.validation)||!count(v.validation.schemaVersion)||(v.validation.integrity!=='ok'&&v.validation.integrity!=='recovered'))invalid('restore receipt');
+ return Object.freeze({staged:true,restartRequired:true,validation:Object.freeze({schemaVersion:v.validation.schemaVersion as number,integrity:v.validation.integrity as 'ok'|'recovered',...(v.validation.recovery!==undefined?{recovery:parseRestoreRecovery(v.validation.recovery)}:{})})});
 }
 
 /** parseStatePermissionsItem reads the §6.2 warning out of the health/alerts contract. */

@@ -423,7 +423,7 @@ func (s *Service) ensureSourceServe(ctx context.Context, binding SourceReadBindi
 	if ops.budget.Counts().Capacity != slot.profile.Limits.Connections {
 		return nil, storage.ErrRemoteChanged
 	}
-	spec := rcloneprogram.ServeCommandSpec{SourceID: slot.source, SourceGeneration: slot.generation, ApprovedProgramDigest: material.ApprovedProgramDigest, PrivateDirectory: s.private, Configuration: material.Configuration, Remote: material.Remote, Port: endpoint, MetadataPort: metadata, Username: identity.Token(), Password: identity.Token(), Connections: slot.profile.Limits.Connections, RequestsPerSecond: slot.profile.Limits.RequestsPerSecond, BytesPerSecond: slot.profile.Limits.BytesPerSecond, SharedOperations: ops.budget, SequentialReads: slot.sequential || slot.captureMode != "",
+	spec := rcloneprogram.ServeCommandSpec{SourceID: slot.source, SourceGeneration: slot.generation, ApprovedProgramDigest: material.ApprovedProgramDigest, PrivateDirectory: s.private, Configuration: egress.TransientConfiguration(material.Configuration), Remote: material.Remote, Port: endpoint, MetadataPort: metadata, Username: identity.Token(), Password: identity.Token(), Connections: slot.profile.Limits.Connections, RequestsPerSecond: slot.profile.Limits.RequestsPerSecond, BytesPerSecond: slot.profile.Limits.BytesPerSecond, SharedOperations: ops.budget, SequentialReads: slot.sequential || slot.captureMode != "",
 		DirCacheSeconds: slot.transport.DirCacheSeconds, ReadBufferBytes: slot.transport.ReadBufferBytes,
 		ConnectTimeoutSeconds: slot.transport.ConnectTimeoutSeconds, IdleTimeoutSeconds: slot.transport.IdleTimeoutSeconds,
 		Retries: slot.transport.Retries, LowLevelRetries: slot.transport.LowLevelRetries,

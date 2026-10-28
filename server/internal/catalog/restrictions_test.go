@@ -524,6 +524,7 @@ func equal(a, b []string) bool {
 // viewer a restricted (per-row predicate) viewer.
 func TestRecordingsSwitchFoldsIntoTheFenceOnly(t *testing.T) {
 	open := identity.DefaultRestrictions("p")
+	open.AllowDVR = true // the allowed fixture has an explicit recording grant
 	off := open
 	off.AllowDVR = false
 	if open.Content().BlockRecordings || !off.Content().BlockRecordings {

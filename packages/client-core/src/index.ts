@@ -1,6 +1,7 @@
 import {linkAbortSignals, throwIfAborted} from './abort-lifetime.ts';
 import {resendableRefusal, retryWriterCapacity} from './writer-capacity.ts';
 export {linkAbortSignals, throwIfAborted} from './abort-lifetime.ts';
+export * from './read-preparation.ts';
 export {DATABASE_BUSY, WRITER_CAPACITY, WRITER_RETRY_BUDGET_MS, resendableRefusal, retryWriterCapacity, writerRetryDelayMs} from './writer-capacity.ts';
 export * from './reading-mark-all.ts';
 export {contentEntrySubject} from './presentation/content-entry-subject.ts';
@@ -207,6 +208,9 @@ export class RequestTimeoutError extends Error {
  * do not come through here and have no such limit.
  */
 export function requestDeadlineMs(path: string, method: string): number {
+  // This owner read advances capped server snapshots; selection size sets its
+  // duration. The screen owns cancellation, rather than a whole-scan timer.
+  if (method === 'POST' && path === routePath('post_metadata_bulk_preview')) return Infinity;
   // The server's claim watch lasts ten minutes and streams whitespace until its
   // final JSON answer. Give the body the whole approval window plus a margin.
   if (method === 'POST' && path.split('?')[0] === routePath('post_networking_claim_await_approval')) return 615_000;
@@ -221,14 +225,14 @@ async function withinDeadline<T>(ms: number, signal: AbortSignal | undefined, wo
   let timedOut = false;
   const cancel = () => controller.abort();
   if (signal?.aborted) cancel(); else signal?.addEventListener('abort', cancel, {once: true});
-  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, ms);
+  const timer = ms === Infinity ? undefined : setTimeout(() => { timedOut = true; controller.abort(); }, ms);
   try {
     return await work(controller.signal);
   } catch (error) {
     if (timedOut && !signal?.aborted) throw new RequestTimeoutError();
     throw error;
   } finally {
-    clearTimeout(timer);
+    if (timer !== undefined) clearTimeout(timer);
     signal?.removeEventListener('abort', cancel);
   }
 }
@@ -558,6 +562,22 @@ export class HttpLocalApi {
       return value as T;
     });
   }
+  /** One multipart subtitle save (IM04) under the captured selected-server session. Never refresh/replay a lost write. */
+  async requestSubtitleUpload<T>(path: string, method: 'POST' | 'PUT', body: FormData, input?: AbortSignal): Promise<T> {
+    if (!/^\/v1\/items\/[A-Za-z0-9_-]+\/subtitles(?:\/[A-Za-z0-9_-]+)?$/.test(path) || (method === 'PUT') !== /\/subtitles\/[A-Za-z0-9_-]+$/.test(path)) throw new Error('Invalid subtitle upload path.');
+    const token = this.token, epoch = this.certificateSessionEpoch;
+    const current = () => {if (this.token !== token || this.certificateSessionEpoch !== epoch) throw new Error('The subtitle upload belongs to an old session.');};
+    return withinDeadline(110000, input, async signal => {
+      current(); throwIfAborted(signal);
+      const response = await this.fetcher(this.baseUrl + path, {method, body, signal, redirect: 'error', credentials: 'omit', referrerPolicy: 'no-referrer',
+        headers: {Accept: 'application/json', ...(token ? {Authorization: `Bearer ${token}`} : {}), ...this.deliveryHeaders()}});
+      current(); throwIfAborted(signal);
+      const value = await response.json().catch(() => undefined);
+      current(); throwIfAborted(signal);
+      if (!response.ok) throw new ApiError(response.status, value?.error?.code ?? value?.code ?? 'request_failed', value?.error?.message ?? 'Subtitle upload failed.', value?.error?.retryable === true);
+      return value as T;
+    });
+  }
   /**
    * Any status, with headers and the parsed body (playback v1's `V1Http` seam: 202, 412 `current`,
    * `ETag`, `Report-Every-Ms`). Rejects only when there is no response (offline, aborted).
@@ -581,7 +601,7 @@ export class HttpLocalApi {
     body?: unknown,
     signal?: AbortSignal
   ): Promise<T> {
-    // No request waits for ever: one the server never answers fails as timed out (see `requestDeadlineMs`).
+    // Ordinary requests time out; the paged owner preview belongs to caller cancellation (see `requestDeadlineMs`).
     // A change the writer refused before it began is sent again, not dropped (`writer-capacity.ts`).
     return retryWriterCapacity(
       () => withinDeadline(requestDeadlineMs(path, method), signal, bounded => this.answered<T>(path, method, body, bounded)),

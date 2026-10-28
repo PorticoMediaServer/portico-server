@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"portico.local/server/internal/dbwork"
 )
 
 func TestRestoreManifestCannotReplaceTheLiveDatabaseAsAStateFile(t *testing.T) {
@@ -250,7 +252,7 @@ func TestManualBackupCannotJoinAPruneableScheduledCopy(t *testing.T) {
 	svc, _, _ := testService(t)
 	entered := make(chan struct{})
 	release := make(chan struct{})
-	svc.SetCopyScrubber(func(context.Context, string) error { close(entered); <-release; return nil })
+	svc.SetCopyScrubber(func(context.Context, *dbwork.Candidate) error { close(entered); <-release; return nil })
 	id, err := svc.Start(context.Background(), KindScheduled, "scheduled-probe")
 	if err != nil {
 		t.Fatal(err)

@@ -48,6 +48,9 @@ type Album struct {
 	// Role is the artist-relative release role for this artist page. Absent from
 	// older servers.
 	Role AlbumRole `json:"role,omitempty"`
+	// HomeActions are the release's aggregate selection offers on an artist
+	// page (get_artists_id_albums); absent elsewhere.
+	HomeActions *HomeActions `json:"homeActions,omitempty"`
 }
 type Book struct {
 	ID                  string      `json:"id"`
@@ -496,6 +499,13 @@ func (s *Service) commitAudioTrack(ctx context.Context, tx *sql.Tx, library, kin
 	if err = compactcatalog.SetFieldsTx(ctx, tx, item, compactcatalog.Automatic, fields); err != nil {
 		return err
 	}
+	// Track the primary cover alongside sidecar carriers so replacement or
+	// removal releases only automatic artwork, preserving owner selections.
+	if f.ArtworkKey != "" {
+		if err = commitSidecars(ctx, tx, library, []sidecarCarrier{{"item", item, "poster", f.ArtworkKey}}); err != nil {
+			return err
+		}
+	}
 	if err = compactcatalog.ProjectAudioLocalGenresItem(ctx, tx, library, item); err != nil {
 		return err
 	}
@@ -695,6 +705,11 @@ func (s *Service) commitAudioTrack(ctx context.Context, tx *sql.Tx, library, kin
 		}
 		if err = musicAlbumBackdropTx(ctx, tx, album, f.ArtworkExtra); err != nil {
 			return err
+		}
+		if key := f.ArtworkExtra["album/backdrop"]; key != "" {
+			if err = commitSidecars(ctx, tx, library, []sidecarCarrier{{"album", album, "backdrop", key}}); err != nil {
+				return err
+			}
 		}
 		// Artist sidecars resolve to the album artist; a compilation's folder
 		// art belongs to the release, never to "Various Artists".

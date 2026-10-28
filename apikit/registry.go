@@ -145,15 +145,18 @@ type Metadata struct {
 	Query     []string `json:"query,omitempty"`
 	// QueryIntegers publishes bounds for integer query parameters named in
 	// Query. The handler parses and applies them; this is their contract.
-	QueryIntegers       []QueryInteger `json:"queryIntegers,omitempty"`
-	Headers             []string       `json:"headers,omitempty"`
-	NoResponseBody      bool           `json:"noResponseBody,omitempty"`
-	Errors              []string       `json:"errors"`
-	Status              int            `json:"status"`
-	ResponseContentType string         `json:"responseContentType,omitempty"`
-	RequestContentTypes []string       `json:"requestContentTypes,omitempty"`
-	SuccessStatuses     []int          `json:"successStatuses,omitempty"`
-	ResponseStatuses    []int          `json:"responseStatuses,omitempty"`
+	QueryIntegers []QueryInteger `json:"queryIntegers,omitempty"`
+	Headers       []string       `json:"headers,omitempty"`
+	// ResponseHeaders describes emitted headers for an explicitly declared
+	// status. Headers above remains the request-header parameter contract.
+	ResponseHeaders     []ResponseHeader `json:"responseHeaders,omitempty"`
+	NoResponseBody      bool             `json:"noResponseBody,omitempty"`
+	Errors              []string         `json:"errors"`
+	Status              int              `json:"status"`
+	ResponseContentType string           `json:"responseContentType,omitempty"`
+	RequestContentTypes []string         `json:"requestContentTypes,omitempty"`
+	SuccessStatuses     []int            `json:"successStatuses,omitempty"`
+	ResponseStatuses    []int            `json:"responseStatuses,omitempty"`
 	// OptionalBody lets a route with a body contract also accept no body at all
 	// (a DELETE whose body is optional); the handler then sees the zero Request.
 	OptionalBody bool `json:"optionalBody,omitempty"`
@@ -162,6 +165,13 @@ type Metadata struct {
 	HTTP bool `json:"http,omitempty"`
 	// Admission names the server pool; Lane describes its broad API work class.
 	Admission string `json:"admission,omitempty"`
+}
+
+type ResponseHeader struct {
+	Status      int    `json:"status"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Required    bool   `json:"required,omitempty"`
 }
 
 // QueryInteger is an optional integer query parameter, such as a page-size
@@ -577,6 +587,25 @@ func validate(m Metadata) error {
 		if status < 100 || status > 599 {
 			return errors.New("invalid response status")
 		}
+	}
+	seenResponseHeaders := map[string]bool{}
+	for _, header := range m.ResponseHeaders {
+		if header.Status != m.Status && !slices.Contains(m.SuccessStatuses, header.Status) && !slices.Contains(m.ResponseStatuses, header.Status) {
+			return errors.New("response header status must be declared")
+		}
+		if header.Name == "" || header.Description == "" {
+			return errors.New("response header name and description required")
+		}
+		for _, c := range header.Name {
+			if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.ContainsRune("!#$%&'*+-.^_`|~", c)) {
+				return errors.New("invalid response header name")
+			}
+		}
+		key := fmt.Sprint(header.Status) + ":" + strings.ToLower(header.Name)
+		if seenResponseHeaders[key] {
+			return errors.New("duplicate response header")
+		}
+		seenResponseHeaders[key] = true
 	}
 	for _, typ := range m.RequestContentTypes {
 		if _, _, err := mime.ParseMediaType(typ); err != nil {

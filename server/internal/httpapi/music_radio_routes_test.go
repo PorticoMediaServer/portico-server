@@ -46,6 +46,7 @@ func radioHTTPFixture(t *testing.T, counts ...int) (*v1Fixture, []catalogtest.It
 			return assets.PersistStreams(tx, item.Token, info.Size(), info.ModTime().UnixNano(), []assets.Stream{{Index: 0, Type: "audio", Codec: "aac", Channels: 2, Detail: assets.StreamDetail{SampleRate: 44100}, Default: true}})
 		})
 		c.Exec(`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns) SELECT ?,src.id,a.token,src.incarnation,a.path,'r','{}',a.size,a.modified_ns FROM catalog_assets a JOIN library_sources src ON src.library_id='radio-music' WHERE a.id=? LIMIT 1`, fmt.Sprint(item.ID), item.Asset)
+		confirmPlaybackInventory(t, f, fmt.Sprint(item.ID))
 		c.Exec(`INSERT INTO audio_render_facts(asset_id,size,modified_ns,container,codec,sample_rate,channels,bit_depth,raw_frames,duration_frames,start_frames,end_frames,trim_source,decoder_config,measured_ms) SELECT token,size,modified_ns,'mp4','aac',44100,2,0,238140000,238140000,0,0,'none','EhA=',1 FROM catalog_assets WHERE id=?`, item.Asset)
 		c.Genres(item.ID, "local", "Rock")
 		items = append(items, item)

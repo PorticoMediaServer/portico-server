@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/identity"
@@ -57,13 +58,13 @@ func (d Dependencies) audioRoutes(mux *http.ServeMux) {
 
 	d.httpHandle(mux, "GET /v1/libraries/{id}/artists", func(w http.ResponseWriter, r *http.Request) {
 		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-		d.serveAudioPage(w, r, "library", "artists", func(cat *catalog.Service, viewer catalog.Viewer) (any, string, error) {
+		d.serveAudioPage(w, r, "library", "artists", func(cat *catalog.Service, viewer catalog.Viewer, p identity.Principal) (any, string, error) {
 			return cat.Artists(viewer, r.PathValue("id"), r.URL.Query().Get("cursor"), limit)
 		})
 	})
 	d.httpHandle(mux, "GET /v1/libraries/{id}/books", func(w http.ResponseWriter, r *http.Request) {
 		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-		d.serveAudioPage(w, r, "library", "books", func(cat *catalog.Service, viewer catalog.Viewer) (any, string, error) {
+		d.serveAudioPage(w, r, "library", "books", func(cat *catalog.Service, viewer catalog.Viewer, p identity.Principal) (any, string, error) {
 			return cat.Books(viewer, r.PathValue("id"), r.URL.Query().Get("cursor"), limit)
 		})
 	})
@@ -71,10 +72,28 @@ func (d Dependencies) audioRoutes(mux *http.ServeMux) {
 		d.httpHandle(mux, route.pattern, func(w http.ResponseWriter, r *http.Request) {
 			limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 			cursor := r.URL.Query().Get("cursor")
-			d.serveAudioPage(w, r, route.kind, route.collection, func(cat *catalog.Service, viewer catalog.Viewer) (any, string, error) {
+			d.serveAudioPage(w, r, route.kind, route.collection, func(cat *catalog.Service, viewer catalog.Viewer, p identity.Principal) (any, string, error) {
 				switch route.collection {
 				case "albums":
-					return cat.Albums(viewer, r.PathValue("id"), cursor, limit)
+					// An artist's release rows carry their aggregate selection
+					// offers from the same snapshot (MOB-030), fenced after.
+					var albums []catalog.Album
+					var next string
+					before, err := d.containerOffersFenceBefore(r, p)
+					if err != nil {
+						return nil, "", err
+					}
+					err = d.composeScope(r, viewer.Restrictions, func(ctx context.Context, c *catalog.Service) error {
+						var e error
+						if albums, next, e = c.Albums(viewer, r.PathValue("id"), cursor, limit); e != nil {
+							return e
+						}
+						return d.projectAlbumActions(ctx, p, viewer, c, albums)
+					})
+					if err == nil {
+						err = d.containerOffersFenceAfter(r, p, before)
+					}
+					return albums, next, err
 				case "chapters":
 					return cat.BookChapters(viewer, r.PathValue("id"), cursor, limit)
 				default:
@@ -86,7 +105,7 @@ func (d Dependencies) audioRoutes(mux *http.ServeMux) {
 }
 
 // serveAudioPage authorizes the library before checking its grid validator.
-func (d Dependencies) serveAudioPage(w http.ResponseWriter, r *http.Request, kind, collection string, body func(*catalog.Service, catalog.Viewer) (any, string, error)) {
+func (d Dependencies) serveAudioPage(w http.ResponseWriter, r *http.Request, kind, collection string, body func(*catalog.Service, catalog.Viewer, identity.Principal) (any, string, error)) {
 	p, err := d.principal(r)
 	if err != nil {
 		failure(w, err)
@@ -105,7 +124,11 @@ func (d Dependencies) serveAudioPage(w http.ResponseWriter, r *http.Request, kin
 		failure(w, err)
 		return
 	}
-	tag := d.gridTag(r, p, gridTagBucket)
+	var extra []string
+	if collection == "albums" {
+		extra = append(extra, d.containerOffersValidator(r, p, library))
+	}
+	tag := d.gridTag(r, p, gridTagBucket, extra...)
 	if gridNotModified(w, r, tag) {
 		return
 	}
@@ -114,11 +137,29 @@ func (d Dependencies) serveAudioPage(w http.ResponseWriter, r *http.Request, kin
 		failure(w, err)
 		return
 	}
-	rows, next, err := body(cat, viewer)
+	rows, next, err := body(cat, viewer, p)
 	if err != nil {
 		failure(w, err)
 		return
 	}
 	setGridTag(w, tag)
 	write(w, 200, map[string]any{collection: rows, "nextCursor": next})
+}
+
+// projectAlbumActions offers an artist page's release rows the same aggregate
+// album actions a displayed album entry carries.
+func (d Dependencies) projectAlbumActions(ctx context.Context, p identity.Principal, viewer catalog.Viewer, cat *catalog.Service, albums []catalog.Album) error {
+	entries := make([]catalog.ContentEntry, len(albums))
+	pointers := make([]*catalog.ContentEntry, len(albums))
+	for i, album := range albums {
+		entries[i] = catalog.ContentEntry{ID: album.ID, LibraryID: album.LibraryID, Kind: "album"}
+		pointers[i] = &entries[i]
+	}
+	if err := d.projectContainerActions(ctx, p, viewer, cat, "", pointers); err != nil {
+		return err
+	}
+	for i := range albums {
+		albums[i].HomeActions = entries[i].HomeActions
+	}
+	return nil
 }

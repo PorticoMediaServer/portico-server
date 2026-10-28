@@ -615,6 +615,9 @@ func (s *Service) processQuantum(ctx context.Context, id, library string) bool {
 	default:
 		err = catalog.ErrAdminQuery
 	}
+	if err == nil {
+		err = s.readingClosureQuantum(ctx, id, source)
+	}
 	if err != nil && ctx.Err() == nil && !errors.Is(err, context.Canceled) && !errors.Is(err, storage.ErrBusy) {
 		log.Printf("library scan step %s failed: %v", phase, err)
 		s.fail(ctx, id, sourceID, err)

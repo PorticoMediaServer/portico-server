@@ -90,7 +90,7 @@ func (s *Service) ChangeSubtitleDeliveryTx(ctx context.Context, tx *sql.Tx, p id
 	if err != nil {
 		return err
 	}
-	input := DeliveryInput{SourceID: source.ID, Source: &source, Container: source.Container, VideoCodec: source.Video.Codec, Duration: source.Duration, Height: source.Video.Height, Policy: policy, Target: target, Config: cfg, TranscodingEnabled: enabled, Hardware: preparedDelivery.hardware, BurnIn: resource != nil, Remote: source.Container == "strm", Engine: old.Engine}
+	input := DeliveryInput{SourceID: source.ID, Source: &source, Container: source.Container, VideoCodec: source.Video.Codec, Duration: source.Duration, Height: source.Video.Height, Policy: policy, Target: target, Config: cfg, TranscodingEnabled: enabled, Hardware: preparedDelivery.hardware, BurnIn: resource != nil, Remote: source.Remote, Engine: old.Engine}
 	var explicit *int
 	if old.AudioStream >= 0 {
 		explicit = &old.AudioStream
@@ -100,7 +100,7 @@ func (s *Service) ChangeSubtitleDeliveryTx(ctx context.Context, tx *sql.Tx, p id
 		return err
 	}
 	var boundDisc []*DeliverySource
-	if discSession {
+	if discSession || source.Remote {
 		boundDisc = []*DeliverySource{&source}
 	}
 	if err = s.completeDeliveryInputTx(ctx, tx, p, &input, values, true, explicit, boundDisc...); err != nil {

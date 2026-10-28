@@ -10,6 +10,19 @@ import (
 // This preserves inherited intent and eligible-member semantics while keeping
 // sparse profiles from running the canonical state expression for every title.
 func (c *browseCompiler) playStatePredicate(node BrowseNode) (string, error) {
+	if c.bounded {
+		values := browseNodeValues(node)
+		restriction, args := ItemRestrictionSQL("member.item_id", c.restrictions)
+		c.args = append(c.args, c.profile)
+		c.args = append(c.args, values...)
+		c.args = append(c.args, args...)
+		state := `CASE WHEN ` + personalstate.CompactSQL("scope.profile", "member.item_id") + `=1 THEN 'played' WHEN COALESCE(p.position,0)>0 THEN 'in-progress' ELSE 'unplayed' END`
+		clause := `EXISTS(SELECT 1 FROM (SELECT ? AS profile) scope CROSS JOIN catalog_browse_memberships member LEFT JOIN progress p ON p.profile_id=scope.profile AND p.item_id=member.item_id WHERE member.entity_id=e.entity_id AND (` + state + `) IN(` + placeholders(len(values)) + `) AND (` + restriction + `))`
+		if node.Operator == "not-in" {
+			clause = "NOT (" + clause + ")"
+		}
+		return clause, nil
+	}
 	values := []any{node.Value}
 	if list, ok := node.Value.([]any); ok {
 		values = list

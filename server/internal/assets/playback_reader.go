@@ -3,7 +3,6 @@ package assets
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -19,13 +18,27 @@ type PlaybackSource struct {
 
 func ResolvePlaybackSource(ctx context.Context, db *sql.DB, session, grantHash string) (PlaybackSource, error) {
 	var v PlaybackSource
-	var asset, source, incarnation string
-	var generation int64
-	e := db.QueryRowContext(ctx, `SELECT a.path,COALESCE(pin.size,a.size),COALESCE(pin.modified_ns,a.modified_ns),a.token,COALESCE(physical.source_id,''),COALESCE(physical.incarnation,''),COALESCE(physical.configuration_generation,0) FROM playback_sessions ps JOIN catalog_assets a ON a.token=ps.asset_id LEFT JOIN playback_source_pins pin ON pin.session_id=ps.id LEFT JOIN playback_physical_source_pins physical ON physical.session_id=ps.id WHERE (ps.id=? OR ps.grant_hash=?) AND a.available=1 AND (pin.session_id IS NULL OR (pin.asset_id=a.token AND pin.size=a.size AND pin.modified_ns=a.modified_ns))`, session, grantHash).Scan(&v.Path, &v.Size, &v.ModifiedNS, &asset, &source, &incarnation, &generation)
+	var binding storage.PlaybackBinding
+	var mode string
+	var live bool
+	e := db.QueryRowContext(ctx, `SELECT a.path,pin.size,pin.modified_ns,pin.binding,pin.root,pin.root_identity,pin.relative_path,pin.object_identity,pin.follow_symlinks,
+ COALESCE(pin.source_id=physical.source_id AND source.enabled=1 AND source.identity_confirmed=1 AND source.health NOT IN('offline','root_changed','removing') AND source.incarnation=physical.incarnation AND source.generation=physical.configuration_generation AND source.root=pin.root AND source.root_identity=pin.root_identity AND ((pin.binding='inventory' AND source.kind='local') OR (pin.binding='mounted' AND source.kind='remote')),0)
+ FROM playback_sessions ps JOIN catalog_assets a ON a.token=ps.asset_id JOIN playback_source_pins pin ON pin.session_id=ps.id
+ LEFT JOIN playback_physical_source_pins physical ON physical.session_id=ps.id LEFT JOIN library_sources source ON source.id=pin.source_id
+ WHERE (ps.id=? OR ps.grant_hash=?) AND a.available=1 AND pin.asset_id=a.token AND pin.size=a.size AND pin.modified_ns=a.modified_ns`, session, grantHash).Scan(&v.Path, &v.Size, &v.ModifiedNS, &mode, &binding.Inventory.Root, &binding.Inventory.RootIdentity, &binding.Inventory.RelativePath, &binding.ObjectIdentity, &binding.Inventory.FollowSymlinks, &live)
 	if e != nil {
 		return PlaybackSource{}, e
 	}
-	v.Binding, e = resolvePlaybackBinding(ctx, db, v, asset, source, incarnation, generation)
+	if mode == "none" {
+		// Source-less publications retain their no-follow size/mtime acquisition.
+		return v, nil
+	}
+	if !live || (mode != "inventory" && mode != "mounted") || !validPlaybackBinding(binding) {
+		return PlaybackSource{}, storage.ErrPlaybackSource
+	}
+	binding.Mounted = mode == "mounted"
+	v.Path = filepath.Join(binding.Inventory.Root, binding.Inventory.RelativePath)
+	v.Binding = &binding
 	return v, e
 }
 
@@ -42,32 +55,11 @@ func ResolveCatalogPlaybackSource(ctx context.Context, db *sql.DB, asset string)
 }
 
 func resolvePlaybackBinding(ctx context.Context, db *sql.DB, v PlaybackSource, asset, source, incarnation string, generation int64) (*storage.PlaybackBinding, error) {
-	var binding storage.PlaybackBinding
-	var valid bool
-	var kind string
-	err := db.QueryRowContext(ctx, `SELECT s.root,s.root_identity,s.follow_symlinks,o.relative_path,o.object_identity,s.kind,
- o.size=? AND o.modified_ns=? AND o.retired=0 AND o.state='available' AND s.kind IN('local','remote') AND s.enabled=1 AND s.identity_confirmed=1 AND s.health NOT IN('offline','root_changed','removing') AND o.root_incarnation=s.incarnation AND (?='' OR (s.incarnation=? AND s.generation=?))
- FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id
- WHERE o.asset_id=? AND (?='' OR s.id=?)
- ORDER BY (rtrim(s.root,?)||?||o.relative_path=?) DESC,(o.retired=0 AND o.state='available' AND o.root_incarnation=s.incarnation) DESC,s.id,o.id LIMIT 1`, v.Size, v.ModifiedNS, source, incarnation, generation, asset, source, source, string(filepath.Separator), string(filepath.Separator), filepath.Clean(v.Path)).Scan(&binding.Inventory.Root, &binding.Inventory.RootIdentity, &binding.Inventory.FollowSymlinks, &binding.Inventory.RelativePath, &binding.ObjectIdentity, &kind, &valid)
-	if errors.Is(err, sql.ErrNoRows) && source == "" {
-		// Source-less publications can have no inventory row. This preserves
-		// their existing no-follow acquisition; it is not root/object custody.
-		// Persistent acceptance evidence for this case remains a schema task.
-		return nil, nil
-	}
-	if err != nil {
+	evidence, err := resolvePlaybackEvidence(ctx, db, v, asset, source, incarnation, generation)
+	if err != nil || evidence == nil {
 		return nil, err
 	}
-	if !valid || binding.ObjectIdentity == "" || binding.Inventory.RootIdentity == "" || !filepath.IsLocal(binding.Inventory.RelativePath) || filepath.Join(binding.Inventory.Root, binding.Inventory.RelativePath) != filepath.Clean(v.Path) {
-		return nil, storage.ErrPlaybackSource
-	}
-	// Native remote inventory IDs describe provider objects, not the inodes
-	// exposed by rclone/FUSE. This mapping only permits the existing supervised
-	// mounted-file path after the client confirms its managed mount registry.
-	// It does not establish immutable accepted-object custody for that path.
-	binding.Mounted = kind == "remote"
-	return &binding, nil
+	return &evidence.binding, nil
 }
 
 type IsolatedPlaybackReader struct {

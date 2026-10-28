@@ -20,8 +20,9 @@ func TestChapterThumbnailURLTracksCurrentChapterImages(t *testing.T) {
 	}
 	defer db.Close()
 	_, item, token := catalogFixture(t, db, "l", "/fixture", compactcatalog.Movie, "i", "I", compactcatalog.Asset{Path: "/fixture/a", Size: 1, ModifiedNS: 1, Container: "mp4", VideoCodec: "h264", AudioCodec: "aac", Width: 1, Height: 1, Duration: 1000})
-	_, e = db.Exec(`UPDATE library_sources SET generation=4,incarnation='inc',enabled=1 WHERE id='l';
-INSERT INTO inventory_objects(id,source_id,asset_id,revision,state,retired,root_incarnation,relative_path,evidence_json,size,modified_ns) VALUES('o','l',?, 'rev','available',0,'inc','a','{}',1,1)`, token)
+	// A session accepts only a confirmed object under a confirmed root.
+	_, e = db.Exec(`UPDATE library_sources SET generation=4,incarnation='inc',enabled=1,root_identity='root',identity_confirmed=1,health='ready' WHERE id='l';
+INSERT INTO inventory_objects(id,source_id,asset_id,revision,state,retired,root_incarnation,relative_path,object_identity,evidence_json,size,modified_ns) VALUES('o','l',?, 'rev','available',0,'inc','a','object','{}',1,1)`, token)
 	if e != nil {
 		t.Fatal(e)
 	}

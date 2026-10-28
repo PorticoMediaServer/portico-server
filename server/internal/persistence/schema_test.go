@@ -14,7 +14,7 @@ import (
 
 // Updating the pre-release schema means directly editing the baseline and this
 // expected digest. Existing state must then be reset, never upgraded.
-const schemaSourceDigest = "2d9ac2cef026c6092f990117de880a174f9ed078caba231914eaabf0310daaa8"
+const schemaSourceDigest = "8f4f806a7ee1a2ac6c4b4295c210d14fe68c093d9bfec30b2d7c9e183ee012e8"
 
 func TestSchemaBaselineDigest(t *testing.T) {
 	if BaselineDigest() != schemaSourceDigest {
@@ -77,7 +77,7 @@ func TestSchemaMismatchRefusesWithoutChangingState(t *testing.T) {
 			}
 			db.Close()
 			assertResetRefusal(t, path)
-			if _, err = InspectCandidate(context.Background(), path); !errors.Is(err, ErrSchemaResetRequired) {
+			if _, err = InspectCandidate(context.Background(), filepath.Dir(path), filepath.Base(path)); !errors.Is(err, ErrSchemaResetRequired) {
 				t.Fatalf("restore accepted mismatch: %v", err)
 			}
 			db, err = dbwork.OpenHandle(path, dbwork.DefaultPolicy())

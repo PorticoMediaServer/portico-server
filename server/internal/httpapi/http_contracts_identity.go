@@ -110,7 +110,7 @@ func registerIdentityHTTPContracts(registry *apikit.Registry) error {
 	// internal/httpapi/identity_routes.go:35
 	if err := apikit.RegisterHTTP[struct {
 		Image SubtitleBytesContract `json:"image"`
-	}, identity.ProfileAvatar](registry, apikit.Metadata{ID: "post_direct_profiles_id_avatar", Method: "POST", Path: "/v1/direct/profiles/{id}/avatar", RequestContentTypes: []string{"multipart/form-data", "application/octet-stream", "image/png", "image/jpeg", "image/webp"}, Summary: "Run account profile avatar", Access: apikit.Device, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: identity.AvatarUploadBytes + (1 << 20), Status: 201, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}, identity.ProfileAvatar](registry, apikit.Metadata{ID: "post_direct_profiles_id_avatar", Method: "POST", Path: "/v1/direct/profiles/{id}/avatar", RequestContentTypes: []string{"multipart/form-data", "application/octet-stream", "image/png", "image/jpeg"}, Summary: "Run account profile avatar", Access: apikit.Device, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: identity.AvatarUploadBytes + (1 << 20), Status: 201, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/identity_routes.go:72

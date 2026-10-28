@@ -23,6 +23,7 @@ import (
 // the invitation code is the whole authority and the route is rate-limited like
 // the sign-in routes.
 func (d Dependencies) accessRoutes(mux *http.ServeMux) {
+	d.memberProfilePictureRoutes(mux)
 	store := d.Access.Access
 	if store == nil || d.Identity == nil {
 		return

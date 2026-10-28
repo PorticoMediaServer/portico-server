@@ -207,6 +207,7 @@ func (s *Service) commitInventoryPageTx(ctx context.Context, tx *sql.Tx, job str
 	if err = tx.QueryRowContext(ctx, `SELECT kind FROM libraries WHERE id=?`, source.LibraryID).Scan(&libraryKind); err != nil {
 		return false, err
 	}
+	readingClosure := (libraryKind == "book" || libraryKind == "comic") && source.Kind == "local" && source.IdentityConfirmed
 	var policy ScanPolicy
 	if policy, err = ScanPolicyTx(ctx, tx, source.LibraryID); err != nil {
 		return false, err
@@ -226,6 +227,11 @@ func (s *Service) commitInventoryPageTx(ctx context.Context, tx *sql.Tx, job str
 			return false, err
 		}
 		return true, nil
+	}
+	if readingClosure {
+		if err = readingInventoryDirectoryTx(ctx, tx, job, relative); err != nil {
+			return false, err
+		}
 	}
 	// Register the current directory before its children so a link back to the
 	// root is recognized as an already visited identity rather than a conflict.
@@ -301,6 +307,11 @@ func (s *Service) commitInventoryPageTx(ctx context.Context, tx *sql.Tx, job str
 			if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO inventory_directories(job_id,relative_path,identity,revision) VALUES(?,?,?,?)`, job, child, v.ObjectIdentity, childRevision); err != nil {
 				return false, err
 			}
+			if readingClosure {
+				if err = readingInventoryDirectoryTx(ctx, tx, job, child); err != nil {
+					return false, err
+				}
+			}
 			continue
 		}
 		if err = observeSidecarTx(ctx, tx, job, source, child, v); err != nil {
@@ -366,6 +377,11 @@ func (s *Service) commitInventoryPageTx(ctx context.Context, tx *sql.Tx, job str
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE inventory_directories SET identity=?,revision=?,cursor=?,state=?,pages=pages+1 WHERE job_id=? AND relative_path=? AND cursor=?`, page.DirectoryIdentity, page.DirectoryRevision, page.NextCursor, state, job, relative, cursor); err != nil {
 		return false, err
+	}
+	if readingClosure {
+		if _, err = tx.ExecContext(ctx, `UPDATE inventory_reading_directories SET listing_eof=?,identity=?,revision=?,phase=CASE WHEN ? THEN 'verify' ELSE 'listing' END WHERE job_id=? AND relative_path=? AND phase='listing'`, page.Complete, page.DirectoryIdentity, page.DirectoryRevision, page.Complete, job, relative); err != nil {
+			return false, err
+		}
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE inventory_runs SET discovered=discovered+? WHERE job_id=?`, discovered, job); err != nil {
 		return false, err
@@ -896,37 +912,20 @@ func (s *Service) CommitInventoryAnalysis(ctx context.Context, job, object, revi
 	}
 	// Bind local evidence to the same revision already authorized by this commit.
 	f.ObservedRevision = revision
-	var manuallyLinked int
-	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_version_links WHERE library_id=? AND asset_id=?)`, source.LibraryID, asset).Scan(&manuallyLinked); err != nil {
-		return err
-	}
 	if kind == "movie" || kind == "tv" || kind == "anime" {
+		var manuallyLinked int
+		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_version_links WHERE library_id=? AND asset_id=?)`, source.LibraryID, asset).Scan(&manuallyLinked); err != nil {
+			return err
+		}
 		if err = s.publishVideoNamingTx(ctx, tx, job, source, asset, relative, revision, kind, manuallyLinked, f); err != nil {
 			return err
 		}
 	}
-	if manuallyLinked != 0 && (kind == "music" || kind == "audiobook") {
-		if err = persistAudioEvidence(tx, source.LibraryID, asset, f); err != nil {
+	if kind == "music" || kind == "audiobook" {
+		if err = persistAudioFileMetadata(ctx, tx, asset, revision, size, modified, f); err != nil {
 			return err
 		}
-		// A manually linked asset's selected tags are effective facts too: the
-		// linked commit path skips commitAudio, so the genre projection runs
-		// here on the same shared implementation, keeping the item's facets in
-		// step with its selected evidence.
-		var linkedItem int64
-		if e := tx.QueryRowContext(ctx, `SELECT i.id FROM catalog_assets a JOIN catalog_asset_links l INDEXED BY catalog_asset_links_asset ON l.asset_id=a.id
- JOIN catalog_entities i ON i.id=l.entity_id JOIN catalog_kinds k ON k.id=i.kind AND k.playable=1 AND k.listening=1 JOIN catalog_libraries cl ON cl.id=i.library_id
- WHERE a.token=? AND cl.library_id=? LIMIT 1`, asset, source.LibraryID).Scan(&linkedItem); e != nil && !errors.Is(e, sql.ErrNoRows) {
-			return e
-		}
-		if linkedItem != 0 {
-			if err = compactcatalog.ProjectAudioLocalGenresItem(ctx, tx, source.LibraryID, linkedItem); err != nil {
-				return err
-			}
-		}
-	}
-	if manuallyLinked == 0 && (kind == "music" || kind == "audiobook") {
-		if err = s.commitAudio(ctx, tx, source.LibraryID, kind, source.ResolvedPath, asset, filepath.Join(source.ResolvedPath, relative), f); err != nil {
+		if err = s.commitInventoryAudioTx(ctx, tx, source, asset, kind, filepath.Join(source.ResolvedPath, relative), f); err != nil {
 			return err
 		}
 	}

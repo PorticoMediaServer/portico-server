@@ -118,7 +118,12 @@ func resolveSource(ctx context.Context, tx *sql.Tx, a Access, t Target) (Source,
 	var part int
 	// Only server-owned, current inventory may project artifacts. A different
 	// source is never silently selected when a playback session supplied one.
-	e := tx.QueryRowContext(ctx, `SELECT a.token,o.id,o.revision,src.id,src.incarnation,src.generation,a.container,a.size,a.modified_ns,a.duration,link.start_seconds,COALESCE(link.end_seconds,a.duration),link.part_index FROM catalog_entities item JOIN catalog_libraries library ON library.id=item.library_id CROSS JOIN catalog_asset_links link ON link.entity_id=item.id CROSS JOIN catalog_assets a ON a.id=link.asset_id CROSS JOIN inventory_objects o INDEXED BY inventory_objects_asset ON o.asset_id=a.token JOIN library_sources src ON src.id=o.source_id WHERE item.public_id=pid_blob(?) AND library.library_id=? AND (?='' OR a.token=?) AND a.available=1 AND o.state='available' AND o.retired=0 AND o.root_incarnation=src.incarnation AND src.enabled=1 ORDER BY link.part_index,a.token,src.id LIMIT 1`, a.ItemID, a.LibraryID, id, id).Scan(&v.ID, &v.ObjectID, &v.Revision, &v.RootID, &v.Incarnation, &v.Configuration, &v.Container, &v.Size, &v.Modified, &duration, &start, &end, &part)
+	e := tx.QueryRowContext(ctx, `SELECT a.token,o.id,o.revision,src.id,src.incarnation,src.generation,a.container,a.size,a.modified_ns,a.duration,link.start_seconds,COALESCE(link.end_seconds,a.duration),link.part_index FROM catalog_entities item JOIN catalog_libraries library ON library.id=item.library_id CROSS JOIN catalog_asset_links link ON link.entity_id=item.id CROSS JOIN catalog_assets a ON a.id=link.asset_id CROSS JOIN inventory_objects o INDEXED BY inventory_objects_asset ON o.asset_id=a.token JOIN library_sources src ON src.id=o.source_id WHERE item.public_id=pid_blob(?) AND library.library_id=? AND (?='' OR a.token=?) AND a.available=1 AND o.state='available' AND o.retired=0 AND o.root_incarnation=src.incarnation AND src.enabled=1 AND (?='' OR EXISTS(
+ SELECT 1 FROM playback_source_pins pin
+ WHERE pin.session_id=? AND (pin.binding='none' OR (
+ pin.source_id=src.id AND pin.inventory_object_id=o.id AND pin.object_identity=o.object_identity AND pin.relative_path=o.relative_path
+ AND pin.root=src.root AND pin.root_identity=src.root_identity AND src.identity_confirmed=1 AND src.health NOT IN('offline','root_changed','removing')))))
+ ORDER BY link.part_index,a.token,src.id LIMIT 1`, a.ItemID, a.LibraryID, id, id, t.SessionID, t.SessionID).Scan(&v.ID, &v.ObjectID, &v.Revision, &v.RootID, &v.Incarnation, &v.Configuration, &v.Container, &v.Size, &v.Modified, &duration, &start, &end, &part)
 	if e != nil {
 		return v, e
 	}
