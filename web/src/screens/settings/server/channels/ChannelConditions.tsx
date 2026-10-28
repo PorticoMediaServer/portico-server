@@ -1,5 +1,5 @@
 import {channelFieldLabel, channelFieldMessage, channelValueLabel} from '@core/server-admin/channel-catalogue.ts';
-import {useEffect, useLayoutEffect, useState, useSyncExternalStore} from 'react';
+import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n, type MessageId} from '@i18n';
 import type {Library} from '@core/index.ts';
 import type {ChannelApi} from '@core/channel-guide.ts';
@@ -15,7 +15,9 @@ const lists = ['in', 'not-in', 'contains-any', 'contains-all', 'between'];
 type Props = Readonly<{api: ChannelApi; libraries: readonly Library[]; query: LibraryChannelQuery; locked: boolean; isCurrent: () => boolean; reportError: (error: unknown) => void; onChange: (next: Conditions, valid: boolean) => boolean}>;
 export function ChannelConditions(props: Props) {
   const [source, setSource] = useState<ChannelFieldsSource>();
-  useLayoutEffect(() => {const source = new ChannelFieldsSource(props.api, props.libraries, props.isCurrent, props.reportError);setSource(source);return source.dispose;}, [props.api, props.libraries, props.isCurrent, props.reportError]);
+  const libraryScope=JSON.stringify(props.libraries.map(library=>[library.id,library.kind]));
+  const setup=useRef(props);useLayoutEffect(()=>{setup.current=props;});
+  useLayoutEffect(() => {const source = new ChannelFieldsSource(props.api, setup.current.libraries, props.isCurrent, props.reportError);setSource(source);return source.dispose;}, [props.api, libraryScope, props.isCurrent, props.reportError]);
   return source ? <ConditionsBody {...props} source={source}/> : null;
 }
 function valid(tree: Conditions): boolean {

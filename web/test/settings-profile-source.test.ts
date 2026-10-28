@@ -78,3 +78,15 @@ test('row projection uses the selected real profile and account, never spec exam
   assert.equal(changeProfileSetting(f.source, 'profile.color', 'invented'), undefined);
   assert.equal(f.calls.length, 1);f.retire();assert.deepEqual(profileSettingState(f.source, 'profile.username'), {present: false});f.source.dispose();
 });
+
+test('quiet profile refresh bypasses cached load and preserves selected target',async()=>{
+ const f=fixture();await f.source.load();f.source.select('child');const before=f.source.getSnapshot();f.change(d=>{d.profiles[1].name='Renamed';d.profiles[1].revision=8;});assert.deepEqual(await f.source.refresh(),{kind:'adopted'});assert.equal(f.source.getSnapshot().selectedId,'child');assert.equal(f.source.selected()?.name,'Renamed');assert.equal(f.source.getSnapshot().busy,before.busy);assert.equal(f.source.getSnapshot().error,before.error);assert.equal(f.calls.length,2);f.source.dispose();
+});
+
+test('selection, buffered input admission, write admission and disposal refuse late quiet profile adoption',async()=>{
+ for(const action of ['selection','input','write','dispose'] as const){const f=fixture();await f.source.load();f.hold();const pending=f.source.refresh();if(action==='selection')f.source.select('child');if(action==='input')f.source.setQuietInputActive(true);if(action==='dispose')f.source.dispose();let write:Promise<void>|undefined;if(action==='write')write=f.source.rename('Mine');const before=f.source.getSnapshot();f.release();assert.deepEqual(await pending,{kind:'deferred'});if(action!=='write')assert.equal(f.source.getSnapshot(),before);await write;f.source.dispose();}
+});
+
+test('unreadable quiet profile keeps confirmed document and returns the original failure',async()=>{
+ const f=fixture();await f.source.load();const before=f.source.getSnapshot();f.fail();const result=await f.source.refresh();assert.equal(result.kind,'unreadable');if(result.kind==='unreadable')assert.equal((result.error as Error).message,'offline');assert.equal(f.source.getSnapshot(),before);f.source.dispose();
+});

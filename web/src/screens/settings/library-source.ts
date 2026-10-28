@@ -1,3 +1,4 @@
+import type {QuietRefreshOutcome} from '@core/freshness-actions.ts';
 import type {LibraryAdminDocument} from '@core/administration.ts';
 import {defaultI18n} from '@i18n';
 import {LibraryManagementService} from '@core/library-management.ts';
@@ -16,6 +17,30 @@ export class SettingsLibrarySource {
   private request?: AbortController;
   private pending?: Promise<void>;
   private closed = false;
+  private quietSerial = 0;
+  private readonly quietReads = new Map<string,AbortController>();
+  invalidateQuiet = () => {++this.quietSerial;for(const read of this.quietReads.values())read.abort();this.quietReads.clear();};
+  quietBlocked = () => this.state.loading || this.state.saving || !!this.state.error && !this.state.document;
+  private async quiet(kind:'settings'|'sonic'):Promise<QuietRefreshOutcome> {
+    if(!this.current() || this.quietBlocked())return {kind:'deferred'};
+    const {libraryId,document,sonic}=this.state;
+    if(!libraryId || !document || kind==='sonic' && !this.offersSonic(document))return {kind:'adopted'};
+    this.quietReads.get(kind)?.abort();const read=new AbortController();this.quietReads.set(kind,read);const serial=this.quietSerial;
+    const owns=()=>this.current() && !read.signal.aborted && this.quietReads.get(kind)===read && serial===this.quietSerial && this.state.libraryId===libraryId && !this.quietBlocked() && (kind==='settings'?this.state.document===document:this.state.sonic===sonic);
+    try {
+      if(kind==='settings'){
+        const next=await readLibrarySettings(this.api,libraryId,read.signal);
+        if(!owns())return {kind:'deferred'};this.publish({...this.state,document:next});
+      }else{
+        const next=await readLibrarySonic(this.api,libraryId,read.signal);
+        if(!owns())return {kind:'deferred'};this.publish({...this.state,sonic:next});
+      }
+      return {kind:'adopted'};
+    }catch(error){if(!owns())return {kind:'deferred'};if([401,403].includes((error as {status?:number})?.status??0))this.reportError(error);return {kind:'unreadable',error};}
+    finally{if(this.quietReads.get(kind)===read)this.quietReads.delete(kind);}
+  }
+  refreshSettings = () => this.quiet('settings');
+  refreshSonic = () => this.quiet('sonic');
   private readonly management?: LibraryManagementService;
   constructor(private readonly api: LibraryContentApi, private readonly isCurrent: () => boolean, private readonly notify: () => void, private readonly reportError: (error: unknown) => void, scope?: ContentScope) {
     if (scope) this.management = new LibraryManagementService({api, scope});
@@ -32,9 +57,9 @@ export class SettingsLibrarySource {
       if (this.pending) return this.pending;
       if (this.state.document) return Promise.resolve();
     }
-    this.request?.abort();this.pending = undefined;
+    this.invalidateQuiet();this.request?.abort();this.pending = undefined;
     if (!libraryId) {this.publish(empty);return Promise.resolve();}
-    const request = new AbortController();this.request = request;
+    this.invalidateQuiet();const request = new AbortController();this.request = request;
     this.publish({libraryId, loading: true, saving: false});
     const pending = readLibrarySettings(this.api, libraryId, request.signal).then(async document => {
       if (!this.owns(request, libraryId)) return;
@@ -73,7 +98,7 @@ export class SettingsLibrarySource {
     if (!before || this.state.loading || this.state.saving) return false;
     if (rowId === 'libraries.name') return this.rename(libraryId, value, before);
     const settings = patchLibrarySettingsBinding(rowId, value, before);
-    const request = new AbortController();this.request = request;
+    this.invalidateQuiet();const request = new AbortController();this.request = request;
     this.publish({...this.state, libraryId, document: before, loading: false, saving: true});
     try {
       const document = await saveLibrarySettings(this.api, before, settings, randomId(), request.signal);
@@ -87,7 +112,7 @@ export class SettingsLibrarySource {
   private async rename(libraryId: string, value: unknown, before: LibraryAdminDocument): Promise<boolean> {
     const management = this.management;
     if (!management || typeof value !== 'string' || !before.actions.includes('rename')) return false;
-    const request = new AbortController(); this.request = request;
+    this.invalidateQuiet();const request = new AbortController(); this.request = request;
     this.publish({...this.state, saving: true});
     try {
       await management.selectLibrary(libraryId);
@@ -113,7 +138,7 @@ export class SettingsLibrarySource {
     const document = this.document(libraryId), sonic = this.state.sonic;
     if (!document || !sonic || this.state.loading || this.state.saving || !readLibrarySonicSettingsBinding('libraries.sonicAnalysis', document, sonic)) return false;
     const patch = enabled === undefined ? undefined : patchLibrarySonicSettingsBinding('libraries.sonicAnalysis', enabled, document, sonic);
-    const request = new AbortController();this.request = request;
+    this.invalidateQuiet();const request = new AbortController();this.request = request;
     this.publish({...this.state, saving: true});
     try {
       const next = patch ? await saveLibrarySonic(this.api, sonic, patch.enabled, request.signal) : await retryLibrarySonic(this.api, libraryId, request.signal);
@@ -123,5 +148,5 @@ export class SettingsLibrarySource {
     } finally {if (this.request === request) this.request = undefined;}
     return false;
   }
-  dispose() {this.closed = true;this.management?.dispose();this.request?.abort();this.request = undefined;this.pending = undefined;this.state = empty;}
+  dispose() {this.invalidateQuiet();this.closed = true;this.management?.dispose();this.request?.abort();this.request = undefined;this.pending = undefined;this.state = empty;}
 }
