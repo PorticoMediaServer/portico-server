@@ -177,6 +177,20 @@ export const routes = [
     "lane": "browsing",
     "cost": "page_sized",
     "bodyLimit": 65536,
+    "responseHeaders": [
+      {
+        "status": 202,
+        "name": "Location",
+        "description": "Same-library Reading browse preparation",
+        "required": true
+      },
+      {
+        "status": 202,
+        "name": "Retry-After",
+        "description": "Minimum polling delay in seconds",
+        "required": true
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -184,10 +198,16 @@ export const routes = [
       "not_found",
       "internal",
       "revision_mismatch",
+      "stale_continuation",
+      "rate_limited",
+      "search_busy",
       "database_busy",
       "writer_capacity"
     ],
     "status": 200,
+    "successStatuses": [
+      202
+    ],
     "admission": "browsing"
   },
   {
@@ -16543,6 +16563,86 @@ export const routes = [
   },
   {
     "audience": "Clients",
+    "id": "delete_library_browse_selection_query",
+    "method": "DELETE",
+    "path": "/v1/libraries/{id}/browse-selection-queries/{queryId}",
+    "summary": "Release this caller's whole-view selection demand",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "noResponseBody": true,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "stale_continuation",
+      "rate_limited",
+      "internal",
+      "database_busy",
+      "writer_capacity"
+    ],
+    "status": 204,
+    "admission": "browsing"
+  },
+  {
+    "audience": "Clients",
+    "id": "delete_library_reading_browse_query",
+    "method": "DELETE",
+    "path": "/v1/libraries/{id}/reading-browse-queries/{queryId}",
+    "summary": "Cancel this caller's Reading browse preparation",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "noResponseBody": true,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_mismatch",
+      "stale_continuation",
+      "search_busy",
+      "internal",
+      "database_busy",
+      "writer_capacity"
+    ],
+    "status": 204,
+    "admission": "browsing"
+  },
+  {
+    "audience": "Clients",
+    "id": "delete_library_reading_facet_query",
+    "method": "DELETE",
+    "path": "/v1/libraries/{id}/reading-facet-queries/{queryId}",
+    "summary": "Release this caller's Reading facet interest",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "noResponseBody": true,
+    "errors": [
+      "invalid_request",
+      "invalid_cursor",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "stale_continuation",
+      "search_busy",
+      "internal",
+      "database_busy",
+      "writer_capacity"
+    ],
+    "status": 204,
+    "admission": "browsing"
+  },
+  {
+    "audience": "Clients",
     "id": "delete_me_removed_titles_id",
     "method": "DELETE",
     "path": "/v1/me/removed-titles/{id}",
@@ -22355,6 +22455,59 @@ export const routes = [
   },
   {
     "audience": "Clients",
+    "id": "get_library_browse_selection_query",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/browse-selection-queries/{queryId}",
+    "summary": "Read an exact whole-view selection preparation",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "responseHeaders": [
+      {
+        "status": 200,
+        "name": "Cache-Control",
+        "description": "Selection command capabilities are recomputed for this response.",
+        "required": true
+      },
+      {
+        "status": 202,
+        "name": "Cache-Control",
+        "description": "Private preparing handles are never cached.",
+        "required": true
+      },
+      {
+        "status": 202,
+        "name": "Retry-After",
+        "description": "Minimum delay before polling this preparation again.",
+        "required": true
+      },
+      {
+        "status": 202,
+        "name": "Location",
+        "description": "This caller's selection preparation resource.",
+        "required": true
+      }
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "stale_continuation",
+      "rate_limited",
+      "internal",
+      "database_busy"
+    ],
+    "status": 200,
+    "successStatuses": [
+      202
+    ],
+    "admission": "browsing"
+  },
+  {
+    "audience": "Clients",
     "id": "get_library_channels_id_logo",
     "method": "GET",
     "path": "/v1/library-channels/{id}/logo",
@@ -22396,6 +22549,20 @@ export const routes = [
       "query",
       "pivot"
     ],
+    "responseHeaders": [
+      {
+        "status": 202,
+        "name": "Location",
+        "description": "Same-library Reading facet preparation",
+        "required": true
+      },
+      {
+        "status": 202,
+        "name": "Retry-After",
+        "description": "Minimum delay before polling, in seconds",
+        "required": true
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -22403,9 +22570,14 @@ export const routes = [
       "not_found",
       "internal",
       "revision_mismatch",
+      "stale_continuation",
+      "search_busy",
       "database_busy"
     ],
     "status": 200,
+    "successStatuses": [
+      202
+    ],
     "admission": "browsing"
   },
   {
@@ -22461,6 +22633,90 @@ export const routes = [
     ],
     "status": 200,
     "http": true,
+    "admission": "browsing"
+  },
+  {
+    "audience": "Clients",
+    "id": "get_library_reading_browse_query",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/reading-browse-queries/{queryId}",
+    "summary": "Read an exact prepared Reading browse page",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "responseHeaders": [
+      {
+        "status": 202,
+        "name": "Retry-After",
+        "description": "Minimum polling delay",
+        "required": true
+      },
+      {
+        "status": 202,
+        "name": "Location",
+        "description": "Library-scoped poll path",
+        "required": true
+      }
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_mismatch",
+      "stale_continuation",
+      "search_busy",
+      "internal",
+      "database_busy"
+    ],
+    "status": 200,
+    "successStatuses": [
+      202
+    ],
+    "admission": "browsing"
+  },
+  {
+    "audience": "Clients",
+    "id": "get_library_reading_facet_query",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/reading-facet-queries/{queryId}",
+    "summary": "Read a prepared Reading facet page",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "responseHeaders": [
+      {
+        "status": 202,
+        "name": "Location",
+        "description": "Same-library poll path",
+        "required": true
+      },
+      {
+        "status": 202,
+        "name": "Retry-After",
+        "description": "Minimum delay before polling, in seconds",
+        "required": true
+      }
+    ],
+    "errors": [
+      "invalid_request",
+      "invalid_cursor",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "stale_continuation",
+      "search_busy",
+      "internal",
+      "database_busy"
+    ],
+    "status": 200,
+    "successStatuses": [
+      202
+    ],
     "admission": "browsing"
   },
   {
