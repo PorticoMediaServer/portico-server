@@ -226,7 +226,7 @@ func (g *Gate) acquire(ctx context.Context, class Class, stuck stuckClock) (func
 // acquireTicket waits for t's grant: the shared loop of an ordinary
 // acquisition and the reserved recovery turn.
 func (g *Gate) acquireTicket(ctx context.Context, t *ticket, stuck stuckClock) (func(), error) {
-	class, start := t.class, t.since
+	class := t.class
 	// Only qualified reservations can refuse on capacity. A failed disk probe
 	// or insufficient disk cannot be repaired by checkpointing indefinitely.
 	// One timer per waiting ticket preserves bounded refusal without polling SQL.
@@ -238,6 +238,7 @@ func (g *Gate) acquireTicket(ctx context.Context, t *ticket, stuck stuckClock) (
 		defer capacity.Stop()
 	}
 	g.mu.Lock()
+	start := t.since
 	queued := false
 	for {
 		if t.refused {
@@ -327,6 +328,9 @@ func (g *Gate) acquireTicket(ctx context.Context, t *ticket, stuck stuckClock) (
 		select {
 		case <-capacityC:
 			g.mu.Lock()
+			if t.refused || ctx.Err() != nil {
+				continue
+			}
 			if !t.wal.ready() {
 				g.removeWaiterLocked(t, false)
 				g.refuseLocked(t)
@@ -741,8 +745,8 @@ type AdmissionStats struct {
 	// Deferred is background acquisitions waiting before ticket admission.
 	// They are still waiting; none of their work has been dropped.
 	Deferred int `json:"deferred"`
-	// Refused counts user tickets turned away by a full pool, in total and by
-	// class.
+	// Refused counts tickets refused before effects by pool capacity or by a
+	// qualified WAL reservation deadline, in total and by class.
 	Refused        uint64            `json:"refused"`
 	RefusedByClass map[string]uint64 `json:"refusedByClass"`
 	// BusyAfterAdmission counts SQLITE_BUSY or SQLITE_LOCKED met by a write

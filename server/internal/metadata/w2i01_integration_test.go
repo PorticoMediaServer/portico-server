@@ -301,7 +301,10 @@ func TestW2I01CoverArtUsesAcceptedCanonicalReleaseNotPendingIdentity(t *testing.
 		tx.Rollback()
 		t.Fatal(e)
 	}
-	if _, e = tx.ExecContext(ctx, `INSERT INTO mb_album_links VALUES(?,?,?,?,?)`, album.ID, revision, canonical, requested, "2026-09-07"); e != nil {
+	if e = mbFixturePinTx(tx, mbFixturePinIntent{Link: "album", Entity: album.ID, NewRelease: revision}, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `INSERT INTO mb_album_links VALUES(?,?,?,?,?)`, album.ID, revision, canonical, requested, "2026-09-07")
+		return err
+	}); e != nil {
 		tx.Rollback()
 		t.Fatal(e)
 	}

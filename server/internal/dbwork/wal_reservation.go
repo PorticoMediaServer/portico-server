@@ -226,7 +226,7 @@ func (l *walLedger) reservationPressure() bool {
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return l.stats.AdmissionBytes >= walSoftBytes || l.reservationBlocked
+	return l.reservationBlocked
 }
 
 // reset is called only while the checkpoint owner's verified reset turn still

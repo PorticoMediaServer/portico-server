@@ -12,6 +12,7 @@ import (
 	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/mbaccounting"
 )
 
 func drainFixture(t *testing.T, n int) (*catalogtest.Catalog, int64, []int64) {
@@ -80,13 +81,7 @@ func drainEvidence(t *testing.T, c *catalogtest.Catalog, release string, tracks 
 }
 func drainPin(t *testing.T, c *catalogtest.Catalog, entity int64, release string, album bool) {
 	t.Helper()
-	q := `INSERT INTO mb_song_links(item_id,release_revision,release_id,observed_at) VALUES(?,?,?,'now')`
-	if album {
-		q = `INSERT INTO mb_album_links(album_id,release_revision,release_id,requested_id,observed_at) VALUES(?,?,?,?,'now')`
-		c.Exec(q, entity, release, release, release)
-	} else {
-		c.Exec(q, entity, release, release)
-	}
+	c.PinMBRelease(entity, album, release)
 }
 func mutationTurn(t *testing.T, c *catalogtest.Catalog, ref compactcatalog.MutationRef) compactcatalog.MutationStep {
 	t.Helper()
@@ -102,6 +97,65 @@ func mutationTurn(t *testing.T, c *catalogtest.Catalog, ref compactcatalog.Mutat
 	assertDrainAccounting(t, c)
 	return step
 }
+
+// This guard follows the approved private fact ceiling and raw quantum. It
+// bounds fixture pumping, not any production writer, deadline or effect plan.
+const accountingMutationTurns = 2*(20002/mbaccounting.FactsPerTurn+8) + 8
+
+func nextMutationPin(t *testing.T, c *catalogtest.Catalog, ref compactcatalog.MutationRef) compactcatalog.MutationStep {
+	t.Helper()
+	for turn := 0; turn < accountingMutationTurns; turn++ {
+		before := rows(t, c, `SELECT count(*) FROM mb_song_links`) + rows(t, c, `SELECT count(*) FROM mb_album_links`)
+		step := mutationTurn(t, c, ref)
+		after := rows(t, c, `SELECT count(*) FROM mb_song_links`) + rows(t, c, `SELECT count(*) FROM mb_album_links`)
+		if step.PinDrained {
+			if after != before-1 || step.Complete || !step.More {
+				t.Fatalf("actual pin flip %+v, pins%d→%d", step, before, after)
+			}
+			return step
+		}
+		if before != after || step.Complete {
+			t.Fatalf("private accounting changed pin/finished before flip: %+v, pins%d→%d", step, before, after)
+		}
+	}
+	t.Fatal("accounting preparation did not reach its actual pin flip")
+	return compactcatalog.MutationStep{}
+}
+
+func finishMutationPinFold(t *testing.T, c *catalogtest.Catalog, ref compactcatalog.MutationRef) {
+	t.Helper()
+	for turn := 0; turn < accountingMutationTurns; turn++ {
+		var phase string
+		if e := c.DB.QueryRow(`SELECT phase FROM catalog_entity_mutations WHERE mutation_id=? AND generation=?`, ref.ID, ref.Generation).Scan(&phase); e != nil {
+			t.Fatal(e)
+		}
+		if phase == "finalize" {
+			return
+		}
+		if step := mutationTurn(t, c, ref); step.Complete || step.PinDrained {
+			t.Fatalf("fold/finalize checkpoint %+v", step)
+		}
+	}
+	t.Fatal("accounting fold did not reach the separate finalize phase")
+}
+
+func readyMutationPin(t *testing.T, c *catalogtest.Catalog, ref compactcatalog.MutationRef) {
+	t.Helper()
+	for turn := 0; turn < accountingMutationTurns; turn++ {
+		var ready bool
+		if e := c.DB.QueryRow(`SELECT phase='ready' AND owner_operation=? FROM mb_accounting_state WHERE singleton=1`, ref.ID).Scan(&ready); e != nil {
+			t.Fatal(e)
+		}
+		if ready {
+			return
+		}
+		if step := mutationTurn(t, c, ref); step.Complete || step.PinDrained {
+			t.Fatalf("effects before ready checkpoint %+v", step)
+		}
+	}
+	t.Fatal("pin preparation never became ready")
+}
+
 func TestP252bOneActualPinAndSeparateFinalize(t *testing.T) {
 	c, _, songs := drainFixture(t, 1)
 	song := songs[0]
@@ -131,7 +185,7 @@ func TestP252bOneActualPinAndSeparateFinalize(t *testing.T) {
 		t.Fatal("phase transition drained")
 	}
 	for want := 1; want >= 0; want-- {
-		step := mutationTurn(t, c, ref)
+		step := nextMutationPin(t, c, ref)
 		if !step.PinDrained || step.Complete || !step.More {
 			t.Fatalf("pin step %+v", step)
 		}
@@ -142,9 +196,7 @@ func TestP252bOneActualPinAndSeparateFinalize(t *testing.T) {
 			t.Fatal("pin writer physically deleted")
 		}
 	}
-	if step := mutationTurn(t, c, ref); step.Complete || step.PinDrained {
-		t.Fatalf("pinfree checkpoint %+v", step)
-	}
+	finishMutationPinFold(t, c, ref)
 	if step := mutationTurn(t, c, ref); !step.Complete || step.Outcome != "removed" {
 		t.Fatalf("finalize %+v", step)
 	}
@@ -185,9 +237,7 @@ func TestP252bSourceChangeStalesAfterDrain(t *testing.T) {
 		return e
 	})
 	mutationTurn(t, c, ref)
-	if !mutationTurn(t, c, ref).PinDrained {
-		t.Fatal("expected pin")
-	}
+	nextMutationPin(t, c, ref)
 	c.Exec(`UPDATE catalog_assets SET modified_ns=modified_ns+1 WHERE id=?`, asset)
 	step := mutationTurn(t, c, ref)
 	if !step.Complete || step.Outcome != "stale" {
@@ -210,11 +260,13 @@ func TestP252bOnePinCompleteWriterHold(t *testing.T) {
 		return e
 	})
 	t.Logf("intent writer elapsed %s", time.Since(start))
-	for i := 0; i < 8; i++ {
+	for i := 0; i < accountingMutationTurns; i++ {
 		start = time.Now()
 		step := mutationTurn(t, c, ref)
 		elapsed := time.Since(start)
-		t.Logf("turn %d pin=%t terminal=%t elapsed=%s peak=%dms", i, step.PinDrained, step.Complete, elapsed, dbwork.WriteGate().Stats().MaxHeldMilli)
+		if i < 2 || step.PinDrained || step.Complete {
+			t.Logf("turn %d pin=%t terminal=%t elapsed=%s peak=%dms", i, step.PinDrained, step.Complete, elapsed, dbwork.WriteGate().Stats().MaxHeldMilli)
+		}
 		if dbwork.WriteGate().Stats().MaxHeldMilli > 250 {
 			t.Fatalf("complete mutation writer exceeded 250ms: %s", elapsed)
 		}
@@ -484,6 +536,7 @@ func TestP252bRollbackAndLifetimeCustody(t *testing.T) {
 		t.Fatal("background worker used owner pointer as management authority")
 	}
 	mutationTurn(t, c, ref)
+	readyMutationPin(t, c, ref)
 	rollback := errors.New("cancel after quantum")
 	e = dbwork.WithWriteTx(MutationWriteContext(context.Background()), c.DB, dbwork.ClassInteractive, func(tx *sql.Tx) error {
 		step, e := RemoveTitleStepTx(context.Background(), tx, ref)
@@ -501,7 +554,7 @@ func TestP252bRollbackAndLifetimeCustody(t *testing.T) {
 	if n := rows(t, c, `SELECT count(*) FROM mb_song_links WHERE item_id=?`, song); n != 1 {
 		t.Fatal("rollback committed drain")
 	}
-	if step := mutationTurn(t, c, ref); !step.PinDrained {
+	if step := nextMutationPin(t, c, ref); !step.PinDrained {
 		t.Fatal(step)
 	}
 	// Both links are now absent, but raw physical deletion still cannot break
@@ -509,7 +562,7 @@ func TestP252bRollbackAndLifetimeCustody(t *testing.T) {
 	if _, e = c.DB.Exec(`DELETE FROM catalog_entities WHERE id=?`, song); e == nil {
 		t.Fatal("restrictive custody FK bypassed")
 	}
-	mutationTurn(t, c, ref)
+	finishMutationPinFold(t, c, ref)
 	if step := mutationTurn(t, c, ref); !step.Complete {
 		t.Fatal(step)
 	}

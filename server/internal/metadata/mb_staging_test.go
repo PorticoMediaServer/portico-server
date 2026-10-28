@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"portico.local/server/internal/dbwork"
@@ -218,7 +219,10 @@ func TestMBStagingTenThousandCompleteFinalWriterHold(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e = tx.Exec(`INSERT INTO mb_album_links VALUES(?,?,?,?,'2000-01-01T00:00:00Z')`, names["album"].ID, old, oldValue.Release.ID, oldValue.RequestedID); e != nil {
+	if e = mbFixturePinTx(tx, mbFixturePinIntent{Link: "album", Entity: names["album"].ID, NewRelease: old}, func(tx *sql.Tx) error {
+		_, err := tx.Exec(`INSERT INTO mb_album_links VALUES(?,?,?,?,'2000-01-01T00:00:00Z')`, names["album"].ID, old, oldValue.Release.ID, oldValue.RequestedID)
+		return err
+	}); e != nil {
 		t.Fatal(e)
 	}
 	if e = checkMBEvidenceBudget(ctx, tx); e != nil {
@@ -270,7 +274,10 @@ func TestMBStagingTenThousandCompleteFinalWriterHold(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer capTx.Rollback()
-	if _, e = capTx.Exec(`DELETE FROM mb_album_links WHERE album_id=?`, names["album"].ID); e != nil {
+	if e = mbFixturePinTx(capTx, mbFixturePinIntent{Link: "album", Entity: names["album"].ID}, func(tx *sql.Tx) error {
+		_, err := tx.Exec(`DELETE FROM mb_album_links WHERE album_id=?`, names["album"].ID)
+		return err
+	}); e != nil {
 		t.Fatal(e)
 	}
 	var cachedRecordings int
@@ -373,8 +380,17 @@ func TestMBStagingFinalBudgetRollsBackEveryEffect(t *testing.T) {
 	if _, e = tx.Exec(`INSERT INTO catalog_entities(id,public_id,library_id,kind,title,sort_key,sort_head) VALUES(1000001,randomblob(16),?,6,'other','other','o')`, library); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = tx.Exec(`INSERT INTO mb_album_links VALUES(?,?,?,?,'now'),(1000001,?,?,?,'now')`, names["album"].ID, old, value.ID, value.ID, next, value.ID, value.ID); e != nil {
-		t.Fatal(e)
+	for _, pin := range []struct {
+		album   int64
+		release string
+	}{{names["album"].ID, old}, {1000001, next}} {
+		pin := pin
+		if e = mbFixturePinTx(tx, mbFixturePinIntent{Link: "album", Entity: pin.album, NewRelease: pin.release}, func(tx *sql.Tx) error {
+			_, err := tx.Exec(`INSERT INTO mb_album_links VALUES(?,?,?,?,'now')`, pin.album, pin.release, value.ID, value.ID)
+			return err
+		}); e != nil {
+			t.Fatal(e)
+		}
 	}
 	for n := 0; n < 512; n++ {
 		save(fmt.Sprintf("cache %d", n))

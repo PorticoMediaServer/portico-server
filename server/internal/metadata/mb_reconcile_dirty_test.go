@@ -37,16 +37,25 @@ func TestMBReconcileDirtyProducerTransitions(t *testing.T) {
 			if n := readPickCount(t, db, `SELECT count(*) FROM mb_album_reconciliations c JOIN mb_album_heads h USING(album_id) WHERE c.album_id=? AND c.status='pending' AND c.membership_revision<>h.membership_revision AND c.revision=?`, album, revision); n != 1 {
 				t.Fatal("membership did not preserve old revision and pending work")
 			}
-			mbCurrentExec(t, db, `UPDATE mb_album_links SET release_revision=? WHERE album_id=?`, next, album)
+			mbFixturePin(t, db, mbFixturePinIntent{Link: "album", Entity: album, NewRelease: next}, func(tx *sql.Tx) error {
+				_, err := tx.Exec(`UPDATE mb_album_links SET release_revision=? WHERE album_id=?`, next, album)
+				return err
+			})
 			assertMBReconcileProjection(t, db)
 			if n := readPickCount(t, db, `SELECT current_pin FROM mb_album_reconciliations WHERE album_id=?`, album); n != 0 {
 				t.Fatal("old pin runnable")
 			}
 			mbCurrentExec(t, db, `UPDATE mb_album_reconciliations SET release_revision=? WHERE album_id=?`, next, album)
 			assertMBReconcileProjection(t, db)
-			mbCurrentExec(t, db, `DELETE FROM mb_album_links WHERE album_id=?`, album)
+			mbFixturePin(t, db, mbFixturePinIntent{Link: "album", Entity: album}, func(tx *sql.Tx) error {
+				_, err := tx.Exec(`DELETE FROM mb_album_links WHERE album_id=?`, album)
+				return err
+			})
 			assertMBReconcileProjection(t, db)
-			mbCurrentExec(t, db, `INSERT INTO mb_album_links VALUES(?,?,?,?,'now')`, album, next, mbLaneRelease, mbLaneRelease)
+			mbFixturePin(t, db, mbFixturePinIntent{Link: "album", Entity: album, NewRelease: next}, func(tx *sql.Tx) error {
+				_, err := tx.Exec(`INSERT INTO mb_album_links VALUES(?,?,?,?,'now')`, album, next, mbLaneRelease, mbLaneRelease)
+				return err
+			})
 			assertMBReconcileProjection(t, db)
 			mbCurrentExec(t, db, `UPDATE mb_provider_policies SET enabled=0`)
 			if done, err := New(db, "").mbReconcileAlbums(readPickContext(t)); err != nil || !done {
@@ -64,7 +73,10 @@ func TestMBReconcileDirtyProducerTransitions(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err = tx.Exec(`DELETE FROM mb_album_links WHERE album_id=?`, album); err != nil {
+			if err = mbFixturePinTx(tx, mbFixturePinIntent{Link: "album", Entity: album}, func(tx *sql.Tx) error {
+				_, err := tx.Exec(`DELETE FROM mb_album_links WHERE album_id=?`, album)
+				return err
+			}); err != nil {
 				t.Fatal(err)
 			}
 			if err = tx.Rollback(); err != nil {
@@ -80,7 +92,10 @@ func TestMBReconcileDirtyProducerTransitions(t *testing.T) {
 			if _, err := db.Exec(`DELETE FROM catalog_entities WHERE id=?`, second.ID); err == nil {
 				t.Fatal("physical delete bypassed pin drain")
 			}
-			mbCurrentExec(t, db, `DELETE FROM mb_album_links WHERE album_id=?`, second.ID)
+			mbFixturePin(t, db, mbFixturePinIntent{Link: "album", Entity: second.ID}, func(tx *sql.Tx) error {
+				_, err := tx.Exec(`DELETE FROM mb_album_links WHERE album_id=?`, second.ID)
+				return err
+			})
 			mbCurrentExec(t, db, `DELETE FROM catalog_entities WHERE id=?`, second.ID)
 			assertMBReconcileProjection(t, db)
 			if n := readPickCount(t, db, `SELECT count(*) FROM mb_album_reconciliations WHERE album_id=?`, second.ID); n != 0 {

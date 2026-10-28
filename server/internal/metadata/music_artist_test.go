@@ -52,7 +52,10 @@ func musicArtistDB(t *testing.T) *Service {
 	mbCurrentExec(t, db, `INSERT INTO mb_release_evidence(revision_id,provider_id,digest,title,artist,release_group_id,group_title,primary_type,date,country,barcode,disambiguation,observed_at,payload,sealed) VALUES('rev1','rel1',?,'Local Album','Artist','grp','Group','Album','2020','CA','','','now','{}',0)`, digest)
 	mbCurrentExec(t, db, `INSERT INTO mb_release_credits(revision_id,ordinal,artist_id,name,artist_name,sort_name,disambiguation,join_phrase) VALUES('rev1',0,?, 'Artist','Artist','Artist','','')`, mbArtistID)
 	mbCurrentExec(t, db, `UPDATE mb_release_evidence SET sealed=1 WHERE revision_id='rev1'`)
-	mbCurrentExec(t, db, `INSERT INTO mb_album_links(album_id,release_revision,release_id,requested_id,observed_at) VALUES(?,'rev1','rel1','rel1','now')`, album)
+	mbFixturePin(t, db, mbFixturePinIntent{Link: "album", Entity: album, NewRelease: "rev1"}, func(tx *sql.Tx) error {
+		_, e := tx.Exec(`INSERT INTO mb_album_links(album_id,release_revision,release_id,requested_id,observed_at) VALUES(?,'rev1','rel1','rel1','now')`, album)
+		return e
+	})
 	mbCurrentExec(t, db, `DELETE FROM mb_jobs`)
 	svc := New(db, "")
 	return svc

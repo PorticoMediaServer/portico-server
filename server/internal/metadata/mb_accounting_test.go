@@ -90,6 +90,19 @@ func TestMBAccountingTransitions(t *testing.T) {
 				}
 				assertMBAccounting(t, tx)
 			}
+			// A seed that changes release acceptance runs through the real
+			// coordinator with its original statement, then the independent
+			// aggregate oracle observes the completed flip and fold.
+			pin := func(intent mbFixturePinIntent, q string, args ...any) {
+				t.Helper()
+				if err := mbFixturePinTx(tx, intent, func(tx *sql.Tx) error {
+					_, err := tx.Exec(q, args...)
+					return err
+				}); err != nil {
+					t.Fatal(err, q)
+				}
+				assertMBAccounting(t, tx)
+			}
 			value := mbEvidenceFixture()
 			value.Release.ReleaseGroup.SecondaryTypes = []string{"Live"}
 			value.Release.Media[0].Tracks[0].ArtistCredit = value.Release.ArtistCredit
@@ -112,8 +125,8 @@ func TestMBAccountingTransitions(t *testing.T) {
 			}
 			provider := value.Release.Media[0].Tracks[0].Recording.ID
 			exec(`INSERT INTO mb_song_links(item_id,recording_revision,recording_id,observed_at) VALUES(?,?,?,'now')`, names["song"].ID, record, provider)
-			exec(`INSERT INTO mb_album_links VALUES(?,?,?,?,'now')`, names["album"].ID, old, value.Release.ID, value.RequestedID)
-			exec(`UPDATE mb_song_links SET release_revision=?,release_id=? WHERE item_id=?`, next, value.Release.ID, names["song"].ID)
+			pin(mbFixturePinIntent{Link: "album", Entity: names["album"].ID, NewRelease: old}, `INSERT INTO mb_album_links VALUES(?,?,?,?,'now')`, names["album"].ID, old, value.Release.ID, value.RequestedID)
+			pin(mbFixturePinIntent{Link: "song", Entity: names["song"].ID, NewRecording: record, NewRelease: next}, `UPDATE mb_song_links SET release_revision=?,release_id=? WHERE item_id=?`, next, value.Release.ID, names["song"].ID)
 			exec(`INSERT INTO mb_album_links VALUES(?,?,?,?,'now')`, other.ID, old, value.Release.ID, value.RequestedID)
 			// Repeated tracks count twice per accepted release, regardless of pin cardinality.
 			var refs int
@@ -123,12 +136,12 @@ func TestMBAccountingTransitions(t *testing.T) {
 			exec(`UPDATE mb_album_links SET release_revision=release_revision,observed_at='later'`)
 			exec(`UPDATE mb_song_links SET recording_revision=recording_revision,release_revision=release_revision`)
 			exec(`UPDATE mb_album_links SET release_revision=? WHERE album_id=?`, next, names["album"].ID)
-			exec(`DELETE FROM mb_album_links WHERE album_id=?`, other.ID)
+			pin(mbFixturePinIntent{Link: "album", Entity: other.ID}, `DELETE FROM mb_album_links WHERE album_id=?`, other.ID)
 			exec(`UPDATE mb_song_links SET recording_revision=NULL,recording_id=NULL WHERE item_id=?`, names["song"].ID)
 			// Physical deletion now requires pin-free subjects; exercise each
 			// symmetric pin decrement before the guarded physical cascade.
 			exec(`DELETE FROM mb_song_links WHERE item_id=?`, names["song"].ID)
-			exec(`DELETE FROM mb_album_links WHERE album_id=?`, names["album"].ID)
+			pin(mbFixturePinIntent{Link: "album", Entity: names["album"].ID}, `DELETE FROM mb_album_links WHERE album_id=?`, names["album"].ID)
 			exec(`DELETE FROM catalog_entities WHERE id=?`, names["song"].ID)
 			exec(`DELETE FROM catalog_entities WHERE id=?`, names["album"].ID)
 			if err = tx.Commit(); err != nil {
