@@ -37,12 +37,14 @@ function current(lifetime: CatalogueSelectionLifetime) {
 }
 export async function playCatalogueQuerySelection<C>(player: Pick<V1QueuePlayer, 'playSegments'>, target: QuerySelectionTarget<C>, lifetime: CatalogueSelectionLifetime) {
   const captured = Object.freeze({...lifetime});current(captured);
+  if (target.summary.unavailableActions?.play) throw unavailable();
   const segments = catalogueQuerySelectionSegments(target, 'play');
   const result = await player.playSegments(segments, captured);current(captured);return result;
 }
 export async function enqueueCatalogueQuerySelection<C>(player: CatalogueSelectionQueuePort, target: QuerySelectionTarget<C>, placement: 'next' | 'end', lifetime: CatalogueSelectionLifetime) {
   const captured = Object.freeze({...lifetime});current(captured);
   if (placement !== 'next' && placement !== 'end') throw unavailable();
+  if (target.summary.unavailableActions?.queue) throw unavailable();
   const segments = catalogueQuerySelectionSegments(target, 'queue');
   const result = await player.enqueueSegments(segments, placement, captured);current(captured);return result;
 }

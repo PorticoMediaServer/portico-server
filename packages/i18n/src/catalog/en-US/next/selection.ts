@@ -1,4 +1,6 @@
 export const selectionMessages = {
+  'next.selection.unsupportedSort': 'Unavailable with this sort order.',
+  'next.selection.previewLimit': 'Metadata preview supports up to 200 titles for this selection.',
   'next.selection.editorUncertain': 'The change is unconfirmed. Save again to check the same request, or close and reload the saved values.',
   'next.selection.jobProgress': '{done, number} of {total, number} processed',
   'next.selection.jobPreparing': 'Preparing selection…',

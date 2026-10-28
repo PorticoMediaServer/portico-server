@@ -94,7 +94,7 @@ export function summarizeSelection(items: readonly SelectionItem[]): SelectionSu
 const hidden: SelectionActionRule = Object.freeze({state: 'hidden'});
 const ready: SelectionActionRule = Object.freeze({state: 'ready'});
 const explain = (reason: 'mixed-types' | 'no-bulk-fields' | 'delete-limit'): SelectionActionRule => Object.freeze({state: 'explain', reason});
-const disabled = (reason: 'not-permitted' | 'one-library-required'): SelectionActionRule => Object.freeze({state: 'disabled', reason});
+const disabled = (reason: 'not-permitted' | 'one-library-required' | 'unsupported-sort' | 'preview-limit'): SelectionActionRule => Object.freeze({state: 'disabled', reason});
 
 /** Product availability only. The existing server still authorises and previews every write. */
 export function selectionActions(summary: SelectionSummary, environment: SelectionEnvironment): SelectionActionRules {
@@ -120,11 +120,13 @@ export function selectionActions(summary: SelectionSummary, environment: Selecti
       // The action opens the real dialog; it must explain the cap, never chunk a delete.
       : summary.count > 200 ? explain('delete-limit') : ready;
   }
+  const restrict = (rule: SelectionActionRule, reason: 'unsupported-sort' | 'preview-limit' | undefined) =>
+    rule.state === 'ready' && reason ? disabled(reason) : rule;
   const watched = active && summary.every.watched && summary.types.every(type => selectionKindHasWatched(type.kind)) ? ready : hidden;
   return Object.freeze({
-    play: playableSet ? allowed('play') : hidden,
-    'play-next': allowed('queue'),
-    'play-later': allowed('queue'),
+    play: restrict(playableSet ? allowed('play') : hidden, summary.unavailableActions?.play),
+    'play-next': restrict(allowed('queue'), summary.unavailableActions?.queue),
+    'play-later': restrict(allowed('queue'), summary.unavailableActions?.queue),
     playlist: allowed('playlist'),
     'my-list': allowed('myList'),
     'mark-watched': watched,
@@ -132,7 +134,7 @@ export function selectionActions(summary: SelectionSummary, environment: Selecti
     collection: allowed('collection'),
     favorite: allowed('favorite'),
     'remove-my-list': allowed('myList'),
-    edit,
+    edit: restrict(edit, summary.unavailableActions?.metadataPreview),
     download: environment.platform === 'phone-app' ? allowed('download') : hidden,
     refresh: ownerTools && environment.isOwner ? allowed('refresh') : hidden,
     delete: remove,

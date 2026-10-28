@@ -1,3 +1,4 @@
+import {selectionUnavailableActions} from './selection-unavailable-actions';
 import {catalogueQuerySelectionSegments} from '@core/catalogue-query-selection.ts';
 import {queryDestinationTarget, type LibraryPickerTarget} from './selection-picker';
 import {queryDeleteTarget} from './selection-delete-query';
@@ -198,7 +199,7 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {visible: Visi
     canCollection = queueLease && summary.every.collection && (!!pickerItems && (!!destinations?.collection || !!props.pickers) || !!props.pickers && queryDestination(current.selection, 'collection'));
   return <SelectionBars
     selection={{count: summary.count, kind: summary.types.length === 1 ? summary.types[0].kind : undefined}}
-    actions={{
+    actions={selectionUnavailableActions({
       ...(queryHeld && summary.count > 200 && summary.every.download ? {downloadDisabledReason: defaultI18n.t('error.unavailable')} : {}),
       ...(props.deletion && summary.library.kind === 'single' && summary.count <= 200 && summary.every.delete && (current.selection.target?.mode === 'explicit' || current.selection.target?.mode === 'query' && queryDeleteTarget(current.selection.target)) && queueLease ? {onDelete: () => {try {props.openDelete();} catch (error) {reportError(error);}}} : {}),
 ...(props.owner && props.deletion && summary.library.kind !== 'single' ? {deleteDisabledReason: defaultI18n.t('next.selection.oneLibrary')} : {}),
@@ -211,7 +212,7 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {visible: Visi
       ...(canQueue ? {onQueue: (placement: 'next' | 'end') => { void queue(placement).catch(reportError); }} : {}),
       ...(canPlaylist ? {onPlaylist: (anchor: HTMLElement) => { void addToPlaylist(anchor).catch(reportError); }} : {}),
       ...(canCollection ? {onCollection: (anchor: HTMLElement) => { void addToCollection(anchor).catch(reportError); }} : {}),
-    }}
+    }, summary.unavailableActions)}
     context={progress && actions?.isCurrent() && !actions.signal?.aborted && playSelection.isOperationCurrent?.(progress.operation)
       ? defaultI18n.t(progress.value.totalKnown ? 'next.selection.jobProgress' : 'next.selection.jobPreparing', {done: progress.value.done, total: progress.value.total}) : undefined}
     allInView={visibleCount !== undefined && current.selection.target?.mode === 'query' && selectionQuerySelector(current.selection.target).ok ? {visible: visibleCount, scope: 'view'} : undefined}
@@ -233,6 +234,7 @@ export function createLibrarySelection({playSelection, owner, descriptor, wholeS
   const closeEditor = () => {editorSession?.lifetime.abort(); editorSession = undefined; for (const listener of editorListeners) listener();};
   const editorStore = {subscribe: (listener: () => void) => {editorListeners.add(listener); return () => {editorListeners.delete(listener);};}, getSnapshot: () => editorSession};
   const openEditor = (anchor: HTMLElement) => {
+    if (playSelection.getSnapshot().selection?.summary.unavailableActions?.metadataPreview) throw new Error('selection-query-preview-unavailable');
     const selection = playSelection.getSnapshot().selection, operation = playSelection.captureOperation?.();
     if (!editor || !editor.signal || !editor.isCurrent() || !selection || !operation || operation.target !== selection.target || (operation.target.mode !== 'explicit' && !(selection.summary.types.length > 1 && playSelection.keepOnly) && !selectionQuerySelector(operation.target).ok)
       || !selection.summary.every.edit || (selection.summary.types.length !== 1 && !playSelection.keepOnly) || !playSelection.isOperationCurrent?.(operation)) throw new Error('selection-editor-unavailable');
@@ -291,6 +293,7 @@ export function createLibrarySelection({playSelection, owner, descriptor, wholeS
       && playSelection.getSnapshot().selection?.target === operation.target;
     if (!isCurrent()) throw new DOMException('Library selection retired', 'AbortError');
     if (operation.target.mode === 'query') {
+      if (operation.target.summary.unavailableActions?.queue) throw new Error('selection-query-queue-unavailable');
       if (!enqueueQuery) throw new Error('selection-query-queue-unavailable');
       await enqueueQuery({placement, signal, isCurrent});
     } else {
