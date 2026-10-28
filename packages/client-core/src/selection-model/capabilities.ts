@@ -127,7 +127,7 @@ export function selectionActions(summary: SelectionSummary, environment: Selecti
     play: restrict(playableSet ? allowed('play') : hidden, summary.unavailableActions?.play),
     'play-next': restrict(allowed('queue'), summary.unavailableActions?.queue),
     'play-later': restrict(allowed('queue'), summary.unavailableActions?.queue),
-    playlist: allowed('playlist'),
+    playlist: restrict(allowed('playlist'), summary.unavailableActions?.playlist),
     'my-list': allowed('myList'),
     'mark-watched': watched,
     'mark-unwatched': watched,

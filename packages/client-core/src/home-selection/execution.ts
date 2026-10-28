@@ -31,7 +31,7 @@ export async function selectionJobTasks(target: SelectionTarget, command: JobCom
   if (target.mode === 'query') {
     const checked = selectionQuerySelector(target);
     const capability = command === 'playlist-add' ? 'playlist' : command === 'collection-add' ? 'collection' : undefined;
-    if (!checked.ok || !capability || !target.summary.every[capability] || !target.total
+    if (!checked.ok || !capability || (command === 'playlist-add' && target.summary.unavailableActions?.playlist) || !target.summary.every[capability] || !target.total
       || !('query' in checked.selector) || !/^browse_[a-f0-9]{64}$/.test(checked.expected.catalogRevision)
       || target.summary.library.kind !== 'single' || target.summary.library.libraryId !== checked.selector.query.libraryId
       || !target.summary.types.length || target.summary.types.some(type => !['movie', 'episode', 'song', 'audiobook_file'].includes(type.kind))) throw selectionExecutionError('query-destination-unavailable');

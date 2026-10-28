@@ -7,7 +7,7 @@ import {createQuerySelectionEditor} from '../src/screens/browse/selection-query-
 import {componentModule} from './helpers/component-harness.mjs';
 import {createRenderer, tree} from './helpers/interaction-harness.mjs';
 
-const unavailableActions = {play: 'unsupported-sort', queue: 'unsupported-sort', metadataPreview: 'preview-limit'} as const;
+const unavailableActions = {play: 'unsupported-sort', queue: 'unsupported-sort', playlist: 'unsupported-sort', metadataPreview: 'preview-limit'} as const;
 const count = 201, basis = 'b'.repeat(64), revision = `browse_${'a'.repeat(64)}`;
 const every = {play: true, queue: true, playlist: true, myList: true, watched: true, collection: true, favorite: true, download: true, edit: true, refresh: true, delete: true};
 const descriptor = {libraryId: 'lib', pivot: 'movies', filter: null, sort: [{field: 'title', direction: 'asc'}], catalogRevision: revision, selectionBasis: basis, total: count, unavailableActions,
@@ -19,9 +19,10 @@ test('web query mapping retains optional exclusions, proof and truthful counts',
   assert.equal('query' in query.selector && query.selector.query.selectionBasis, basis);
 });
 test('web exclusions replace only already offered callbacks with concise reasons', () => {
-  const callbacks = {onPlay() {}, onQueue() {}, onEdit() {}, onMyList() {}};
+  const callbacks = {onPlay() {}, onQueue() {}, onPlaylist() {}, onEdit() {}, onMyList() {}};
   const actions = selectionUnavailableActions(callbacks, unavailableActions);
-  assert.equal(actions.onPlay, undefined);assert.equal(actions.onQueue, undefined);assert.equal(actions.onEdit, undefined);
+  assert.equal(actions.onPlay, undefined);assert.equal(actions.onQueue, undefined);assert.equal(actions.onEdit, undefined);assert.equal(actions.onPlaylist, undefined);
+  assert.equal(actions.playlistDisabledReason, defaultI18n.t('next.selection.unsupportedSort'));
   assert.equal(actions.playDisabledReason, defaultI18n.t('next.selection.unsupportedSort'));
   assert.equal(actions.queueDisabledReason, actions.playDisabledReason);
   assert.equal(actions.editDisabledReason, defaultI18n.t('next.selection.previewLimit'));
@@ -29,7 +30,7 @@ test('web exclusions replace only already offered callbacks with concise reasons
   assert.deepEqual(selectionUnavailableActions({}, unavailableActions), {});
   assert.deepEqual(selectionUnavailableActions(callbacks, undefined), callbacks);
 });
-test('actual desktop and phone controls show unavailable Play/Edit and explain Queue without invoking stale callbacks', async () => {
+test('actual desktop and phone controls show unavailable Play/Playlist/Edit and explain Queue without invoking stale callbacks', async () => {
   const host = createRenderer();Object.assign(host.react, {useId: () => 'exclusion'});
   const {SelectionBar, PhoneActionBar} = await componentModule(new URL('../src/kit/selection/SelectionBar.tsx', import.meta.url), {
     react: host.react, '@i18n': {defaultI18n}, '../controls': {Button: 'Button'}, '../Icon': {Icon: 'Icon'},
@@ -37,12 +38,14 @@ test('actual desktop and phone controls show unavailable Play/Edit and explain Q
     './copy': {selectionText: (key: string, values: any) => defaultI18n.t(key as never, values)}, './presentation': {selectionCountText: () => '201 movies'}, './selection.module.css': {default: {}},
   });
   let calls = 0;const reason = defaultI18n.t('next.selection.unsupportedSort'), preview = defaultI18n.t('next.selection.previewLimit');
-  const actions = {onPlay() {calls++;}, onQueue() {calls++;}, onEdit() {calls++;}, playDisabledReason: reason, queueDisabledReason: reason, editDisabledReason: preview};
+  const actions = {onPlay() {calls++;}, onQueue() {calls++;}, onPlaylist() {calls++;}, onEdit() {calls++;}, playDisabledReason: reason, queueDisabledReason: reason, playlistDisabledReason: reason, editDisabledReason: preview};
   try {
     for (const component of [() => SelectionBar({selection: {count}, actions, onExit() {}}), () => PhoneActionBar({selection: {count}, actions})]) {
       const nodes = tree(host.render(component));
       const play = nodes.find((node: any) => node.type === 'Button' && node.props.title === reason);
       assert(play);assert.equal(play.props.disabled, true);assert.equal(play.props.onClick, undefined);
+      const sortDisabled = nodes.filter((node: any) => node.type === 'Button' && node.props.title === reason);assert.equal(sortDisabled.length, 2);
+      for (const control of sortDisabled) {assert.equal(control.props.disabled, true);assert.equal(control.props.onClick, undefined);}
       const queue = nodes.find((node: any) => node.type === 'Menu' && node.props.items?.[0]?.id === 'next');assert(queue);
       for (const item of queue.props.items) {assert.equal(item.disabled, true);assert.equal(item.description, reason);item.onSelect();}
       const edit = nodes.find((node: any) => node.type === 'Button' && node.props.title === preview);
@@ -62,4 +65,23 @@ test('metadata preview exclusion refuses before requests; small previews retain 
   const small = {...target, total: 200, sourceTotal: 200, summary: {...target.summary, count: 200, types: [{kind: 'movie', count: 200}], unavailableActions: undefined}};
   await assert.rejects(producer.preview({target: small} as never), error => error === stop);
   assert.equal(requests.length, 1);assert.deepEqual(requests[0][2], {selector: descriptorQuery.selector, expected: {catalogRevision: revision}});
+});
+test('direct and retained Playlist picker callbacks refuse the excluded query before requests', async () => {
+  const {LibraryPickerProducer} = await import('../src/screens/browse/selection-picker');
+  const query = wholeViewQuery(descriptor as never);
+  const target = {mode: 'query', selector: query.selector, total: count, sourceTotal: count, summary: {count, types: [{kind: 'movie', count}], every, library: {kind: 'single', libraryId: 'lib'}, unavailableActions: undefined as typeof unavailableActions | undefined}, refinement: {kind: null, excludedItems: []}, expected: {catalogRevision: revision}};
+  let calls = 0;
+  const producer = new LibraryPickerProducer(target as never, 'playlist', {api: {request: async () => {calls++;}}, serverId: 's', viewerId: 'v', requestId: async () => {calls++;return 'request';}, isCurrent: () => true, pickerIdentity: {authority: 'local', accountId: 'a', profileId: 'p'}} as never, true, () => {});
+  const retainedChoose = () => producer.choose('playlist');
+  target.summary.unavailableActions = unavailableActions;
+  try {
+    assert.throws(() => producer.open(), /query-destination-unavailable/);
+    assert.throws(retainedChoose, /query-destination-unavailable/);
+    assert.throws(() => producer.create('New playlist'), /query-destination-unavailable/);
+    target.summary.unavailableActions = undefined;
+    const pendingOpen = producer.open();
+    target.summary.unavailableActions = unavailableActions;
+    await assert.rejects(pendingOpen, /query-destination-unavailable/);
+    assert.equal(calls, 0);
+  } finally {producer.close();}
 });

@@ -42,6 +42,7 @@ export function selectionCallbacks(snapshot: HomeSelectionSnapshot, controller: 
   return {
     ...(unsupported('play') ? {playDisabledReason: unsupported('play')} : {}),
     ...(unsupported('play-next') ? {queueDisabledReason: unsupported('play-next')} : {}),
+    ...(unsupported('playlist') ? {playlistDisabledReason: unsupported('playlist')} : {}),
     ...(unsupported('edit') ? {editDisabledReason: unsupported('edit')} : {}),
     ...(ready('play') ? {onPlay: () => execute('play')} : {}),
     ...(ready('play-next') && ready('play-later') ? {onQueue: (placement: 'next' | 'end') => execute(placement === 'next' ? 'play-next' : 'play-later')} : {}),

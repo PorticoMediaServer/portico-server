@@ -14,6 +14,10 @@ export function selectionUnavailableActions(actions: SelectionActions, unavailab
     delete result.onQueue;
     result.queueDisabledReason = defaultI18n.t('next.selection.unsupportedSort');
   }
+  if (unavailable?.playlist && result.onPlaylist) {
+    delete result.onPlaylist;
+    result.playlistDisabledReason = defaultI18n.t('next.selection.unsupportedSort');
+  }
   if (unavailable?.metadataPreview && result.onEdit) {
     delete result.onEdit;
     result.editDisabledReason = defaultI18n.t('next.selection.previewLimit');

@@ -95,3 +95,32 @@ test('query exclusions retain server restrictions after narrowing; switching to 
   assert.equal(selectionActions(model.getSnapshot().summary, {platform: 'tv', isOwner: true, canEditMetadata: true}).play.state, 'ready');
   model.dispose();
 });
+test('Playlist sort exclusion survives wire/model/rules without reducing grants or affecting other forms', async () => {
+  const descriptor = query(201, {playlist: 'unsupported-sort'}), model = new BrowseSelectionModel(context);
+  assert(model.registerQuery(model.captureContext(), descriptor).ok);assert(model.selectWholeQuery(descriptor.id).ok);
+  const target = model.captureOperation()!.target;assert(target.mode === 'query');
+  assert.deepEqual(target.summary.unavailableActions, {playlist: 'unsupported-sort'});
+  assert.equal(target.total, 201);assert.equal(descriptor.summary.types[0].capabilityCounts.playlist, 201);
+  assert.equal(target.summary.every.playlist, true);
+  for (const platform of ['desktop-web', 'mobile-web', 'phone-app', 'tv'] as const) {
+    const environment = {platform, isOwner: true, canEditMetadata: true};
+    assert.deepEqual(selectionActions(target.summary, environment).playlist, {state: 'disabled', reason: 'unsupported-sort'});
+    assert.equal(selectionActions({...target.summary, every: {...target.summary.every, playlist: false}}, environment).playlist.state, 'hidden');
+    assert.equal(selectionActions({...target.summary, unavailableActions: undefined}, environment).playlist.state, 'ready');
+    assert.equal(selectionActions(target.summary, environment).collection.state, 'ready');
+  }
+  assert.equal(parseWholeSelection(wire(201, {playlist: 'preview-limit'})), undefined);
+  const {selectionJobTasks} = await import('../src/home-selection/execution.ts');
+  const {HomeSelectionDestinations} = await import('../src/home-selection/destinations.ts');
+  let requests = 0, ids = 0;
+  const picker = new HomeSelectionDestinations({api: {request: async () => {requests++;}}, requestId: async () => {ids++;return 'operation';}} as never, target as never, 'playlist', new AbortController().signal, () => true, () => {});
+  try {
+    for (const dispatch of [() => picker.load(), () => picker.choose('playlist'), () => picker.create('New'), () => picker.retry()]) await assert.rejects(dispatch, {code: 'query-destination-unavailable'});
+    await assert.rejects(selectionJobTasks(target as never, 'playlist-add', {playlistId: 'playlist', expectedRevision: 1, placement: 'end'}, async () => {ids++;return 'operation';}), {code: 'query-destination-unavailable'});
+    assert.equal(requests, 0);assert.equal(ids, 0);
+    const legacy = {...target, summary: {...target.summary, unavailableActions: undefined}};
+    const tasks = await selectionJobTasks(legacy as never, 'playlist-add', {playlistId: 'playlist', expectedRevision: 1, placement: 'end'}, async () => 'operation');
+    assert.equal(tasks.length, 1);assert.deepEqual(tasks[0].request.selector, target.selector);
+    const collection = await selectionJobTasks(target as never, 'collection-add', {collectionId: 'collection', expectedRevision: 1}, async () => 'operation');assert.equal(collection.length, 1);
+  } finally {picker.dispose();model.dispose();}
+});

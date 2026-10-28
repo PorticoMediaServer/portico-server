@@ -265,6 +265,7 @@ export function createLibrarySelection({playSelection, owner, descriptor, wholeS
   const pickerStore = {subscribe: (listener: () => void) => {pickerListeners.add(listener); return () => {pickerListeners.delete(listener);};}, getSnapshot: () => pickerSession};
   const openPicker = (kind: EntryDestination, anchor: HTMLElement) => {
     const selection = playSelection.getSnapshot().selection, operation = playSelection.captureOperation?.();
+    if (kind === 'playlist' && selection?.summary.unavailableActions?.playlist) throw new Error('selection-playlist-unavailable');
     if (!pickers || !pickers.pickerIdentity || pickers.signal.aborted || !pickers.isCurrent() || !selection || !operation || operation.target !== selection.target
       || !(operation.target.mode === 'query' ? queryDestination(selection, kind) : explicitDestinationItems(selection)) || !selection.summary.every[kind] || !playSelection.isOperationCurrent?.(operation)) throw new Error('selection-picker-unavailable');
     closePicker();
@@ -303,6 +304,7 @@ export function createLibrarySelection({playSelection, owner, descriptor, wholeS
     }
   };
   const addToPlaylist = async (anchor: HTMLElement) => {
+    if (playSelection.getSnapshot().selection?.summary.unavailableActions?.playlist) throw new Error('selection-playlist-unavailable');
     if (pickers) {openPicker('playlist', anchor); return;}
     if (!destinations?.playlist) throw new Error('selection-playlist-unavailable');
     await destinations.playlist(leafItems(), anchor);
