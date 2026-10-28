@@ -6,12 +6,13 @@ import {HomeService, type HomeSnapshot} from '@core/home-service.ts';
 import type {HomeChannel, HomeDocument, HomeReason, HomeRow, HomeSeeAll, HomeSpotlight} from '@core/home.ts';
 import type {ContentEntry} from '@core/library-content.ts';
 import type {GuideChannel} from '@core/channel-guide.ts';
-import {dependsOn} from '@core/freshness-hub.ts';
+import {dependsOn, type FreshDocument} from '@core/freshness-hub.ts';
+import {createShellHomeDocument} from '../../shell/home-freshness';
 import {serverTextLabel} from '@core/presentation/server-text.ts';
 import {homeChannelSelection, homeEntryCapabilities} from '@core/home-selection.ts';
 import {homeCollectionCaption} from '@core/presentation/home-spotlight.ts';
 import {channelMonograms, programmeFactParts, type TimeEnvironment} from '@portico/client-core/kit-model';
-import {useFreshness, usePooledService, useQuietRefresh} from '../../platform/freshness';
+import {useFreshness, useRecovering} from '../../platform/freshness';
 import {Artwork, AmbientArt, ColourBackdrop, GeneratedArt} from '../../kit/artwork';
 import {Hero, HeroFacts, type HeroCandidate, type LayoutPlatform} from '../../kit/layout';
 import {Button} from '../../kit/controls';
@@ -51,10 +52,9 @@ export type HomeEffects = Readonly<{
   reportError: (error: unknown) => void;
   openHome?: () => void;
 }>;
-export type HomeBindings = Readonly<{service: HomeService; artwork: ShellArtwork; effects: HomeEffects; selection: HomeSelection; time: TimeEnvironment; reducedMotion: boolean; appearance?: ScreenAppearance; serverName?: string; customization?: HomeCustomizationBindings; readingContinue?: ReadingContinueBindings; musicMixes?: MusicMixesBinding; musicMixesMore?: ReactNode}>;
+export type HomeBindings = Readonly<{service: HomeService; displayDocument?: FreshDocument; artwork: ShellArtwork; effects: HomeEffects; selection: HomeSelection; time: TimeEnvironment; reducedMotion: boolean; appearance?: ScreenAppearance; serverName?: string; customization?: HomeCustomizationBindings; readingContinue?: ReadingContinueBindings; musicMixes?: MusicMixesBinding; musicMixesMore?: ReactNode}>;
 type HomePresentation = Pick<HomeBindings, 'artwork' | 'effects' | 'selection' | 'time' | 'reducedMotion' | 'appearance'>;
 const t = defaultI18n.t;
-const dependencies = [dependsOn.libraries, dependsOn.content(), dependsOn.order(), dependsOn.personal(), dependsOn.progress(), dependsOn.settings('preferences'), dependsOn.settings('server'), dependsOn.list('recommendations'), dependsOn.list('guide'), dependsOn.list('liveSources'), dependsOn.list('libraryChannels'), dependsOn.event('stream.resync')];
 const pageSubscribe = (listener: () => void) => { document.addEventListener('visibilitychange', listener); return () => document.removeEventListener('visibilitychange', listener); };
 /** The frame draws a long hero title at the long lockup size; no shorter drawn rule decides it (mock.html#home). */
 const longHeroTitle = (title: string) => [...title.trim()].length > 20;
@@ -93,34 +93,21 @@ function useVisible() {
 }
 
 export function HomeScreen(bindings: HomeBindings) {
-  const {service, snapshot} = usePooledService<HomeService, HomeSnapshot>('home', () => bindings.service, dependencies);
-  useEffect(() => { if (service.getSnapshot().phase === 'idle') void service.load(); }, [service]);
-  const pending = useRef<{document: HomeDocument; controller: AbortController; promise: Promise<void>} | undefined>(undefined);
-  const refresh = useCallback((context?: Parameters<HomeService['revalidate']>[0]): Promise<void> => {
-    const shown = service.getSnapshot().document;
-    if (!shown || context?.signal?.aborted) return Promise.resolve();
-    if (pending.current?.document === shown && !pending.current.controller.signal.aborted) return pending.current.promise;
-    pending.current?.controller.abort();
-    const controller = new AbortController(), stop = () => controller.abort();
-    context?.signal?.addEventListener('abort', stop, {once: true});
-    const request = {document: shown, controller, promise: Promise.resolve()};
-    pending.current = request;
-    request.promise = service.revalidate({signal: controller.signal, settle: async () => {
-      await context?.settle?.();
-      // A newer Home read or authority handover wins over this window refresh.
-      if (service.getSnapshot().document !== shown) controller.abort();
-    }}).finally(() => {
-      context?.signal?.removeEventListener('abort', stop);
-      if (pending.current === request) pending.current = undefined;
-    });
-    return request.promise;
-  }, [service]);
+  const service = bindings.service, {hub} = useFreshness();
+  const fallback = useMemo(() => bindings.displayDocument ? undefined : createShellHomeDocument(hub, service), [bindings.displayDocument, hub, service]);
+  const display = bindings.displayDocument ?? fallback!.document;
   useEffect(() => {
-    const off = service.subscribe(() => { if (pending.current?.document !== service.getSnapshot().document) pending.current?.controller.abort(); });
-    return () => { off(); pending.current?.controller.abort(); pending.current = undefined; };
-  }, [service]);
-  useQuietRefresh('home-time', refresh, () => !!service.getSnapshot().document, {everyMs: 60000});
-  const refreshLive = useCallback(() => { void refresh().catch(bindings.effects.reportError); }, [refresh, bindings.effects.reportError]);
+    display.setOpen(true);
+    if (service.getSnapshot().phase === 'idle') void service.load().catch(bindings.effects.reportError);
+    return () => {display.setOpen(false); fallback?.dispose();};
+  }, [display, fallback, service]);
+  const actual = useSyncExternalStore(service.subscribe, service.getSnapshot), recovering = useRecovering(display);
+  const snapshot: HomeSnapshot = recovering && actual.phase === 'error' ? {...actual, phase: 'loading', error: null} : actual;
+  useEffect(() => {
+    const timer = setInterval(() => {if (hub.isActive()) hub.note(dependsOn.clock('home-time'));}, 60000);
+    return () => clearInterval(timer);
+  }, [hub]);
+  const refreshLive = useCallback(() => display.invalidate(), [display]);
   const [now, setNow] = useState(Date.now);
   const document = snapshot.document;
   useEffect(() => {
@@ -146,11 +133,11 @@ export function HomeScreen(bindings: HomeBindings) {
     return () => timers.forEach(clearTimeout);
   }, [snapshot.document, started]);
   if (!document && snapshot.phase === 'error') return <StateLayout className={styles.home} title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} icon="i-warn" tone="warning" contentStyle={{top: width >= 1024 ? 470 : 250}}
-    primary={{id: 'retry', icon: width >= 1024 ? 'i-retry' : undefined, label: t('next.states.tryAgain'), onPress: () => { void service.retry(); }}}
-    secondary={{id: 'home', label: t('next.states.goHome'), onPress: bindings.effects.openHome ?? (() => {void service.retry();})}}/>;
+    primary={{id: 'retry', icon: width >= 1024 ? 'i-retry' : undefined, label: t('next.states.tryAgain'), onPress: () => { void service.retry().catch(bindings.effects.reportError); }}}
+    secondary={{id: 'home', label: t('next.states.goHome'), onPress: bindings.effects.openHome ?? (() => {void service.retry().catch(bindings.effects.reportError);})}}/>;
   if (!document) return <HomeSkeleton elapsedMs={elapsed} window={{width, height: window.innerHeight, scrollTop: window.scrollY}}
     slowNotice={bindings.serverName ? <div className={styles.slowNotice} role="status"><span className={styles.waitingDot}/><span><b>{t('next.states.stillLoading')}</b>{' '}{t('next.states.slowConnection', {server: bindings.serverName})}</span></div> : undefined}/>;
-  return <HomeView {...bindings} document={document} nowMs={now} refreshLive={refreshLive} onMore={rowId => { void service.more(rowId); }} />;
+  return <HomeView {...bindings} document={document} nowMs={now} refreshLive={refreshLive} onMore={rowId => { void service.more(rowId).catch(bindings.effects.reportError); }} />;
 }
 
 type Spotlight = Omit<ReturnType<typeof homeSpotlights>[number], 'reason'> & HeroCandidate & {causalReason: HomeReason; source: HomeSpotlight};
