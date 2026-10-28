@@ -10277,7 +10277,7 @@ CREATE TRIGGER reading_path_scan_report AFTER UPDATE OF status ON jobs WHEN NEW.
  INSERT INTO reading_path_dirty_work(library_id,kind,work_key) SELECT cl.id,'report',NEW.id FROM inventory_runs r JOIN library_sources s ON s.id=r.source_id JOIN catalog_libraries cl ON cl.library_id=s.library_id JOIN libraries l ON l.id=s.library_id WHERE r.job_id=NEW.id AND l.kind IN('book','comic') ON CONFLICT(library_id,kind,work_key) DO UPDATE SET requested=requested+1;
 END;
 CREATE TRIGGER reading_path_work_enqueued AFTER INSERT ON reading_path_dirty_work BEGIN
- UPDATE reading_path_dirty_work SET served=(SELECT turn FROM reading_path_clock WHERE singleton=1) WHERE kind=NEW.kind AND work_key=NEW.work_key;
+ UPDATE reading_path_dirty_work SET served=(SELECT turn FROM reading_path_clock WHERE singleton=1) WHERE library_id=NEW.library_id AND kind=NEW.kind AND work_key=NEW.work_key;
 END;
 CREATE TRIGGER reading_path_run_identity AFTER UPDATE OF root_identity ON inventory_runs WHEN OLD.root_identity IS NOT NEW.root_identity BEGIN
  UPDATE reading_path_source_barrier SET root_identity=NEW.root_identity WHERE source_id=NEW.source_id AND job_id=NEW.job_id AND phase='open';

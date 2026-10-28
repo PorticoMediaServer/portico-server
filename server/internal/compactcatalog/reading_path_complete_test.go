@@ -116,7 +116,12 @@ func TestReadingCompleteMovedEntityKeepsBothLibraryWorkFences(t *testing.T) {
 	a.seal()
 	b.seal()
 	completeDrain(t, a.c)
+	a.c.Exec(`INSERT INTO reading_path_dirty_work(library_id,kind,work_key) VALUES(?,'item',?)`, a.handle, fmt.Sprint(p.item))
+	a.c.Exec(`UPDATE reading_path_dirty_work SET served=7 WHERE library_id=? AND kind='item' AND work_key=?`, a.handle, fmt.Sprint(p.item))
 	a.c.Exec(`UPDATE catalog_entities SET library_id=? WHERE id=?`, b.handle, p.item)
+	if scalar(t, a.c.DB, `SELECT served FROM reading_path_dirty_work WHERE library_id=? AND kind='item' AND work_key=?`, a.handle, fmt.Sprint(p.item)) != 7 {
+		t.Fatal("enqueuing the new-library key rewrote the old-library service ticket")
+	}
 	for _, library := range []int64{a.handle, b.handle} {
 		if got := scalar(t, a.c.DB, `SELECT count(*) FROM reading_path_dirty_work WHERE library_id=? AND kind='item' AND work_key=?`, library, fmt.Sprint(p.item)); got != 1 {
 			t.Fatalf("library %d has %d moved-item fences, want one", library, got)
