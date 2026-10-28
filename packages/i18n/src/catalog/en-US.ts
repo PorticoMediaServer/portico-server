@@ -1009,6 +1009,7 @@ export const enUS = {
   'profile.deleteConfirm.title': 'Delete {name}?',
   'profile.deleteConfirm.body': 'Its watch history, My List and saved items are deleted. This can’t be undone.',
   'profile.deleteConfirm.playlists': '{count, plural, one {# playlist} other {# playlists}} will also be deleted.',
+  'profile.deleteConfirm.savedItems': '{count, plural, one {# saved item} other {# saved items}} will also be deleted.',
   'profile.deleteConfirm.action': 'Delete profile',
   'profile.deleted': '{name} deleted',
   'profile.pinRecoveryTitle': 'New PIN for {name}',
@@ -1104,6 +1105,7 @@ export const enUS = {
   'device.untrust': 'Stop trusting this device',
   'device.signOutThis': 'Sign out this device',
   'device.signOutOther': 'Sign this device out…',
+  'device.signOutOtherAction': 'Sign this device out',
   'device.remove': 'Remove device…',
   'device.unnamed': 'This device',
 

@@ -618,6 +618,8 @@ export const settingsMessages = {
   'server.metadata.artwork': 'Artwork',
   'server.metadata.artworkHelp': 'How much space posters and other images from your own media folders may take. When it is full, new ones wait until you raise the limit. Images already kept go on working.',
   'server.metadata.artworkUsed': '{used} of {limit} used',
+  'server.metadata.artworkUsedHelp': '{used} GB used. When full, new images wait.',
+  'server.metadata.clearValueHelp': 'Save an empty value to clear the saved value.',
   'server.metadata.limitProblem': 'Enter the limit in gigabytes, as a number of 0.1 or more.',
   'settings.unit.gb': 'GB',
   'settings.list.none': 'Nothing listed.',

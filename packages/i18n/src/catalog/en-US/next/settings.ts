@@ -76,6 +76,7 @@ export const settingsMessages = {
   'next.settings.moved': '{name}, now number {position} of {count}',
   'next.settings.removed': '{name} removed',
   'next.settings.defaultValue': 'Default is {value}.',
+  'next.settings.customValue': 'Custom ({value})',
   'next.settings.on': 'On',
   'next.settings.off': 'Off',
   'next.settings.notSet': 'Not set',
