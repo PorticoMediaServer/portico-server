@@ -177,20 +177,16 @@ func TestCapacityCachesReportersButNotSettings(t *testing.T) {
 	}
 }
 
-func TestCapacityReportsConfiguredMemoryAndSpillDisk(t *testing.T) {
-	disk, memory := t.TempDir(), t.TempDir()
-	c := &Capacity{Directory: &disk, MemoryDirectory: memory, Run: workingReporter}
+func TestCapacityMemoryCapabilityIsNotAWarning(t *testing.T) {
+	disk := t.TempDir()
+	c := &Capacity{Directory: &disk, Run: workingReporter}
 	report := c.Report(context.Background(), settingsFor(t), SessionCounts{})
 	if report.TemporaryDirectory.Path != disk || report.TemporaryDirectory.Memory != memoryTranscodeDirectory() {
 		t.Fatal(report.TemporaryDirectory)
 	}
-	found := false
 	for _, warning := range report.Warnings {
-		if strings.Contains(warning, memory) && strings.Contains(warning, disk) {
-			found = true
+		if strings.Contains(warning, "Conversions use memory") {
+			t.Fatal("working memory configuration reported as a warning", report.Warnings)
 		}
-	}
-	if !found {
-		t.Fatal("configured memory and spill disk not reported", report.Warnings)
 	}
 }

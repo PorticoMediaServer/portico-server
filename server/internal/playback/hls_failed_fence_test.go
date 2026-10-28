@@ -44,3 +44,36 @@ func TestHLSFailureFencedToProducerGeneration(t *testing.T) {
 		t.Fatal("the current producer's failure was ignored")
 	}
 }
+
+// Cancellation can be the result of a real preparation/converter failure.
+// FiniteHLS deliberately reports preparation errors with its actor context.
+func TestFiniteAndStreamingFailureWithCancelledProducerContext(t *testing.T) {
+	for _, kind := range []string{"finite", "streaming"} {
+		t.Run(kind, func(t *testing.T) {
+			db, h, id := conversionOutputFixture(t)
+			s := New(db)
+			s.ConfigureHLS(h)
+			owner, err := s.RetainPreparation(context.Background(), id, 3)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer owner.Close()
+			ctx, cancel := context.WithCancel(owner.Context())
+			cancel()
+			if kind == "finite" {
+				a := &finiteActor{ctx: ctx, cancel: cancel, generation: 3, entry: owner.entry, run: owner.run, ready: make(chan struct{}), done: make(chan struct{})}
+				f := &FiniteHLS{h: h, actors: map[string]*finiteActor{id: a}}
+				f.run(id, a)
+				if a.err == nil {
+					t.Fatal("cancelled finite preparation did not report its error")
+				}
+			} else if !h.failed(withProducerGeneration(ctx, 3), id) {
+				t.Fatal("cancelled converter failure was swallowed")
+			}
+			var state string
+			if err := db.QueryRow(`SELECT state FROM playback_sessions WHERE id=?`, id).Scan(&state); err != nil || state != "failed" {
+				t.Fatal("producer failure did not fail session", state, err)
+			}
+		})
+	}
+}

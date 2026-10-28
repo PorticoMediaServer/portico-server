@@ -220,7 +220,7 @@ func (h *HLS) enforceSessionCeilings(ids []string) map[string]hlsMeasured {
 			interval = memoryUsageInterval
 		}
 		fresh := usage != nil && now.Sub(usage.measured) < interval
-		moving := h.moving[id] != nil
+		moving := h.moving[id] != nil || h.outputBusy[id] > 0
 		h.mu.Unlock()
 		if fresh || moving {
 			continue

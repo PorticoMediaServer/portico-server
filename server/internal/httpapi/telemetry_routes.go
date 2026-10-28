@@ -153,9 +153,6 @@ func (d Dependencies) capacityComposer() *telemetry.Capacity {
 	if d.StorageLayout != nil {
 		capacity.Directory = &d.StorageLayout.Transcode
 	}
-	if d.Playback != nil {
-		capacity.MemoryDirectory = d.Playback.MemoryOutputDirectory()
-	}
 	return capacity
 }
 
