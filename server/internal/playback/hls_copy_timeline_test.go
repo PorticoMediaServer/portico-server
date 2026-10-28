@@ -370,7 +370,7 @@ func TestCopyTimelineBeyondTwoHoursUsesEveryProbeBatch(t *testing.T) {
 	if out, e := exec.CommandContext(ctx, binary, "-v", "error", "-f", "lavfi", "-i", "color=s=64x36:r=1", "-t", "7300", "-c:v", "libx264", "-preset", "ultrafast", "-g", "5", "-keyint_min", "5", "-sc_threshold", "0", path).CombinedOutput(); e != nil {
 		t.Fatalf("%v %s", e, out)
 	}
-	timeline, e := probeCopyTimeline(ctx, probe, &assets.PlaybackInput{Argument: path}, 7300)
+	timeline, e := probeCopyTimeline(ctx, localTimelineProbe(probe, &assets.PlaybackInput{Argument: path}), localPacketTimelineProbe(probe, &assets.PlaybackInput{Argument: path}), 7300)
 	if e != nil {
 		t.Fatal(e)
 	}

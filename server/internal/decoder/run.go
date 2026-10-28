@@ -36,6 +36,23 @@ func RunProbe(ctx context.Context, supervisor *storage.Supervisor, key, executab
 	return runOwned(ctx, supervisor, key, cmd, endpoint, reservation)
 }
 
+// RunProbeQuery runs a closed timeline query with RunProbe's reservation,
+// physical retirement supervision, and MaxProbeOutputBytes output bound.
+func RunProbeQuery(ctx context.Context, supervisor *storage.Supervisor, key, executable, input string, reservation *EndpointReservation, query []string, libraries ...string) ([]byte, error) {
+	cmd, err := ProbeQueryCommand(executable, input, reservation, query, libraries...)
+	if err != nil {
+		if reservation != nil {
+			_ = reservation.Close()
+		}
+		return nil, err
+	}
+	endpoint, err := bridgeEndpoint(input)
+	if err != nil {
+		return nil, err
+	}
+	return runOwned(ctx, supervisor, key, cmd, endpoint, reservation)
+}
+
 // RunAllocatedProbe validates bytes owned by an already-admitted recording.
 // Source capacity/worker claims govern admission; output and deadlines remain bounded.
 func RunAllocatedProbe(ctx context.Context, supervisor *storage.Supervisor, key, executable, input string, reservation *EndpointReservation, libraries ...string) ([]byte, error) {

@@ -47,3 +47,23 @@ func (w *playbackWindow) Run(ctx context.Context, dir string, build func(string)
 		return e
 	})
 }
+
+// Probe observes the same retained version and extent ledger as HLS production.
+func (w *playbackWindow) Probe(ctx context.Context, args []string) ([]byte, error) {
+	var data []byte
+	err := w.bridge.With(ctx, func(url string, res *decoder.EndpointReservation) error {
+		if err := w.input.Validate(ctx); err != nil {
+			return err
+		}
+		var err error
+		data, err = decoder.RunProbeQuery(ctx, w.runtime.storage.Supervisor, identity.Token(), w.runtime.ffprobe, url, res, args, w.runtime.libraries...)
+		if err == nil {
+			err = w.input.Validate(ctx)
+		}
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
+}

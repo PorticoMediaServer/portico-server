@@ -16,6 +16,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/storage"
+	"portico.local/server/internal/subtitles"
 )
 
 // Conversion failure codes. The viewer sees the class; the owner also sees the
@@ -377,14 +378,32 @@ func (h *HLS) downgradeCopyPlan(ctx context.Context, id string, plan *DeliveryPl
 }
 
 // copyTimelineFor returns the cut list for a session's source: from memory, from
-// the per-file cache, or by indexing the container now.
-func (h *HLS) copyTimelineFor(ctx context.Context, id, asset string, input *assets.PlaybackInput, duration float64) (*copyTimeline, error) {
+// the per-file cache for local files, a session copy for windows, or a probe.
+func (h *HLS) copyTimelineFor(ctx context.Context, id, asset string, input *assets.PlaybackInput, window subtitles.WindowInput, duration float64) (*copyTimeline, error) {
 	h.mu.Lock()
 	if t := h.timelines[id]; t != nil {
 		h.mu.Unlock()
 		return t, nil
 	}
 	h.mu.Unlock()
+	if window != nil {
+		evidence, err := h.windowTimelineEvidence(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if t := h.loadWindowTimeline(id, evidence); t != nil {
+			return t, nil
+		}
+		probe := func(ctx context.Context, args ...string) ([]byte, error) { return window.Probe(ctx, args) }
+		t, err := probeCopyTimeline(ctx, probe, nil, duration)
+		if err != nil {
+			return nil, err
+		}
+		if err := h.storeWindowTimeline(id, evidence, t); err != nil {
+			return nil, err
+		}
+		return t, nil
+	}
 	var size, modified int64
 	if err := dbwork.QueryRow(ctx, h.db, `SELECT size,modified_ns FROM playback_source_pins WHERE session_id=? AND asset_id=?`, id, asset).Scan(&size, &modified); err != nil {
 		return nil, err
@@ -397,7 +416,7 @@ func (h *HLS) copyTimelineFor(ctx context.Context, id, asset string, input *asse
 	if h.ffprobe == "" {
 		return nil, errCopyTimeline
 	}
-	t, err := probeCopyTimeline(ctx, h.ffprobe, input, duration)
+	t, err := probeCopyTimeline(ctx, localTimelineProbe(h.ffprobe, input), localPacketTimelineProbe(h.ffprobe, input), duration)
 	if err != nil {
 		return nil, err
 	}
@@ -411,7 +430,8 @@ func (h *HLS) copyTimelineFor(ctx context.Context, id, asset string, input *asse
 
 // sessionTimeline is the cut list a request for this session's segments is
 // checked against. A session not in memory (the server restarted under it) reads
-// the per-file cache; a session that is not a copy session has none.
+// its session copy for a remote window or the per-file cache for a local file;
+// a session that is not a copy session has none.
 func (h *HLS) sessionTimeline(ctx context.Context, id string) *copyTimeline {
 	h.mu.Lock()
 	t := h.timelines[id]
@@ -419,10 +439,21 @@ func (h *HLS) sessionTimeline(ctx context.Context, id string) *copyTimeline {
 	if t != nil {
 		return t
 	}
+	var container, action string
+	if err := dbwork.QueryRow(ctx, h.db, `SELECT source_container,video_action FROM playback_delivery_plans WHERE session_id=?`, id).Scan(&container, &action); err == nil && container == "strm" {
+		if action != "copy" {
+			return nil
+		}
+		evidence, err := h.windowTimelineEvidence(ctx, id)
+		if err != nil {
+			return nil
+		}
+		return h.loadWindowTimeline(id, evidence)
+	}
 	if t, disc := h.discTimeline(ctx, id); disc {
 		return t
 	}
-	var action, asset string
+	var asset string
 	var size, modified int64
 	err := dbwork.QueryRow(ctx, h.db, `SELECT d.video_action,pin.asset_id,pin.size,pin.modified_ns FROM playback_delivery_plans d JOIN playback_source_pins pin ON pin.session_id=d.session_id WHERE d.session_id=?`, id).Scan(&action, &asset, &size, &modified)
 	if err != nil || action != "copy" {
