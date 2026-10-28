@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
 	"portico.local/server/internal/catalog"
@@ -11,6 +12,7 @@ import (
 	"portico.local/server/internal/naming"
 	"portico.local/server/internal/notify"
 	"portico.local/server/internal/storage"
+	"runtime"
 	"time"
 )
 
@@ -187,6 +189,9 @@ func (s *Service) inventoryFolders(ctx context.Context, job string, source catal
 	if err != nil || len(requests) < 2 {
 		return false, err
 	}
+	if budgetedFolderBatches {
+		return s.inventoryFoldersBudget(ctx, job, source, writes, requests, limit)
+	}
 	pages, errs := make([]storage.InventoryPage, len(requests)), make([]error, len(requests))
 	if s.storage != nil {
 		if pages, errs, err = s.storage.InventoryPages(ctx, source.ID, requests); err != nil {
@@ -229,6 +234,72 @@ func (s *Service) inventoryFolders(ctx context.Context, job string, source catal
 		s.noteDirectoryPage(job, w.Relative, w.Cursor, w.Page)
 	}
 	return true, nil
+}
+
+// budgetedFolderBatches selects the shared-budget folder batch, which only
+// Linux has; elsewhere the batch is the per-folder listing it always was.
+var budgetedFolderBatches = runtime.GOOS == "linux"
+
+// inventoryFoldersBudget lists the batch under one shared raw-name budget, the
+// writer page cap, so it lists no more than one page's worth of names in all
+// and publishes every page it listed up to the first folder the one-folder
+// path must handle (SRV029). The helper and the in-process path share
+// storage.LocalInventoryPagesBudget; either answer is checked whole before any
+// of it is published.
+func (s *Service) inventoryFoldersBudget(ctx context.Context, job string, source catalog.LibrarySource, writes []catalog.InventoryPageWrite, requests []storage.InventoryRequest, limit int) (bool, error) {
+	var envelopes []storage.BudgetEnvelope
+	var err error
+	if s.storage != nil {
+		if envelopes, err = s.storage.InventoryPagesBudget(ctx, source.ID, requests, limit); err != nil {
+			return false, ctx.Err()
+		}
+	} else if envelopes, err = storage.LocalInventoryPagesBudget(requests, limit); err != nil {
+		return false, nil
+	}
+	if storage.CheckBudgetResponse(requests, limit, envelopes) != nil {
+		log.Printf("library scan %s: a folder batch answer was refused; listing one folder instead", job)
+		return false, nil
+	}
+	taken := budgetPrefix(envelopes, limit)
+	if taken == 0 {
+		return false, nil
+	}
+	writes = writes[:taken]
+	for i := range writes {
+		writes[i].Page = *envelopes[i].Page
+	}
+	for i := range writes {
+		writes[i].DiscRoot, err = s.discRootObservation(ctx, source, writes[i].Relative, writes[i].Page)
+		if err != nil {
+			return false, err
+		}
+	}
+	if err = s.catalog.CommitInventoryPages(ctx, job, writes); err != nil {
+		if ctx.Err() != nil {
+			return false, ctx.Err()
+		}
+		return false, nil
+	}
+	for _, w := range writes {
+		s.noteDirectoryPage(job, w.Relative, w.Cursor, w.Page)
+	}
+	return true, nil
+}
+
+// budgetPrefix is how many leading folders of a checked budgeted answer are
+// published: the pages before the first error, unstable or skipped folder, even
+// just one. That folder stays pending for the one-folder path, which classifies
+// it as before. The entry cap is already implied by the budget; it stays as a
+// defensive bound on the writer page.
+func budgetPrefix(envelopes []storage.BudgetEnvelope, limit int) int {
+	entries := 0
+	for i, e := range envelopes {
+		if e.Outcome != storage.BudgetPage || e.Page.Unstable || entries+len(e.Page.Entries) > limit {
+			return i
+		}
+		entries += len(e.Page.Entries)
+	}
+	return len(envelopes)
 }
 
 // discRootObservation stats a folder that holds BDMV or VIDEO_TS outside any

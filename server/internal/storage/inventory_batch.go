@@ -47,7 +47,7 @@ func (c *Client) InventoryPages(ctx context.Context, key string, requests []Inve
 		}
 		return pages, errs, nil
 	}
-	err := c.inventoryBatchRequest(ctx, key, "inventory-pages", requests, func(i int, d *json.Decoder) error {
+	err := c.inventoryBatchRequest(ctx, key, "inventory-pages", requests, 0, func(i int, d *json.Decoder) error {
 		if err := d.Decode(&pages[i]); err != nil {
 			return err
 		}
@@ -67,7 +67,7 @@ func (c *Client) InventoryDirectories(ctx context.Context, key string, requests 
 	if err := c.checkInventoryBatch(requests); err != nil {
 		return nil, nil, err
 	}
-	err := c.inventoryBatchRequest(ctx, key, "inventory-directories", requests, func(i int, d *json.Decoder) error {
+	err := c.inventoryBatchRequest(ctx, key, "inventory-directories", requests, 0, func(i int, d *json.Decoder) error {
 		if err := d.Decode(&values[i]); err != nil {
 			return err
 		}
@@ -93,7 +93,7 @@ func (c *Client) checkInventoryBatch(requests []InventoryRequest) error {
 	return nil
 }
 
-func (c *Client) inventoryBatchRequest(ctx context.Context, key, op string, requests []InventoryRequest, decode func(int, *json.Decoder) error) error {
+func (c *Client) inventoryBatchRequest(ctx context.Context, key, op string, requests []InventoryRequest, budget int, decode func(int, *json.Decoder) error) error {
 	for _, r := range requests {
 		if c.Guard != nil {
 			if err := c.Guard(filepath.Join(r.Root, r.RelativePath)); err != nil {
@@ -107,7 +107,7 @@ func (c *Client) inventoryBatchRequest(ctx context.Context, key, op string, requ
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	req := request{Operation: op, Path: filepath.Join(requests[0].Root, requests[0].RelativePath), Inventories: requests}
+	req := request{Operation: op, Path: filepath.Join(requests[0].Root, requests[0].RelativePath), Inventories: requests, InventoryBudget: budget}
 	if c.MountedRoot != nil {
 		req.MountedRoot = c.MountedRoot(req.Path)
 	}

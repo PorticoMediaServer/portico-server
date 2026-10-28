@@ -47,6 +47,9 @@ type request struct {
 	Watch       *WatchRequest      `json:"watch,omitempty"`
 	Inventory   *InventoryRequest  `json:"inventory,omitempty"`
 	Inventories []InventoryRequest `json:"inventories,omitempty"`
+	// InventoryBudget is the raw-name allowance an inventory-pages-budget
+	// batch shares across Inventories.
+	InventoryBudget int `json:"inventoryBudget,omitempty"`
 	// Members are bounded paths relative to Inventory.RelativePath whose
 	// identities a disc title manifest observes.
 	Members                []string              `json:"members,omitempty"`
@@ -216,6 +219,8 @@ func Helper(in io.Reader, out io.Writer) (result error) {
 		return inventoryAbsenceHelper(*r.Inventory, out)
 	case "inventory-pages", "inventory-directories":
 		return inventoryBatchHelper(r.Operation, r.Inventories, out)
+	case "inventory-pages-budget":
+		return inventoryBudgetHelper(r.Inventories, r.InventoryBudget, out)
 	case "inventory-directory":
 		if r.Inventory == nil {
 			return errors.New("missing inventory request")

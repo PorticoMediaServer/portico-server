@@ -126,46 +126,53 @@ func (c *Client) InventoryDirectory(ctx context.Context, key string, r Inventory
 // LocalInventoryPage is also used by isolated deterministic tests. Production
 // always calls through Client so a blocked OS-mounted filesystem is killable.
 func LocalInventoryPage(r InventoryRequest) (InventoryPage, error) {
-	var p InventoryPage
+	p, _, err := localInventoryPage(r)
+	return p, err
+}
+
+// localInventoryPage also reports how many names the name reader returned for
+// the page, including the ones the page then drops (ignored, unreadable,
+// special or issue-only). That raw count is what a listing budget charges.
+func localInventoryPage(r InventoryRequest) (p InventoryPage, raw int, err error) {
 	if r.Limit < 1 || r.Limit > 128 || len(r.Cursor) > 4096 {
-		return p, errors.New("invalid inventory page")
+		return p, raw, errors.New("invalid inventory page")
 	}
 	retained, err := openInventoryRoot(r)
 	if err != nil {
-		return p, err
+		return p, raw, err
 	}
 	defer retained.Close()
 	root, err := retained.Stat(".")
 	if err != nil || !root.IsDir() {
-		return p, ErrInventoryChanged
+		return p, raw, ErrInventoryChanged
 	}
 	rootID := RootIdentity(snapshot(r.Root, root))
 	// The recorded root is the same folder when only its device number moved
 	// (SameRoot); the page reports the identity observed now.
 	if r.RootIdentity != "" && !SameRoot(r.RootIdentity, rootID) {
-		return p, ErrInventoryChanged
+		return p, raw, ErrInventoryChanged
 	}
 	path, err := inventoryPath(r)
 	if err != nil {
-		return p, err
+		return p, raw, err
 	}
 	anchored, err := filepath.Rel(r.Root, path)
 	if err != nil || !filepath.IsLocal(anchored) {
-		return p, ErrInventoryChanged
+		return p, raw, ErrInventoryChanged
 	}
 	f, err := retained.Open(anchored)
 	if err != nil {
-		return p, err
+		return p, raw, err
 	}
 	defer f.Close()
 	info, err := f.Stat()
 	if err != nil || !info.IsDir() {
-		return p, ErrInventoryChanged
+		return p, raw, ErrInventoryChanged
 	}
 	before := snapshot(path, info)
 	rev := InventoryRevision(before)
 	if r.DirectoryRevision != "" && rev != r.DirectoryRevision {
-		return p, ErrInventoryChanged
+		return p, raw, ErrInventoryChanged
 	}
 	p = InventoryPage{RootIdentity: rootID, DirectoryIdentity: before.ObjectIdentity, DirectoryRevision: rev, Entries: []Snapshot{}}
 	rules, issues := inventoryIgnoreRules(retained, r)
@@ -180,11 +187,12 @@ func LocalInventoryPage(r InventoryRequest) (InventoryPage, error) {
 	}
 	names, next, done, err := readNames(f, r.Cursor, r.Limit)
 	if err != nil {
-		return p, err
+		return p, raw, err
 	}
+	raw = len(names)
 	for _, name := range names {
 		if name == "." || name == ".." || filepath.Base(name) != name || strings.ContainsAny(name, "/\\\x00") {
-			return p, ErrInventoryChanged
+			return p, raw, ErrInventoryChanged
 		}
 		if naming.IgnoreNameBeforeStat(name) {
 			p.Issues = append(p.Issues, InventoryIssue{Path: filepath.Join(r.RelativePath, name), Reason: "ignored_name"})
@@ -262,7 +270,7 @@ func LocalInventoryPage(r InventoryRequest) (InventoryPage, error) {
 	}
 	root, err = os.Stat(r.Root)
 	if err != nil || RootIdentity(snapshot(r.Root, root)) != rootID {
-		return p, ErrInventoryChanged
+		return p, raw, ErrInventoryChanged
 	}
 	// Re-resolving catches replaced ancestors and changed symlink targets too.
 	current, err := os.Stat(path)
@@ -274,7 +282,7 @@ func LocalInventoryPage(r InventoryRequest) (InventoryPage, error) {
 		p.Complete = true
 		p.NextCursor = ""
 	}
-	return p, nil
+	return p, raw, nil
 }
 func inventoryPageHelper(r InventoryRequest, out io.Writer) error {
 	if r.Stream {
