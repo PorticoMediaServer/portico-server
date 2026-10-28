@@ -330,10 +330,6 @@ func TestPlaybackV1RestoreEndsSessionsAndRevokesMedia(t *testing.T) {
 	if w := f.raw("GET", s.Presentation.URL, "", nil, nil); w.Code >= 400 {
 		t.Fatalf("media before the restore: %d", w.Code)
 	}
-	h := newHTTPObserver(t, f.db, func(method, path string, body any) *httptest.ResponseRecorder {
-		return f.raw(method, path, f.owner.AccessToken, nil, body)
-	})
-	h.claim(s.ID, s.Presentation.Generation)
 	tx, err := f.db.BeginTx(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
@@ -352,7 +348,12 @@ func TestPlaybackV1RestoreEndsSessionsAndRevokesMedia(t *testing.T) {
 	if got.State != "ended" || got.End == nil || got.End.Reason != playbackv1.EndReasonRestored {
 		t.Fatalf("the session did not end as restored: %+v", got)
 	}
-	w := h.observe(s.ID, s.Presentation.Generation, map[string]any{"state": "playing", "positionMs": 1000})
+	// A restored server is a new process: no observer survives it, and the
+	// device can neither claim the session again nor report under an epoch.
+	if w := f.raw("POST", "/v1/playback/sessions/"+s.ID+"/observer", f.owner.AccessToken, nil, map[string]any{"generation": s.Presentation.Generation}); w.Code < 400 {
+		t.Fatalf("a restored session accepted a claim: %d", w.Code)
+	}
+	w := f.raw("PUT", "/v1/playback/sessions/"+s.ID+"/observation", f.owner.AccessToken, nil, map[string]any{"epoch": strings.Repeat("e", 22), "seq": 1, "generation": s.Presentation.Generation, "state": "playing", "positionMs": 1000, "rate": 1})
 	if w.Code < 400 {
 		t.Fatalf("a restored session accepted an observation: %d", w.Code)
 	}

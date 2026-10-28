@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"portico.local/server/internal/playback"
 	"portico.local/server/internal/playbackv1"
@@ -58,11 +59,34 @@ func TestPlaybackV1RestrictedTitleIsNotFoundEverywhere(t *testing.T) {
 		{"POST", "/v1/playback/sessions", map[string]string{"Idempotency-Key": "restrict-key-0000002"}, startBody(f.items[0], nil)},
 		{"PATCH", "/v1/playback/sessions/" + s.ID, map[string]string{"If-Match": s.Revision}, map[string]any{"quality": map[string]any{"mode": "limit", "maxHeight": 2000}}},
 		{"POST", "/v1/playback/sessions/" + s.ID + "/observer", nil, map[string]any{"generation": 1}},
-		{"PUT", "/v1/playback/sessions/" + s.ID + "/observation", nil, map[string]any{"epoch": epoch, "seq": 1, "generation": 1, "state": "playing", "positionMs": 1000, "rate": 1}},
 	} {
 		if w := f.raw(c.method, c.path, f.owner.AccessToken, c.headers, c.body); w.Code != 404 {
 			t.Errorf("%s %s: %d %s", c.method, c.path, w.Code, w.Body.String())
 		}
+	}
+	// An observation reads nothing on its hit path, so the device that already
+	// owns the session has its next sample taken; the write refuses it, records
+	// nothing and retires the owner, and from then on the title is not found.
+	sample := func(seq int) *httptest.ResponseRecorder {
+		return f.raw("PUT", "/v1/playback/sessions/"+s.ID+"/observation", f.owner.AccessToken, nil, map[string]any{"epoch": epoch, "seq": seq, "generation": 1, "state": "playing", "positionMs": 1000, "rate": 1, "monotonicMs": seq * 1000})
+	}
+	if w := sample(1); w.Code != 200 {
+		t.Fatalf("the owner's first sample after the restriction: %d %s", w.Code, w.Body.String())
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for seq := 2; ; seq++ {
+		w := sample(seq)
+		if w.Code == 404 {
+			break
+		}
+		if w.Code != 200 || time.Now().After(deadline) {
+			t.Fatalf("observation after the restriction: %d %s", w.Code, w.Body.String())
+		}
+		time.Sleep(250 * time.Millisecond) // a device's own pace, inside the rate limit
+	}
+	var position, lastSeq int64
+	if err := f.db.QueryRow(`SELECT position_ms,last_seq FROM playback_v1_sessions WHERE id=?`, s.ID).Scan(&position, &lastSeq); err != nil || position != 0 || lastSeq != 0 {
+		t.Errorf("the refused sample was written: position %d seq %d (%v)", position, lastSeq, err)
 	}
 	if w := f.raw("GET", s.Presentation.URL, "", nil, nil); w.Code < 400 {
 		t.Errorf("restricted title's grant still plays: %d", w.Code)

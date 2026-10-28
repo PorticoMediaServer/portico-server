@@ -455,7 +455,7 @@ func (o *observations) acceptLocked(e *observer, ob Observation, now time.Time) 
 	}
 	edge := !had || settled != e.settled || ob.SeekSerial != previous.SeekSerial || ob.State == "ended" || ob.State == "error"
 	e.settled = settled
-	if k := ob.Skipped; k != nil && !o.skipSeenLocked(e, k.MarkerID) {
+	if k := ob.Skipped; k != nil && !o.skipSeenLocked(e, *k) {
 		if len(e.skips) < observationSkips {
 			e.skips = append(e.skips, *k)
 			edge = true
@@ -476,19 +476,24 @@ func (o *observations) acceptLocked(e *observer, ob Observation, now time.Time) 
 	o.counts.accepted.Add(1)
 }
 
-func (o *observations) skipSeenLocked(e *observer, marker string) bool {
-	for _, k := range e.skips {
-		if k.MarkerID == marker {
+func (o *observations) skipSeenLocked(e *observer, k SkipReport) bool {
+	for _, pending := range e.skips {
+		if pending.MarkerID == k.MarkerID && pending.Mode == k.Mode {
 			return true
 		}
 	}
-	for _, m := range e.seen {
-		if m == marker {
+	for _, seen := range e.seen {
+		if seen == skipKey(k) {
 			return true
 		}
 	}
 	return false
 }
+
+// skipKey names a skip by marker and mode: an automatic skip the server
+// declined to record must not hide the viewer's later manual skip of the same
+// marker (the skip table itself keeps one row per session and marker).
+func skipKey(k SkipReport) string { return k.Mode + "/" + k.MarkerID }
 
 // observationMiss answers a sample with no owner record: the session ended,
 // is not the caller's, or the server restarted (claim again).
@@ -619,12 +624,12 @@ func (o *observations) mark(c observationCapture, res observationResult, now tim
 		e.appliedSeek, e.appliedState, e.appliedKnown = c.sample.SeekSerial, c.sample.State, true
 		for _, k := range c.skips {
 			for i, pending := range e.skips {
-				if pending.MarkerID == k.MarkerID {
+				if pending.MarkerID == k.MarkerID && pending.Mode == k.Mode {
 					e.skips = append(e.skips[:i], e.skips[i+1:]...)
 					break
 				}
 			}
-			e.seen = append(e.seen, k.MarkerID)
+			e.seen = append(e.seen, skipKey(k))
 			if len(e.seen) > 4*observationSkips {
 				e.seen = e.seen[1:]
 			}
@@ -895,6 +900,13 @@ func (s *Service) applyObservationTx(ctx context.Context, tx *sql.Tx, o *observa
 			// fence the bytes.
 			o.counts.evidenceRefused.Add(1)
 			consumed = true
+			if !drain {
+				// Nothing of the sample is written and the lease is not
+				// renewed: the owner is retired, so the device's next sample
+				// is answered by the session's own authority check (not
+				// found), and the session ends when its lease lapses.
+				return observationResult{consumed: true, retire: true}, nil, nil
+			}
 		default:
 			return observationResult{}, nil, err
 		}
