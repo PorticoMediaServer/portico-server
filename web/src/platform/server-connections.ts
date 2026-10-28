@@ -18,9 +18,9 @@ const canEncrypt=()=>!!globalThis.crypto?.subtle;
 export class BrowserProtectedStore<RecordType> {
  constructor(private readonly databaseName='portico.server-connections.v1', private readonly maximumBytes=192000, private readonly encryptedOnly=false){}
  private requireEncryption(){if(this.encryptedOnly&&!canEncrypt())throw new RouteError('secure_context_required','This continuation requires protected browser storage.');}
- private async transaction<T>(mode:IDBTransactionMode,work:(store:IDBObjectStore,done:(v:T)=>void)=>void):Promise<T>{
+ private async transaction<T>(mode:IDBTransactionMode,work:(store:IDBObjectStore,done:(v:T)=>void,failed:(error:unknown)=>void)=>void):Promise<T>{
   return new Promise((resolve,reject)=>{let db:IDBDatabase|undefined,tx:IDBTransaction|undefined,done=false,value:T;const finish=(error?:unknown)=>{if(done)return;done=true;clearTimeout(timer);db?.close();error?reject(new Error('The saved server connection could not be read or written.')):resolve(value);};const timer=setTimeout(()=>{try{tx?.abort();}catch{}finish(new Error());},5000);
-   const request=indexedDB.open(this.databaseName,1);request.onupgradeneeded=()=>request.result.createObjectStore('vault');request.onerror=()=>finish(request.error);request.onblocked=()=>finish(new Error());request.onsuccess=()=>{db=request.result;if(done){db.close();return;}try{tx=db.transaction('vault',mode,mode==='readwrite'?{durability:'strict'}:undefined);if(mode==='readwrite'&&tx.durability!=='strict')throw new Error();tx.oncomplete=()=>finish();tx.onabort=()=>finish(tx?.error);tx.onerror=()=>finish(tx?.error);work(tx.objectStore('vault'),v=>{value=v;});}catch(e){try{tx?.abort();}catch{}finish(e);}};
+   const request=indexedDB.open(this.databaseName,1);request.onupgradeneeded=()=>request.result.createObjectStore('vault');request.onerror=()=>finish(request.error);request.onblocked=()=>finish(new Error());request.onsuccess=()=>{db=request.result;if(done){db.close();return;}try{tx=db.transaction('vault',mode,mode==='readwrite'?{durability:'strict'}:undefined);if(mode==='readwrite'&&tx.durability!=='strict')throw new Error();tx.oncomplete=()=>finish();tx.onabort=()=>finish(tx?.error??new Error('The saved server transaction was aborted.')); tx.onerror=()=>finish(tx?.error);work(tx.objectStore('vault'),v=>{value=v;},error=>{try{tx?.abort();}catch{}finish(error??new Error());});}catch(e){try{tx?.abort();}catch{}finish(e);}};
   });
  }
  private exclusive<T>(work:()=>Promise<T>):Promise<T>{return navigator.locks.request(this.databaseName+':selected',{signal:AbortSignal.timeout(15000)},work);}
@@ -53,7 +53,7 @@ export class BrowserProtectedStore<RecordType> {
   * to wait on anything but the database, because the record is plain JSON in that case, so the
   * transaction stays open from the read to the write and another tab's change cannot fall between. */
  private changeInOneTransaction(update:(current:RecordType|undefined)=>RecordType|undefined,beforeCommit?:()=>void):Promise<void>{
-  return this.transaction<void>('readwrite',(store,done)=>{
+  return this.transaction<void>('readwrite',(store,done,failed)=>{
    const read=store.get('selected');
    read.onsuccess=()=>{
     try{
@@ -68,7 +68,7 @@ export class BrowserProtectedStore<RecordType> {
      if(!next){store.delete('selected');done();return;}
      const plain=JSON.stringify(next);if(new TextEncoder().encode(plain).length>this.maximumBytes)throw new Error('Saved server routes exceeded their limit.');
      store.put({version:2,plain} satisfies Vault,'selected');done();
-    }catch{try{store.transaction.abort();}catch{}}
+    }catch(error){failed(error);}
    };
   });
  }

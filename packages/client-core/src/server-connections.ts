@@ -358,7 +358,7 @@ export function refreshStoredSession(o:RefreshStoredOptions):Promise<LocalSessio
    if(typeof status!=='number')throw e;
    // The server's own wait (a 429 or 503 with Retry-After) travels with the failure, so the next try respects it.
    const busy=new SessionRefreshError('refresh_unavailable_now','The server couldn’t renew your sign-in right now.',false,status);
-   const wait=(e as {retryAfterSeconds?:unknown}|null)?.retryAfterSeconds;if(typeof wait==='number'&&Number.isFinite(wait)&&wait>0)busy.retryAfterSeconds=wait;
+   const wait=(e as {retryAfterSeconds?:unknown}|null)?.retryAfterSeconds;if(typeof wait==='number'&&wait>0)busy.retryAfterSeconds=wait;
    throw busy;
   }finally{clearTimeout(timer);o.signal?.removeEventListener('abort',abort);}
   let next:LocalSession;

@@ -103,6 +103,9 @@ export type EventFeedEnvironment = Timers & Readonly<{
   /** Something that needs the feed while out of sight is going on (playback, a room, casting). */
   busy?(): boolean;
   onBusy?(listener: () => void): () => void;
+  /** Opt-in runnable ownership (paused/parked/resumable work), independent of playing. */
+  retain?(): boolean;
+  onRetain?(listener: () => void): () => void;
   /** How long after leaving the foreground the feed is held before it is stopped. */
   graceMs?: number;
 }>;
@@ -114,7 +117,7 @@ export type EventFeedEnvironment = Timers & Readonly<{
 export function runEventFeed(events: EventsClient, hub: FreshnessHub | undefined, env: EventFeedEnvironment): () => void {
   const setTimer = setT(env), clearTimer = clearT(env), graceMs = env.graceMs ?? 30_000;
   let timer: unknown, stopped = false;
-  const wanted = () => env.visible() || !!env.busy?.();
+  const wanted = () => env.visible() || !!env.busy?.() || !!env.retain?.();
   let was: string | undefined;
   const follow = () => {
     if (stopped) return;
@@ -130,11 +133,12 @@ export function runEventFeed(events: EventsClient, hub: FreshnessHub | undefined
   };
   const offVisibility = env.onVisibility(follow);
   const offBusy = env.onBusy?.(follow);
+  const offRetain = env.onRetain?.(follow);
   follow();
   return () => {
     stopped = true;
     if (timer !== undefined) clearTimer(timer);
-    offVisibility(); offBusy?.();
+    offVisibility(); offBusy?.(); offRetain?.();
     events.stop();
   };
 }
