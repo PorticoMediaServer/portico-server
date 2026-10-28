@@ -426,3 +426,31 @@ for (const latency of [1200, 2000, 5000, 12000, 19000]) test(`native follower co
  assert.ok(slow.log.length<=3,`correction loop: ${slow.log.length} seeks`);
  assert.ok(Math.abs(drift.at(-1)!)<0.75,`did not settle: ${drift.at(-1)} seconds`);
 });
+
+test('SUP-006: only the precise join refusal identifies an invalid invite code', async () => {
+ for (const failure of [{code:'invite_not_found',status:404},{code:'invalid_response',status:404},{code:'not_found',status:404},{code:'invite_expired',status:410},{status:404}]) {
+  const s=server(),service=new GroupSessionService({api:{request:async()=>{throw Object.assign(new Error('That invitation code is not valid.'),failure);}},stream:s.stream});
+  try {
+   assert.equal(await service.join(' abcd-efgh ','Sam'),false);
+   assert.deepEqual(service.getSnapshot().joinFailure,'code' in failure&&failure.code==='invite_not_found'?{code:'invite_not_found',inviteCode:'ABCDEFGH'}:undefined);
+   service.clearJoinFailure();assert.equal(service.getSnapshot().joinFailure,undefined);assert.equal(service.getSnapshot().error,undefined);
+  } finally {service.dispose();}
+ }
+});
+
+test('SUP-006: retry, replacement and form edits retire only their failed join attempt', async () => {
+ const s=server();let reject!:(error:unknown)=>void,hold=false;
+ const service=new GroupSessionService({api:{request:async<T,>()=>{if(hold)return new Promise<T>((_resolve,no)=>{reject=no;});throw Object.assign(new Error('wrong code'),{code:'invite_not_found',status:404});}},stream:s.stream});
+ try {
+  await service.join('ABCDEFGH','Sam');assert.ok(service.getSnapshot().joinFailure);
+  hold=true;const retry=service.join('IJKLMNOP','Sam');assert.equal(service.getSnapshot().joinFailure,undefined);
+  service.clearJoinFailure();reject(Object.assign(new Error('old refusal'),{code:'invite_not_found',status:404}));
+  assert.equal(await retry,false);assert.equal(service.getSnapshot().joinFailure,undefined);assert.equal(service.getSnapshot().error,undefined);
+  hold=false;await service.join('ABCDEFGH','Sam');assert.ok(service.getSnapshot().joinFailure);
+  const cancel=new AbortController();hold=true;const replacement=service.join('IJKLMNOP','Sam',{signal:cancel.signal,isCurrent:()=>true});
+  assert.equal(service.getSnapshot().joinFailure,undefined);cancel.abort();reject(Object.assign(new Error('late refusal'),{code:'invite_not_found',status:404}));
+  assert.equal(await replacement,false);assert.equal(service.getSnapshot().joinFailure,undefined);
+  hold=false;await service.join('ABCDEFGH','Sam');assert.ok(service.getSnapshot().joinFailure);
+  await service.open('other');assert.equal(service.getSnapshot().joinFailure,undefined,'non-join failures never retain a join discriminator');
+ } finally {service.dispose();}
+});

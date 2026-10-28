@@ -17,6 +17,7 @@ export type HomeSelectionPlaybackItem = Readonly<{
   entry: ContentEntry;
   /** The actual server-selected child/resume target can differ from identity. */
   target: NonNullable<ContentEntry['playback']>;
+  startIntent: 'resume' | 'start-over' | 'explicit';
 } | {collection: HomeCollection})>;
 export type HomeSelectionPlaybackRequest = Readonly<{
   context: SelectionContext;

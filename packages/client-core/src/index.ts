@@ -616,8 +616,8 @@ export class HttpLocalApi {
       name,
     })).then(value=>parseLocalSession(value,{authority:'local'}));
   }
-  me() {
-    return this.request<{ viewer: Viewer }>(routePath("get_me"));
+  me(signal?: AbortSignal) {
+    return this.request<{ viewer: Viewer }>(routePath("get_me"), "GET", undefined, signal);
   }
   logout() {
     return this.request<void>(routePath("delete_sessions_current"), "DELETE");

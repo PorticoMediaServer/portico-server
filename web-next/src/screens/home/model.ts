@@ -16,7 +16,7 @@ export function homePlaybackItem(document: HomeDocument, entry: ContentEntry, ta
   const inRows = (rows: readonly HomeRow[]): boolean => rows.some(row => row.entries.includes(entry) && (row.resumes?.find(resume => resume.entryId === entry.id)?.target ?? entry) === target || inRows(row.children ?? []));
   if (!offered && !inRows(document.rows)) return undefined;
   const playback = homePlaybackTarget(entry, target), identity = homeEntrySelection(entry, {platform: 'web', playbackAvailable: true, queueAvailable: true});
-  return playback && identity ? {identity, entry, target: playback} : undefined;
+  return playback && identity ? {identity, entry, target: playback, startIntent: entry.kind === 'chapter' ? 'explicit' : 'resume'} : undefined;
 }
 
 /** Fields stay semantic. In particular, the old joined subtitle is never parsed. */

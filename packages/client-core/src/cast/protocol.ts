@@ -30,11 +30,12 @@ export type CastTrack = Readonly<{id: number; language: string; name: string}>;
 export type CastQueueRef = Readonly<{queueId: string; entryId: string; transferId?: string}>;
 /** Sent only to the authenticated bootstrap endpoint, never to the receiver. */
 export type CastQueueSource = Readonly<{sessionId: string; generation: number; queueId: string; entryId: string; queueRevision: string}>;
-export type CastChoices = Readonly<{audioTrackId?: string; subtitleTrackId?: string | null; queue?: CastQueueRef; source?: CastQueueSource}>;
+export type CastChoices = Readonly<{versionId?: string; audioTrackId?: string; subtitleTrackId?: string | null; queue?: CastQueueRef; source?: CastQueueSource}>;
 const trackIdPattern = /^[A-Za-z0-9._:-]{1,128}$/;
 /** `load` fields for `choices`: `subtitleTrackId` is a track id, or "off". */
 export function castChoiceFields(choices: CastChoices | undefined): Record<string, string | CastQueueRef> {
   const fields: Record<string, string | CastQueueRef> = {};
+  if (typeof choices?.versionId === 'string' && trackIdPattern.test(choices.versionId)) fields.versionId = choices.versionId;
   if (typeof choices?.audioTrackId === 'string' && trackIdPattern.test(choices.audioTrackId)) fields.audioTrackId = choices.audioTrackId;
   if (choices?.subtitleTrackId === null) fields.subtitleTrackId = 'off';
   else if (typeof choices?.subtitleTrackId === 'string' && trackIdPattern.test(choices.subtitleTrackId)) fields.subtitleTrackId = choices.subtitleTrackId;
@@ -68,7 +69,7 @@ export type CastEvent =
   | {type: 'replaced'}
   | {type:'stopped';requestId:string;target:CastRemoteIdentity;positionSeconds?:number;durationSeconds?:number}
   | {type:'control-failed';requestId:string;target:CastRemoteIdentity}
-  | {type: 'status'; controller?:CastControllerStamp;occurrence?:CastReceiverOccurrence;clockKnown?:true;attemptId?:string;itemId: string; positionSeconds: number; durationSeconds: number; paused: boolean; audioTracks: readonly CastTrack[]; textTracks: readonly CastTrack[]};
+  | {type: 'status'; controller?:CastControllerStamp;occurrence?:CastReceiverOccurrence;clockKnown?:true;attemptId?:string;versionId?:string;itemId: string; positionSeconds: number; durationSeconds: number; paused: boolean; audioTracks: readonly CastTrack[]; textTracks: readonly CastTrack[]};
 
 const finite = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0);
 const short = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
@@ -118,7 +119,7 @@ export function parseCastEvent(raw: unknown): CastEvent | undefined {
       // turning it into a zero/false fact.
       const clock=(v:unknown)=>v===undefined||typeof v==='number'&&Number.isFinite(v)&&v>=0;
       if(typeof o.itemId!=='string'||!clock(o.positionSeconds)||!clock(o.durationSeconds)||o.paused!==undefined&&typeof o.paused!=='boolean')return;
-      return {type:'status',...(controller?{controller}:{}),...(occurrence?{occurrence}:{}),...(typeof o.positionSeconds==='number'&&Number.isFinite(o.positionSeconds)&&o.positionSeconds>=0&&typeof o.durationSeconds==='number'&&Number.isFinite(o.durationSeconds)&&o.durationSeconds>=0?{clockKnown:true as const}:{}),...(typeof o.attemptId==='string'&&trackIdPattern.test(o.attemptId)?{attemptId:o.attemptId}:{}),itemId,positionSeconds:finite(o.positionSeconds),durationSeconds:finite(o.durationSeconds),paused:o.paused===true,audioTracks:tracks(o.audioTracks),textTracks:tracks(o.textTracks)};
+      return {type:'status',...(typeof o.versionId==='string'&&trackIdPattern.test(o.versionId)?{versionId:o.versionId}:{}),...(controller?{controller}:{}),...(occurrence?{occurrence}:{}),...(typeof o.positionSeconds==='number'&&Number.isFinite(o.positionSeconds)&&o.positionSeconds>=0&&typeof o.durationSeconds==='number'&&Number.isFinite(o.durationSeconds)&&o.durationSeconds>=0?{clockKnown:true as const}:{}),...(typeof o.attemptId==='string'&&trackIdPattern.test(o.attemptId)?{attemptId:o.attemptId}:{}),itemId,positionSeconds:finite(o.positionSeconds),durationSeconds:finite(o.durationSeconds),paused:o.paused===true,audioTracks:tracks(o.audioTracks),textTracks:tracks(o.textTracks)};
     }
     default: return undefined;
   }
@@ -143,7 +144,8 @@ export function captureCastChoices(value: CastChoices | undefined): CastChoices 
  if(queue&&(!trackIdPattern.test(queue.queueId)||!trackIdPattern.test(queue.entryId)))throw new Error('invalid_cast_queue');
  const source=value.source;
  if(source&&(!queue||!trackIdPattern.test(source.sessionId)||!Number.isSafeInteger(source.generation)||source.generation<1||source.queueId!==queue.queueId||source.entryId!==queue.entryId||!/^(?:[0-9]+|"[0-9]+")$/.test(source.queueRevision)))throw new Error('invalid_cast_source');
- return Object.freeze({...value,...(queue?{queue:Object.freeze({queueId:queue.queueId,entryId:queue.entryId})}:{}),...(source?{source:Object.freeze({...source})}:{})});
+ const {versionId,...rest}=value;
+ return Object.freeze({...rest,...(typeof versionId==='string'&&trackIdPattern.test(versionId)?{versionId}:{}),...(queue?{queue:Object.freeze({queueId:queue.queueId,entryId:queue.entryId})}:{}),...(source?{source:Object.freeze({...source})}:{})});
 }
 export type CastTransferReceipt=Readonly<{id:string;state:'pending'|'bound'|'cancelled'|'committed';itemId?:string;playbackState?:'preparing'|'playing'|'paused'|'ended'}>;
 export function castTransferReceipt(raw:unknown,id:string):CastTransferReceipt|undefined{

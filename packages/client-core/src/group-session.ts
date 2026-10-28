@@ -28,6 +28,8 @@ export type GroupSessionSnapshot=Readonly<{
  directory:readonly Group[];directoryPhase:'idle'|'loading'|'ready'|'error';directoryError?:string;
  /** The catalogue ID behind `directoryError` / `error`, for clients that render in another language later. */
  directoryErrorId?:MessageId;errorId?:MessageId;
+ /** Only the server's exact wrong/unknown-code refusal for this join attempt. */
+ joinFailure?:Readonly<{code:'invite_not_found';inviteCode:string}>;
  phase:GroupRoomPhase;group?:Group;queue?:GroupQueue;invite?:GroupInvite;busy:boolean;error?:string;
  /** A command the server refused because somebody in the group cannot see the title. Only the
   * host may repeat it with `allowUnavailable`, and the group is told when they do. */
@@ -92,7 +94,7 @@ export class GroupSessionService{
  }
  async join(inviteCode:string,displayName:string,lifetime?:GroupEnterLifetime):Promise<boolean>{
   const tidy=inviteCode.replace(/[\s-]/g,'').toUpperCase();
-  return this.enter(async signal=>parseGroupSnapshot(await this.api.request<RouteResponse<"social_post_v1_groups_join">>(routePath("social_post_v1_groups_join"),'POST',routeBody("social_post_v1_groups_join", {protocolVersion:SOCIAL_PROTOCOL,code:tidy,displayName:displayName.trim()}),signal)),'together.error.join',lifetime);
+  return this.enter(async signal=>parseGroupSnapshot(await this.api.request<RouteResponse<"social_post_v1_groups_join">>(routePath("social_post_v1_groups_join"),'POST',routeBody("social_post_v1_groups_join", {protocolVersion:SOCIAL_PROTOCOL,code:tidy,displayName:displayName.trim()}),signal)),'together.error.join',lifetime,tidy);
  }
  /** Re-enters a group this viewer already belongs to. */
  async open(groupId:string,lifetime?:GroupEnterLifetime):Promise<boolean>{
@@ -100,7 +102,7 @@ export class GroupSessionService{
   if(this.room?.id===groupId&&this.state.group)return true;
   return this.enter(async signal=>parseGroupSnapshot(await this.api.request<unknown>(path(groupId),'GET',undefined,signal)),'together.error.open',lifetime);
  }
- private async enter(read:(signal:AbortSignal)=>Promise<{serverTime:string;group:Group}>,fallback:MessageId,lifetime?:GroupEnterLifetime):Promise<boolean>{
+ private async enter(read:(signal:AbortSignal)=>Promise<{serverTime:string;group:Group}>,fallback:MessageId,lifetime?:GroupEnterLifetime,joinCode?:string):Promise<boolean>{
   if(this.disposed||lifetime?.signal.aborted||lifetime?.isCurrent()===false)return false;
   this.close('joining');const turn=new AbortController();this.entering=turn;
   const current=()=>!this.disposed&&this.entering===turn&&!turn.signal.aborted&&!lifetime?.signal.aborted&&lifetime?.isCurrent()!==false;
@@ -110,7 +112,7 @@ export class GroupSessionService{
   try{
    const sent=this.now();const snapshot=await read(turn.signal);if(!current())return false;
    this.adopt(snapshot,{sent,received:this.now()});if(this.state.phase!=='ended')this.follow(snapshot.group.id);return true;
-  }catch(e){if(current())this.publish({phase:'idle',...this.problem(this.say(e,fallback))});return false;}
+  }catch(e){if(current())this.publish({phase:'idle',...this.problem(this.say(e,fallback)),joinFailure:joinCode!==undefined&&code(e)==='invite_not_found'?Object.freeze({code:'invite_not_found' as const,inviteCode:joinCode}):undefined});return false;}
   finally{lifetime?.signal.removeEventListener('abort',cancel);if(this.entering===turn){const valid=current();this.entering=undefined;this.publish({busy:false,...(!valid&&!this.room?{phase:'idle' as const}:{})});}}
  }
  /** `timing`: when the request that brought this snapshot was sent and answered (absent for pushed frames). */
@@ -236,11 +238,13 @@ export class GroupSessionService{
   })();
  }
  refreshQueue(){return this.room?this.readQueue(this.room):Promise.resolve();}
+ /** Form owners call on edit/replacement; a late failed join cannot refill the new form. */
+ clearJoinFailure(){if(this.entering)this.close('idle');this.publish({joinFailure:undefined,error:undefined,errorId:undefined});}
  private close(phase:GroupRoomPhase){
   this.entering?.abort();this.entering=undefined;
   const room=this.room;this.room=undefined;
   if(room){room.abort.abort();clearInterval(room.beat);clearTimeout(room.retry);clearTimeout(room.watchdog);}
-  if(phase==='idle'||phase==='joining'||phase==='left')this.publish({phase,busy:false,group:undefined,queue:undefined,invite:undefined});else this.publish({phase,busy:false});
+  if(phase==='idle'||phase==='joining'||phase==='left')this.publish({phase,busy:false,group:undefined,queue:undefined,invite:undefined,joinFailure:undefined});else this.publish({phase,busy:false,joinFailure:undefined});
  }
 
  private async act<T>(work:(group:Group)=>Promise<T>,fallback:MessageId):Promise<T|undefined>{

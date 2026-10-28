@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {captureCastChoices} from '../src/cast/protocol.ts';
 import {castProofKey,type CastControllerContext} from '../src/cast/controller-proof.ts';
 import assert from 'node:assert/strict';
 import {CastController, castChoiceFields, parseCastEvent, type CastCommand, type CastTransport} from '../src/cast/index.ts';
@@ -541,5 +542,58 @@ test('V01: selected audio identity travels with load and malformed identities ar
  try{
   const started=h.controller.start(r.transport,'item-1',{title:'Pilot'},0,{audioTrackId:'a2',subtitleTrackId:null});await settle();r.reply({type:'paired'});assert.equal(await started,true);
   const load=r.sent.find(m=>m.type==='load');assert.ok(load);assert.equal(load.audioTrackId,'a2');assert.equal(load.subtitleTrackId,'off');
+ }finally{h.controller.dispose();}
+});
+
+test('V02: bounded version choices survive capture and load; malformed optional ids are omitted',async()=>{
+ for(const versionId of ['edition-2', 'v'.repeat(128)])assert.deepEqual(castChoiceFields(captureCastChoices({versionId})),{versionId});
+ for(const versionId of ['', 'bad id', 'v'.repeat(129), 7, null])assert.deepEqual(castChoiceFields(captureCastChoices({versionId} as any)),{});
+ const h=harness(),tv=receiver();
+ try{
+  const choices={versionId:'requested-edition'};
+  const start=h.controller.start(tv.transport,'movie',{title:'Film'},0,choices);choices.versionId='mutated';
+  await settle();tv.reply({type:'paired'});assert.equal(await start,true);
+  const load=tv.sent.find(m=>m.type==='load');assert.equal(load?.versionId,'requested-edition');
+  assert.equal(h.controller.getSnapshot().versionId,undefined,'a requested version is not an accepted version');
+  tv.reply({type:'status',itemId:'movie',versionId:'unbound-edition',positionSeconds:2,durationSeconds:60});
+  assert.equal(h.controller.getSnapshot().versionId,undefined);assert.equal(h.controller.getSnapshot().reported?.versionId,undefined);
+ }finally{h.controller.dispose();}
+});
+
+test('V02: private status validates the version without turning malformed ids into facts',()=>{
+ for(const versionId of ['edition-2','v'.repeat(128),'', 'bad id','v'.repeat(129),7,null,undefined]){
+  const event=parseCastEvent({type:'status',itemId:'movie',versionId,positionSeconds:2,durationSeconds:60});
+  assert.equal(event?.type,'status');if(event?.type!=='status')throw new Error('missing status');
+  assert.equal(event.versionId,typeof versionId==='string'&&versionId.length>0&&versionId.length<=128&&!versionId.includes(' ')?versionId:undefined);
+ }
+});
+
+test('V02: adoption and correlated Stop retain the accepted edition; successors never inherit it',async()=>{
+ const h=returning(),tv=receiver('TV','tv-a');
+ try{
+  const adopting=h.controller.adopt(tv.transport);await settle();const command=tv.sent[0];if(command.type!=='adopt')throw new Error('no adoption');
+  const status={type:'status',controller:controllerStamp,occurrence,itemId:'movie',positionSeconds:80,durationSeconds:600,paused:false,versionId:'edition-a'};
+  tv.reply({...status,attemptId:command.attemptId});assert.equal(await adopting,true);
+  assert.equal(h.controller.getSnapshot().versionId,'edition-a');assert.equal(h.controller.getSnapshot().reported?.versionId,'edition-a');
+  h.controller.stop(h.controller.getSnapshot().remoteIdentity);const stop=tv.sent.at(-1);if(stop?.type!=='stop')throw new Error('no Stop');
+  tv.reply({type:'stopped',requestId:stop.requestId,target:stop.target,positionSeconds:81,durationSeconds:600,versionId:'untrusted'});
+  assert.equal(h.controller.getSnapshot().versionId,'edition-a');assert.equal(h.controller.getSnapshot().reported?.versionId,'edition-a');
+  const next={...status,occurrence:{...occurrence,sessionId:'edition-b-session',generation:8},versionId:'edition-b'};
+  tv.reply(next);await settle();assert.equal(h.controller.getSnapshot().versionId,'edition-b');assert.equal(h.controller.getSnapshot().reported?.versionId,'edition-b');
+  tv.reply({...next,occurrence:{...next.occurrence,sessionId:'unknown-edition',generation:9},versionId:undefined});await settle();
+  assert.equal(h.controller.getSnapshot().versionId,undefined);assert.equal(h.controller.getSnapshot().reported?.versionId,undefined);
+  tv.reply({...next,occurrence:{...next.occurrence,sessionId:'edition-b-again',generation:10}});await settle();assert.equal(h.controller.getSnapshot().versionId,'edition-b');
+  tv.reply({type:'replaced'});assert.equal(h.controller.getSnapshot().versionId,undefined);assert.equal(h.controller.getSnapshot().reported,undefined);
+ }finally{h.controller.dispose();}
+});
+
+test('V02: redaction clears the accepted edition and its reported return state',async()=>{
+ let denied=false;const h=returning({describe:async()=>denied?undefined:'Film'}),tv=receiver('TV','tv-a');
+ try{
+  const adopting=h.controller.adopt(tv.transport);await settle();const command=tv.sent[0];if(command.type!=='adopt')throw new Error('no adoption');
+  const status={type:'status',controller:controllerStamp,occurrence,itemId:'movie',positionSeconds:2,durationSeconds:60,versionId:'edition'};
+  tv.reply({...status,attemptId:command.attemptId});assert.equal(await adopting,true);
+  denied=true;tv.reply(status);await settle();assert.equal(h.controller.getSnapshot().disclosureRefused,true);
+  assert.equal(h.controller.getSnapshot().versionId,undefined);assert.equal(h.controller.getSnapshot().reported,undefined);
  }finally{h.controller.dispose();}
 });
