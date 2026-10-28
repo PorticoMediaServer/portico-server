@@ -2,6 +2,7 @@
 """Admit the isolated fixture owner and write a private operator token. Never echo it."""
 import argparse
 import importlib.util
+import os
 from pathlib import Path
 import secrets
 
@@ -27,7 +28,12 @@ def main():
     primary = next((entry for entry in profiles if entry.get('primary')), profiles[0])
     session = factory.select_profile(client, primary['id'])
     factory.current_admission(client, session, 'owner')
-    factory.write_private_json(a.out, {'accessToken': session['accessToken'], 'expiresAt': session['expiresAt']})
+    fd = os.open(a.out, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, 'w') as output:
+        output.write(session['accessToken'] + '\n')
+        output.flush()
+        os.fsync(output.fileno())
+    factory.write_private_json(str(a.out) + '.expiry.json', {'expiresAt': session['expiresAt']})
     print('Owner admission checked; private token written. Reissue before each operator window.')
 
 
