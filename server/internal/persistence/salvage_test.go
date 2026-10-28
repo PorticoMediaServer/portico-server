@@ -242,6 +242,8 @@ func TestRestoreSalvagesADamagedTable(t *testing.T) {
 	// A table keyed by name, not rowid.
 	exec(`INSERT INTO catalog_credit_names(name,credits) WITH RECURSIVE n(value) AS (SELECT 1 UNION ALL SELECT value+1 FROM n WHERE value<600) SELECT printf('person %05d %s',value,'` + longName + `'),value FROM n`)
 	exec(`INSERT INTO catalog_people_names(name) VALUES('Ada Lovelace'),('Grace Hopper')`)
+	// A composite key whose first column never changes.
+	exec(`WITH RECURSIVE n(value) AS (SELECT 1 UNION ALL SELECT value+1 FROM n WHERE value<4000) INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 1,value,value FROM n`)
 	folded(t, db, path)
 	var libraries, sources int
 	probe, err := sql.Open("sqlite", path)
@@ -253,14 +255,16 @@ func TestRestoreSalvagesADamagedTable(t *testing.T) {
 	}
 	probe.Close()
 	// Two separate damaged pages in each table, readable pages between them.
-	lostLibraries, lostCredits := 0, 0
+	lostLibraries, lostCredits, lostDirty := 0, 0, 0
 	var spoiled []int64
 	for _, nth := range []int{3, 8} {
 		libraryPage := pageOf(t, path, "libraries", "leaf", nth)
 		creditPage := pageOf(t, path, "catalog_credit_names", "leaf", nth)
+		dirtyPage := pageOf(t, path, "catalog_dirty", "leaf", nth)
 		lostLibraries += cellsOn(t, path, libraryPage)
 		lostCredits += cellsOn(t, path, creditPage)
-		spoiled = append(spoiled, libraryPage, creditPage)
+		lostDirty += cellsOn(t, path, dirtyPage)
+		spoiled = append(spoiled, libraryPage, creditPage, dirtyPage)
 	}
 	for _, page := range spoiled {
 		spoil(t, path, page)
@@ -270,7 +274,7 @@ func TestRestoreSalvagesADamagedTable(t *testing.T) {
 	if err != nil || report.Integrity != "recovered" || report.Recovery == nil || !report.Recovery.Salvaged {
 		t.Fatalf("table damage: %+v %v", report, err)
 	}
-	if damaged := fmt.Sprint(report.Recovery.DamagedTables); damaged != "[catalog_credit_names libraries]" {
+	if damaged := fmt.Sprint(report.Recovery.DamagedTables); damaged != "[catalog_credit_names catalog_dirty libraries]" {
 		t.Fatalf("damaged tables %s", damaged)
 	}
 	if n := countIn(t, path, `SELECT count(*) FROM libraries`); n != libraries-lostLibraries {
@@ -278,6 +282,9 @@ func TestRestoreSalvagesADamagedTable(t *testing.T) {
 	}
 	if n := countIn(t, path, `SELECT count(*) FROM catalog_credit_names`); n != 600-lostCredits {
 		t.Fatalf("salvage kept %d credit names; %d were readable", n, 600-lostCredits)
+	}
+	if n := countIn(t, path, `SELECT count(*) FROM catalog_dirty`); n != 4000-lostDirty {
+		t.Fatalf("salvage kept %d rows of a composite-key table; %d were readable", n, 4000-lostDirty)
 	}
 	// The sources of lost libraries are gone, and nothing else.
 	// Each library has two sources (its own and the fixture's).
@@ -319,7 +326,7 @@ func TestSalvageMidpoints(t *testing.T) {
 		ok     bool
 	}{
 		{int64(1), int64(9), true}, {int64(1), int64(2), false}, {nil, int64(5), true}, {int64(math.MinInt64), int64(math.MaxInt64), true},
-		{"person 00053", "person 00200", true}, {"a", "a\x00", false}, {"", "b", true}, {nil, "a", true},
+		{"person 00053", "person 00200", true}, {"a", "a\x00", false}, {"a", "a\x00\x00", true}, {"a", nil, true}, {"", "b", true}, {nil, "a", true},
 		{[]byte{1, 2}, []byte{1, 3}, true}, {2.0, 3.0, true}, {"a", int64(1), false}, {int64(5), int64(5), false},
 	} {
 		m, ok := midpoint(c.lo, c.hi)

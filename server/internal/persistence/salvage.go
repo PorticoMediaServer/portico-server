@@ -261,79 +261,157 @@ func salvageTables(ctx context.Context, db *dbwork.Candidate) ([]salvageTable, e
 // to single rows where a window fails, so everything before damage is kept,
 // then backwards from the end of the table down to the damage. What lies
 // between is a gap of unknown size that may hold readable pages among damaged
-// ones: it is bisected on the first key column (rowid, or the first column of
-// the primary key). A readable row found at a midpoint is copied with every
-// readable row on either side of it, and the parts of the gap still unread
-// become new gaps. Re-reading a row is harmless (copies replace), and a probe
-// budget bounds the work on a badly damaged table.
+// ones. It is bisected on the key (rowid, or the primary key column by column,
+// so a composite key whose leading columns repeat is still split): a readable
+// row found at a midpoint is copied with every readable row on either side of
+// it, and the parts still unread become new gaps. Re-reading a row is harmless
+// (copies replace), and a probe budget bounds the work on a badly damaged
+// table. Bisection follows SQLite's default ordering (integers, reals, then
+// BINARY-collated text and blobs); a key ordered otherwise is still copied up
+// to and back from the damage, but its gaps may not all be recovered.
 func copyTable(ctx context.Context, db *dbwork.Candidate, table salvageTable) (bool, error) {
 	c := newTableCopy(db, table)
-	_, last, faulted, err := c.run(ctx, nil, nil, false, "", nil)
+	_, last, faulted, err := c.run(ctx, nil, nil, false)
 	if err != nil || !faulted {
 		return !c.rejected, err
 	}
-	_, low, faulted, err := c.run(ctx, nil, last, true, "", nil)
-	if err != nil || !faulted {
+	_, low, faulted, err := c.run(ctx, nil, last, true)
+	if err != nil || !faulted || low == nil {
 		return false, err
 	}
-	type gap struct{ lo, hi any } // first-column values; nil lo is the table's start
-	var lo, hi any
-	if last != nil {
-		lo = last[0]
+	type gap struct{ lo, hi []any }
+	lo := last
+	if lo == nil {
+		lo = []any{negInf}
 	}
-	if low == nil {
-		return false, nil // damage at the very end: nothing was read backwards
-	}
-	hi = low[0]
-	gaps := []gap{{lo, hi}}
+	gaps := []gap{{lo, low}}
 	for budget := salvageProbes; len(gaps) > 0 && budget > 0; budget-- {
 		g := gaps[len(gaps)-1]
 		gaps = gaps[:len(gaps)-1]
-		mid, ok := midpoint(g.lo, g.hi)
-		if !ok {
+		i := firstDifference(g.lo, g.hi, c.keys)
+		if i < 0 {
 			continue
 		}
-		// Forward from the midpoint, within the gap.
-		first, end, faulted, err := c.run(ctx, nil, nil, false, c.column+`>=? AND `+c.column+`<=?`, []any{mid, g.hi})
+		lv, hv := element(g.lo, i), element(g.hi, i)
+		if lv == posInf || hv == negInf {
+			continue // nothing lies between
+		}
+		prefix := g.lo[:min(i, len(g.lo))]
+		if len(prefix) < i {
+			prefix = g.hi[:i]
+		}
+		mid, ok := midpoint(finite(lv), finite(hv))
+		if !ok {
+			if i == c.keys-1 {
+				continue // adjacent values: no key between them
+			}
+			// The two ends differ here by adjacent values; what lies between
+			// shares one end's value and differs further on.
+			if lv != negInf {
+				gaps = append(gaps, gap{g.lo, append(append([]any{}, g.lo[:i+1]...), posInf)})
+			}
+			if hv != posInf {
+				gaps = append(gaps, gap{append(append([]any{}, g.hi[:i+1]...), negInf), g.hi})
+			}
+			continue
+		}
+		at := append(append(append([]any{}, prefix...), mid), negInf) // just below (prefix, mid)
+		first, end, faulted, err := c.run(ctx, g.hi, at, false)
 		if err != nil {
 			return false, err
 		}
 		if first == nil {
 			if faulted {
-				gaps = append(gaps, gap{mid, g.hi}) // damage at the midpoint itself
+				gaps = append(gaps, gap{at, g.hi}) // damage at the midpoint itself
 			}
-			gaps = append(gaps, gap{g.lo, mid})
+			gaps = append(gaps, gap{g.lo, at})
 			continue
 		}
 		if faulted {
-			gaps = append(gaps, gap{end[0], g.hi})
+			gaps = append(gaps, gap{end, g.hi})
 		}
-		// Backward from the first row found, down to the bottom of the gap.
-		extra, args := c.column+`>=?`, []any{g.lo}
-		if g.lo == nil {
-			extra, args = "", nil
-		}
-		_, bottom, faulted, err := c.run(ctx, first, nil, true, extra, args)
+		_, bottom, faulted, err := c.run(ctx, first, g.lo, true)
 		if err != nil {
 			return false, err
 		}
 		if faulted {
-			gaps = append(gaps, gap{g.lo, bottom[0]})
+			gaps = append(gaps, gap{g.lo, bottom})
 		}
 	}
 	return false, nil
 }
 
-// midpoint is a value strictly between lo and hi of the same SQLite type (nil
-// lo is unbounded below), or false when there is none.
-func midpoint(lo, hi any) (any, bool) {
-	switch h := hi.(type) {
-	case int64:
-		l, ok := lo.(int64)
-		if lo == nil {
-			l, ok = math.MinInt64, true
+// infinity ends a key bound: below (negInf) or above (posInf) every key that
+// shares the bound's leading values.
+type infinity int8
+
+const (
+	negInf infinity = -1
+	posInf infinity = 1
+)
+
+func element(tuple []any, i int) any {
+	if i < len(tuple) {
+		return tuple[i]
+	}
+	if len(tuple) > 0 {
+		if inf, ok := tuple[len(tuple)-1].(infinity); ok {
+			return inf
 		}
-		if !ok || h <= l {
+	}
+	return negInf
+}
+
+func finite(v any) any {
+	if _, ok := v.(infinity); ok {
+		return nil
+	}
+	return v
+}
+
+// firstDifference is the first key column where two bounds differ, or -1.
+func firstDifference(lo, hi []any, keys int) int {
+	for i := 0; i < keys; i++ {
+		l, h := element(lo, i), element(hi, i)
+		if _, ok := l.(infinity); ok {
+			return i
+		}
+		if _, ok := h.(infinity); ok {
+			return i
+		}
+		lb, lok := l.([]byte)
+		hb, hok := h.([]byte)
+		if lok && hok {
+			if !bytes.Equal(lb, hb) {
+				return i
+			}
+			continue
+		}
+		if lok || hok || l != h {
+			return i
+		}
+	}
+	return -1
+}
+
+// midpoint is a value strictly between lo and hi of one SQLite type, where a
+// nil end is unbounded, or false when there is none.
+func midpoint(lo, hi any) (any, bool) {
+	kind := hi
+	if kind == nil {
+		kind = lo
+	}
+	switch kind.(type) {
+	case int64:
+		l, lok := lo.(int64)
+		h, hok := hi.(int64)
+		if lo == nil {
+			l, lok = math.MinInt64, true
+		}
+		if hi == nil {
+			h, hok = math.MaxInt64, true
+		}
+		if !lok || !hok || h <= l {
 			return nil, false
 		}
 		span := uint64(h) - uint64(l) // exact even when h-l overflows int64
@@ -342,33 +420,49 @@ func midpoint(lo, hi any) (any, bool) {
 		}
 		return l + int64(span/2), true
 	case float64:
-		l, ok := lo.(float64)
+		l, lok := lo.(float64)
+		h, hok := hi.(float64)
 		if lo == nil {
-			l, ok = -math.MaxFloat64, true
+			l, lok = -math.MaxFloat64, true
+		}
+		if hi == nil {
+			h, hok = math.MaxFloat64, true
 		}
 		m := l/2 + h/2
-		return m, ok && m > l && m < h
+		return m, lok && hok && m > l && m < h
 	case string:
-		l, ok := lo.(string)
-		if lo == nil {
-			ok = true
+		l, lok := lo.(string)
+		h, hok := hi.(string)
+		if !(lok || lo == nil) || !(hok || hi == nil) {
+			return nil, false
 		}
-		m, between := midBytes([]byte(l), []byte(h))
-		return string(m), ok && between
+		var upper []byte
+		if hi != nil {
+			upper = []byte(h)
+		}
+		m, between := midBytes([]byte(l), upper, hi == nil)
+		return string(m), between
 	case []byte:
-		l, ok := lo.([]byte)
-		if lo == nil {
-			ok = true
+		l, lok := lo.([]byte)
+		h, hok := hi.([]byte)
+		if !(lok || lo == nil) || !(hok || hi == nil) {
+			return nil, false
 		}
-		m, between := midBytes(l, h)
-		return m, ok && between
+		m, between := midBytes(l, h, hi == nil)
+		return m, between
 	}
 	return nil, false
 }
 
 // midBytes is a byte string strictly between a and b in memcmp order (the
-// order SQLite uses for BLOBs and for TEXT under its default collation).
-func midBytes(a, b []byte) ([]byte, bool) {
+// order SQLite uses for BLOBs and for TEXT under its default collation); b is
+// unbounded when open.
+func midBytes(a, b []byte, open bool) ([]byte, bool) {
+	between := func(m []byte) bool { return bytes.Compare(m, a) > 0 && (open || bytes.Compare(m, b) < 0) }
+	if open {
+		m := append(append([]byte{}, a...), 0x80)
+		return m, true
+	}
 	if bytes.Compare(a, b) >= 0 {
 		return nil, false
 	}
@@ -399,23 +493,27 @@ func midBytes(a, b []byte) ([]byte, bool) {
 		}
 		carry = v % 2
 	}
-	if trimmed := bytes.TrimRight(mid, "\x00"); bytes.Compare(trimmed, a) > 0 {
-		mid = trimmed
+	if trimmed := bytes.TrimRight(mid, "\x00"); between(trimmed) {
+		return trimmed, true
 	}
-	return mid, bytes.Compare(mid, a) > 0 && bytes.Compare(mid, b) < 0
+	if between(mid) {
+		return mid, true
+	}
+	// a and b differ only in trailing zero bytes ("a" and "a\x00\x00"): the
+	// next string after a may still lie between.
+	next := append(append([]byte{}, a...), 0)
+	return next, between(next)
 }
 
 type tableCopy struct {
-	db     *dbwork.Candidate
-	keyed  bool
-	keys   int
-	width  int
-	column string
-	from   string
-	order  string
-	key    string
-	slots  string
-	insert string
+	db         *dbwork.Candidate
+	keyed      bool
+	keys       int
+	width      int
+	from       string
+	order      string
+	keyColumns []string
+	insert     string
 	// rejected is set when the schema refused a readable row.
 	rejected bool
 }
@@ -427,13 +525,6 @@ func newTableCopy(db *dbwork.Candidate, table salvageTable) *tableCopy {
 		keys = table.keys
 	}
 	keyList := strings.Join(quoteIdentifiers(keys), ",")
-	key, slots := keyList, "?"
-	if len(keys) > 1 {
-		// A row value for a composite key. A single key stays bare: SQLite
-		// does not seek on a parenthesised one, and would rescan from the
-		// start of the table (into the damage) on every read.
-		key, slots = "("+keyList+")", "("+strings.TrimSuffix(strings.Repeat("?,", len(keys)), ",")+")"
-	}
 	insertColumns := strings.Join(columns, ",")
 	values := strings.TrimSuffix(strings.Repeat("?,", len(columns)), ",")
 	if table.keys == nil {
@@ -441,9 +532,9 @@ func newTableCopy(db *dbwork.Candidate, table salvageTable) *tableCopy {
 	}
 	name := quoteIdentifier(table.name)
 	return &tableCopy{
-		db: db, keyed: table.keys != nil, keys: len(keys), width: len(keys) + len(columns), column: quoteIdentifier(keys[0]),
+		db: db, keyed: table.keys != nil, keys: len(keys), width: len(keys) + len(columns), keyColumns: quoteIdentifiers(keys),
 		from:  `SELECT ` + selectTyped(append(quoteIdentifiers(keys), columns...)) + ` FROM damaged.` + name,
-		order: keyList, key: key, slots: slots,
+		order: keyList,
 		// A copied row replaces the fresh baseline's seeded one (settings
 		// singletons keep the owner's values). A row the schema itself
 		// refuses (a CHECK, or NOT NULL) is left out and reported.
@@ -451,13 +542,12 @@ func newTableCopy(db *dbwork.Candidate, table salvageTable) *tableCopy {
 	}
 }
 
-// run copies rows strictly between lower and upper keys (either may be nil)
-// that also satisfy extra, in ascending or descending key order, until the
-// range ends or a single row cannot be read. It returns the first and last
-// keys it copied (nil when none) and whether it stopped at damage. The
-// returned last key is lower (ascending) or upper (descending) when nothing
-// was copied.
-func (c *tableCopy) run(ctx context.Context, upper, lower []any, descending bool, extra string, extraArgs []any) (first, last []any, faulted bool, err error) {
+// run copies rows strictly between the lower and upper bounds (either may be
+// nil), in ascending or descending key order, until the range ends or a single
+// row cannot be read. It returns the first and last keys it copied (nil when
+// none) and whether it stopped at damage. The returned last key is lower
+// (ascending) or upper (descending) when nothing was copied.
+func (c *tableCopy) run(ctx context.Context, upper, lower []any, descending bool) (first, last []any, faulted bool, err error) {
 	window := salvageWindow
 	at := lower
 	if descending {
@@ -472,22 +562,18 @@ func (c *tableCopy) run(ctx context.Context, upper, lower []any, descending bool
 	for {
 		var where []string
 		args := []any{}
-		bound := func(op string, key []any) {
-			if key != nil {
-				where = append(where, c.key+op+c.slots)
-				args = append(args, key...)
+		add := func(tuple []any, above bool) {
+			if clause, values, ok := c.bound(tuple, above); ok {
+				where = append(where, clause)
+				args = append(args, values...)
 			}
 		}
 		if descending {
-			bound("<", at)
-			bound(">", lower)
+			add(at, false)
+			add(lower, true)
 		} else {
-			bound(">", at)
-			bound("<", upper)
-		}
-		if extra != "" {
-			where = append(where, extra)
-			args = append(args, extraArgs...)
+			add(at, true)
+			add(upper, false)
 		}
 		query := c.from
 		if len(where) > 0 {
@@ -517,6 +603,47 @@ func (c *tableCopy) run(ctx context.Context, upper, lower []any, descending bool
 		at = rows[len(rows)-1][:c.keys]
 		last = at
 	}
+}
+
+// bound is the condition that keys lie above (above) or below a bound tuple.
+// A tuple may stop early with an infinity: (a, negInf) as a lower bound is
+// every key starting at or after a; (a, posInf) as an upper bound every key
+// starting at or before a. A single column is compared bare (SQLite seeks on
+// it; it does not seek on a parenthesised one), several as a row value. An
+// empty BLOB is written as a literal: the driver binds an empty []byte as NULL.
+func (c *tableCopy) bound(tuple []any, above bool) (string, []any, bool) {
+	if tuple == nil {
+		return "", nil, false
+	}
+	n := len(tuple)
+	op := "<"
+	if above {
+		op = ">"
+	}
+	if inf, ok := tuple[n-1].(infinity); ok {
+		n--
+		if n == 0 {
+			return "", nil, false // unbounded on this side
+		}
+		if above && inf == negInf || !above && inf == posInf {
+			op += "="
+		}
+	}
+	columns := c.keyColumns[:n]
+	slots := make([]string, n)
+	values := make([]any, 0, n)
+	for i, v := range tuple[:n] {
+		if b, ok := v.([]byte); ok && len(b) == 0 {
+			slots[i] = "X''"
+			continue
+		}
+		slots[i] = "?"
+		values = append(values, v)
+	}
+	if n == 1 {
+		return columns[0] + op + slots[0], values, true
+	}
+	return "(" + strings.Join(columns, ",") + ")" + op + "(" + strings.Join(slots, ",") + ")", values, true
 }
 
 // withEmptyBlobs is the insert with a literal empty BLOB in place of each one in args,

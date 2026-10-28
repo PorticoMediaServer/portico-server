@@ -289,8 +289,10 @@ func TestAStrandedCopyOnAClosedDatabaseIsDropped(t *testing.T) {
 	if err = db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err = settleStranded(ctx, db, limits); err != nil {
-		t.Fatalf("settling a closed database's copy: %v", err)
+	// The next attempt usually runs on a new handle; it sweeps the old one.
+	other, _ := copyFixture(t)
+	if err = settleStranded(ctx, other, limits); err != nil {
+		t.Fatalf("settling with a new handle: %v", err)
 	}
 	strandedMu.Lock()
 	defer strandedMu.Unlock()

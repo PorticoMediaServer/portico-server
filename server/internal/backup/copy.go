@@ -396,6 +396,7 @@ func settleStranded(ctx context.Context, source *sql.DB, limits copyLimits) erro
 	}
 	stranded = others
 	strandedMu.Unlock()
+	dropClosed(others)
 	if len(mine) == 0 {
 		return nil
 	}
@@ -422,6 +423,30 @@ func settleStranded(ctx context.Context, source *sql.DB, limits copyLimits) erro
 	}
 	log.Printf("warn: Backup is still releasing an earlier unfinished copy: %v", failed)
 	return ErrBackupPressure
+}
+
+// dropClosed removes stranded backups of databases that have since closed
+// (the driver finished them as the connections closed), whichever handle the
+// current attempt uses. The check runs outside the registry lock.
+func dropClosed(candidates []*copyRun) {
+	closed := map[*copyRun]bool{}
+	for _, r := range candidates {
+		if closedDatabase(r.source) {
+			closed[r] = true
+		}
+	}
+	if len(closed) == 0 {
+		return
+	}
+	strandedMu.Lock()
+	kept := stranded[:0]
+	for _, r := range stranded {
+		if !closed[r] {
+			kept = append(kept, r)
+		}
+	}
+	stranded = kept
+	strandedMu.Unlock()
 }
 
 // closedDatabase reports a handle that has been closed.
