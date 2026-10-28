@@ -284,8 +284,9 @@ type RawRoute[Request, Response any] struct {
 
 type replyKey struct{}
 type reply struct {
-	status int
-	header http.Header
+	releases []func()
+	status   int
+	header   http.Header
 	// For a GET: what the client holds (If-None-Match), and whether the handler
 	// found it current before composing anything (Conditional).
 	ifNoneMatch string
@@ -809,6 +810,7 @@ func Register[Request, Response any](r *Registry, route Route[Request, Response]
 		}
 		out := &reply{header: http.Header{}, conditional: m.Method == "GET", ifNoneMatch: q.Header.Get("If-None-Match")}
 		q = q.WithContext(context.WithValue(q.Context(), replyKey{}, out))
+		defer out.release()
 		response, err := route.Handler(q.Context(), q, request)
 		if err != nil {
 			fail(err)

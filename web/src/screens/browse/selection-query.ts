@@ -34,6 +34,7 @@ export function wholeViewQuery(whole: BrowseWholeSelection): SelectionQuery {
     catalogRevision: whole.catalogRevision,
     summary: {
       types,
+      ...(whole.unavailableActions === undefined ? {} : {unavailableActions: Object.freeze({...whole.unavailableActions})}),
       library: types.length ? {kind: 'single' as const, libraryId: whole.libraryId} : {kind: 'none' as const},
       every,
     },

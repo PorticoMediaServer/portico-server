@@ -208,6 +208,20 @@ type Computation interface {
 // uses the first admitted plan; later identical submissions never invoke theirs.
 // Callbacks must not call Close (which waits for the calling worker).
 type Plan struct {
+	// ColdSearch opts into the sole shared store's one-build cold-search lane.
+	// Ownership spans every quantum until terminal/cancelled work has exited.
+	// Only a successful Poll renews its 30s demand deadline; attaching handles
+	// does not. Ordinary plans retain the existing independent worker admission.
+	ColdSearch bool
+	// ReuseHandle coalesces retries by the same exact private caller and key.
+	// It never renews a lease or cold poll deadline; only successful Poll does.
+	// Use for resumable command reads, not independent UI interests.
+	ReuseHandle bool
+	// ShouldYield is an optional cheap, nonblocking priority probe for ColdSearch
+	// (e.g. dbwork.ColdReadShouldYield). Called before New/Step, outside the store
+	// lock and before acquiring a snapshot. True retries after a short pause,
+	// leaving workers available to ordinary plans. Include captures in InitialBytes.
+	ShouldYield  func() bool
 	InitialBytes int64
 	New          func(context.Context, *Budget) (Computation, error)
 }
@@ -225,8 +239,8 @@ type Config struct {
 	// producers check rows/bytes/time and yield; scheduler delay or an approved
 	// O(B) scalar must not become a false terminal failure by default.
 	StepTimeout time.Duration
-	// Now must be concurrency safe and monotone. Expiry is checked lazily on
-	// operations and between steps, so tests can advance a clock without sleeps.
+	// Now must be concurrency safe and monotone. Ordinary expiry is lazy. Cold
+	// demand expiry also wakes on a store-owned timer (at most 1s between checks).
 	Now func() time.Time
 }
 
@@ -299,6 +313,8 @@ type entry struct {
 	payload                    []byte
 	err                        error
 	until, touched             time.Time
+	cold                       bool // independent of plan, which is cleared at EOF
+	pollUntil, retryAt         time.Time
 }
 
 type lease struct {
@@ -321,6 +337,8 @@ type Store struct {
 	deliveryBytes int64
 	running       int
 	closed        bool
+	coldOwner     *entry // off queue between quanta; retained until worker exits
+	wakeTimer     *time.Timer
 }
 
 // Budget charges all producer-owned live and temporary memory for one content
@@ -408,6 +426,13 @@ func (s *Store) open(ctx context.Context, caller Caller, key Key, plan *Plan, un
 	if !now.Before(expires) {
 		return "", ErrStale
 	}
+	if plan != nil && plan.ReuseHandle {
+		for h, l := range s.handles {
+			if l.caller == caller && l.e.key == key {
+				return h, nil
+			}
+		}
+	}
 	if len(s.handles) >= s.cfg.MaxHandles {
 		return "", ErrCapacity
 	}
@@ -449,7 +474,10 @@ func (s *Store) open(ctx context.Context, caller Caller, key Key, plan *Plan, un
 	if e == nil {
 		key = Key{strings.Clone(key.Namespace), strings.Clone(key.Basis), strings.Clone(key.Canonical)}
 		workCtx, cancel := context.WithCancel(context.Background())
-		e = &entry{key: key, meta: meta, reserved: plan.InitialBytes, plan: *plan, ctx: workCtx, cancel: cancel, touched: now}
+		e = &entry{key: key, meta: meta, reserved: plan.InitialBytes, plan: *plan, ctx: workCtx, cancel: cancel, touched: now, cold: plan.ColdSearch}
+		if e.cold {
+			e.pollUntil = now.Add(coldPollTTL)
+		}
 		s.entries[key] = e
 		s.used += meta + plan.InitialBytes
 		s.queue = append(s.queue, e)
@@ -460,6 +488,7 @@ func (s *Store) open(ctx context.Context, caller Caller, key Key, plan *Plan, un
 	s.used += hbytes
 	e.refs++
 	e.touched = now
+	s.armWake(now)
 	return h, nil
 }
 
@@ -531,6 +560,10 @@ func (s *Store) Poll(ctx context.Context, caller Caller, h Handle) (Result, erro
 		}
 		return Result{}, err
 	}
+	if e.cold && !e.complete {
+		e.pollUntil = now.Add(coldPollTTL)
+		s.armWake(now)
+	}
 	l.idle = now.Add(s.cfg.IdleTTL)
 	e.touched = now
 	return result, nil
@@ -573,6 +606,9 @@ func (s *Store) Close() error {
 	s.mu.Lock()
 	if !s.closed {
 		s.closed = true
+		if s.wakeTimer != nil {
+			s.wakeTimer.Stop()
+		}
 		for _, e := range s.entries {
 			s.retire(e)
 		}
@@ -620,7 +656,7 @@ func (s *Store) prune(now time.Time) {
 		}
 	}
 	for _, e := range s.entries {
-		if e.complete && !now.Before(e.until) {
+		if (e.complete && !now.Before(e.until)) || (e.cold && !e.complete && !now.Before(e.pollUntil)) {
 			s.retire(e)
 		}
 	}
@@ -654,6 +690,10 @@ func (s *Store) retire(e *entry) {
 }
 
 func (s *Store) dispose(e *entry) {
+	if s.coldOwner == e {
+		s.coldOwner = nil
+		s.cond.Broadcast()
+	}
 	s.used -= e.meta + e.reserved
 	e.meta, e.reserved = 0, 0
 	e.plan, e.work, e.payload = Plan{}, nil, nil
@@ -678,31 +718,116 @@ func (s *Store) room(n int64, protect *entry) bool {
 	return true
 }
 
+const coldPollTTL = 30 * time.Second
+const coldRetryDelay = 10 * time.Millisecond
+const coldPruneInterval = time.Second
+
+var errPriorityYield = errors.New("readprep: priority yield")
+
+// One timer belongs to the existing store lifecycle, not to individual handles
+// or quanta. It cancels even a blocked cooperative callback with no API traffic.
+// Capping the wait also makes a monotone injected clock observable while idle.
+// All scheduling and the callback are under mu; Close stops further rearming.
+func (s *Store) armWake(now time.Time) {
+	if s.closed {
+		return
+	}
+	delay := coldPruneInterval
+	needed := false
+	for _, e := range s.entries {
+		if !e.cold || e.complete {
+			continue
+		}
+		needed = true
+		delay = min(delay, e.pollUntil.Sub(now))
+		if !e.running && now.Before(e.retryAt) {
+			delay = min(delay, e.retryAt.Sub(now))
+		}
+	}
+	if !needed {
+		if s.wakeTimer != nil {
+			s.wakeTimer.Stop()
+		}
+		return
+	}
+	delay = max(time.Nanosecond, delay)
+	if s.wakeTimer == nil {
+		s.wakeTimer = time.AfterFunc(delay, s.wake)
+	} else {
+		s.wakeTimer.Reset(delay)
+	}
+}
+
+func (s *Store) wake() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return
+	}
+	now := s.cfg.Now()
+	s.prune(now)
+	s.cond.Broadcast()
+	s.armWake(now)
+}
+
+// The active cold owner lives outside the waiting queue across yields. Other
+// cold plans still use the existing bounded queue; ordinary plans may bypass
+// them and run on either fixed worker. A retired running owner keeps its slot
+// and memory until the callback actually exits.
+func (s *Store) next(now time.Time) *entry {
+	for i, e := range s.queue {
+		if e.cold && s.coldOwner != nil {
+			continue
+		}
+		copy(s.queue[i:], s.queue[i+1:])
+		s.queue[len(s.queue)-1] = nil
+		s.queue = s.queue[:len(s.queue)-1]
+		if e.cold {
+			s.coldOwner = e
+		}
+		return e
+	}
+	e := s.coldOwner
+	if e != nil && !e.running && !e.retired && !now.Before(e.retryAt) {
+		e.retryAt = time.Time{}
+		return e
+	}
+	return nil
+}
+
 func (s *Store) worker() {
 	defer s.wg.Done()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for {
-		s.prune(s.cfg.Now())
-		for len(s.queue) == 0 && !s.closed {
-			s.cond.Wait()
-		}
+		now := s.cfg.Now()
+		s.prune(now)
 		if s.closed {
 			return
 		}
-		e := s.queue[0]
-		copy(s.queue, s.queue[1:])
-		s.queue[len(s.queue)-1] = nil
-		s.queue = s.queue[:len(s.queue)-1]
+		e := s.next(now)
+		if e == nil {
+			s.armWake(now)
+			s.cond.Wait()
+			continue
+		}
 		e.running = true
 		s.running++
+		s.armWake(now)
 		s.mu.Unlock()
 		out, bytes, err := s.step(e)
 		s.mu.Lock()
+		// Expiry can win even if the callback finishes after its last deadline
+		// but before the timer callback acquires mu.
+		s.prune(s.cfg.Now())
 		e.running = false
 		s.running--
 		if e.retired {
 			s.dispose(e)
+			continue
+		}
+		if err == errPriorityYield {
+			e.retryAt = s.cfg.Now().Add(coldRetryDelay)
 			continue
 		}
 		if err != nil || bytes < 0 || bytes > e.reserved || (!out.Done && out.Payload != nil) || (out.Done && int64(cap(out.Payload)) > bytes) {
@@ -722,12 +847,15 @@ func (s *Store) worker() {
 			s.used -= e.reserved - int64(cap(e.payload))
 			e.reserved = int64(cap(e.payload))
 			e.cancel()
-		} else {
+			if s.coldOwner == e {
+				s.coldOwner = nil
+				s.cond.Broadcast()
+			}
+		} else if !e.cold {
 			s.queue = append(s.queue, e)
 		}
-		// Requeue then take the next quantum under this same lock. Even with
-		// a full waiting queue, another submission never observes >MaxQueued
-		// waiting entries. A computation cannot run on two workers at once.
+		// Requeue ordinary work then select under the same lock, preserving
+		// its existing queue bound and one-worker-at-a-time computation rule.
 	}
 }
 
@@ -748,6 +876,9 @@ func (s *Store) step(e *entry) (out StepResult, bytes int64, err error) {
 
 func (s *Store) doStep(e *entry) (out StepResult, bytes int64, err error) {
 	ctx := e.ctx
+	if e.cold && e.plan.ShouldYield != nil && e.plan.ShouldYield() {
+		return out, e.reserved, errPriorityYield
+	}
 	if s.cfg.StepTimeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, s.cfg.StepTimeout)

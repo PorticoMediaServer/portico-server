@@ -7841,6 +7841,42 @@
                   "type": "object"
                 },
                 "type": "array"
+              },
+              "unavailableActions": {
+                "additionalProperties": false,
+                "properties": {
+                  "delete": {
+                    "enum": [
+                      "unsupported-sort"
+                    ],
+                    "type": "string"
+                  },
+                  "metadataPreview": {
+                    "enum": [
+                      "preview-limit"
+                    ],
+                    "type": "string"
+                  },
+                  "play": {
+                    "enum": [
+                      "unsupported-sort"
+                    ],
+                    "type": "string"
+                  },
+                  "playlist": {
+                    "enum": [
+                      "unsupported-sort"
+                    ],
+                    "type": "string"
+                  },
+                  "queue": {
+                    "enum": [
+                      "unsupported-sort"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "type": "object"
               }
             },
             "required": [
@@ -10297,6 +10333,42 @@
                       "type": "object"
                     },
                     "type": "array"
+                  },
+                  "unavailableActions": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "delete": {
+                        "enum": [
+                          "unsupported-sort"
+                        ],
+                        "type": "string"
+                      },
+                      "metadataPreview": {
+                        "enum": [
+                          "preview-limit"
+                        ],
+                        "type": "string"
+                      },
+                      "play": {
+                        "enum": [
+                          "unsupported-sort"
+                        ],
+                        "type": "string"
+                      },
+                      "playlist": {
+                        "enum": [
+                          "unsupported-sort"
+                        ],
+                        "type": "string"
+                      },
+                      "queue": {
+                        "enum": [
+                          "unsupported-sort"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -134692,6 +134764,42 @@
                   "type": "object"
                 },
                 "type": "array"
+              },
+              "unavailableActions": {
+                "additionalProperties": false,
+                "properties": {
+                  "delete": {
+                    "enum": [
+                      "unsupported-sort"
+                    ],
+                    "type": "string"
+                  },
+                  "metadataPreview": {
+                    "enum": [
+                      "preview-limit"
+                    ],
+                    "type": "string"
+                  },
+                  "play": {
+                    "enum": [
+                      "unsupported-sort"
+                    ],
+                    "type": "string"
+                  },
+                  "playlist": {
+                    "enum": [
+                      "unsupported-sort"
+                    ],
+                    "type": "string"
+                  },
+                  "queue": {
+                    "enum": [
+                      "unsupported-sort"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "type": "object"
               }
             },
             "required": [
@@ -137145,6 +137253,42 @@
                       "type": "object"
                     },
                     "type": "array"
+                  },
+                  "unavailableActions": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "delete": {
+                        "enum": [
+                          "unsupported-sort"
+                        ],
+                        "type": "string"
+                      },
+                      "metadataPreview": {
+                        "enum": [
+                          "preview-limit"
+                        ],
+                        "type": "string"
+                      },
+                      "play": {
+                        "enum": [
+                          "unsupported-sort"
+                        ],
+                        "type": "string"
+                      },
+                      "playlist": {
+                        "enum": [
+                          "unsupported-sort"
+                        ],
+                        "type": "string"
+                      },
+                      "queue": {
+                        "enum": [
+                          "unsupported-sort"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -163379,6 +163523,42 @@
                       "type": "object"
                     },
                     "type": "array"
+                  },
+                  "unavailableActions": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "delete": {
+                        "enum": [
+                          "unsupported-sort"
+                        ],
+                        "type": "string"
+                      },
+                      "metadataPreview": {
+                        "enum": [
+                          "preview-limit"
+                        ],
+                        "type": "string"
+                      },
+                      "play": {
+                        "enum": [
+                          "unsupported-sort"
+                        ],
+                        "type": "string"
+                      },
+                      "playlist": {
+                        "enum": [
+                          "unsupported-sort"
+                        ],
+                        "type": "string"
+                      },
+                      "queue": {
+                        "enum": [
+                          "unsupported-sort"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -450380,6 +450560,42 @@
                             "type": "object"
                           },
                           "type": "array"
+                        },
+                        "unavailableActions": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "delete": {
+                              "enum": [
+                                "unsupported-sort"
+                              ],
+                              "type": "string"
+                            },
+                            "metadataPreview": {
+                              "enum": [
+                                "preview-limit"
+                              ],
+                              "type": "string"
+                            },
+                            "play": {
+                              "enum": [
+                                "unsupported-sort"
+                              ],
+                              "type": "string"
+                            },
+                            "playlist": {
+                              "enum": [
+                                "unsupported-sort"
+                              ],
+                              "type": "string"
+                            },
+                            "queue": {
+                              "enum": [
+                                "unsupported-sort"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "type": "object"
                         }
                       },
                       "required": [
@@ -585192,6 +585408,42 @@
                             "type": "object"
                           },
                           "type": "array"
+                        },
+                        "unavailableActions": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "delete": {
+                              "enum": [
+                                "unsupported-sort"
+                              ],
+                              "type": "string"
+                            },
+                            "metadataPreview": {
+                              "enum": [
+                                "preview-limit"
+                              ],
+                              "type": "string"
+                            },
+                            "play": {
+                              "enum": [
+                                "unsupported-sort"
+                              ],
+                              "type": "string"
+                            },
+                            "playlist": {
+                              "enum": [
+                                "unsupported-sort"
+                              ],
+                              "type": "string"
+                            },
+                            "queue": {
+                              "enum": [
+                                "unsupported-sort"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "type": "object"
                         }
                       },
                       "required": [
@@ -586376,6 +586628,42 @@
                         "type": "object"
                       },
                       "type": "array"
+                    },
+                    "unavailableActions": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "delete": {
+                          "enum": [
+                            "unsupported-sort"
+                          ],
+                          "type": "string"
+                        },
+                        "metadataPreview": {
+                          "enum": [
+                            "preview-limit"
+                          ],
+                          "type": "string"
+                        },
+                        "play": {
+                          "enum": [
+                            "unsupported-sort"
+                          ],
+                          "type": "string"
+                        },
+                        "playlist": {
+                          "enum": [
+                            "unsupported-sort"
+                          ],
+                          "type": "string"
+                        },
+                        "queue": {
+                          "enum": [
+                            "unsupported-sort"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
                     }
                   },
                   "required": [
@@ -597771,6 +598059,42 @@
                             "type": "object"
                           },
                           "type": "array"
+                        },
+                        "unavailableActions": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "delete": {
+                              "enum": [
+                                "unsupported-sort"
+                              ],
+                              "type": "string"
+                            },
+                            "metadataPreview": {
+                              "enum": [
+                                "preview-limit"
+                              ],
+                              "type": "string"
+                            },
+                            "play": {
+                              "enum": [
+                                "unsupported-sort"
+                              ],
+                              "type": "string"
+                            },
+                            "playlist": {
+                              "enum": [
+                                "unsupported-sort"
+                              ],
+                              "type": "string"
+                            },
+                            "queue": {
+                              "enum": [
+                                "unsupported-sort"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "type": "object"
                         }
                       },
                       "required": [
@@ -614410,6 +614734,8 @@
           "not_permitted",
           "not_found",
           "revision_mismatch",
+          "stale_continuation",
+          "rate_limited",
           "internal",
           "timeout",
           "database_busy",
@@ -681279,6 +681605,42 @@
                                 "type": "object"
                               },
                               "type": "array"
+                            },
+                            "unavailableActions": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "delete": {
+                                  "enum": [
+                                    "unsupported-sort"
+                                  ],
+                                  "type": "string"
+                                },
+                                "metadataPreview": {
+                                  "enum": [
+                                    "preview-limit"
+                                  ],
+                                  "type": "string"
+                                },
+                                "play": {
+                                  "enum": [
+                                    "unsupported-sort"
+                                  ],
+                                  "type": "string"
+                                },
+                                "playlist": {
+                                  "enum": [
+                                    "unsupported-sort"
+                                  ],
+                                  "type": "string"
+                                },
+                                "queue": {
+                                  "enum": [
+                                    "unsupported-sort"
+                                  ],
+                                  "type": "string"
+                                }
+                              },
+                              "type": "object"
                             }
                           },
                           "required": [

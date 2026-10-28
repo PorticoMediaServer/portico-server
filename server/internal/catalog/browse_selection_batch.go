@@ -33,7 +33,12 @@ const (
 // SelectionBatchLimits can narrow, but never widen, the shared preparation
 // quantum. Rows counts raw candidates, nested rows, scalar probes and EOF probes.
 // Bytes bounds cumulative source work; RetainedBytes independently bounds state.
-type SelectionBatchLimits struct{ Rows, Bytes, RetainedBytes int }
+type SelectionBatchLimits struct {
+	Rows, Bytes, RetainedBytes int
+	// ReserveTransient reserves the complete scalar/native peak before its SQL
+	// evaluation. Shared-store adapters include their own old+clone/factory state.
+	ReserveTransient func(int64) error
+}
 
 const selectionBatchProbeBytes = 64
 
@@ -43,9 +48,12 @@ const selectionBatchProbeBytes = 64
 // legal source scalar consumed by a unit; it is never retained as a query result.
 // An oversize scalar ends the turn after that O(B) unit, without truncation.
 type SelectionBatchWork struct {
-	Rows, Bytes                 int
-	ExaminedBytes, DecodedBytes int
-	TransientScalarBytes        int
+	Rows, Bytes                             int
+	ExaminedBytes, DecodedBytes             int
+	TransientScalarBytes                    int
+	DocumentTokens, QueryTokens, TokenBytes int64
+	Matches                                 [128]int64
+	MatchCount                              int
 }
 
 // SelectionBatchWitness must capture the complete predicate/serving witness in
@@ -55,6 +63,7 @@ type SelectionBatchWitness func(*Service) (string, error)
 
 type selectionBatchPlan struct {
 	restricted, blockUnrated               bool
+	localSearch                            bool
 	key, witness, library, pivot, revision string
 	libraryID                              int64
 	kinds                                  []int
@@ -71,12 +80,15 @@ type selectionBatchPlan struct {
 // to share with the memory store; Step never mutates its input. No partial count
 // is exposed as an exact result. All variable-sized retained data is accounted.
 type BrowseSelectionBatchState struct {
-	scalarBytes int
-	plan        *selectionBatchPlan // immutable, owned by constructor
-	after       int64
-	done        bool
-	counts      [14][2]int
-	candidate   selectionBatchCandidate
+	scalarBytes     int
+	searchWork      selectionSearchWork
+	matchedEntity   int64
+	singleCandidate bool
+	plan            *selectionBatchPlan // immutable, owned by constructor
+	after           int64
+	done            bool
+	counts          [14][2]int
+	candidate       selectionBatchCandidate
 }
 
 type selectionBatchCandidate struct {
@@ -114,6 +126,26 @@ func (s *BrowseSelectionBatchState) Key() string {
 		return ""
 	}
 	return s.plan.key
+}
+
+// ReplayAfter starts a fresh bounded replay after an already accepted entity.
+// It does not change the immutable query, policy or complete held witness.
+func (s *BrowseSelectionBatchState) ReplayAfter(after int64) *BrowseSelectionBatchState {
+	if s == nil {
+		return nil
+	}
+	next := &BrowseSelectionBatchState{plan: s.plan, after: after}
+	return next
+}
+
+// Candidate evaluates one externally ordered raw candidate using identical
+// predicate/visibility units. Callers retain this small state across quanta and
+// must check the same complete witness at every read/accepting write boundary.
+func (s *BrowseSelectionBatchState) Candidate(id int64) *BrowseSelectionBatchState {
+	if s == nil || id <= 0 {
+		return nil
+	}
+	return &BrowseSelectionBatchState{plan: s.plan, singleCandidate: true, candidate: selectionBatchCandidate{id: id, stage: 2}}
 }
 
 // Bytes conservatively charges each clone for the entire immutable plan as
@@ -209,11 +241,14 @@ func (s *Service) NewBrowseSelectionBatch(request BrowseRequest, viewer Viewer, 
 	if err != nil {
 		return nil, err
 	}
+	for _, test := range p.tests {
+		p.localSearch = p.localSearch || test.search != nil
+	}
 	p.restricted = viewer.Restrictions.Active()
 	p.blockUnrated = viewer.Restrictions.BlockUnrated
 	p.visibilitySQL, p.visibilityArgs = selectionBatchRestrictionEdgeSQL(viewer.EffectiveRestrictions())
 	p.availabilitySQL, p.availabilityArgs = homeActionAvailableSQLFor(viewer, "e.entity_id")
-	p.key = operationHash([]any{"selection-batch-v1", p.library, p.pivot, string(p.query), string(p.sorts), string(p.policy), witness})
+	p.key = operationHash([]any{"selection-batch-local-search-v1", p.library, p.pivot, string(p.query), string(p.sorts), string(p.policy), witness})
 	state := &BrowseSelectionBatchState{plan: p}
 	if state.Bytes() > SelectionBatchMaximumBytes {
 		return nil, ErrSelectionBatchCapacity
@@ -254,7 +289,11 @@ func (s *Service) StepBrowseSelectionBatch(ctx context.Context, previous *Browse
 	// Yield between domain units; SQL in each unit is an indexed singleton or
 	// raw LIMIT 1 followed by bounded key joins. One legal scalar can cost O(B).
 	deadline := time.Now().Add(selectionBatchTime)
-	err := dbwork.WithReadSnapshot(dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia), s.db, func(inner context.Context) error {
+	class := dbwork.ClassBackgroundMedia
+	if next.plan.localSearch {
+		class = dbwork.ClassMaintenance
+	}
+	err := dbwork.WithReadSnapshot(dbwork.WithClass(ctx, class), s.db, func(inner context.Context) error {
 		read := s.WithContext(inner)
 		current, err := witness(read)
 		if err != nil {
@@ -263,18 +302,30 @@ func (s *Service) StepBrowseSelectionBatch(ctx context.Context, previous *Browse
 		if current == "" || current != next.plan.witness {
 			return ErrSelectionBatchStale
 		}
-		for !next.done && work.Rows < rows && (work.Rows == 0 || work.ExaminedBytes+selectionBatchProbeBytes <= bytes) && (work.Rows == 0 || time.Now().Before(deadline)) {
+		for !next.done && work.MatchCount < len(work.Matches) && work.Rows < rows && (work.Rows == 0 || work.ExaminedBytes+selectionBatchProbeBytes <= bytes) && (work.Rows == 0 || time.Now().Before(deadline)) {
 			if err = inner.Err(); err != nil {
 				return err
 			}
 			work.Rows++
 			next.scalarBytes = 0
-			if err = read.selectionBatchUnit(next); err != nil {
+			next.searchWork = selectionSearchWork{}
+			next.matchedEntity = 0
+			if err = read.selectionBatchUnit(next, limits.ReserveTransient); err != nil {
 				return err
 			}
+			if next.matchedEntity != 0 {
+				work.Matches[work.MatchCount] = next.matchedEntity
+				work.MatchCount++
+			}
+			if next.singleCandidate && next.candidate.stage == 0 {
+				next.done = true
+			}
+			work.DocumentTokens += next.searchWork.documentTokens
+			work.QueryTokens += next.searchWork.queryTokens
+			work.TokenBytes += next.searchWork.tokenBytes
 			work.DecodedBytes += next.scalarBytes
-			work.ExaminedBytes += selectionBatchProbeBytes + next.scalarBytes
-			work.TransientScalarBytes = max(work.TransientScalarBytes, next.scalarBytes)
+			work.ExaminedBytes += selectionBatchProbeBytes + next.scalarBytes + next.searchWork.probeBytes
+			work.TransientScalarBytes = max(work.TransientScalarBytes, next.scalarBytes, next.searchWork.transientBytes)
 			work.Bytes = max(work.Bytes, next.Bytes())
 			if work.Bytes > retained {
 				return ErrSelectionBatchCapacity
@@ -333,10 +384,33 @@ func (s *Service) FinishBrowseSelectionBatch(state *BrowseSelectionBatchState, w
 		}
 		groups[name] = &selectionAggregateGroup{count: count[0], available: count[1], libraries: map[string]int{p.library: count[0]}}
 	}
-	return selectionAggregateDescriptor(bound, authority, groups)
+	out, err := selectionAggregateDescriptor(bound, authority, groups)
+	if err != nil {
+		return out, err
+	}
+	if selectionBatchHasLocalSearch(bound.Query) {
+		unavailable := &BrowseSelectionUnavailableActions{}
+		if !LocalSearchQueueSupported(bound.Query, bound.Sorts) {
+			unavailable.Play = "unsupported-sort"
+			unavailable.Queue = "unsupported-sort"
+			unavailable.Delete = "unsupported-sort"
+		}
+		for _, sort := range bound.Sorts {
+			if sort.Field == "groupOrder" {
+				unavailable.Playlist = "unsupported-sort"
+			}
+		}
+		if out.Total > BrowseSelectionConversionLimit {
+			unavailable.MetadataPreview = "preview-limit"
+		}
+		if *unavailable != (BrowseSelectionUnavailableActions{}) {
+			out.UnavailableActions = unavailable
+		}
+	}
+	return out, nil
 }
 
-func (s *Service) selectionBatchUnit(state *BrowseSelectionBatchState) error {
+func (s *Service) selectionBatchUnit(state *BrowseSelectionBatchState, reserve func(int64) error) error {
 	p, c := state.plan, &state.candidate
 	switch c.stage {
 	case 0:
@@ -457,6 +531,17 @@ func (s *Service) selectionBatchUnit(state *BrowseSelectionBatchState) error {
 			}
 			return nil
 		}
+		if test.search != nil {
+			yes, err := s.selectionBatchSearchMatches(test.search, c.id, &state.scalarBytes, &state.searchWork, reserve)
+			if err != nil {
+				return err
+			}
+			if yes {
+				c.values[c.test/64] |= uint64(1) << (c.test % 64)
+			}
+			c.test++
+			return nil
+		}
 		if test.scalar != "" {
 			var yes bool
 			args := append(slices.Clone(test.args), c.id)
@@ -523,6 +608,7 @@ func (s *Service) selectionBatchUnit(state *BrowseSelectionBatchState) error {
 		if err != nil {
 			return err
 		}
+		state.matchedEntity = c.id
 		state.counts[c.kind][0]++
 		if c.available {
 			state.counts[c.kind][1]++

@@ -31313,6 +31313,8 @@ export const routes = [
       "not_permitted",
       "not_found",
       "revision_mismatch",
+      "stale_continuation",
+      "rate_limited",
       "internal",
       "timeout",
       "database_busy",

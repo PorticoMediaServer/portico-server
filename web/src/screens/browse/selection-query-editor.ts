@@ -21,7 +21,7 @@ export function createQuerySelectionEditor(options: SelectionEditorOptions) {
   return {
     async preview(operation: Operation) {
       check(); const target = operation.target;
-      if (target.mode !== 'query' || target.summary.types.length !== 1 || !target.summary.every.edit) throw new Error('query-editor-unavailable');
+      if (target.mode !== 'query' || target.summary.types.length !== 1 || target.summary.unavailableActions?.metadataPreview || !target.summary.every.edit) throw new Error('query-editor-unavailable');
       const query = selectionQuerySelector(target); if (!query.ok) throw new Error('query-editor-refined');
       const fence = viewerFence(); if (!fence) throw new Error('metadata-authority-unavailable');
       const preview = await fetchBulkMetadataPreview(api, {selector: query.selector, expected: query.expected}, serverId, signal); check();

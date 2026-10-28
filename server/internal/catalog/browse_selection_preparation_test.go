@@ -11,13 +11,16 @@ import (
 	"portico.local/server/internal/readprep"
 )
 
-func submitSelectionPreparation(t *testing.T, s *Service, v Viewer, access SelectionPreparationAccess) (BrowseSelectionPreparing, string) {
+func submitSelectionPreparation(t *testing.T, s *Service, v Viewer, access SelectionPreparationAccess, query ...*BrowseNode) (BrowseSelectionPreparing, string) {
 	t.Helper()
 	var pending BrowseSelectionPreparing
 	var revision string
 	if err := dbwork.WithReadSnapshot(context.Background(), s.db, func(ctx context.Context) error {
 		read := s.WithContext(ctx)
 		request := BrowseRequest{Library: "a", Pivot: "movies", Limit: 1}
+		if len(query) > 0 {
+			request.Query = query[0]
+		}
 		page, err := read.BrowseEntities(v, request)
 		if err != nil {
 			return err
@@ -365,5 +368,32 @@ func TestSelectionPreparationMissingInputEpochIsMiss(t *testing.T) {
 	}
 	if store.Stats().Deliveries != 0 {
 		t.Fatal("miss leaked delivery", store.Stats())
+	}
+}
+
+func TestSelectionPreparationLocalSearchSharesAcrossPrivateFences(t *testing.T) {
+	_, s, _ := browseFixture(t)
+	store := localOrderedStore(t, s)
+	q := &BrowseNode{Field: "search", Operator: "contains", Value: "a"}
+	first := Viewer{Profile: "p", Fence: "one", Libraries: []string{"a", "tv"}}
+	second := Viewer{Profile: "p", Fence: "two", Libraries: []string{"a"}}
+	a := SelectionPreparationAccess{Caller: "first-local", Check: func(*Service) error { return nil }}
+	b := a
+	b.Caller = "second-local"
+	one, revisionOne := submitSelectionPreparation(t, s, first, a, q)
+	two, revisionTwo := submitSelectionPreparation(t, s, second, b, q)
+	if one.QueryID == two.QueryID || revisionOne == revisionTwo || store.Stats().Entries != 1 {
+		t.Fatal("private identity prevented content coalescing", store.Stats())
+	}
+	for _, test := range []struct {
+		v            Viewer
+		a            SelectionPreparationAccess
+		id, revision string
+	}{{first, a, one.QueryID, revisionOne}, {second, b, two.QueryID, revisionTwo}} {
+		ready := awaitSelectionPreparation(t, s, test.v, test.id, test.a, HomeActionAuthority{})
+		defer ready.Release()
+		if ready.Ready.Total != 1 || ready.Ready.CatalogRevision != test.revision {
+			t.Fatalf("private ready %+v", ready.Ready)
+		}
 	}
 }

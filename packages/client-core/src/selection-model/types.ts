@@ -47,11 +47,20 @@ export type SelectionLibrary =
   | Readonly<{kind: 'single'; libraryId: string}>
   | Readonly<{kind: 'multiple'}>
   | Readonly<{kind: 'unknown'}>;
+/** Server-selected producer exclusions; these never alter per-title grants or counts. */
+export type SelectionUnavailableActions = Readonly<{
+  play?: 'unsupported-sort';
+  queue?: 'unsupported-sort';
+  playlist?: 'unsupported-sort';
+  delete?: 'unsupported-sort';
+  metadataPreview?: 'preview-limit';
+}>;
 export type SelectionSummary = Readonly<{
   count: number;
   types: readonly SelectionTypeCount[];
   library: SelectionLibrary;
   every: SelectionCapabilities;
+  unavailableActions?: SelectionUnavailableActions;
 }>;
 
 export type SelectionCapabilityCounts = Readonly<Record<keyof SelectionCapabilities, number>>;
@@ -157,7 +166,7 @@ export type SelectionAction =
   | 'remove-my-list' | 'edit' | 'download' | 'refresh' | 'delete';
 export type SelectionActionReason =
   | 'not-permitted' | 'mixed-types' | 'no-bulk-fields'
-  | 'one-library-required' | 'delete-limit';
+  | 'one-library-required' | 'delete-limit' | 'unsupported-sort' | 'preview-limit';
 export type SelectionActionRule =
   | Readonly<{state: 'hidden'}>
   | Readonly<{state: 'ready'}>

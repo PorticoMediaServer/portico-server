@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"strconv"
 
 	"portico.local/server/internal/dbwork"
@@ -123,6 +124,41 @@ func (s *Service) bulkSelection(p identity.Principal, v Viewer, in JobRequest) (
 			return "", nil, e
 		}
 		scope += " AND " + readingEligible
+		// Newly supported search forms replay only through the bounded worker.
+		// Validate intent here without executing the compiler's filter SQL.
+		if selectionBatchHasLocalSearch(node) {
+			if selector.Items != nil || selector.Container != nil {
+				return "", nil, jobInvalid("selector requires exactly one of container, query, items")
+			}
+			bound, e := s.bulkReplayBound(v, q)
+			if e != nil {
+				return "", nil, e
+			}
+			if e = selectionBatchSearchQualified(bound.Query); e != nil {
+				return "", nil, e
+			}
+			if in.Command == "playlist-add" {
+				for _, sort := range bound.Sorts {
+					if sort.Field == "groupOrder" {
+						return "", nil, fmt.Errorf("%w: %w", ErrSelectionBatchUnsupported, browseIssue("sort", "playlist group order needs bounded ordering support"))
+					}
+				}
+			}
+			if s.ReadPreparations() == nil {
+				return "", nil, ErrSelectionBatchCapacity
+			}
+			if in.Expected != nil && in.Expected.CatalogRevision != "" {
+				// Home/jobs and Browse have different private viewer fences. Bind the
+				// COMPLETE cached full query to the live held basis. This proof
+				// replaces a private page revision comparison across route fences.
+				proof, e := s.resolvePreparedBrowseSelection(v, *q, in.Expected.CatalogRevision, false)
+				if e != nil {
+					return "", nil, e
+				}
+				proof.Release()
+			}
+			return bulkReplaySelection, nil, nil
+		}
 		filter, e := c.compile(node)
 		if e != nil {
 			return "", nil, e

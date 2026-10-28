@@ -9,9 +9,10 @@ import (
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/readprep"
+	"portico.local/server/internal/thirdparty/sqlite"
 )
 
-const browseSelectionPreparationDomain = "browse-selection-v1"
+const browseSelectionPreparationDomain = "browse-selection-local-v2-" + sqlite.SearchMatchVersion
 const BrowseSelectionRetryAfterMs = 1000
 
 // BrowseSelectionPreparing is the strict pending branch beside an immediate
@@ -57,12 +58,22 @@ type SelectionPreparationAccess struct {
 	CapturedBytes int64
 }
 
+// A single-library content key binds effective content policy/profile, while
+// session/family authority remains in private handles. Other authorized libraries
+// and a route-specific fence must not prevent the same held view's conversion.
+func selectionPreparationViewer(v Viewer, library string) Viewer {
+	v.Fence = ""
+	v.Libraries = []string{library}
+	return v
+}
+
 type selectionPreparationSpec struct {
-	Library string
-	Pivot   string
-	Query   json.RawMessage
-	Sorts   []BrowseSortSelection
-	Viewer  Viewer
+	Revision string `json:",omitempty"`
+	Library  string
+	Pivot    string
+	Query    json.RawMessage
+	Sorts    []BrowseSortSelection
+	Viewer   Viewer
 }
 
 // Only content counters and bounded query intent are shared. Full reducer work,
@@ -73,6 +84,7 @@ type selectionPreparationContent struct {
 	Query   json.RawMessage
 	Sorts   []BrowseSortSelection
 	Counts  [14][2]int
+	IDs     []int64
 }
 
 type selectionPreparationComputation struct {
@@ -81,6 +93,8 @@ type selectionPreparationComputation struct {
 	check        func(*Service) error
 	factoryBytes int64
 	payloadBytes int64
+	smallIDs     [201]int64
+	smallCount   int
 }
 
 func (c *selectionPreparationComputation) AccountedBytes() int64 {
@@ -105,9 +119,14 @@ func (c *selectionPreparationComputation) Step(ctx context.Context, budget *read
 		}
 		return read.browseSelectionWitness(plan.library, viewer.Profile, viewer.EffectiveRestrictions())
 	}
-	next, _, err := c.service.StepBrowseSelectionBatch(ctx, c.state, witness, SelectionBatchLimits{})
+	baseBytes := c.AccountedBytes() + int64(c.state.Bytes()) + int64(4*len(c.state.plan.policy)) + 65536
+	next, work, err := c.service.StepBrowseSelectionBatch(ctx, c.state, witness, SelectionBatchLimits{ReserveTransient: func(peak int64) error { return budget.Resize(baseBytes + max(int64(SelectionBatchMaximumBytes), peak)) }})
 	if err != nil {
 		return readprep.StepResult{}, selectionPreparationError(err)
+	}
+	for i := 0; i < work.MatchCount && c.smallCount < len(c.smallIDs); i++ {
+		c.smallIDs[c.smallCount] = work.Matches[i]
+		c.smallCount++
 	}
 	c.state = next
 	if !next.Complete() {
@@ -124,7 +143,7 @@ func (c *selectionPreparationComputation) Step(ctx context.Context, budget *read
 	if err = json.Unmarshal(p.sorts, &sorts); err != nil {
 		return readprep.StepResult{}, err
 	}
-	content := selectionPreparationContent{Library: p.library, Pivot: p.pivot, Query: p.query, Sorts: sorts, Counts: next.counts}
+	content := selectionPreparationContent{Library: p.library, Pivot: p.pivot, Query: p.query, Sorts: sorts, Counts: next.counts, IDs: c.smallIDs[:c.smallCount]}
 	encoded, err := json.Marshal(content)
 	if err != nil {
 		return readprep.StepResult{}, err
@@ -187,10 +206,8 @@ func (s *Service) SubmitBrowseSelectionPreparation(request BrowseRequest, viewer
 	if err != nil {
 		return BrowseSelectionPreparing{}, err
 	}
-	// Session fences and granted-library lists belong to private handles. The
-	// aggregate reads only this library under this effective content policy.
-	contentViewer := Viewer{Profile: viewer.Profile, Libraries: []string{bound.Library}, Restrictions: viewer.EffectiveRestrictions()}
-	spec, err := json.Marshal(selectionPreparationSpec{Library: bound.Library, Pivot: bound.Pivot, Query: query, Sorts: bound.Sorts, Viewer: contentViewer})
+	// Private page revisions are rebound at poll; equivalent content shares one build.
+	spec, err := json.Marshal(selectionPreparationSpec{Library: bound.Library, Pivot: bound.Pivot, Query: query, Sorts: bound.Sorts, Viewer: selectionPreparationViewer(viewer, bound.Library)})
 	if err != nil {
 		return BrowseSelectionPreparing{}, err
 	}
@@ -203,7 +220,12 @@ func (s *Service) SubmitBrowseSelectionPreparation(request BrowseRequest, viewer
 	root := Service{db: s.db, storage: s.storage, state: s.state, Clock: s.Clock}
 	factoryBytes := int64(cap(spec)) + access.CapturedBytes + int64(unsafe.Sizeof(root)) + 2048
 	check := access.Check
-	plan := readprep.Plan{InitialBytes: factoryBytes, New: func(ctx context.Context, budget *readprep.Budget) (readprep.Computation, error) {
+	localSearch := selectionBatchHasLocalSearch(bound.Query)
+	class := dbwork.ClassBackgroundMedia
+	if localSearch {
+		class = dbwork.ClassMaintenance
+	}
+	plan := readprep.Plan{InitialBytes: factoryBytes, ColdSearch: localSearch, ShouldYield: func() bool { return localSearch && dbwork.ColdReadShouldYield() }, New: func(ctx context.Context, budget *readprep.Budget) (readprep.Computation, error) {
 		if err := budget.Resize(factoryBytes + int64(4*cap(spec)) + 2*SelectionBatchMaximumBytes); err != nil {
 			return nil, err
 		}
@@ -212,7 +234,7 @@ func (s *Service) SubmitBrowseSelectionPreparation(request BrowseRequest, viewer
 			return nil, err
 		}
 		var state *BrowseSelectionBatchState
-		err := dbwork.WithReadSnapshot(dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia), root.db, func(inner context.Context) error {
+		err := dbwork.WithReadSnapshot(dbwork.WithClass(ctx, class), root.db, func(inner context.Context) error {
 			read := root.WithContext(inner)
 			if err := check(read); err != nil {
 				return readprep.ErrStale
@@ -339,7 +361,7 @@ func (s *Service) PollBrowseSelectionPreparation(library string, viewer Viewer, 
 		if err != nil {
 			return BrowseSelectionPreparationResult{}, err
 		}
-		state := &BrowseSelectionBatchState{done: true, counts: content.Counts, plan: &selectionBatchPlan{library: content.Library, pivot: content.Pivot, revision: revision, query: content.Query, sorts: sorts, witness: result.Basis}}
+		state := &BrowseSelectionBatchState{done: true, counts: content.Counts, plan: &selectionBatchPlan{library: content.Library, pivot: content.Pivot, revision: revision, query: content.Query, sorts: sorts, witness: result.Basis, localSearch: selectionBatchHasLocalSearch(node)}}
 		descriptor, err := s.FinishBrowseSelectionBatch(state, func(read *Service) (string, error) {
 			return read.browseSelectionWitness(library, viewer.Profile, viewer.EffectiveRestrictions())
 		}, authority)

@@ -13,6 +13,10 @@ export type SelectionSurface = Readonly<{open: boolean; onOpenChange: OverlayCha
 
 export type SelectionActions = Readonly<{
   onPlay?: () => void;
+  playDisabledReason?: string;
+  queueDisabledReason?: string;
+  playlistDisabledReason?: string;
+  editDisabledReason?: string;
   onQueue?: (placement: 'next' | 'end') => void;
   onPlaylist?: (anchor: HTMLElement) => void;
   onMyList?: () => void;

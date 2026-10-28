@@ -7738,6 +7738,42 @@ export const schemas = {
               "type": "object"
             },
             "type": "array"
+          },
+          "unavailableActions": {
+            "additionalProperties": false,
+            "properties": {
+              "delete": {
+                "enum": [
+                  "unsupported-sort"
+                ],
+                "type": "string"
+              },
+              "metadataPreview": {
+                "enum": [
+                  "preview-limit"
+                ],
+                "type": "string"
+              },
+              "play": {
+                "enum": [
+                  "unsupported-sort"
+                ],
+                "type": "string"
+              },
+              "playlist": {
+                "enum": [
+                  "unsupported-sort"
+                ],
+                "type": "string"
+              },
+              "queue": {
+                "enum": [
+                  "unsupported-sort"
+                ],
+                "type": "string"
+              }
+            },
+            "type": "object"
           }
         },
         "required": [
@@ -10136,6 +10172,42 @@ export const schemas = {
                   "type": "object"
                 },
                 "type": "array"
+              },
+              "unavailableActions": {
+                "additionalProperties": false,
+                "properties": {
+                  "delete": {
+                    "enum": [
+                      "unsupported-sort"
+                    ],
+                    "type": "string"
+                  },
+                  "metadataPreview": {
+                    "enum": [
+                      "preview-limit"
+                    ],
+                    "type": "string"
+                  },
+                  "play": {
+                    "enum": [
+                      "unsupported-sort"
+                    ],
+                    "type": "string"
+                  },
+                  "playlist": {
+                    "enum": [
+                      "unsupported-sort"
+                    ],
+                    "type": "string"
+                  },
+                  "queue": {
+                    "enum": [
+                      "unsupported-sort"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "type": "object"
               }
             },
             "required": [
@@ -130583,6 +130655,42 @@ export const schemas = {
               "type": "object"
             },
             "type": "array"
+          },
+          "unavailableActions": {
+            "additionalProperties": false,
+            "properties": {
+              "delete": {
+                "enum": [
+                  "unsupported-sort"
+                ],
+                "type": "string"
+              },
+              "metadataPreview": {
+                "enum": [
+                  "preview-limit"
+                ],
+                "type": "string"
+              },
+              "play": {
+                "enum": [
+                  "unsupported-sort"
+                ],
+                "type": "string"
+              },
+              "playlist": {
+                "enum": [
+                  "unsupported-sort"
+                ],
+                "type": "string"
+              },
+              "queue": {
+                "enum": [
+                  "unsupported-sort"
+                ],
+                "type": "string"
+              }
+            },
+            "type": "object"
           }
         },
         "required": [
@@ -132997,6 +133105,42 @@ export const schemas = {
                   "type": "object"
                 },
                 "type": "array"
+              },
+              "unavailableActions": {
+                "additionalProperties": false,
+                "properties": {
+                  "delete": {
+                    "enum": [
+                      "unsupported-sort"
+                    ],
+                    "type": "string"
+                  },
+                  "metadataPreview": {
+                    "enum": [
+                      "preview-limit"
+                    ],
+                    "type": "string"
+                  },
+                  "play": {
+                    "enum": [
+                      "unsupported-sort"
+                    ],
+                    "type": "string"
+                  },
+                  "playlist": {
+                    "enum": [
+                      "unsupported-sort"
+                    ],
+                    "type": "string"
+                  },
+                  "queue": {
+                    "enum": [
+                      "unsupported-sort"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "type": "object"
               }
             },
             "required": [
@@ -158897,6 +159041,42 @@ export const schemas = {
                   "type": "object"
                 },
                 "type": "array"
+              },
+              "unavailableActions": {
+                "additionalProperties": false,
+                "properties": {
+                  "delete": {
+                    "enum": [
+                      "unsupported-sort"
+                    ],
+                    "type": "string"
+                  },
+                  "metadataPreview": {
+                    "enum": [
+                      "preview-limit"
+                    ],
+                    "type": "string"
+                  },
+                  "play": {
+                    "enum": [
+                      "unsupported-sort"
+                    ],
+                    "type": "string"
+                  },
+                  "playlist": {
+                    "enum": [
+                      "unsupported-sort"
+                    ],
+                    "type": "string"
+                  },
+                  "queue": {
+                    "enum": [
+                      "unsupported-sort"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "type": "object"
               }
             },
             "required": [
