@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -221,8 +222,119 @@ func tryStageBackupFolder(t *testing.T, state, serverID, probe string, change fu
 	if change != nil {
 		change(folder)
 	}
-	_, e = service.Stage(ctx, backup.Source{BackupID: id})
+	result, e := service.Stage(ctx, backup.Source{BackupID: id})
+	if e == nil && result.Validation.Recovery != nil && result.Validation.Recovery.ManifestDamage != nil {
+		// The fixture may spoil a payload, never the manifest that describes it.
+		t.Fatalf("the fixture manifest was damaged instead of its payload: %+v", result.Validation.Recovery.ManifestDamage)
+	}
 	return e
+}
+
+// backupStreamRecord mirrors the v3 manifest writer's record: one file per
+// line, chained by the digest of the previous line, then an end record whose
+// SHA256 covers every earlier line.
+type backupStreamRecord struct {
+	File     *backup.FileEntry `json:"file,omitempty"`
+	Previous string            `json:"previous,omitempty"`
+	SHA256   string            `json:"sha256,omitempty"`
+	End      *backupStreamEnd  `json:"end,omitempty"`
+}
+
+type backupStreamEnd struct {
+	Entries int64  `json:"entries"`
+	Bytes   int64  `json:"bytes"`
+	SHA256  string `json:"sha256"`
+}
+
+func backupStreamEntryDigest(previous string, entry backup.FileEntry) string {
+	raw, _ := json.Marshal(entry)
+	sum := sha256.New()
+	sum.Write([]byte(previous))
+	sum.Write([]byte{'\n'})
+	sum.Write(raw)
+	return hex.EncodeToString(sum.Sum(nil))
+}
+
+// readBackupStream reads the header and file entries from a v3 manifest. A
+// legacy single-JSON manifest is refused rather than silently rewritten, so a
+// fixture cannot pass by turning a parse failure into an earlier refusal.
+func readBackupStream(t *testing.T, folder string) ([]byte, []backup.FileEntry) {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(folder, backup.ManifestName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := bytes.Split(raw, []byte("\n"))
+	if len(lines) == 0 || len(lines[0]) == 0 {
+		t.Fatal("backup manifest is empty")
+	}
+	var manifest backup.Manifest
+	if err = json.Unmarshal(lines[0], &manifest); err != nil || manifest.Format != backup.Format || manifest.Version != backup.StreamVersion {
+		t.Fatalf("backup manifest is not the v%d stream format: %v", backup.StreamVersion, err)
+	}
+	var entries []backup.FileEntry
+	ended := false
+	for _, line := range lines[1:] {
+		if len(line) == 0 {
+			continue
+		}
+		var record backupStreamRecord
+		if err = json.Unmarshal(line, &record); err != nil {
+			t.Fatalf("backup manifest record: %v", err)
+		}
+		if ended {
+			t.Fatal("backup manifest has records after its end record")
+		}
+		if record.End != nil {
+			ended = true
+			continue
+		}
+		if record.File == nil {
+			t.Fatal("backup manifest has a record without a file")
+		}
+		entries = append(entries, *record.File)
+	}
+	if !ended {
+		t.Fatal("backup manifest has no end record")
+	}
+	return lines[0], entries
+}
+
+// writeBackupStream rebuilds the whole manifest, including every per-file
+// digest, the running chain and the end digest, the way the backup writer does.
+func writeBackupStream(t *testing.T, folder string, header []byte, entries []backup.FileEntry) {
+	t.Helper()
+	var out bytes.Buffer
+	whole := sha256.New()
+	line := func(raw []byte) {
+		out.Write(raw)
+		out.WriteByte('\n')
+		whole.Write(raw)
+		whole.Write([]byte{'\n'})
+	}
+	line(header)
+	previous := hex.EncodeToString(whole.Sum(nil))
+	var total int64
+	for _, entry := range entries {
+		digest := backupStreamEntryDigest(previous, entry)
+		raw, err := json.Marshal(backupStreamRecord{File: &entry, Previous: previous, SHA256: digest})
+		if err != nil {
+			t.Fatal(err)
+		}
+		line(raw)
+		previous = digest
+		total += entry.Bytes
+	}
+	end := backupStreamEnd{Entries: int64(len(entries)), Bytes: total, SHA256: hex.EncodeToString(whole.Sum(nil))}
+	raw, err := json.Marshal(backupStreamRecord{End: &end})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out.Write(raw)
+	out.WriteByte('\n')
+	if err = os.WriteFile(filepath.Join(folder, backup.ManifestName), out.Bytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // replaceBackupFile rewrites one file of a backup folder and records the new
@@ -232,32 +344,18 @@ func replaceBackupFile(t *testing.T, folder, name string, content []byte) {
 	if e := os.WriteFile(filepath.Join(folder, filepath.FromSlash(name)), content, 0600); e != nil {
 		t.Fatal(e)
 	}
-	path := filepath.Join(folder, backup.ManifestName)
-	raw, e := os.ReadFile(path)
-	if e != nil {
-		t.Fatal(e)
-	}
-	var manifest map[string]any
-	if e = json.Unmarshal(raw, &manifest); e != nil {
-		t.Fatal(e)
-	}
+	header, entries := readBackupStream(t, folder)
 	found := false
-	for _, entry := range manifest["files"].([]any) {
-		file := entry.(map[string]any)
-		if file["name"] == name {
+	for i := range entries {
+		if entries[i].Name == name {
 			sum := sha256.Sum256(content)
-			file["bytes"], file["sha256"], found = len(content), hex.EncodeToString(sum[:]), true
+			entries[i].Bytes, entries[i].SHA256, found = int64(len(content)), hex.EncodeToString(sum[:]), true
 		}
 	}
 	if !found {
 		t.Fatalf("the backup does not carry %s", name)
 	}
-	if raw, e = json.Marshal(manifest); e != nil {
-		t.Fatal(e)
-	}
-	if e = os.WriteFile(path, raw, 0600); e != nil {
-		t.Fatal(e)
-	}
+	writeBackupStream(t, folder, header, entries)
 }
 
 // addBackupFile adds a file to a backup folder and lists it in the manifest,
@@ -271,23 +369,19 @@ func addBackupFile(t *testing.T, folder, name string, content []byte) {
 	if e := os.WriteFile(target, content, 0600); e != nil {
 		t.Fatal(e)
 	}
-	path := filepath.Join(folder, backup.ManifestName)
-	raw, e := os.ReadFile(path)
-	if e != nil {
-		t.Fatal(e)
-	}
-	var manifest map[string]any
-	if e = json.Unmarshal(raw, &manifest); e != nil {
-		t.Fatal(e)
-	}
+	header, entries := readBackupStream(t, folder)
 	sum := sha256.Sum256(content)
-	manifest["files"] = append(manifest["files"].([]any), map[string]any{"name": name, "bytes": len(content), "sha256": hex.EncodeToString(sum[:])})
-	if raw, e = json.Marshal(manifest); e != nil {
-		t.Fatal(e)
+	entry := backup.FileEntry{Name: name, Bytes: int64(len(content)), SHA256: hex.EncodeToString(sum[:])}
+	found := false
+	for i := range entries {
+		if entries[i].Name == name {
+			entries[i], found = entry, true
+		}
 	}
-	if e = os.WriteFile(path, raw, 0600); e != nil {
-		t.Fatal(e)
+	if !found {
+		entries = append(entries, entry)
 	}
+	writeBackupStream(t, folder, header, entries)
 }
 
 // changeBackupDatabase runs statements against a backup folder's database.
@@ -443,14 +537,16 @@ func TestRestoreIsRefusedForEveryMissingStartupRequirement(t *testing.T) {
 		"schema: a column start-up writes is missing": func(t *testing.T, _, folder string) {
 			changeBackupDatabase(t, folder, `ALTER TABLE managed_mounts RENAME COLUMN observed TO seen`)
 		},
+		// Staging rewrites the carried registry from physical state paths, so
+		// these payloads use the same names a real backup carries.
 		"subtitles folder is a file": func(t *testing.T, _, folder string) {
-			addBackupFile(t, folder, "subtitles", []byte("not a folder"))
+			addBackupFile(t, folder, "Metadata/subtitles", []byte("not a folder"))
 		},
 		"subtitle objects folder is a file": func(t *testing.T, _, folder string) {
-			addBackupFile(t, folder, "subtitles/objects", []byte("not a folder"))
+			addBackupFile(t, folder, "Metadata/subtitles/objects", []byte("not a folder"))
 		},
 		"mount configuration folder is a file": func(t *testing.T, _, folder string) {
-			addBackupFile(t, folder, "managed-storage", []byte("not a folder"))
+			addBackupFile(t, folder, "Keys/managed-storage", []byte("not a folder"))
 		},
 	}
 	// Every row a fresh install starts with, one at a time: the maintenance
