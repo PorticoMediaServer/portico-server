@@ -1,3 +1,5 @@
+import {dependsOn} from '@core/freshness-hub.ts';
+import {createLibraryRouteProof} from './library-route-proof';
 import type {LibraryRouteProof} from './library-route-proof';
 import type {HttpLocalApi, LocalSession} from '@core/index.ts';
 import {parseLibraryList} from '@core/library-list.ts';
@@ -363,22 +365,30 @@ export class ShellBootstrap {
     cleanups.push(() => notificationScope.dispose());
     let manifestFence: string | undefined;
     let factOwner: ReturnType<typeof createShellFactOwner> | undefined;
+    const libraryRouteProof = createLibraryRouteProof({session: () => session, isCurrent,
+      directoryVersion: () => freshness.hub.version(dependsOn.libraries),
+      homeVersion: () => JSON.stringify([dependsOn.libraries, dependsOn.list('members'), dependsOn.settings('server'), dependsOn.settings('preferences')].map(key => freshness.hub.version(key))),
+      request: () => factOwner?.request('directory')});
+    cleanups.push(libraryRouteProof.dispose);
     const home = new HomeService(api, {observation: {
       serverId: session.viewer.serverId, isCurrent,
       retire: () => {if (isCurrent()) this.restart();},
       mismatch: () => factOwner?.authority(),
       observe: observation => {
         if (!isCurrent()) return 'retire';
-        if (manifestFence === undefined) {manifestFence = observation.viewerFence; return 'accept';}
-        if (manifestFence === observation.viewerFence) return 'accept';
-        this.restart(); return 'retire';
+        if (manifestFence === undefined) manifestFence = observation.viewerFence;
+        else if (manifestFence !== observation.viewerFence) {this.restart(); return 'retire';}
+        // Home retirement is classified first; only accepted same-epoch manifests
+        // reach the route proof observer, never custom-layout row membership.
+        libraryRouteProof.observeHome(observation);
+        return isCurrent() ? 'accept' : 'retire';
       },
     }}), inbox = new InboxService(notificationScope);
     cleanups.push(() => home.dispose(), () => inbox.dispose());
     const {facts: initialFacts, witnesses} = await readFacts(api, session, preferences, inbox, signal);
     if (!isCurrent()) return;
     factOwner = createShellFactOwner({api, session: () => session, auth, preferences, home, hub: freshness.hub,
-      initial: initialFacts, witnesses, isCurrent, retire: () => {if (isCurrent()) this.restart();}, readonlyAccess: this.environment.readonlyAccess});
+      initial: initialFacts, witnesses, libraryRouteProof, isCurrent, retire: () => {if (isCurrent()) this.restart();}, readonlyAccess: this.environment.readonlyAccess});
     cleanups.push(factOwner.dispose);
     const factsSource = factOwner.source;
     const facts = () => factsSource.getSnapshot();
@@ -394,7 +404,7 @@ export class ShellBootstrap {
     const saved=(await (this.environment.actions?.()??browserAppSessionActions()).store.read()).servers;
     const savedServers=await display.choices(saved.map(value=>({pin:value.connection.pin,origin:value.connection.logicalOrigin,signIn:value.signIn})),signal);
     if (!isCurrent()) return;
-    const context: ShellAssemblyContext = {api, session: () => session, auth, events, freshness, home, inbox, artwork, factsSource, homeAuthority: factOwner.authority, observeDirect: factOwner.observeDirect, get facts() {return facts();}, preferences, epoch, get viewerFence() {return homeFence.viewerFence;}, isCurrent, signOut,signOutPorticoAccount,switchProfile,switchServer:this.selectServer,get savedServers() {return savedServers.map(value => value.id === session.viewer.serverId ? {...value, label: facts().serverName} : value);}};
+    const context: ShellAssemblyContext = {api, session: () => session, auth, events, freshness, home, inbox, artwork, factsSource, libraryRouteProof: libraryRouteProof.source, homeAuthority: factOwner.authority, observeDirect: factOwner.observeDirect, get facts() {return facts();}, preferences, epoch, get viewerFence() {return homeFence.viewerFence;}, isCurrent, signOut,signOutPorticoAccount,switchProfile,switchServer:this.selectServer,get savedServers() {return savedServers.map(value => value.id === session.viewer.serverId ? {...value, label: facts().serverName} : value);}};
     const assembly = await this.assemble(context);
     if (!isCurrent()) { assembly.dispose(); return; }
     cleanups.push(() => assembly.dispose());

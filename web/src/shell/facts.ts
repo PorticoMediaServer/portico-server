@@ -1,3 +1,4 @@
+import type {LibraryRouteProofOwner} from './library-route-proof';
 import type {HttpLocalApi, LocalSession} from '@core/index.ts';
 import {dependsOn, finalAnswer, isSharedReadSuperseded, type FreshnessHub, type FreshnessInterest, type InterestOutcome, type InterestReadContext} from '@core/freshness-hub.ts';
 import type {LocalSessionRefresher} from '@core/session-refresh.ts';
@@ -51,7 +52,7 @@ const answered: InterestOutcome = {kind: 'answered'};
 /** Fixed read/classification/projection adapters. The hub owns every ticket, timer and shared flight. */
 export function createShellFactOwner(o: Readonly<{
   api: HttpLocalApi; session(): LocalSession; auth: LocalSessionRefresher; preferences: PreferencesReader;
-  home: HomeService; hub: FreshnessHub; initial: ShellFacts; witnesses: ShellFactWitnesses;
+  home: HomeService; libraryRouteProof?: LibraryRouteProofOwner; hub: FreshnessHub; initial: ShellFacts; witnesses: ShellFactWitnesses;
   isCurrent(): boolean; retire(): void; readonlyAccess?: boolean;
 }>) {
   const source = createShellFactsSource(o.initial), admitted = o.session(), initial = o.witnesses;
@@ -107,10 +108,14 @@ export function createShellFactOwner(o: Readonly<{
     try {return await adoptPreference(context, o.session());} catch (error) {return failed(error);}
   });
   const directory = add('directory', [dependsOn.libraries], async context => {
-    const captured = o.session();
+    const captured = o.session(), proofTicket = o.libraryRouteProof?.beginDirectory();
     try {
-      const value = parseLibraryList(await o.api.request(routePath('get_libraries'), 'GET', undefined, context.signal));
-      // A tolerant missing row is display loss, never proof of a revoked route or viewer.
+      const raw = await o.api.request(routePath('get_libraries'), 'GET', undefined, context.signal);
+      const value = parseLibraryList(raw);
+      if (!sameRequest(captured, context.signal)) return {kind: 'superseded'};
+      // Same successful body, separate strict membership witness. Tolerant loss
+      // may update labels but cannot ever prove a route absent.
+      if (proofTicket) o.libraryRouteProof?.directory(proofTicket, raw);
       return await publish(context, captured, () => updateIdentity({libraries: value.items}));
     } catch (error) {return failed(error);}
   });
@@ -172,12 +177,18 @@ export function createShellFactOwner(o: Readonly<{
     }
   }, true);
   const homeAuthority = add('home-authority', [dependsOn.libraries, dependsOn.list('members'), dependsOn.settings('server'), dependsOn.settings('preferences')], async context => {
-    try {return {kind: await o.home.authority({signal: context.signal, isCurrent: current})};}
-    catch (error) {if (!current()) return {kind: 'superseded'}; return failed(error);}
+    const proofTicket = o.libraryRouteProof?.beginHome();
+    try {
+      const kind = await o.home.authority({signal: context.signal, isCurrent: current});
+      if (kind === 'answered' && current() && proofTicket) o.libraryRouteProof?.homeAnswered(proofTicket);
+      return {kind};
+    } catch (error) {if (!current()) return {kind: 'superseded'}; return failed(error);}
   }, true);
   const groups = {directory, server, members, liveSources, libraryChannels};
   const request = (group: ShellFactGroup) => {
     if (!current()) return;
+    if (group === 'directory') o.libraryRouteProof?.invalidate();
+    if (group === 'members' || group === 'server') o.libraryRouteProof?.invalidateHome();
     if (group === 'members') {direct.invalidate(); permission?.invalidate();} else groups[group].invalidate();
     if (group === 'members' || group === 'directory' || group === 'server') homeAuthority.invalidate();
   };
@@ -185,7 +196,7 @@ export function createShellFactOwner(o: Readonly<{
     source, request,
     observeDirect: (snapshot: DirectSnapshot) => {acceptDirect(snapshot);},
     preferences: () => o.hub.note(dependsOn.settings('preferences')),
-    authority: () => homeAuthority.invalidate(),
+    authority: () => {o.libraryRouteProof?.invalidateHome(); homeAuthority.invalidate();},
     all() {if (!current()) return; for (const group of ['directory', 'server', 'members', 'liveSources', 'libraryChannels'] as const) request(group); preferences.invalidate(); direct.invalidate(); permission?.invalidate(); homeAuthority.invalidate();},
     setRetained(value: boolean) {if (closed || retained === value) return; retained = value; for (const interest of [homeAuthority, direct, permission]) interest?.setRetained(value);},
     dispose() {if (closed) return; closed = true; directProjection = undefined; for (const interest of interests) interest.dispose(); source.dispose();},
