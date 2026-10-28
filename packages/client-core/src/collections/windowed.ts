@@ -12,7 +12,10 @@
  *   visible pages, prefetches one page either side (two in the direction of
  *   travel), dedupes requests already in flight, aborts requests for pages
  *   that left interest, and evicts least-recently-used pages beyond
- *   `maxResidentPages` (never a visible one).
+ *   `maxResidentPages` (never a visible one, nor the pinned one).
+ * - `pin(index)` keeps one item's page in memory whatever the budget: the
+ *   focused card, so a focus that outlives its scroll position (a covered
+ *   page, an interrupted row scroll, Back or Undo) always finds its item.
  * - `positionIndex` (letter → start offset) supports letter jumps and random access.
  * - `invalidate()` (a new filter or sort) starts a fresh generation but keeps
  *   showing the old one until the new generation's first visible page has
@@ -86,6 +89,9 @@ export type WindowedCollection<T> = {
   slotAt(index: number): Slot<T>;
   /** The visible range, inclusive. Call on every scroll/layout change; cheap when nothing changed. */
   ensureRange(first: number, last: number): void;
+  /** Keep this index's page in memory (loading it if needed) until the pin moves or is cleared with
+   * `undefined`. One pin at a time; a new filter or sort (`invalidate`) clears it. */
+  pin(index: number | undefined): void;
   /** Offset for a letter from the positionIndex, if known. */
   indexOfLetter(letter: string): number | undefined;
   /** Start a new generation (filter/sort change). The old one stays on screen until the new first page arrives. */
@@ -150,6 +156,7 @@ export function createWindowedCollection<T>(options: WindowedCollectionOptions<T
   let current: Generation<T> = {id: nextId++, fetchPage: options.fetchPage, pages: new Map(), total: undefined, totalIsLowerBound: false, positionIndex: undefined, lastError: undefined, gate: 0};
   let pending: Generation<T> | undefined;
   let visibleFirst = -1, visibleLast = -1, lastFirst = -1, direction = 0;
+  let pinned: number | undefined;
   let tick = 0, disposed = false;
   let shownGeneration = 0;
   // While the server has asked for a pause, scrolling does not start new page requests: the
@@ -194,7 +201,16 @@ export function createWindowedCollection<T>(options: WindowedCollectionOptions<T
     const forward = count === undefined ? [] : [...range(lastPage + 1, lastPage + ahead)].filter(p => p < count);
     const backward = [...range(Math.max(0, firstPage - behind), firstPage - 1)].reverse();
     if (direction < 0) extra.push(...backward, ...forward); else extra.push(...forward, ...backward);
+    const held = pinnedPage(g);
+    if (held !== undefined && !visible.includes(held) && !extra.includes(held)) extra.unshift(held);
     return {visible, wanted: [...visible, ...extra]};
+  }
+
+  /** The pinned item's page, while it is a page of this generation. */
+  function pinnedPage(g: Generation<T>): number | undefined {
+    if (pinned === undefined || exactEmpty(g)) return undefined;
+    const page = pageOfIndex(pinned), count = pageCount(g);
+    return count === undefined || page < count ? page : undefined;
   }
 
   function evict(g: Generation<T>, keep: ReadonlySet<number>, pinned: ReadonlySet<number>) {
@@ -306,7 +322,8 @@ export function createWindowedCollection<T>(options: WindowedCollectionOptions<T
       }
       // The old generation only keeps what it has while a new one loads; it starts nothing new.
       // (Behind a quiet reading the list on screen is still the list: it goes on loading as the person scrolls.)
-      if (g === current && pending && !pending.quiet) { evict(g, wantedSet, visibleSet); continue; }
+      const held = pinnedPage(g), kept = held === undefined ? visibleSet : new Set([...visibleSet, held]);
+      if (g === current && pending && !pending.quiet) { evict(g, wantedSet, kept); continue; }
       let active = inFlight(g);
       for (const page of wanted) {
         if (active >= maxConcurrent) break;
@@ -319,7 +336,7 @@ export function createWindowedCollection<T>(options: WindowedCollectionOptions<T
         if (count !== undefined && page >= count) continue;
         load(g, page); active++;
       }
-      evict(g, wantedSet, visibleSet);
+      evict(g, wantedSet, kept);
     }
   }
 
@@ -358,6 +375,13 @@ export function createWindowedCollection<T>(options: WindowedCollectionOptions<T
       pump();
       publish();
     },
+    pin(index) {
+      if (disposed) return;
+      const next = index === undefined || !Number.isSafeInteger(index) || index < 0 ? undefined : index;
+      if (next === pinned) return;
+      pinned = next;
+      pump();
+    },
     indexOfLetter(letter) {
       const index = current.positionIndex;
       if (!index) return undefined;
@@ -377,6 +401,7 @@ export function createWindowedCollection<T>(options: WindowedCollectionOptions<T
     },
     invalidate(fetchPage) {
       if (disposed) return;
+      pinned = undefined;
       if (pending?.quiet) pending.quiet.resolve();
       if (pending) for (const p of pending.pages.values()) if (p.status === 'loading') p.controller.abort();
       pending = {id: nextId++, fetchPage: fetchPage ?? current.fetchPage, pages: new Map(), total: undefined, totalIsLowerBound: false, positionIndex: undefined, lastError: undefined, gate: visibleFirst < 0 ? 0 : pageOfIndex(visibleFirst)};
