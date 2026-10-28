@@ -208,7 +208,7 @@ export const settingsMessages = {
   'next.settings.streaming.space': 'Converting in {path}.',
   'next.settings.streaming.spaceFree': 'Converting in {path}, with {free} free.',
   'next.settings.streaming.spaceNotWritable': 'Portico can’t write to {path}, so conversions will fail.',
-  'next.settings.streaming.spaceMap': 'Map /transcode to a fast disk or to memory.',
+  'next.settings.streaming.spaceMap': 'Map /transcode to a fast disk.',
   'next.settings.hardware.device.inUse': 'In use',
   'next.settings.hardware.device.ready': 'Ready',
   'next.settings.hardware.method.quick_sync': 'Quick Sync',
@@ -240,4 +240,5 @@ export const settingsMessages = {
   'next.settings.librarySonic.unavailable': 'Can’t run on this server: the analysis engine didn’t load.',
   'next.settings.librarySonic.retryUnavailable': 'Still can’t load. The log in Troubleshooting has the reason.',
   'next.settings.changeOwnerLocalBody': 'Another server account becomes the owner. You become a member.',
+  'next.settings.streaming.memoryUnavailable': 'Memory is unavailable on this server.',
 } as const;

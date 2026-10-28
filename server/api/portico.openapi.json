@@ -10878,6 +10878,9 @@
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "transcodeLocation": {
+                "type": "string"
+              },
               "trustedProxies": {
                 "items": {
                   "type": "string"
@@ -10922,6 +10925,7 @@
               "planningPolicy",
               "throttleBufferMs",
               "playedRetentionMs",
+              "transcodeLocation",
               "temporaryDirectory",
               "ffmpegPath",
               "sessionStorageMiB",
@@ -11382,6 +11386,9 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "transcodeLocation": {
+                    "type": "string"
+                  },
                   "trustedProxies": {
                     "items": {
                       "type": "string"
@@ -11426,6 +11433,7 @@
                   "planningPolicy",
                   "throttleBufferMs",
                   "playedRetentionMs",
+                  "transcodeLocation",
                   "temporaryDirectory",
                   "ffmpegPath",
                   "sessionStorageMiB",
@@ -11902,6 +11910,9 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "transcodeLocation": {
+                    "type": "string"
+                  },
                   "trustedProxies": {
                     "items": {
                       "type": "string"
@@ -11946,6 +11957,7 @@
                   "planningPolicy",
                   "throttleBufferMs",
                   "playedRetentionMs",
+                  "transcodeLocation",
                   "temporaryDirectory",
                   "ffmpegPath",
                   "sessionStorageMiB",
@@ -35950,6 +35962,16 @@
               "lifecycle": {
                 "type": "string"
               },
+              "memoryPlacementsRefused": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "memorySpills": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "outputPolicy": {
                 "type": "string"
               },
@@ -36110,6 +36132,8 @@
               "conversionLimitSource",
               "outputPolicy",
               "hostConversionCapacity",
+              "memorySpills",
+              "memoryPlacementsRefused",
               "conversionsRefused",
               "hardwareFallbacks",
               "fragmentedOutput",
@@ -38143,6 +38167,9 @@
                       }
                     ]
                   },
+                  "memoryAvailable": {
+                    "type": "boolean"
+                  },
                   "memoryPath": {
                     "type": "string"
                   },
@@ -38158,7 +38185,8 @@
                   "ready",
                   "freeBytes",
                   "fallback",
-                  "memoryPath"
+                  "memoryPath",
+                  "memoryAvailable"
                 ],
                 "type": "object"
               },
@@ -43191,6 +43219,9 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "transcodeLocation": {
+                    "type": "string"
+                  },
                   "trustedProxies": {
                     "items": {
                       "type": "string"
@@ -43235,6 +43266,7 @@
                   "planningPolicy",
                   "throttleBufferMs",
                   "playedRetentionMs",
+                  "transcodeLocation",
                   "temporaryDirectory",
                   "ffmpegPath",
                   "sessionStorageMiB",
@@ -43711,6 +43743,9 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "transcodeLocation": {
+                    "type": "string"
+                  },
                   "trustedProxies": {
                     "items": {
                       "type": "string"
@@ -43755,6 +43790,7 @@
                   "planningPolicy",
                   "throttleBufferMs",
                   "playedRetentionMs",
+                  "transcodeLocation",
                   "temporaryDirectory",
                   "ffmpegPath",
                   "sessionStorageMiB",
@@ -291613,6 +291649,9 @@
                       }
                     ]
                   },
+                  "memoryAvailable": {
+                    "type": "boolean"
+                  },
                   "memoryPath": {
                     "type": "string"
                   },
@@ -291628,7 +291667,8 @@
                   "ready",
                   "freeBytes",
                   "fallback",
-                  "memoryPath"
+                  "memoryPath",
+                  "memoryAvailable"
                 ],
                 "type": "object"
               },
@@ -306425,6 +306465,9 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "transcodeLocation": {
+                              "type": "string"
+                            },
                             "trustedProxies": {
                               "items": {
                                 "type": "string"
@@ -306469,6 +306512,7 @@
                             "planningPolicy",
                             "throttleBufferMs",
                             "playedRetentionMs",
+                            "transcodeLocation",
                             "temporaryDirectory",
                             "ffmpegPath",
                             "sessionStorageMiB",
@@ -306945,6 +306989,9 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "transcodeLocation": {
+                              "type": "string"
+                            },
                             "trustedProxies": {
                               "items": {
                                 "type": "string"
@@ -306989,6 +307036,7 @@
                             "planningPolicy",
                             "throttleBufferMs",
                             "playedRetentionMs",
+                            "transcodeLocation",
                             "temporaryDirectory",
                             "ffmpegPath",
                             "sessionStorageMiB",
@@ -307541,6 +307589,9 @@
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "transcodeLocation": {
+                        "type": "string"
+                      },
                       "trustedProxies": {
                         "items": {
                           "type": "string"
@@ -307585,6 +307636,7 @@
                       "planningPolicy",
                       "throttleBufferMs",
                       "playedRetentionMs",
+                      "transcodeLocation",
                       "temporaryDirectory",
                       "ffmpegPath",
                       "sessionStorageMiB",
@@ -308053,6 +308105,9 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "transcodeLocation": {
+                              "type": "string"
+                            },
                             "trustedProxies": {
                               "items": {
                                 "type": "string"
@@ -308097,6 +308152,7 @@
                             "planningPolicy",
                             "throttleBufferMs",
                             "playedRetentionMs",
+                            "transcodeLocation",
                             "temporaryDirectory",
                             "ffmpegPath",
                             "sessionStorageMiB",
@@ -308573,6 +308629,9 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "transcodeLocation": {
+                              "type": "string"
+                            },
                             "trustedProxies": {
                               "items": {
                                 "type": "string"
@@ -308617,6 +308676,7 @@
                             "planningPolicy",
                             "throttleBufferMs",
                             "playedRetentionMs",
+                            "transcodeLocation",
                             "temporaryDirectory",
                             "ffmpegPath",
                             "sessionStorageMiB",
@@ -339288,6 +339348,16 @@
                         "lifecycle": {
                           "type": "string"
                         },
+                        "memoryPlacementsRefused": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "memorySpills": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
                         "outputPolicy": {
                           "type": "string"
                         },
@@ -339448,6 +339518,8 @@
                         "conversionLimitSource",
                         "outputPolicy",
                         "hostConversionCapacity",
+                        "memorySpills",
+                        "memoryPlacementsRefused",
                         "conversionsRefused",
                         "hardwareFallbacks",
                         "fragmentedOutput",
@@ -346467,6 +346539,9 @@
                                 }
                               ]
                             },
+                            "memoryAvailable": {
+                              "type": "boolean"
+                            },
                             "memoryPath": {
                               "type": "string"
                             },
@@ -346482,7 +346557,8 @@
                             "ready",
                             "freeBytes",
                             "fallback",
-                            "memoryPath"
+                            "memoryPath",
+                            "memoryAvailable"
                           ],
                           "type": "object"
                         },
@@ -347018,6 +347094,9 @@
                                 }
                               ]
                             },
+                            "memoryAvailable": {
+                              "type": "boolean"
+                            },
                             "memoryPath": {
                               "type": "string"
                             },
@@ -347033,7 +347112,8 @@
                             "ready",
                             "freeBytes",
                             "fallback",
-                            "memoryPath"
+                            "memoryPath",
+                            "memoryAvailable"
                           ],
                           "type": "object"
                         },

@@ -109,6 +109,7 @@ func Registry() []Field {
 		field("playedRetentionMs", "transcoding", "integer", 180000, bounded(0), bounded(3600000), nil, "next-operation", "conversion segment retention", "How long already played segments stay on disk so a small rewind does not restart the conversion."),
 		field("ffmpegPath", "transcoding", "path", "", nil, nil, nil, "restart", "media tool qualification and conversion launch", "Absolute path to another FFmpeg build. It is checked before use and runs with the same process restrictions."),
 		field("sessionStorageMiB", "transcoding", "integer", 4096, bounded(64), bounded(1048576), nil, "next-operation", "conversion output retention", "Maximum working space for one playback session in MiB. Older played segments are removed first."),
+		field("transcodeLocation", "transcoding", "enumeration", "memory", nil, nil, []string{"memory", "disk"}, "next-operation", "conversion placement", "Prefer bounded memory when available, or always use the disk conversion folder."),
 		field("memoryCap", "transcoding", "enumeration", "quarter", nil, nil, MemoryCaps, "next-operation", "memory conversion placement", "How much memory conversions may use when the conversion location is memory: a quarter or half of free memory, or a fixed size. When it is full, conversions go to the separate folder."),
 		field("temporaryDirectory", "transcoding", "path", "", nil, nil, nil, "restart", "conversion working directory", "Absolute path for conversion working files. Empty uses the server state directory. Readiness is reported by the transcode capacity report."),
 		field("maxConcurrentSessions", "transcoding", "integer", 0, bounded(0), bounded(1000), nil, "next-operation", "conversion admission", "Total conversions allowed at once. 0 means unlimited."),
@@ -194,20 +195,21 @@ type Settings struct {
 	PlanningPolicy          string `json:"planningPolicy"`
 	ThrottleBufferMs        int    `json:"throttleBufferMs"`
 	PlayedRetentionMs       int    `json:"playedRetentionMs"`
+	TranscodeLocation       string `json:"transcodeLocation"`
 	TemporaryDirectory      string `json:"temporaryDirectory"`
 	FFmpegPath              string `json:"ffmpegPath"`
 	SessionStorageMiB       int    `json:"sessionStorageMiB"`
 	// MemoryCap bounds conversion output placed in memory (Streaming ›
 	// Memory limit); it only matters while the conversion location is a RAM
 	// file system.
-	MemoryCap string `json:"memoryCap"`
-	MaxConcurrentSessions   int    `json:"maxConcurrentSessions"`
-	MaxHardwareSessions     int    `json:"maxHardwareSessions"`
-	MaxSoftwareSessions     int    `json:"maxSoftwareSessions"`
-	MaxBackgroundSessions   int    `json:"maxBackgroundSessions"`
-	DiagnosticDays          int    `json:"diagnosticDays"`
-	NotificationDays        int    `json:"notificationDays"`
-	JobDays                 int    `json:"jobDays"`
+	MemoryCap             string `json:"memoryCap"`
+	MaxConcurrentSessions int    `json:"maxConcurrentSessions"`
+	MaxHardwareSessions   int    `json:"maxHardwareSessions"`
+	MaxSoftwareSessions   int    `json:"maxSoftwareSessions"`
+	MaxBackgroundSessions int    `json:"maxBackgroundSessions"`
+	DiagnosticDays        int    `json:"diagnosticDays"`
+	NotificationDays      int    `json:"notificationDays"`
+	JobDays               int    `json:"jobDays"`
 	// PlayHistoryDays is how long the server's play history is kept; 0, the
 	// default, keeps all of it. A document saved before the field existed reads
 	// as 0, which is the default.
@@ -292,7 +294,7 @@ type LogRetention struct {
 // fresh database and a document saved before these fields existed agree.
 func DefaultSettings() Settings {
 	chapterNames := true
-	return Settings{AnalysisStorageGiB: 32, AnalysisStageStorageMiB: 256, SubtitleTrackLimit: medialimits.DefaultSubtitleTracks, SubtitleFileLimitMiB: medialimits.DefaultSubtitleFileMiB, Name: "Portico", TranscodingEnabled: true, ConversionMode: "all", OutputFormat: "auto", DownloadMaxQuality: "original", MusicAwayQuality: "original", HDRToneMapping: true, HardwareBackend: "auto", HardwareSelection: "auto", HardwareDecode: true, HDRToneMappingAlgorithm: "hable", X264Preset: "veryfast", DirectStreamRemux: true, PlanningPolicy: "maximum_fidelity", ThrottleBufferMs: 60000, PlayedRetentionMs: 180000, SessionStorageMiB: 4096, MemoryCap: "quarter", DiagnosticDays: 30, NotificationDays: 180, JobDays: 30, UpdateChannel: "stable", UpdateFeedURL: DefaultUpdateFeedURL, MissingTitles: "after_days", MissingTitlesDays: 30, PeopleInvitationRole: "member", PeopleInvitationDays: 7, SegmentDetection: "standard", SegmentUseChapterNames: &chapterNames, SegmentShortestEpisode: 2, SegmentShortestFilm: 10, SegmentIntroWindow: "usual", SegmentCreditsWindow: "usual", SegmentFilmCreditsWindow: "usual", SegmentTVMode: "server", SegmentAnimeMode: "server", SegmentMovieMode: "server", SegmentViewerConfidencePercent: 50, SegmentAutomaticConfidencePercent: 85,
+	return Settings{AnalysisStorageGiB: 32, AnalysisStageStorageMiB: 256, SubtitleTrackLimit: medialimits.DefaultSubtitleTracks, SubtitleFileLimitMiB: medialimits.DefaultSubtitleFileMiB, Name: "Portico", TranscodingEnabled: true, ConversionMode: "all", OutputFormat: "auto", DownloadMaxQuality: "original", MusicAwayQuality: "original", HDRToneMapping: true, HardwareBackend: "auto", HardwareSelection: "auto", HardwareDecode: true, HDRToneMappingAlgorithm: "hable", X264Preset: "veryfast", DirectStreamRemux: true, PlanningPolicy: "maximum_fidelity", ThrottleBufferMs: 60000, PlayedRetentionMs: 180000, SessionStorageMiB: 4096, MemoryCap: "quarter", TranscodeLocation: "memory", DiagnosticDays: 30, NotificationDays: 180, JobDays: 30, UpdateChannel: "stable", UpdateFeedURL: DefaultUpdateFeedURL, MissingTitles: "after_days", MissingTitlesDays: 30, PeopleInvitationRole: "member", PeopleInvitationDays: 7, SegmentDetection: "standard", SegmentUseChapterNames: &chapterNames, SegmentShortestEpisode: 2, SegmentShortestFilm: 10, SegmentIntroWindow: "usual", SegmentCreditsWindow: "usual", SegmentFilmCreditsWindow: "usual", SegmentTVMode: "server", SegmentAnimeMode: "server", SegmentMovieMode: "server", SegmentViewerConfidencePercent: 50, SegmentAutomaticConfidencePercent: 85,
 		RemoteSignInPolicy: "allow", LANNetworks: networkpolicy.DefaultHomeNetworks(), AccessURLs: []string{}, LANDiscoveryEnabled: true, TrustedProxies: []string{}, LogLevel: "info", LogDetailMinutes: 30, LogRetention: []LogRetention{}}
 }
 
@@ -636,6 +638,12 @@ func validateSettings(v *Settings) error {
 		fields = append(fields, "values.sessionStorageMiB")
 	}
 	// An omitted limit is the default, so an older client still saves.
+	if v.TranscodeLocation == "" {
+		v.TranscodeLocation = "memory"
+	}
+	if !oneOf(v.TranscodeLocation, []string{"memory", "disk"}) {
+		fields = append(fields, "values.transcodeLocation")
+	}
 	if v.MemoryCap == "" {
 		v.MemoryCap = "quarter"
 	}

@@ -57,10 +57,10 @@ func TestMemoryPlacementBounds(t *testing.T) {
 		memory  bool
 	}{
 		{"under cap", memoryFacts{8 << 30, 16 << 30, 512 << 20, 512 << 20}, false, true},
-		{"bounded volume above allowance", memoryFacts{2 << 30, 16 << 30, 1 << 30, 1 << 30}, false, true},
+		{"bounded volume above allowance", memoryFacts{2 << 30, 16 << 30, 1 << 30, 1 << 30}, false, false},
 		{"floor", memoryFacts{(1 << 30) + (128 << 20), 4 << 30, 512 << 20, 512 << 20}, false, false},
-		{"filesystem free", memoryFacts{8 << 30, 16 << 30, 128 << 20, 512 << 20}, false, false},
-		{"stock shm above cap", memoryFacts{8 << 30, 16 << 30, 8 << 30, 8 << 30}, false, true},
+		{"filesystem free", memoryFacts{8 << 30, 16 << 30, memoryHeadroom - 1, 512 << 20}, false, false},
+		{"stock shm above cap", memoryFacts{8 << 30, 16 << 30, 8 << 30, 8 << 30}, false, false},
 		{"unbounded filesystem", memoryFacts{8 << 30, 16 << 30, 8 << 30, 0}, false, false},
 		{"unreadable", memoryFacts{}, true, false},
 	} {
@@ -257,7 +257,7 @@ func TestMemorySpillCopyFailureDropsRAM(t *testing.T) {
 			}
 			if failure == "symlink" {
 				entries, err := os.ReadDir(h.root)
-				if err != nil || len(entries) != 0 {
+				if err != nil || len(entries) != 1 || entries[0].Name() != diskPlacementPrefix+"failed" {
 					t.Fatal("partial spill retained", entries, err)
 				}
 			}
@@ -268,7 +268,15 @@ func TestMemorySpillCopyFailureDropsRAM(t *testing.T) {
 func TestMemoryStartupAdoptionAndDuplicateDiskWins(t *testing.T) {
 	h := newSweepFixture(t.TempDir())
 	memory := t.TempDir()
+	owned, err := prepareMemoryOwnership(memory, h.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owned.Close()
 	writeSessionOutput(t, memory, "adopt", 1)
+	if err := os.WriteFile(filepath.Join(memory, "adopt", "generation"), []byte("3"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	writeSessionOutput(t, memory, "duplicate", 1)
 	writeSessionOutput(t, h.root, "duplicate", 1)
 	h.memoryCheck = func(string) error { return nil }
@@ -340,11 +348,11 @@ func TestMemorySweepMeasurementPressureAndOneSpill(t *testing.T) {
 	if h.inMemory["oldest"] || !h.inMemory["newer"] || h.memorySpills.Load() != 1 {
 		t.Fatal("wrong or multiple spills", h.inMemory)
 	}
-	// Unknown facts must not evict the remaining output.
+	// Unknown facts cannot authorize continued RAM growth.
 	h.memoryFacts = func(string) (memoryFacts, error) { return memoryFacts{}, errors.New("unknown") }
 	h.sweepMemory(context.Background())
-	if !h.inMemory["newer"] {
-		t.Fatal("unknown facts spilled output")
+	if h.inMemory["newer"] {
+		t.Fatal("unknown facts retained RAM output")
 	}
 }
 
@@ -497,16 +505,16 @@ func TestMemorySpillTimeoutAndReaderWait(t *testing.T) {
 	}
 }
 
-func TestMemoryAdoptedOutputCanResumeOnLargerBoundedFilesystem(t *testing.T) {
+func TestMemoryAdoptedOutputCannotResumeOnOversizedFilesystem(t *testing.T) {
 	h := memoryFixture(t)
 	writeMemoryOutput(t, h, "adopted")
 	h.memoryFacts = func(string) (memoryFacts, error) { return memoryFacts{8 << 30, 16 << 30, 8 << 30, 8 << 30}, nil }
-	if _, err := h.createOutput("adopted", true); err != nil {
-		t.Fatal("bounded filesystem above cap refused conversion", err)
+	if _, err := h.createOutput("adopted", true); !errors.Is(err, ErrSegmentPreparing) {
+		t.Fatal("oversized filesystem resumed conversion", err)
 	}
 	h.sweepMemory(context.Background())
-	if !h.inMemory["adopted"] {
-		t.Fatal("bounded filesystem above cap spilled without pressure")
+	if h.inMemory["adopted"] {
+		t.Fatal("oversized adopted output did not spill")
 	}
 }
 
@@ -516,7 +524,7 @@ func TestMemoryRefusedRestartAlwaysSpills(t *testing.T) {
 			h := memoryFixture(t)
 			writeMemoryOutput(t, h, "adopted")
 			h.recordUsage("adopted", 1<<30, 2, time.Now())
-			facts := memoryFacts{8 << 30, 16 << 30, 8 << 30, 8 << 30}
+			facts := memoryFacts{8 << 30, 16 << 30, 512 << 20, 512 << 20}
 			switch reason {
 			case "cap":
 				h.recordUsage("adopted", 3<<30, 2, time.Now())
@@ -558,7 +566,7 @@ func TestMemoryMeasuredRestartNeedsNoNewFolderReservation(t *testing.T) {
 	writeMemoryOutput(t, h, "measured")
 	h.recordUsage("measured", 128<<20, 2, time.Now())
 	h.memoryFacts = func(string) (memoryFacts, error) {
-		return memoryFacts{(1 << 30) + (128 << 20), 4 << 30, memoryHeadroom, 2 << 30}, nil
+		return memoryFacts{(1 << 30) + memoryHeadroom, 4 << 30, memoryHeadroom, memoryHeadroom}, nil
 	}
 	if _, err := h.createOutput("measured", true); err != nil {
 		t.Fatal("measured restart was charged new-folder headroom", err)
@@ -572,7 +580,7 @@ func TestMemoryFactsReadOutsideProducerMutex(t *testing.T) {
 			t.Fatal("memory facts read under producer mutex")
 		}
 		h.mu.Unlock()
-		return memoryFacts{8 << 30, 16 << 30, 8 << 30, 8 << 30}, nil
+		return memoryFacts{8 << 30, 16 << 30, 512 << 20, 512 << 20}, nil
 	}
 	writeMemoryOutput(t, h, "fresh")
 	if _, err := h.createOutput("fresh", true); err != nil {
@@ -725,7 +733,7 @@ func TestMemorySpillCancellationDoesNotFailProducer(t *testing.T) {
 			db, h, id := conversionOutputFixture(t)
 			h.memoryCheck = func(string) error { return nil }
 			h.memoryFacts = func(string) (memoryFacts, error) {
-				return memoryFacts{8 << 30, 16 << 30, 8 << 30, 8 << 30}, nil
+				return memoryFacts{8 << 30, 16 << 30, 512 << 20, 512 << 20}, nil
 			}
 			if err := os.RemoveAll(filepath.Join(h.root, id)); err != nil {
 				t.Fatal(err)
@@ -792,7 +800,7 @@ func TestMemorySweepSpillsForMeasuredPressure(t *testing.T) {
 		t.Run(reason, func(t *testing.T) {
 			h := memoryFixture(t)
 			writeMemoryOutput(t, h, "measured")
-			facts := memoryFacts{8 << 30, 16 << 30, 8 << 30, 8 << 30}
+			facts := memoryFacts{8 << 30, 16 << 30, 512 << 20, 512 << 20}
 			bytes := int64(128 << 20)
 			switch reason {
 			case "cap":
@@ -811,5 +819,24 @@ func TestMemorySweepSpillsForMeasuredPressure(t *testing.T) {
 				t.Fatal("wrong placement after pressure sample", reason, h.inMemory)
 			}
 		})
+	}
+}
+
+// A small expected producer write is not a bound: reserve everything that can
+// still fit on the volume. This also models a tight container allowance.
+func TestMemoryVolumeReservesWorstCaseGrowth(t *testing.T) {
+	for _, setting := range []string{"quarter", "half", "2gb", "4gb", "8gb", "16gb"} {
+		facts := memoryFacts{available: (1 << 30) + (300 << 20), total: 4 << 30, free: 512 << 20, filesystemLimit: 512 << 20}
+		if memoryVolumeFits(setting, facts, 256<<20) {
+			t.Fatalf("%s allowed worst-case growth through the floor", setting)
+		}
+	}
+	facts := memoryFacts{available: 3 << 30, total: 8 << 30, free: 512 << 20, filesystemLimit: 512 << 20}
+	if !memoryVolumeFits("quarter", facts, 0) {
+		t.Fatal("safe bounded volume refused")
+	}
+	facts.filesystemLimit = 1 << 30
+	if memoryVolumeFits("quarter", facts, 0) {
+		t.Fatal("oversized volume admitted based on free space rather than its ceiling")
 	}
 }

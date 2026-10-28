@@ -129,8 +129,13 @@ RUN apt-get update \
 
 FROM runtime-drivers
 
-# Runtime writes are restricted to mounted /config and /transcode. Numeric
-# identities work with Unraid and TrueNAS without editing /etc/passwd.
+# Runtime writes use /config, disk /transcode and a separate bounded tmpfs.
+# Docker supplies bounded /dev/shm (64 MiB by default). Portico discovers it
+# when /memory-transcode is not mounted, using a private installation child.
+# A Dockerfile cannot declare runtime tmpfs; VOLUME would create disk storage.
+# Compose examples mount /memory-transcode explicitly; see INSTALLING.md for
+# docker run options and cap sizing. No privileged mounts are needed.
+# Numeric identities work with Unraid and TrueNAS without editing /etc/passwd.
 RUN mkdir -p /config /transcode
 COPY packaging/docker/entrypoint.sh /usr/local/bin/portico-entrypoint
 COPY LICENSE THIRD-PARTY-NOTICES.md /usr/share/doc/portico/

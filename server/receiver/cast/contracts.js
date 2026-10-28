@@ -7448,6 +7448,7 @@ var PorticoCastContracts = (function(exports) {
 							"minimum": -9007199254740991,
 							"type": "integer"
 						},
+						"memoryCap": { "type": "string" },
 						"musicAwayQuality": { "type": "string" },
 						"name": { "type": "string" },
 						"notificationDays": {
@@ -7643,6 +7644,7 @@ var PorticoCastContracts = (function(exports) {
 							"minimum": -9007199254740991,
 							"type": "integer"
 						},
+						"transcodeLocation": { "type": "string" },
 						"trustedProxies": {
 							"items": { "type": "string" },
 							"type": "array"
@@ -7679,9 +7681,11 @@ var PorticoCastContracts = (function(exports) {
 						"planningPolicy",
 						"throttleBufferMs",
 						"playedRetentionMs",
+						"transcodeLocation",
 						"temporaryDirectory",
 						"ffmpegPath",
 						"sessionStorageMiB",
+						"memoryCap",
 						"maxConcurrentSessions",
 						"maxHardwareSessions",
 						"maxSoftwareSessions",
@@ -7847,6 +7851,7 @@ var PorticoCastContracts = (function(exports) {
 									"minimum": -9007199254740991,
 									"type": "integer"
 								},
+								"memoryCap": { "type": "string" },
 								"musicAwayQuality": { "type": "string" },
 								"name": { "type": "string" },
 								"notificationDays": {
@@ -8042,6 +8047,7 @@ var PorticoCastContracts = (function(exports) {
 									"minimum": -9007199254740991,
 									"type": "integer"
 								},
+								"transcodeLocation": { "type": "string" },
 								"trustedProxies": {
 									"items": { "type": "string" },
 									"type": "array"
@@ -8078,9 +8084,11 @@ var PorticoCastContracts = (function(exports) {
 								"planningPolicy",
 								"throttleBufferMs",
 								"playedRetentionMs",
+								"transcodeLocation",
 								"temporaryDirectory",
 								"ffmpegPath",
 								"sessionStorageMiB",
+								"memoryCap",
 								"maxConcurrentSessions",
 								"maxHardwareSessions",
 								"maxSoftwareSessions",
@@ -8250,6 +8258,7 @@ var PorticoCastContracts = (function(exports) {
 									"minimum": -9007199254740991,
 									"type": "integer"
 								},
+								"memoryCap": { "type": "string" },
 								"musicAwayQuality": { "type": "string" },
 								"name": { "type": "string" },
 								"notificationDays": {
@@ -8445,6 +8454,7 @@ var PorticoCastContracts = (function(exports) {
 									"minimum": -9007199254740991,
 									"type": "integer"
 								},
+								"transcodeLocation": { "type": "string" },
 								"trustedProxies": {
 									"items": { "type": "string" },
 									"type": "array"
@@ -8481,9 +8491,11 @@ var PorticoCastContracts = (function(exports) {
 								"planningPolicy",
 								"throttleBufferMs",
 								"playedRetentionMs",
+								"transcodeLocation",
 								"temporaryDirectory",
 								"ffmpegPath",
 								"sessionStorageMiB",
+								"memoryCap",
 								"maxConcurrentSessions",
 								"maxHardwareSessions",
 								"maxSoftwareSessions",
@@ -25007,6 +25019,16 @@ var PorticoCastContracts = (function(exports) {
 							"type": "integer"
 						},
 						"lifecycle": { "type": "string" },
+						"memoryPlacementsRefused": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						},
+						"memorySpills": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						},
 						"outputPolicy": { "type": "string" },
 						"recentFailures": {
 							"items": {
@@ -25117,6 +25139,8 @@ var PorticoCastContracts = (function(exports) {
 						"conversionLimitSource",
 						"outputPolicy",
 						"hostConversionCapacity",
+						"memorySpills",
+						"memoryPlacementsRefused",
 						"conversionsRefused",
 						"hardwareFallbacks",
 						"fragmentedOutput",
@@ -26607,6 +26631,7 @@ var PorticoCastContracts = (function(exports) {
 									"nullable": true,
 									"type": "integer"
 								},
+								"memoryAvailable": { "type": "boolean" },
 								"memoryPath": { "type": "string" },
 								"path": { "type": "string" },
 								"ready": { "type": "boolean" }
@@ -26616,7 +26641,8 @@ var PorticoCastContracts = (function(exports) {
 								"ready",
 								"freeBytes",
 								"fallback",
-								"memoryPath"
+								"memoryPath",
+								"memoryAvailable"
 							],
 							"type": "object"
 						},
@@ -30030,6 +30056,7 @@ var PorticoCastContracts = (function(exports) {
 									"minimum": -9007199254740991,
 									"type": "integer"
 								},
+								"memoryCap": { "type": "string" },
 								"musicAwayQuality": { "type": "string" },
 								"name": { "type": "string" },
 								"notificationDays": {
@@ -30225,6 +30252,7 @@ var PorticoCastContracts = (function(exports) {
 									"minimum": -9007199254740991,
 									"type": "integer"
 								},
+								"transcodeLocation": { "type": "string" },
 								"trustedProxies": {
 									"items": { "type": "string" },
 									"type": "array"
@@ -30261,9 +30289,11 @@ var PorticoCastContracts = (function(exports) {
 								"planningPolicy",
 								"throttleBufferMs",
 								"playedRetentionMs",
+								"transcodeLocation",
 								"temporaryDirectory",
 								"ffmpegPath",
 								"sessionStorageMiB",
+								"memoryCap",
 								"maxConcurrentSessions",
 								"maxHardwareSessions",
 								"maxSoftwareSessions",
@@ -30433,6 +30463,7 @@ var PorticoCastContracts = (function(exports) {
 									"minimum": -9007199254740991,
 									"type": "integer"
 								},
+								"memoryCap": { "type": "string" },
 								"musicAwayQuality": { "type": "string" },
 								"name": { "type": "string" },
 								"notificationDays": {
@@ -30628,6 +30659,7 @@ var PorticoCastContracts = (function(exports) {
 									"minimum": -9007199254740991,
 									"type": "integer"
 								},
+								"transcodeLocation": { "type": "string" },
 								"trustedProxies": {
 									"items": { "type": "string" },
 									"type": "array"
@@ -30664,9 +30696,11 @@ var PorticoCastContracts = (function(exports) {
 								"planningPolicy",
 								"throttleBufferMs",
 								"playedRetentionMs",
+								"transcodeLocation",
 								"temporaryDirectory",
 								"ffmpegPath",
 								"sessionStorageMiB",
+								"memoryCap",
 								"maxConcurrentSessions",
 								"maxHardwareSessions",
 								"maxSoftwareSessions",
@@ -192486,6 +192520,7 @@ var PorticoCastContracts = (function(exports) {
 									"nullable": true,
 									"type": "integer"
 								},
+								"memoryAvailable": { "type": "boolean" },
 								"memoryPath": { "type": "string" },
 								"path": { "type": "string" },
 								"ready": { "type": "boolean" }
@@ -192495,7 +192530,8 @@ var PorticoCastContracts = (function(exports) {
 								"ready",
 								"freeBytes",
 								"fallback",
-								"memoryPath"
+								"memoryPath",
+								"memoryAvailable"
 							],
 							"type": "object"
 						},

@@ -1,26 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {transcodeLocationChoice, transcodeLocationTarget} from '../src/presentation/transcode-location.ts';
+import {transcodeLocationChoice} from '../src/presentation/transcode-location.ts';
+import {readSettingsBinding, settingsBinding, settingsBindingPatch} from '../src/presentation/settings-bindings.ts';
 
-const directory = {path: '/srv/portico/transcode', fallback: false, memoryPath: '/dev/shm'};
-
-test('the stored directory chooses separate, memory or folder; capacity facts answer until it loads', () => {
-  assert.equal(transcodeLocationChoice(directory, '').value, 'separate');
-  assert.equal(transcodeLocationChoice(directory, '/dev/shm').value, 'memory');
-  assert.equal(transcodeLocationChoice(directory, '/dev/shm/portico').value, 'memory');
-  assert.equal(transcodeLocationChoice(directory, '/dev/shmem').value, 'folder', 'a sibling path is not the RAM file system');
-  assert.equal(transcodeLocationChoice(directory, '/mnt/fast').value, 'folder');
-  assert.equal(transcodeLocationChoice(directory).value, 'folder');
-  assert.equal(transcodeLocationChoice({...directory, fallback: true}).value, 'separate');
-  assert.equal(transcodeLocationChoice({...directory, memoryPath: ''}, '/dev/shm').value, 'folder');
-  assert.equal(transcodeLocationChoice({...directory, memoryPath: ''}).memoryAvailable, false);
-  assert.equal(transcodeLocationChoice(directory).memoryAvailable, true, 'memory is offered where the server has a RAM file system');
+test('the explicit memory or disk preference stays valid regardless of host availability', () => {
+  for (const memoryAvailable of [true, false]) {
+    const directory = {memoryAvailable};
+    assert.deepEqual(transcodeLocationChoice(directory), {value: 'memory', memoryAvailable});
+    assert.deepEqual(transcodeLocationChoice(directory, 'memory'), {value: 'memory', memoryAvailable});
+    assert.deepEqual(transcodeLocationChoice(directory, 'disk'), {value: 'disk', memoryAvailable});
+  }
+  assert.deepEqual(transcodeLocationChoice(undefined), {value: 'memory', memoryAvailable: false});
 });
 
-test('a choice writes the directory it names; folder writes nothing; memory needs a RAM file system', () => {
-  assert.equal(transcodeLocationTarget('separate', directory), '');
-  assert.equal(transcodeLocationTarget('memory', directory), '/dev/shm');
-  assert.equal(transcodeLocationTarget('folder', directory), undefined);
-  assert.equal(transcodeLocationTarget('memory', {memoryPath: ''}), undefined);
-  assert.equal(transcodeLocationTarget('memory', undefined), undefined);
+test('the preference binding reads and writes its own runtime field independently of the disk folder', () => {
+  const binding = settingsBinding('streaming.transcodeLocation')!;
+  const runtime = {transcodeLocation: 'memory', temporaryDirectory: '/mnt/transcode'};
+  assert.equal(readSettingsBinding(binding, {forms: {runtime}})?.current, 'memory');
+  for (const value of ['memory', 'disk']) {
+    assert.deepEqual(settingsBindingPatch(binding, value), {form: 'runtime', values: {transcodeLocation: value}});
+    assert.equal(runtime.temporaryDirectory, '/mnt/transcode');
+  }
 });

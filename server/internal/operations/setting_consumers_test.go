@@ -160,6 +160,8 @@ var settingConsumers = map[string]settingConsumer{
 	"operations.Settings.diagnosticDays":                                     {"internal/operations/evidence.go", "DiagnosticDays", "Prune the corresponding history by its retention rule"},
 	"operations.Settings.directStreamRemux":                                  {"internal/httpapi/delivery_settings_adapter.go", "DirectStreamRemux", "Project conversion policy to runtime delivery settings"},
 	"operations.Settings.ffmpegPath":                                         {"cmd/server/main.go", "FFmpegPath", "Configure the running listener or media process"},
+	"operations.Settings.transcodeLocation":                                  {"internal/playback/hls_memory.go", "TranscodeLocation", "Choose bounded RAM preference or disk conversion output"},
+	"operations.Settings.memoryCap":                                          {"internal/playback/hls_memory.go", "function:memoryBudget", "Bound RAM conversion output before placement and spill"},
 	"operations.Settings.hardwareBackend":                                    {"internal/playback/delivery_plan.go", "HardwareBackend", "Plan media delivery using owner policy"},
 	"operations.Settings.hardwareSelection":                                  {"internal/playback/delivery_context.go", "hardwareConfiguration", "Convert on the owner's chosen adapter or the processor"},
 	"operations.Settings.hardwareDecode":                                     {"internal/playback/delivery_context.go", "function:withoutHardwareDecode", "Keep decoding on the processor when hardware decoding is off"},

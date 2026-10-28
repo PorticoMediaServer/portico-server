@@ -18,6 +18,7 @@ func TestTranscodingSettingsDefaultsRoundTripAndReject(t *testing.T) {
 	defaults := DefaultSettings()
 	if before.Effective.HardwareBackend != defaults.HardwareBackend || before.Effective.X264Preset != defaults.X264Preset ||
 		before.Effective.PlanningPolicy != defaults.PlanningPolicy || !before.Effective.DirectStreamRemux ||
+		before.Effective.TranscodeLocation != "memory" || before.Effective.MemoryCap != "quarter" ||
 		before.Effective.ThrottleBufferMs != 60000 || before.Effective.PlayedRetentionMs != 180000 {
 		t.Fatal("registry defaults not published", before.Effective)
 	}
@@ -30,6 +31,8 @@ func TestTranscodingSettingsDefaultsRoundTripAndReject(t *testing.T) {
 	v.X264Preset = "slow"
 	v.DirectStreamRemux = false
 	v.PlanningPolicy = "minimize_server_work"
+	v.TranscodeLocation = "disk"
+	v.MemoryCap = "2gb"
 	v.TemporaryDirectory = t.TempDir()
 	v.MaxConcurrentSessions = 4
 	after, e := s.ApplySettings(ctx, p, auth, SettingsChange{ExpectedRevision: before.Revision, IdempotencyKey: "transcoding-one", Values: v})
@@ -39,11 +42,14 @@ func TestTranscodingSettingsDefaultsRoundTripAndReject(t *testing.T) {
 	if after.Effective.HardwareBackend != "vaapi" || after.Effective.HardwareDevice != "/dev/dri/renderD128" ||
 		!after.Effective.HDRToneMapping || after.Effective.HDRToneMappingAlgorithm != "mobius" ||
 		after.Effective.X264Preset != "slow" || after.Effective.DirectStreamRemux ||
+		after.Effective.TranscodeLocation != "disk" || after.Effective.MemoryCap != "2gb" ||
 		after.Effective.PlanningPolicy != "minimize_server_work" || after.Effective.MaxConcurrentSessions != 4 {
 		t.Fatal("saved transcoding values not readable", after.Effective)
 	}
 
 	for field, mutate := range map[string]func(*Settings){
+		"values.transcodeLocation":       func(v *Settings) { v.TranscodeLocation = "anywhere" },
+		"values.memoryCap":               func(v *Settings) { v.MemoryCap = "unlimited" },
 		"values.hardwareBackend":         func(v *Settings) { v.HardwareBackend = "magic" },
 		"values.hdrToneMappingAlgorithm": func(v *Settings) { v.HDRToneMappingAlgorithm = "filmic" },
 		"values.x264Preset":              func(v *Settings) { v.X264Preset = "placebo" },
@@ -99,7 +105,7 @@ func TestRegistryPublishesEveryTranscodingFieldWithItsBounds(t *testing.T) {
 	}
 	for _, id := range []string{"hardwareBackend", "hardwareDevice", "hdrToneMapping", "hdrToneMappingAlgorithm",
 		"x264Preset", "directStreamRemux", "planningPolicy", "throttleBufferMs", "playedRetentionMs",
-		"temporaryDirectory", "maxConcurrentSessions", "maxHardwareSessions", "maxSoftwareSessions", "maxBackgroundSessions"} {
+		"transcodeLocation", "memoryCap", "temporaryDirectory", "maxConcurrentSessions", "maxHardwareSessions", "maxSoftwareSessions", "maxBackgroundSessions"} {
 		f, ok := published[id]
 		if !ok {
 			t.Fatal("registry must publish", id)

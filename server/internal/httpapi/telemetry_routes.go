@@ -145,10 +145,11 @@ func (d Dependencies) capacityComposer() *telemetry.Capacity {
 		}
 	}
 	capacity := &telemetry.Capacity{
-		FFmpeg:  ffmpeg,
-		FFprobe: ffprobe,
-		State:   cache,
-		Probes:  playbackProbes{d.Playback},
+		FFmpeg:          ffmpeg,
+		FFprobe:         ffprobe,
+		State:           cache,
+		Probes:          playbackProbes{d.Playback},
+		MemoryAvailable: d.Playback.MemoryOutputAvailable,
 	}
 	if d.StorageLayout != nil {
 		capacity.Directory = &d.StorageLayout.Transcode
@@ -231,6 +232,8 @@ func transcodeSettings(v operations.Settings) telemetry.TranscodeSettings {
 		PlayedRetentionMs:       v.PlayedRetentionMs,
 		SessionStorageMiB:       v.SessionStorageMiB,
 		TemporaryDirectory:      v.TemporaryDirectory,
+		MemoryCap:               v.MemoryCap,
+		TranscodeLocation:       v.TranscodeLocation,
 		MaxConcurrentSessions:   v.MaxConcurrentSessions,
 		MaxHardwareSessions:     v.MaxHardwareSessions,
 		MaxSoftwareSessions:     v.MaxSoftwareSessions,

@@ -49,16 +49,16 @@ func Resolve(o Options) (Layout, error) {
 		if strings.Contains(base, `\`) {
 			sep = `\`
 		}
-		data, transcode = strings.TrimRight(base, `/\`)+sep+"Portico", strings.TrimRight(base, `/\`)+sep+"Portico Transcode"
+		data = strings.TrimRight(base, `/\`) + sep + "Portico"
 	case platform == "darwin":
-		data, transcode = filepath.Join(o.Home, "Library", "Application Support", "Portico"), filepath.Join(o.Home, "Library", "Caches", "Portico Transcode")
+		data = filepath.Join(o.Home, "Library", "Application Support", "Portico")
 	case o.Service:
-		data, transcode = "/var/lib/portico", "/var/cache/portico"
+		data = "/var/lib/portico"
 	default:
 		if o.Home == "" {
 			return Layout{}, errors.New("user home is unavailable")
 		}
-		data, transcode = filepath.Join(o.Home, ".local", "share", "portico"), filepath.Join(o.Home, ".cache", "portico")
+		data = filepath.Join(o.Home, ".local", "share", "portico")
 	}
 	if o.DataDirectory != "" {
 		data = o.DataDirectory
@@ -68,6 +68,13 @@ func Resolve(o Options) (Layout, error) {
 			return Layout{}, errors.New("PORTICO_DATA_DIR must name an absolute data directory, not the filesystem root")
 		}
 		data = filepath.Clean(data)
+	}
+	if !o.Container {
+		if platform == "windows" && runtime.GOOS != "windows" && strings.Contains(data, `\`) {
+			transcode = strings.TrimRight(data, `\/`) + `\Transcode`
+		} else {
+			transcode = filepath.Join(data, "Transcode")
+		}
 	}
 	l := At(data)
 	l.Container = o.Container
