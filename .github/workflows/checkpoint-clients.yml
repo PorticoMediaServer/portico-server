@@ -20,7 +20,7 @@ jobs:
         env:
           SOURCE_SHA: ${{ inputs.source_sha }}
         run: '[[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]'
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ inputs.source_sha }}
           persist-credentials: false
