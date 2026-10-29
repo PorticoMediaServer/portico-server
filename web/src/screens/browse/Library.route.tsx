@@ -1,4 +1,5 @@
 import {createBrowserQueryActions, type BrowserQueryActionHost} from './selection-action-host';
+import {entryStartDisplay} from '../../platform/playback/subject';
 import {createSelectionActionHostBridge} from './selection-action-lifetime';
 import type {BrowseSelectionContext} from '@core/selection-model/types.ts';
 import {subscribeFacts} from '../../shell/fact-source';
@@ -403,7 +404,7 @@ function CommittedLibrary({captured, library, search, readingMarkAll, frame, res
     };
     return {onOpen: () => act(target => context.effects.openEntry(target)),
       onPlay: entry.playback && entry.libraryId && entry.available !== false && !entry.missing ? () => act((target, isCurrent) => target.playback
-        ? context.effects.play({libraryId: target.libraryId!, itemId: target.playback.itemId, startSeconds: target.playback.startSeconds ?? 0}, resources.life.signal(), isCurrent)
+        ? context.effects.play({libraryId: target.libraryId!, itemId: target.playback.itemId, startSeconds: target.playback.startSeconds ?? 0, display: entryStartDisplay(target)}, resources.life.signal(), isCurrent)
         : Promise.reject(Object.assign(new Error('library_entry_changed'), {code: 'operation_unavailable'}))) : undefined};
   };
   const discoveryActions = (section: ContentSection, entry: ContentEntry) => {

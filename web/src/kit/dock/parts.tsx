@@ -24,20 +24,22 @@ export const playbackLabel = (view: DockView, t: DockTranslate) => t(view.presen
 export const playbackIcon = (view: DockView): IconName => view.presentation.finished ? 'i-back' : view.playback.playing ? 'i-pause' : 'i-play';
 export const playbackAction = (view: DockView) => view.presentation.finished ? 'replay' as const : view.playback.playing ? 'pause' as const : 'play' as const;
 export function ArtSlot({view, artSlotRef, videoSurface = false, artworkSurface = false, phone = false}: Pick<DockRendererProps, 'view' | 'artSlotRef' | 'videoSurface' | 'artworkSurface'> & {phone?: boolean}) {
-  const video = ['video', 'live', 'cast', 'play-on'].includes(view.mode);
+  // A starting video has no media surface yet: it shows the pressed card's art under the ring.
+  const video = ['video', 'live', 'cast', 'play-on'].includes(view.mode) && !view.starting;
   if (video && !view.remote && !videoSurface) throw new TypeError('Local video dock requires its persistent media surface.');
   return <span ref={artSlotRef} data-dock-art-slot data-external-artwork={artworkSurface && !view.remote && view.mode === 'music' || undefined} className={[styles.artSlot, video && styles.videoArt].filter(Boolean).join(' ')}>
     {!(videoSurface && !view.remote && video || artworkSurface && !view.remote && view.mode === 'music') && <Artwork source={view.presentation.artwork} alt="" className={styles.cover} brightness={view.remote && (!phone && !remoteTerminal(view.remote) || phone && remoteTerminal(view.remote)) ? phone ? .55 : .62 : undefined} saturation={view.remote && (!phone && !remoteTerminal(view.remote) || phone && remoteTerminal(view.remote)) ? phone ? .4 : .8 : undefined} />}
-    {view.remote ? (phone || !remoteTerminal(view.remote)) && <span className={styles.castMark} data-pending={!remoteReady(view.remote) && !remoteTerminal(view.remote) || undefined}>{remoteReady(view.remote) || remoteTerminal(view.remote) ? <Icon name={phone ? 'i-tvdev' : 'i-cast'} size={phone ? 18 : 24} /> : <span className={styles.ring} />}</span>
+    {view.starting ? <span className={styles.castMark} data-pending><span className={styles.ring} /></span>
+      : view.remote ? (phone || !remoteTerminal(view.remote)) && <span className={styles.castMark} data-pending={!remoteReady(view.remote) && !remoteTerminal(view.remote) || undefined}>{remoteReady(view.remote) || remoteTerminal(view.remote) ? <Icon name={phone ? 'i-tvdev' : 'i-cast'} size={phone ? 18 : 24} /> : <span className={styles.ring} />}</span>
       : video && <span className={styles.expandMark}><Icon name="i-zoom" size={phone ? 12 : 22} /></span>}
   </span>;
 }
 export function Identity({view, binding, t = dockText, artSlotRef, identityRef, videoSurface, artworkSurface, phone = false}: DockRendererProps & {phone?: boolean}) {
-  const send = useDockActions({view, binding}), terminal = remoteTerminal(view.remote), pending = view.remote && !remoteReady(view.remote);
+  const send = useDockActions({view, binding}), terminal = remoteTerminal(view.remote), pending = view.remote && !remoteReady(view.remote) || !!view.starting;
   const accessibleId = useId(), actionId = `${accessibleId}-action`, titleId = `${accessibleId}-title`, subtitleId = `${accessibleId}-subtitle`;
   const subtitle: readonly FactPart[] = view.presentation.finished ? [...view.presentation.identity.subtitle.filter(part => part.id === 'episode-label'), {id: 'finished', role: 'status', text: t('next.dock.finished')}] : phone && view.mode === 'music' && !view.playback.playing ? [...view.presentation.identity.subtitle, {id: 'paused', role: 'status', text: t('next.dock.paused')}] : view.presentation.identity.subtitle;
   const content = <><ArtSlot view={view} artSlotRef={artSlotRef} videoSurface={videoSurface} artworkSurface={artworkSurface} phone={phone} /><span className={styles.identityText} data-dock-expansion-copy><b id={titleId}>{view.presentation.identity.title}</b>
-    <small id={subtitleId} data-status={view.remote?.phase}>{phone && view.remote?.phase === 'playing' ? <>{view.presentation.deviceName}<span className={styles.gap} aria-hidden="true" />{clockText(positionOf(view))}</> : phone && view.remote?.phase === 'stopped' ? t('next.dock.stoppedAt', {position: clockText(positionOf(view)) ?? ''}) : remoteText(view, t) ?? <Facts parts={subtitle} />}</small></span></>;
+    <small id={subtitleId} data-status={view.remote?.phase}>{phone && view.remote?.phase === 'playing' ? <>{view.presentation.deviceName}<span className={styles.gap} aria-hidden="true" />{clockText(positionOf(view))}</> : phone && view.remote?.phase === 'stopped' ? t('next.dock.stoppedAt', {position: clockText(positionOf(view)) ?? ''}) : view.starting ? (view.starting.waiting === 'channel_source' ? t('next.dock.channelSourceWaiting') : t('next.dock.starting')) : remoteText(view, t) ?? <Facts parts={subtitle} />}</small></span></>;
   return <>{terminal || pending ? <div className={styles.identity}>{content}</div> : <button ref={identityRef} type="button" className={styles.identity} aria-labelledby={`${actionId} ${titleId}`} aria-describedby={subtitleId} onClick={() => send({kind: 'expand'})}>
     <span id={actionId} className={styles.accessible}>{t(view.remote ? 'next.dock.castControls' : view.mode === 'music' || view.mode === 'audiobook' ? 'next.dock.openNowPlaying' : 'next.dock.expand')}</span>{content}<span className={styles.expandTip} role="tooltip">{t('next.dock.expand')}</span></button>}
     <span className={styles.accessible} role="status" aria-atomic="true">{remoteText(view, t)}</span>
@@ -79,6 +81,13 @@ export function TerminalActions({view, binding, t = dockText, phone = false}: Do
   return <div className={styles.terminalActions}>{view.remote?.phase === 'stopped' && <Button size="dock" variant="primary" icon={phone ? undefined : 'i-play'} aria-label={t('next.dock.continueHere', {position: clockText(positionOf(view)) ?? ''})} onClick={() => send({kind: 'continue-here'})}>{t(phone ? 'next.dock.continue' : 'next.dock.continueHere', {position: clockText(positionOf(view)) ?? ''})}</Button>}
     {phone ? <Control icon="i-x" iconSize={18} label={t('next.dock.dismiss')} className={styles.close} onClick={() => send({kind: 'dismiss'})} /> : <Button size="dock" variant="glass" onClick={() => send({kind: 'dismiss'})}>{t('next.dock.dismiss')}</Button>}
   </div>;
+}
+/** The starting occupant's only action: it cancels the accepted start itself. */
+export function StartingStop({view, t = dockText, phone = false}: Pick<DockRendererProps, 'view' | 't'> & {phone?: boolean}) {
+  const starting = view.starting;
+  if (!starting) return null;
+  return phone ? <Control icon="i-x" label={t('next.dock.stop')} className={styles.close} onClick={starting.stop} />
+    : <div className={styles.endControls}><Button size="dock" variant="glass" onClick={starting.stop}>{t('next.dock.stop')}</Button></div>;
 }
 export function EndControls({view, binding, t = dockText}: DockRendererProps) {
   const send = useDockActions({view, binding}), model = view.presentation;

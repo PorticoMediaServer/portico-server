@@ -84,7 +84,7 @@ export class WebPreparingStarts {
           const claimChannel = (actual: ChannelStartResource) => {
             const bound = flight.bound();
             if (!channel || !continuation() || typeof actual.id !== 'string' || !actual.id ||
-              !Number.isSafeInteger(actual.generation) || actual.generation < 1 ||
+              !Number.isSafeInteger(actual.generation) || actual.generation < 0 ||
               captured && (!bound || bound.id !== actual.id || bound.generation !== actual.generation)) return false;
             // Canonical SDK819 calls this before a.id/accept/go-live. The same
             // registration synchronously excludes every older cleanup flight.

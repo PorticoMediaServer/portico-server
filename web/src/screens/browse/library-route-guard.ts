@@ -1,9 +1,8 @@
 import {useLayoutEffect, useMemo} from 'react';
-import {parseMediaItem} from '@core/media-item.ts';
+import {readTitleIdentity} from '../../platform/title-identity';
 import type {ShellAssemblyContext} from '../../shell/bootstrap';
 import {forwardFacts} from '../../shell/fact-source';
 import {createLibraryRouteGuard, type LibraryRouteGuard} from '../../shell/library-route-proof';
-import {encodedRoutePath} from '../../../../packages/contracts/src/routes.ts';
 import {router} from '../../router';
 
 /** The original committed route/receiver is the key. Display publication is not. */
@@ -24,10 +23,9 @@ export function useLibraryRouteGuard(context: ShellAssemblyContext | undefined, 
       isCurrent: () => authority() && routeCurrent(), canReplace: () => authority() && canReplace(),
       ...(itemId ? {readParent: async (signal: AbortSignal) => {
         signal.throwIfAborted();if (!authority() || !routeCurrent()) throw new DOMException('Item route retired', 'AbortError');
-        const raw = await context.api.request(encodedRoutePath('get_items_id', {id: encodeURIComponent(itemId)}), 'GET', undefined, signal);
+        // The title's detail route, which serves Reading titles too (E-web-23).
+        const item = await readTitleIdentity(context.api, itemId, signal);
         signal.throwIfAborted();if (!authority() || !routeCurrent()) throw new DOMException('Item route retired', 'AbortError');
-        const item = parseMediaItem(raw);
-        if (item.id !== itemId || !item.libraryId) throw new Error('Invalid route parent document');
         return item.libraryId;
       }} : {}),
       replace: destination => router.navigate(destination), reportError,

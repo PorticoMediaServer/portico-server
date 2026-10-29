@@ -15,7 +15,7 @@ test('session generation cannot regress and changed viewer fence clears data',as
 test('denied reload clears previous facts, timeout and retry are bounded without command calls',async()=>{let deny=false;const s=service(async()=>{if(deny)throw Object.assign(new Error('private transport content'),{status:403});return data();});await s.select(q);deny=true;await s.refresh();assert.equal(s.getSnapshot().data,null);assert.equal(s.getSnapshot().error!.code,'forbidden');assert(!JSON.stringify(s.getSnapshot()).includes('private transport'));s.dispose();const slow=service(()=>new Promise(()=>{}),5);await slow.select(q);assert.equal(slow.getSnapshot().error!.code,'timeout');slow.dispose();});
 test('unbound pre-play read accepts null current while HLS first audio does not invent stream index',async()=>{let d=data();d.current=null;const s=service(async()=>d);await s.select({libraryId:'library',itemId:'item'});assert.equal(s.getSnapshot().phase,'ready');d=data();d.current.delivery='hls';d.current.audioSelection='server_first_audio';d.current.subtitleSelection='disabled';await s.select(q);assert.equal(s.getSnapshot().data!.current!.audioSelection,'server_first_audio');s.dispose();});
 
-test('unknown/stale stream facts cannot masquerade as known and quality offers stay disabled',async()=>{for(const change of [(d:any)=>d.sources[0].factsRevision=0,(d:any)=>d.sources[0].factsStatus='stale',(d:any)=>d.sources[0].qualities=[],(d:any)=>d.sources[0].qualities=[{id:'original',kind:'original',label:'Original',enabled:true}],(d:any)=>d.sources[0].qualities.push({id:'2160p',kind:'fixed',label:'4K',enabled:true,maxVideoBitrateBps:20000000,maxAudioBitrateBps:192000,targetDisplayHeight:2160}),(d:any)=>d.current.qualityId='unpublished',(d:any)=>d.current.delivery='remote']){const d=data();change(d);const s=service(async()=>d);await s.select(q);assert.equal(s.getSnapshot().phase,'error');s.dispose();}const d=data();d.sources[0].factsStatus='stale';d.sources[0].streams=[];const s=service(async()=>d);await s.select(q);assert.equal(s.getSnapshot().phase,'ready');s.dispose();});
+test('unknown/stale stream facts cannot masquerade as known and quality offers stay disabled',async()=>{for(const change of [(d:any)=>d.sources[0].factsRevision=0,(d:any)=>d.sources[0].factsStatus='stale',(d:any)=>d.sources[0].qualities=[],(d:any)=>d.sources[0].qualities=[{id:'original',kind:'original',label:'Original',enabled:true}],(d:any)=>d.sources[0].qualities.push({id:'2160p',kind:'fixed',label:'4K',enabled:true,maxVideoBitrateBps:20000000,maxAudioBitrateBps:192000,targetDisplayHeight:2160}),(d:any)=>d.current.delivery='remote']){const d=data();change(d);const s=service(async()=>d);await s.select(q);assert.equal(s.getSnapshot().phase,'error');s.dispose();}const d=data();d.sources[0].factsStatus='stale';d.sources[0].streams=[];const s=service(async()=>d);await s.select(q);assert.equal(s.getSnapshot().phase,'ready');s.dispose();});
 
 
 test('subtitle controls enable only with a validated same-session/source renderer plan',async()=>{
@@ -112,4 +112,21 @@ test('P2-74 E-web-14: a player that only knows the item takes the library the an
  assert.equal(s.getSnapshot().phase,'ready');assert.equal(s.getSnapshot().data?.scope.libraryId,'library');s.dispose();
  const wrong=service(async()=>data());await wrong.select({...q,libraryId:'another'});assert.equal(wrong.getSnapshot().phase,'error','a known library is still checked');wrong.dispose();
  const bad=service(async()=>{const d=data();d.scope.libraryId='';return d;});await bad.select({itemId:'item',sessionId:'session'});assert.equal(bad.getSnapshot().phase,'error','an answer without a valid library is refused');bad.dispose();
+});
+
+test('E-web-14: a music session at the "limit" tier over the video ladder is ready, keeps the quality, and selects no rung',async()=>{
+ const d=data();
+ d.current.qualityId='limit';d.current.generation=1;d.current.state='starting';d.current.delivery='direct';d.current.audioSelection='platform_default';
+ const rungs=d.sources[0].qualities.map((r:any)=>r.id);
+ assert.equal(rungs.includes('limit'),false,'the tier is not one of the source rungs');
+ const s=service(async()=>d);await s.select(q);
+ const snap=s.getSnapshot();
+ assert.equal(snap.phase,'ready');
+ assert.equal(snap.error,null);
+ assert.equal(snap.data!.current!.qualityId,'limit');
+ assert.equal(snap.data!.sources[0].qualities.some(r=>r.id===snap.data!.current!.qualityId),false,'no rung matches the current quality, so none is selected');
+ s.dispose();
+});
+test('E-web-14: an unoffered current quality is still refused when the source itself or the delivery is invalid',async()=>{
+ for(const change of [(d:any)=>d.current.sourceId='absent',(d:any)=>d.current.delivery='remote',(d:any)=>d.current.qualityId='']){const d=data();d.current.qualityId='limit';change(d);const s=service(async()=>d);await s.select(q);assert.equal(s.getSnapshot().phase,'error');s.dispose();}
 });

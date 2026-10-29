@@ -291,6 +291,7 @@ test('a channel retry-only 202 keeps one original start and publishes the actual
   let posts = 0, preparingOffers = 0, abandoned = 0;
   const sent: V1Request[] = [];
   const http: V1Http = {send: async request => {
+    if (request.method === 'GET') return {status: 200, headers: {}, body: activeChannelBody('ps_1')};
     if (request.method !== 'POST' || request.path !== '/v1/playback/sessions') return {status: 204, headers: {}};
     sent.push(request); posts++;
     if (posts === 1) return {status: 202, headers: {}, body: {retryAfterMs: 500}};
@@ -424,6 +425,7 @@ test('an older channel completion cannot publish over its successor', async () =
       if (posts === 1) {await held; return {status: 201, headers: {}, body: coldChannelBody('ps_old')};}
       return {status: 201, headers: {}, body: coldChannelBody('ps_new')};
     }
+    if (request.method === 'GET' || request.method === 'PATCH') return {status: 200, headers: {}, body: activeChannelBody(request.path.includes('ps_old') ? 'ps_old' : 'ps_new')};
     return {status: 204, headers: {}};
   }};
   const control = new V1ChannelControl({http, key: () => `channel-key-${String(posts + 5).padStart(7, '0')}`, pollMs: 10_000});
@@ -437,8 +439,8 @@ test('an older channel completion cannot publish over its successor', async () =
     await successor;
     release();
     await opening; await settle();
-    assert.equal(statesNew.length, 1);
-    assert.equal(statesNew[0].playbackId, 'ps_new');
+    assert.ok(statesNew.length >= 1, 'the successor publishes (a generation 0 start also publishes once its stream exists)');
+    assert.ok(statesNew.every(state => state.playbackId === 'ps_new'));
     assert.equal(statesNew[0].linear.name, 'News');
     assert.deepEqual(statesOld, [], 'the older held start never published');
     assert.deepEqual(errorsNew, []);
@@ -457,6 +459,7 @@ test('the channel receipt issuer captures the actual original key and body befor
   const accepted = coldChannelBody('ps_original');
   const control = new V1ChannelControl({key: () => {keys++; return 'channel-original-key-0001';}, timers: clock.timers, pollMs: 10_000,
     http: {send: async request => {
+      if (request.method === 'GET') return {status: 200, headers: {}, body: activeChannelBody('ps_original')};
       if (request.method !== 'POST' || request.path !== '/v1/playback/sessions') return {status: 204, headers: {}};
       assert.equal(originals.length, 1, 'host custody exists before the first POST');
       sent.push(request);
@@ -479,7 +482,7 @@ test('the channel receipt issuer captures the actual original key and body befor
     assert.deepEqual(original.body, {channelId: v1ChannelId(channel), channelGeneration: 'g1', state: 'playing'});
     assert.equal(original.key, 'channel-original-key-0001'); assert.equal(original.isCurrent(), true);
     clock.fire(); await opening;
-    assert.equal(sent.length, 2); assert.equal(keys, 1); assert.equal(preparingOffers, 0); assert.equal(abandoned, 0); assert.equal(finished, 1);
+    assert.equal(sent.length, 2); assert.equal(keys, 2, 'one start key, one go-live seek id'); assert.equal(preparingOffers, 0); assert.equal(abandoned, 0); assert.equal(finished, 1);
     assert.ok(Object.isFrozen(installed)); assert.deepEqual(installed, {id: 'ps_original', generation: 0});
     for (const request of sent) {
       assert.equal(request, sent[0], 'the retry is the same original request');
@@ -624,4 +627,140 @@ test('resync rereads the current channel without another join, seek, start or mu
     assert.equal(requests.filter(r => r.method === 'GET').length, 1);
     assert.equal(requests.some(r => r.method !== 'GET'), false);
   } finally {control.close(); feed.resyncReads.dispose();}
+});
+
+// P2-61 E-web-14/25 regressions: a Live start answered at generation 0 with no URL (live QA sequence).
+const earlyChannelHttp = (id: string, reads: Array<{generation: number; url: boolean}>, log: V1Request[]): V1Http => {
+  let read = 0;
+  const view = (generation: number, url: boolean) => {
+    const b = channelBody(id, url ? 'active' : 'cold') as any;
+    b.presentation.generation = generation;
+    return b;
+  };
+  return {send: async request => {
+    log.push(request);
+    if (request.method === 'POST' && request.path === '/v1/playback/sessions') return {status: 201, headers: {}, body: view(0, false)};
+    if (request.method === 'GET') { const r = reads[Math.min(read++, reads.length - 1)]; return {status: 200, headers: {}, body: view(r.generation, r.url)}; }
+    if (request.method === 'PATCH') {
+      const b = channelBody(id, 'active') as any;
+      b.presentation.linear.seek = {id: (request.body as any).seek.id, positionMs: 60_000, acknowledged: false};
+      return {status: 200, headers: {}, body: b};
+    }
+    if (request.method === 'POST' && request.path.endsWith('/observer')) return {status: 200, headers: {}, body: {epoch: 'channel-epoch-00000001', everyMs: 1000}};
+    if (request.method === 'PUT') return {status: 200, headers: {}, body: {acceptedSeq: (request.body as any).seq, viewTag: 'v', session: channelBody(id, 'active')}};
+    return {status: 204, headers: {}};
+  }};
+};
+
+test('E-web-25: a start answered at generation 0 follows its session with GETs until the URL exists, then joins once', async () => {
+  const log: V1Request[] = [], views: Array<{url?: string}> = [], errors: string[] = [];
+  const control = new V1ChannelControl({key: () => 'channel-early-key-00001', pollMs: 60_000,
+    http: earlyChannelHttp('ps_early', [{generation: 1, url: false}, {generation: 1, url: true}], log)});
+  try {
+    await control.open(channel, {state: (v: any) => views.push({url: v.linear?.media?.streamUrl}), error: m => errors.push(m)});
+    await settle();
+    assert.deepEqual(errors, []);
+    assert.equal(log.filter(r => r.method === 'GET').length, 2, 'it polled until the URL existed');
+    const joins = log.filter(r => r.method === 'PATCH' && (r.body as any).seek?.live === true);
+    assert.equal(joins.length, 1, 'exactly one go-live PATCH');
+    assert.ok(views.length > 0, 'the sink received the view');
+    assert.ok(views.at(-1)?.url?.includes('/v1/media/linear/ps_early/1/'), 'the last view carries the stream url');
+  } finally {control.close();}
+});
+
+test('E-web-25: an admitted start whose host refuses installation is a terminal error, never silent', async () => {
+  const log: V1Request[] = [], errors: Array<[string, boolean | undefined]> = [];
+  let retired = 0;
+  const control = new V1ChannelControl({key: () => 'channel-refuse-key-0001', pollMs: 60_000, http: earlyChannelHttp('ps_ref', [{generation: 1, url: true}], log)});
+  try {
+    await control.open(channel, {state: () => assert.fail('no view is installed'), error: (m, t) => errors.push([m, t])}, {
+      captureStart: original => ({isCurrent: original.isCurrent, capturePreparing: () => undefined, claimInstall: () => false,
+        retireUninstalled: () => {retired++;}, finish: () => {}}),
+    });
+    await settle();
+    assert.equal(errors.length, 1, 'the refusal reaches the sink');
+    assert.equal(errors[0][1], true, 'as a terminal error');
+    assert.equal(retired, 1);
+  } finally {control.close();}
+});
+
+test('E-web-25: a cancelled start whose host refuses installation still ends quietly', async () => {
+  const log: V1Request[] = [], errors: string[] = [];
+  let admitted = true;
+  const control = new V1ChannelControl({key: () => 'channel-cancel-key-0001', pollMs: 60_000, http: earlyChannelHttp('ps_can', [{generation: 1, url: true}], log)});
+  try {
+    await control.open(channel, {state: () => assert.fail('no view'), error: m => errors.push(m)}, {
+      captureStart: original => ({isCurrent: () => admitted && original.isCurrent(), capturePreparing: () => undefined,
+        claimInstall: () => {admitted = false; return false;}, retireUninstalled: () => {}, finish: () => {}}),
+    });
+    await settle();
+    assert.deepEqual(errors, []);
+  } finally {control.close();}
+});
+
+test('E-web-25: a stream that never appears fails terminally at CHANNEL_STREAM_WAIT_MS instead of waiting silently', async () => {
+  const {CHANNEL_STREAM_WAIT_MS} = await import('../src/playback-v1/channel-control.ts');
+  const log: V1Request[] = [], errors: Array<[string, boolean | undefined]> = [];
+  const control = new V1ChannelControl({key: () => 'channel-timeout-key-001', pollMs: 60_000, http: earlyChannelHttp('ps_to', [{generation: 1, url: false}], log)});
+  const realNow = Date.now;
+  let calls = 0;
+  const base = realNow();
+  try {
+    // The first reading sets the deadline; every later one is past it (no 60 s real wait).
+    Date.now = () => base + (calls++ === 0 ? 0 : CHANNEL_STREAM_WAIT_MS + 1);
+    await control.open(channel, {state: () => assert.fail('no stream, so no view'), error: (m, t) => errors.push([m, t])});
+    Date.now = realNow;
+    await settle();
+    assert.equal(errors.length, 1);
+    assert.equal(errors[0][1], true);
+    assert.equal(log.some(r => r.method === 'PATCH'), false, 'never joined');
+  } finally {Date.now = realNow; control.close();}
+});
+
+const stopBodies = (log: V1Request[]) => log.filter(r => r.method === 'DELETE').map(r => r.body);
+
+test('E-web-25: Stop during a slow start at generation 0 sends DELETE at once with no generation', async () => {
+  const log: V1Request[] = [];
+  const control = new V1ChannelControl({key: () => 'channel-slowstop-key-01', pollMs: 60_000, http: earlyChannelHttp('ps_slow', [{generation: 0, url: false}], log)});
+  const opening = control.open(channel, {state: () => {}, error: () => {}});
+  try {
+    await settle();
+    assert.equal(log.some(r => r.method === 'POST' && r.path === '/v1/playback/sessions'), true);
+    assert.equal(log.some(r => r.method === 'DELETE'), false);
+    control.close();
+    await settle();
+    const deletes = log.filter(r => r.method === 'DELETE');
+    assert.equal(deletes.length, 1, 'sent immediately, no timer advance');
+    assert.ok(deletes[0].path.includes('ps_slow'));
+    assert.equal((deletes[0].body as any)?.generation, undefined, 'no generation in the body');
+  } finally {control.close(); await opening;}
+});
+
+test('E-web-25: Stop after a start at generation 1 sends DELETE with that generation', async () => {
+  const log: V1Request[] = [];
+  const control = new V1ChannelControl({key: () => 'channel-gen1stop-key-01', pollMs: 60_000, http: earlyChannelHttp('ps_g1', [{generation: 1, url: true}], log)});
+  await control.open(channel, {state: () => {}, error: () => {}});
+  await settle();
+  control.close();
+  await settle();
+  assert.deepEqual(stopBodies(log), [{generation: 1}]);
+});
+
+test('E-web-25: a 412 on Stop with a generation retries once with no generation', async () => {
+  const log: V1Request[] = [], errors: string[] = [];
+  const inner = earlyChannelHttp('ps_412', [{generation: 1, url: true}], log);
+  let deletes = 0;
+  const control = new V1ChannelControl({key: () => 'channel-412stop-key-001', pollMs: 60_000, http: {send: async r => {
+    if (r.method === 'DELETE' && deletes++ === 0) { log.push(r); return {status: 412, headers: {}, body: {error: {code: 'revision_mismatch'}}}; }
+    return inner.send(r);
+  }}});
+  await control.open(channel, {state: () => {}, error: m => errors.push(m)});
+  await settle();
+  control.close();
+  await settle();
+  const bodies = stopBodies(log) as any[];
+  assert.equal(bodies.length, 2, 'one retry only');
+  assert.equal(bodies[0].generation, 1);
+  assert.equal(bodies[1]?.generation, undefined);
+  assert.deepEqual(errors, []);
 });

@@ -5,6 +5,7 @@ import {encodedRoutePath} from '../../packages/contracts/src/routes.ts';
 import {parseLibraryList} from '@core/library-list.ts';
 import {createLibraryRouteProof, createLibraryRouteGuard, completeLibraryDirectory} from '../src/shell/library-route-proof.ts';
 import {forwardFacts} from '../src/shell/fact-source.ts';
+import {readTitleIdentity} from '../src/platform/title-identity.ts';
 import {screenLifetime} from '../src/screens/detail/context.ts';
 import {createReadBindings} from '../src/screens/read/bindings.ts';
 import {componentModule} from './helpers/component-harness.mjs';
@@ -142,12 +143,16 @@ async function mounted(target: {libraryId?: string; itemId?: string}) {
   const f = fixture(), h = createRenderer(), opening = {}, navigations: unknown[] = [], errors: unknown[] = [];
   let location: object = opening, parentRaw: unknown = {id: 'item', libraryId: 'target', title: 'Book', kind: 'book', available: true, durationMs: 0, progressMs: 0};
   let parentCalls = 0, parentHold: ReturnType<typeof deferred<unknown>> | undefined;
-  const api = new HttpLocalApi('https://unit.invalid', '', async () => {parentCalls++;const raw = parentHold ? await parentHold.promise : parentRaw;return new Response(JSON.stringify(raw), {headers: {'Content-Type': 'application/json'}});});
+  const api = new HttpLocalApi('https://unit.invalid', '', async (input: RequestInfo | URL) => {parentCalls++;const reply = parentHold ? await parentHold.promise : parentRaw;
+    // The parent is read from the title's own detail route (E-web-23): the same facts in its shape.
+    const parent = reply as {id?: unknown; libraryId?: unknown} | null;
+    const raw = String(input).includes('/detail') && parent && typeof parent === 'object' ? {item: parent, scope: {itemId: parent.id, libraryId: parent.libraryId}} : reply;
+    return new Response(JSON.stringify(raw), {headers: {'Content-Type': 'application/json'}});});
   const context = {api, session: f.session, isCurrent: f.current, libraryRouteProof: f.proof.source,
     facts: {identity: {libraries: [{id: 'target', name: 'Before', kind: 'book'}]}, preferences: {}}, epoch: 1} as unknown as ShellAssemblyContext;
   let onNavigate: (() => void) | undefined;
   const module = await componentModule(new URL('../src/screens/browse/library-route-guard.ts', import.meta.url), {react: h.react,
-    '../../shell/fact-source': {forwardFacts}, '../../shell/library-route-proof': {createLibraryRouteGuard},
+    '../../shell/fact-source': {forwardFacts}, '../../shell/library-route-proof': {createLibraryRouteGuard}, '../../platform/title-identity': {readTitleIdentity},
     '../../../../packages/contracts/src/routes.ts': {encodedRoutePath},
     '../../router': {router: {navigate: (value: unknown) => {onNavigate?.();navigations.push(value);}}}});
   const draw = () => h.render(() => {const guard = module.useLibraryRouteGuard(context, opening, () => location === opening, target, (error: unknown) => errors.push(error));return {guard, context: module.useGuardedLibraryContext(context, guard)};});
