@@ -1,3 +1,4 @@
+import {isVersionedArtwork} from './artwork/versioned.ts';
 import {encodedRoutePath, routePath} from "../../contracts/src/route-paths.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import {firstOfEach,keepReadable,noteSkipped} from './tolerant.ts';
@@ -36,7 +37,7 @@ export function parseMetadataAttention(raw:unknown,libraryId:string):AttentionPa
   }),c=>c.key);
   const albumId=e.kind==='album'?e.entityId:e.kind==='song'?e.parentId:'';
   const coverPrefix=albumId?encodedRoutePath('get_metadata_kind_id_art_role',{kind:'album',id:encodeURIComponent(String(albumId)),role:'cover'})+'?v=':undefined;
-  const artworkUrl=coverPrefix&&text(e.artworkUrl,4096)&&e.artworkUrl.startsWith(coverPrefix)&&/^[a-f0-9]{64}$/.test(e.artworkUrl.slice(coverPrefix.length))?e.artworkUrl:undefined;
+  const artworkUrl=coverPrefix&&text(e.artworkUrl,4096)&&isVersionedArtwork(e.artworkUrl,coverPrefix)?e.artworkUrl:undefined;
   return Object.freeze({...(artworkUrl?{artworkUrl}:{}),...(text(e.parentTitle,2048)&&e.parentTitle?{parentTitle:e.parentTitle}:{}),...(text(e.parentArtist,2048)&&e.parentArtist?{parentArtist:e.parentArtist}:{}),libraryId:text(e.libraryId,128)?e.libraryId:libraryId,entityId:e.entityId,kind:e.kind as AttentionKind,itemKind:e.itemKind as string,parentId:e.parentId as string,actions:Object.freeze(actions),title:e.title,revision:e.revision,reason:e.reason,confidence:e.confidence,candidates:Object.freeze(candidates)});
  }),e=>e.entityId);
  return Object.freeze({libraryId,total:raw.total as number,entries:Object.freeze(entries),nextCursor:raw.nextCursor});

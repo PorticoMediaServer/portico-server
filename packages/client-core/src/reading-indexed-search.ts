@@ -1,3 +1,4 @@
+import {validReadingCover} from './reading-cover.ts';
 import {decodeGetReadingSearchResponse, routePath, routePattern, routes, type GetReadingSearchResponse} from '../../contracts/src/index.ts';
 
 /** The published global Reading-index anchor; never a session page or search group. */
@@ -73,12 +74,6 @@ export function validReadingIndexedSearchQuery(value: unknown): value is string 
 }
 
 /** A selected Reading cover is the versioned local route for this exact item. */
-function validCover(itemId: string, value: unknown): boolean {
-  if (value === undefined) return true;
-  if (typeof value !== 'string') return false;
-  const prefix = routePath('get_items_id_art_kind', {id: itemId, kind: 'cover'}) + '?v=';
-  return value.startsWith(prefix) && /^[a-f0-9]{64}$/.test(value.slice(prefix.length));
-}
 
 function sameAnchor(value: unknown): ReadingIndexedSearchAnchor | undefined {
   if (!record(value)) return undefined;
@@ -95,7 +90,7 @@ function hit(value: GetReadingSearchResponse['hits'][number]): ReadingIndexedSea
   if (value.matchStart + value.matchLength > value.excerpt.length) return bad();
   if (splitSurrogate(value.excerpt, value.matchStart) || splitSurrogate(value.excerpt, value.matchStart + value.matchLength)) return bad();
   if (value.title !== undefined && (!text(value.title, 4096) || !wellFormed(value.title) || /[\x00-\x1f\x7f]/.test(value.title))) return bad();
-  if (value.coverUrl !== undefined && !validCover(value.itemId, value.coverUrl)) return bad();
+  if (value.coverUrl !== undefined && !validReadingCover(value.itemId, value.coverUrl)) return bad();
   return Object.freeze({libraryId: value.libraryId, itemId: value.itemId, sourceId: value.sourceId, sourceRevision: value.sourceRevision,
     sectionPath: value.sectionPath, sectionIndex: value.sectionIndex, utf16Offset: value.utf16Offset, excerpt: value.excerpt,
     matchStart: value.matchStart, matchLength: value.matchLength, ...(value.title === undefined ? {} : {title: value.title}),

@@ -1,3 +1,4 @@
+import {validReadingCover} from './reading-cover.ts';
 import {readingSavedGroupPath, parseReadingSavedGroupMembership, validReadingSavedGroupCommand, type ReadingSavedGroupTarget, type ReadingSavedGroupCommand} from './reading-saved-group.ts';
 import {readingFavoritePath, parseReadingFavorite, validReadingFavoriteCommand, type ReadingFavoriteCommand} from './reading-favorite.ts';
 export type {ReadingFavoriteFlag, ReadingFavoriteCommand} from './reading-favorite.ts';
@@ -395,13 +396,6 @@ function scopedByteStream(source: ByteSource): ReadingByteStream {
   });
 }
 
-/** A selected Reading cover is a versioned local route for this exact item. */
-function validReadingCover(itemId: string, value: unknown): boolean {
-  if (value === undefined) return true;
-  if (typeof value !== 'string') return false;
-  const prefix = routePath('get_items_id_art_kind', {id: itemId, kind: 'cover'}) + '?v=';
-  return value.startsWith(prefix) && /^[a-f0-9]{64}$/.test(value.slice(prefix.length));
-}
 
 function validateManifest(m: ReadingManifest, request: PostReadingSessionsRequest) {
   if (!id(m.sessionId) || m.itemId !== request.itemId || m.sourceId !== request.sourceId || !revision(m.revision) || !engineFormat(m.format) || !integer(m.size, 1, 2 ** 31)) fail('invalid_manifest');
