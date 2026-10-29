@@ -6,7 +6,7 @@ import styles from './rules.module.css';
 export function RecordingsLayout({title, sourceLabel, allChannels, sourceName, channels, through, navigation, children}: {
   title: string; sourceLabel: string; allChannels: string; sourceName: string; channels?: string; through?: string; navigation?: ReactNode; children: ReactNode;
 }) {
-  return <section className={styles.page} data-live-rules>{navigation}<div className={styles.ambient} aria-hidden="true"/>
+  return <section className={styles.page} data-live-rules>{navigation}
     <header className={styles.header}><h1>{title}</h1><Select className={styles.source} aria-label={sourceLabel} value="all" options={[{value: 'all', label: allChannels}]}/>
       <p><strong>{sourceName}</strong>{channels && <><RuleGap/>{channels}</>}{through && <><RuleGap/>{through}</>}</p></header>{children}</section>;
 }

@@ -1,6 +1,5 @@
 /* Lifted geometry and material values from desktop-live.html #live-rules. */
-.page { position: relative; min-height: 950px; overflow: hidden; color: var(--color-text); background: var(--color-ink); font-family: var(--font); font-size: var(--type-wide-title-size); line-height: normal; -webkit-font-smoothing: antialiased; }
-.ambient { position: absolute; z-index: 0; inset: 0 0 auto; height: 620px; pointer-events: none; background: radial-gradient(40% 70% at 6% 0%, rgba(47,95,115,.5), transparent 72%), radial-gradient(34% 60% at 44% 0%, rgba(122,59,59,.30), transparent 72%), radial-gradient(40% 70% at 94% 0%, rgba(47,98,80,.34), transparent 72%); }
+.page { position: relative; min-height: 950px; overflow: hidden; color: var(--color-text); font-family: var(--font); font-size: var(--type-wide-title-size); line-height: normal; -webkit-font-smoothing: antialiased; }
 .header { position: relative; z-index: var(--layer-content); padding: 122px var(--gutter-desktop) 0; display: flex; align-items: flex-end; gap: 20px; }
 .header h1 { font-size: 60px; line-height: .95; font-weight: 800; letter-spacing: -.045em; margin: 0; }
 .header .source { height: 40px; padding: 0 12px 0 16px; border-radius: 10px; background: rgba(237,245,250,.12); backdrop-filter: blur(20px); gap: 8px; font-size: 15px; font-weight: 700; color: var(--color-text); margin-bottom: 2px; box-shadow: none; min-width: 0; }

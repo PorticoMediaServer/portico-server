@@ -258,7 +258,6 @@ export function GuideScreen({title, switcher, summary, conflicts, onTabChange, c
 
   return <section className={styles.guideScreen} data-guide-screen data-phone-landscape={landscape || undefined}>
     <div className={styles.guideChrome}>
-    <div className={styles.guideAmbient} data-guide-ambient aria-hidden="true"/>
     <header className={styles.guideHeader} data-guide-header>
       <h1>{title}</h1>
       {compactHeader && <Segmented className={styles.guidePhoneView} variant="view" aria-label={t('channels.view')} value={view} onValueChange={value => {if (value === 'guide' || value === 'list') onViewChange(value);}}

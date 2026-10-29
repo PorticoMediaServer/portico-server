@@ -15,10 +15,6 @@
 .facts { display: flex; flex-wrap: wrap; gap: 10px; color: var(--color-text-secondary); }
 /* ---- Guide screen: desktop-live.html#live-guide ---- */
 .guideScreen { position: relative; min-height: 100vh; }
-.guideAmbient { position: absolute; z-index: -1; inset: 0 0 auto 0; height: 620px; pointer-events: none;
-  background: radial-gradient(40% 70% at 6% 0%, color-mix(in srgb, var(--profile-art-blue) 50%, transparent), transparent 72%),
-    radial-gradient(34% 60% at 44% 0%, color-mix(in srgb, color-mix(in srgb, var(--color-record) 50%, var(--color-shadow)) 30%, transparent), transparent 72%),
-    radial-gradient(40% 70% at 94% 0%, color-mix(in srgb, var(--profile-art-mint) 34%, transparent), transparent 72%); }
 .guideState { padding: 122px var(--shell-gutter, var(--gutter-desktop)) 72px; }
 .guideProblem { padding: 16px var(--shell-gutter, var(--gutter-desktop)) 0; }
 .guideHeader { position: relative; padding: 122px var(--shell-gutter, var(--gutter-desktop)) 0; display: flex; align-items: flex-end; gap: 20px; }

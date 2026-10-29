@@ -1,4 +1,4 @@
-export {OwnerTag, ServerBand, ServerHeader, ServerMark, ServerAudienceTag, EditorHeader} from './ServerIdentity';
+export {OwnerTag, ServerHeader, ServerMark, ServerAudienceTag, EditorHeader} from './ServerIdentity';
 export type {ServerRole, ServerAudience, ServerHeaderProps, ServerMarkProps, OwnerTagProps, ShellTranslate, EditorAudience, ServerAudienceTagProps, EditorHeaderProps} from './ServerIdentity';
 export {ProfileAvatar, ProfileAvatarFace, AccountMenu, NotificationItem, WatchTogetherPill} from './AccountSurfaces';
 export type {ProfileAvatarProps, ProfileAvatarSize, ProfileTone, ProfileIdentity, AccountMenuActions, AccountMenuProps, NotificationSubject, NotificationItemProps, TogetherParticipant} from './AccountSurfaces';

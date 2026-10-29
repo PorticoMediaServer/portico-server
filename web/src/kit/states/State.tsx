@@ -134,7 +134,8 @@ function StateContent({title, body, icon, tone = 'neutral', eyebrow, retry, aliv
   </section>;
 }
 
-export type StateBackdrop = Readonly<{kind: 'colour'; shape?: 'side' | 'round' | 'top'; fill?: boolean}> | Readonly<{kind: 'frozen'; source: ArtworkSource}>;
+/** `shape` and `fill` are retired: every colour state shows the one standard backdrop. */
+export type StateBackdrop = Readonly<{kind: 'colour'; /** @deprecated */ shape?: 'side' | 'round' | 'top'; /** @deprecated */ fill?: boolean}> | Readonly<{kind: 'frozen'; source: ArtworkSource}>;
 export type StateLayoutProps = StateContentProps & Readonly<{
   backdrop?: StateBackdrop | null;
   variant?: 'page' | 'player' | 'landscape';
@@ -157,7 +158,9 @@ export function StateLayout({backdrop = {kind: 'colour'}, variant = 'page', chro
   }, [panel?.open]);
   const positionStyle = {...contentStyle, ...(typeof contentStyle?.top === 'number' ? {'--state-content-top': `${contentStyle.top}px`} : {})} as CSSProperties;
   return <div className={[styles.layout, styles[variant], className].filter(Boolean).join(' ')} style={style} data-details-open={panel?.open || undefined}>
-    {backdrop?.kind === 'colour' ? <ColourBackdrop shape={backdrop.shape ?? 'side'} fill={backdrop.fill}/> : backdrop && <div className={styles.frozen} aria-hidden="true"><Artwork source={backdrop.source} alt=""/><div className={styles.frozenShade}/></div>}
+    {/* A page state is transparent over the window's standard backdrop, wherever it sits; a player
+        state covers the picture with the same backdrop. */}
+    {backdrop?.kind === 'colour' ? variant === 'page' ? null : <ColourBackdrop/> : backdrop && <div className={styles.frozen} aria-hidden="true"><Artwork source={backdrop.source} alt=""/><div className={styles.frozenShade}/></div>}
     {chrome}
     <div className={styles.position} style={positionStyle}><StateContent {...content} compact={variant === 'landscape'} panelDetails={!!panel} detailsTriggerRef={detailsTrigger}/></div>
     {panel && <SidePanel open={panel.open} onOpenChange={panel.onOpenChange} title={panel.label ?? defaultI18n.t('next.states.details')} width={352} topInset={10} className={styles.landscapeDetails} returnFocusRef={detailsTrigger}>{panel.content}</SidePanel>}

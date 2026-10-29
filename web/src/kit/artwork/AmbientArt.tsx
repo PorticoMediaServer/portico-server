@@ -3,10 +3,12 @@ import {Artwork, artClass, artSize} from './Artwork';
 import type {AmbientArtSource, ArtworkPalette, ArtworkSource, ArtStyleProps, ArtworkStatus} from './types';
 import styles from './artwork.module.css';
 
-export type ColourBackdropProps = ArtStyleProps & Readonly<{shape?: 'side' | 'round' | 'top' | 'workspace'; fill?: boolean; viewport?: boolean}>;
-/** Public/auth/state backgrounds intentionally have no artwork or glyph input. */
-export function ColourBackdrop({shape = 'side', fill = false, viewport = false, className, style, width, height}: ColourBackdropProps) {
-  return <div aria-hidden="true" className={artClass(styles.colour, styles[shape], fill && styles.fill, viewport && styles.viewport, className)} style={artSize({width, height, style})} />;
+/** The one standard backdrop (bootstrap.css), drawn over the whole window. `shape`, `fill` and
+ * `viewport` are retired: every shape draws the same backdrop, which picks the phone band or the
+ * full glows from the window width alone. They stay accepted until their remaining callers drop them. */
+export type ColourBackdropProps = Readonly<{className?: string; /** @deprecated */ shape?: 'side' | 'round' | 'top' | 'workspace'; /** @deprecated */ fill?: boolean; /** @deprecated */ viewport?: boolean}>;
+export function ColourBackdrop({className}: ColourBackdropProps) {
+  return <div aria-hidden="true" className={artClass('portico-backdrop', styles.colour, className)} />;
 }
 
 /** Bounded card washes contain no sharp art, scrims, controls or readiness overrides. */

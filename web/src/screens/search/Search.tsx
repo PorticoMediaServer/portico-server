@@ -228,7 +228,6 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
     </section>}
   </div>;
   return <div className={styles.search} style={{'--search-card-scale': size, '--search-columns': Math.max(1, Math.round(7 / size))} as React.CSSProperties}>
-    <div className={styles.wash} aria-hidden="true" />
     {/* Phone-app 7 draws the Search title only before typing; frame 4's Cancel belongs to the
         results state, so it is absent on the empty one. */}
     {compact && !text.trim() && <h1 className={styles.phoneSearchTitle}>{t('web.search.title')}</h1>}

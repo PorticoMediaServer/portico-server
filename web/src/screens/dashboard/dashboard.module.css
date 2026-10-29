@@ -258,7 +258,7 @@
 /* ================= The drawn phone Dashboard (owner-dashboard.html#9, mobile web) =================
    The web app at phone width is the phone app screen for screen; the one honest difference is the
    Refresh button beside "Updated …" (a browser cannot draw Portico's pull-to-refresh ring). */
-.phonePage { position: fixed; z-index: var(--layer-player); inset: 0; display: flex; flex-direction: column; color: var(--color-text); background: var(--color-ink); font-family: var(--font); font-size: var(--type-body-size); line-height: var(--type-body-line); }
+.phonePage { position: fixed; z-index: var(--layer-player); inset: 0; display: flex; flex-direction: column; color: var(--color-text); background-color: var(--color-ink); background-image: var(--backdrop-glows); background-size: var(--backdrop-glows-size); background-repeat: no-repeat; font-family: var(--font); font-size: var(--type-body-size); line-height: var(--type-body-line); }
 .phoneBar { position: absolute; z-index: var(--layer-art-label); inset: 0 0 auto; height: 56px; display: flex; align-items: center; padding: 0 12px; }
 .phoneBar[data-solid] { background: color-mix(in srgb, var(--color-ink) 86%, transparent); -webkit-backdrop-filter: blur(24px) saturate(1.3); backdrop-filter: blur(24px) saturate(1.3); border-bottom: 1px solid color-mix(in srgb, var(--color-text) 7%, transparent); }
 .phoneBack { width: 44px; height: 44px; margin-left: -8px; display: grid; place-items: center; border: 0; border-radius: var(--radius-control); background: none; color: var(--color-text); cursor: pointer; }
@@ -268,8 +268,6 @@
 .phoneBarTitle b { font-size: var(--type-dashboard-phone-bar-title-size); font-weight: var(--type-dashboard-phone-bar-title-weight); letter-spacing: var(--type-dashboard-phone-bar-title-tracking); line-height: var(--type-dashboard-phone-bar-title-line); }
 .phoneBarTitle small { font-size: var(--type-dashboard-phone-bar-detail-size); font-weight: var(--type-dashboard-phone-bar-detail-weight); color: var(--color-accent-strong); line-height: var(--type-dashboard-phone-bar-detail-line); }
 .phoneScroll { position: relative; flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; padding-bottom: max(28px, env(safe-area-inset-bottom)); }
-.phoneBand { position: absolute; z-index: 0; inset: 0 0 auto; height: 400px; overflow: hidden; pointer-events: none; background: radial-gradient(80% 100% at 96% -6%, var(--color-accent-deep) 0%, transparent 62%), radial-gradient(70% 90% at 6% 74%, var(--color-generated-green) 0%, transparent 68%), var(--color-raised-soft); }
-.phoneBand::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 22%, var(--color-ink) 100%); }
 .phoneHead { position: relative; z-index: 1; padding: 64px 20px 0; }
 .phonePills { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 .phonePill { display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 11px 0 8px; border-radius: 8px; background: color-mix(in srgb, var(--color-ink) 55%, transparent); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); font-size: var(--type-report-detail-size); font-weight: var(--type-button-weight); }
