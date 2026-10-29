@@ -267,6 +267,9 @@ func (m *CertificateManager) advancePending(ctx context.Context, q certificateSt
 			return m.recordFailure(ctx, q, e)
 		}
 		m.Wake()
+		if f := m.onReady.Load(); f != nil {
+			(*f)()
+		}
 		return nil
 	case "failed", "revoked", "cancelled":
 		// Only a known terminal provider receipt permits a new local intent. Never
