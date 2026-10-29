@@ -5739,6 +5739,7 @@ reading_attribution_members.series_value
 reading_attribution_members.sort_key
 reading_attribution_state.after_item
 reading_attribution_state.build_generation
+reading_attribution_state.fence_item
 reading_attribution_state.input_generation
 reading_attribution_state.library_id
 reading_attribution_state.namespace
