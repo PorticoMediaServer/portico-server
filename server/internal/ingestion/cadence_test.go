@@ -200,16 +200,17 @@ func TestScanLoopGivesWayToForegroundWorkBetweenSteps(t *testing.T) {
 	// The probe is what the HTTP layer registers. It also notes when the scan
 	// asks it from the pacing step, and when the scan next asks at all.
 	var mu sync.Mutex
-	var paced, followed, hurried int
+	var paced, followed, hurried, verificationPaces int
 	var gaveWayAt time.Time
 	pressure := false
 	dbwork.RegisterForegroundProbe("scan-pressure-test", func() bool {
 		pcs := make([]uintptr, 16)
 		frames := runtime.CallersFrames(pcs[:runtime.Callers(2, pcs)])
-		pacing, step := false, false
+		pacing, step, verification := false, false, false
 		for {
 			frame, more := frames.Next()
 			pacing = pacing || strings.HasSuffix(frame.Function, "dbwork.PaceBackground")
+			verification = verification || strings.HasSuffix(frame.Function, "ingestion.(*Service).verifyOneSource")
 			step = step || strings.HasSuffix(frame.Function, "ingestion.(*Service).processQuantum")
 			if !more {
 				break
@@ -219,7 +220,11 @@ func TestScanLoopGivesWayToForegroundWorkBetweenSteps(t *testing.T) {
 		defer mu.Unlock()
 		now := time.Now()
 		if pressure {
-			if pacing {
+			if pacing && verification {
+				// The independent verifier has its own pause. It must not
+				// overwrite the timestamp paired with the scan's next step.
+				verificationPaces++
+			} else if pacing {
 				paced++
 				gaveWayAt = now
 			} else if step && !gaveWayAt.IsZero() {
@@ -242,6 +247,7 @@ func TestScanLoopGivesWayToForegroundWorkBetweenSteps(t *testing.T) {
 	busy := scan(t)
 	mu.Lock()
 	defer mu.Unlock()
+	t.Logf("scan pauses=%d followed=%d early=%d; independent verifier pauses=%d", paced, followed, hurried, verificationPaces)
 	if paced < steps {
 		t.Fatalf("the scan continued without giving way to foreground work: %d pauses for %d folders", paced, directories)
 	}
