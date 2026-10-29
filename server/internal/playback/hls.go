@@ -36,6 +36,28 @@ import (
 // the eviction sweep may free room within seconds.
 var ErrConversionSpace = errors.New("not enough free space to start media conversion; retry shortly")
 
+// errMediaConversionFailed is a real fault: this source could not be converted.
+// It is never an end of the presentation, so it must not be answered as one.
+var errMediaConversionFailed = errors.New("media conversion failed")
+
+// finishedSessionError answers a producer or segment wait whose session is
+// already over. A stopped or ended presentation is a clean end: it gets the
+// same hidden 404 the grant's own resolution answers (ErrGrantEnded), so a
+// player that reads the final bytes of a short title as the client stops the
+// session sees "ended", never a 500 from an untyped internal error. A failed
+// session met by an already-admitted read stays the real conversion fault; a
+// later grant resolution hides it as ended, as ResolveGrant already does
+// (NEW: E-mobile-27).
+func finishedSessionError(state string) error {
+	switch state {
+	case "stopped", "ended":
+		return ErrGrantEnded
+	case "failed":
+		return errMediaConversionFailed
+	}
+	return nil
+}
+
 // Only owner-configured conversion limits govern admission. CPU count and
 // measured server load are diagnostics, never a playback quality or admission rule.
 
@@ -230,8 +252,11 @@ func (h *HLS) startGeneration(ctx context.Context, id string, from, expected int
 	if expected > 0 && generation != expected {
 		return ErrOccurrenceChanged
 	}
-	if sessionState == "stopped" || sessionState == "ended" || sessionState == "failed" || expires <= time.Now().UTC().Format(time.RFC3339) {
-		return errors.New("playback stopped")
+	if e := finishedSessionError(sessionState); e != nil {
+		return e
+	}
+	if expires <= time.Now().UTC().Format(time.RFC3339) {
+		return ErrGrantEnded
 	}
 	if artifactStatus == "failed" {
 		return nil
@@ -1106,11 +1131,11 @@ func (h *HLS) Ready(ctx context.Context, id string) error {
 		if err := dbwork.QueryRow(ctx, h.db, `SELECT ps.state,COALESCE(a.status,''),ps.generation FROM playback_sessions ps LEFT JOIN playback_artifacts a ON a.session_id=ps.id WHERE ps.id=?`, id).Scan(&state, &status, &generation); err != nil {
 			return err
 		}
-		if state == "stopped" || state == "ended" {
-			return errors.New("playback stopped")
+		if e := finishedSessionError(state); e != nil {
+			return e
 		}
 		if status == "failed" {
-			return errors.New("media conversion failed")
+			return errMediaConversionFailed
 		}
 		if info, e := os.Stat(filepath.Join(h.outputDir(id), "master.m3u8")); e == nil && info.Size() > 0 {
 			stamp, err := os.ReadFile(filepath.Join(h.outputDir(id), "generation"))
@@ -1145,6 +1170,14 @@ func (h *HLS) FileContext(ctx context.Context, grant, name string) (string, erro
 	var generation int
 	var duration float64
 	e := dbwork.QueryRow(ctx, h.db, `SELECT id,duration,generation FROM playback_sessions WHERE grant_hash=? AND mode='hls' AND state NOT IN('stopped','ended','failed') AND expires_at>?`, identity.Digest(grant), time.Now().UTC().Format(time.RFC3339)).Scan(&id, &duration, &generation)
+	if errors.Is(e, sql.ErrNoRows) {
+		// The grant was already resolved, so an empty answer here means the
+		// session stopped, ended, failed or expired in between. ResolveGrant
+		// hides a failed session behind this same ended answer too, so this is
+		// the grant's end, not an unknown grant. A real conversion fault is the
+		// separate failed-artifact path while the grant is still live.
+		return "", ErrGrantEnded
+	}
 	if e != nil {
 		return "", e
 	}
@@ -1220,6 +1253,15 @@ func (h *HLS) FileContext(ctx context.Context, grant, name string) (string, erro
 		count = timeline.count()
 	}
 	if index >= count {
+		// A well-formed segment slot at or past a known grid is the end of this
+		// presentation, not an unknown artifact: a short title's last read can
+		// land here while the session is still live. Answer the grant's own
+		// hidden ended 404 rather than an internal 500. Malformed names and
+		// generation mismatches keep their own refusals above.
+		if count > 0 {
+			return "", ErrGrantEnded
+		}
+		// A timeline that reports no slots is a broken plan, so it stays a fault.
 		return "", errors.New("unknown stream artifact")
 	}
 	cfg := h.configuration()
@@ -1242,11 +1284,11 @@ func (h *HLS) FileContext(ctx context.Context, grant, name string) (string, erro
 			if err := dbwork.QueryRow(ctx, h.db, `SELECT ps.state,COALESCE(a.status,'') FROM playback_sessions ps LEFT JOIN playback_artifacts a ON a.session_id=ps.id WHERE ps.id=?`, id).Scan(&state, &status); err != nil {
 				return "", err
 			}
-			if state == "stopped" || state == "ended" || state == "failed" {
-				return "", errors.New("playback stopped")
+			if e := finishedSessionError(state); e != nil {
+				return "", e
 			}
 			if status == "failed" {
-				return "", errors.New("media conversion failed")
+				return "", errMediaConversionFailed
 			}
 			current := filepath.Join(h.outputDir(id), name)
 			if current != path {
