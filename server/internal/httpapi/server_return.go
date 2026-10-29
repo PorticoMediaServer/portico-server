@@ -197,7 +197,9 @@ func (d Dependencies) serverReturnRoutes(mux *http.ServeMux) {
 				out, e = d.Identity.PorticoSignIn(r.Context(), who)
 			}
 		} else if who.Return.Purpose == "setup" {
-			out, e = d.Identity.CompleteAccountSetup(r.Context(), q.RequestID, q.SetupToken, who)
+			// Setup is never a registered return: it has its own transport and names no
+			// registration (O-163). Its only admission is the setup exchange.
+			e = identity.ErrUnauthorized
 		} else {
 			out, e = d.Identity.CompletePorticoOwnerClaim(r.Context(), directBearer(r), q.ExpectedRevision, who)
 		}

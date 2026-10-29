@@ -49,7 +49,7 @@ type serverReturnAssertion struct {
 }
 
 func (s *Service) ExchangeRegisteredReturn(ctx context.Context, q RegisteredReturnExchange) (identity.PorticoIdentity, error) {
-	if s == nil || !s.Configured() || s.identity == nil || len(q.Code) < 32 || len(q.Code) > 128 || len(q.Verifier) < 32 || len(q.Verifier) > 128 || len(q.TransactionID) > 128 || len(q.RegistrationID) > 128 || len(q.InstallationID) < 32 || len(q.InstallationID) > 128 {
+	if s == nil || !s.Configured() || s.identity == nil || len(q.Code) < 32 || len(q.Code) > 128 || len(q.Verifier) < 32 || len(q.Verifier) > 128 || len(q.TransactionID) > 128 || q.RegistrationID == "" || len(q.RegistrationID) > 128 || q.Purpose == "setup" || len(q.InstallationID) < 32 || len(q.InstallationID) > 128 {
 		return identity.PorticoIdentity{}, identity.ErrUnauthorized
 	}
 	// A preview confirms only the proposed move. It is not permission to use
