@@ -89,6 +89,7 @@ export const overlaysMessages = {
   'next.overlays.gallery.dialog': 'Dialog',
   'next.overlays.gallery.panel': 'Side panel',
   'next.overlays.gallery.panelOwner': 'Side panel, owner',
+  'next.overlays.gallery.panelWindowed': 'Side panel, more versions to read',
   'next.overlays.gallery.sheetHalf': 'Bottom sheet, half height',
   'next.overlays.gallery.sheetFull': 'Bottom sheet, full height',
   'next.overlays.gallery.phoneMenu': 'Phone menu',

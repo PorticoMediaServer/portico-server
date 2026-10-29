@@ -87,6 +87,14 @@ function PanelCase({owner = false}: {owner?: boolean}) {
 }
 function Panel() { return <PanelCase />; }
 function OwnerPanel() { return <PanelCase owner />; }
+/** A windowed read: two of five versions resident, the second still reading its audio. */
+function WindowedPanel() {
+  const fixture = useFixture(), resident = files.slice(0, 2).map((file, index) => ({...file, ordinal: index + 1, ...(index === 1 ? {audio: []} : {})}));
+  const model = fileInfoModel(resident, {audience: 'viewer'}, {t}), more = {busy: false, failed: false, onPress: () => fixture.setEvent('more-versions')};
+  return <Fixture event={fixture.event} events={fixture.events}><nav className={styles.toolbar}><Button size="small" onClick={fixture.show}>{t('next.overlays.fileInfo')}</Button></nav>
+    <FileInfo open={fixture.open} onOpenChange={fixture.change} model={model} subject={reference.film} layout="desktop" onManage={() => {}} testID="file-info-windowed"
+      continuation={{versionCount: 5, more, tracks: (id, lane) => lane !== 'audio' ? undefined : id === resident[1]!.id ? {pending: true} : {pending: false, more: {busy: false, failed: false, onPress: () => fixture.setEvent('more-tracks')}}}} /></Fixture>;
+}
 function SheetCase({full = false}: {full?: boolean}) {
   const fixture = useFixture(), [detent, setDetent] = useState(full ? 1 : 0), [scrollBody, setScrollBody] = useState<HTMLDivElement | null>(null);
   const model = fileInfoModel(phoneFiles, full ? {audience: 'owner', ownerFacts: {locations: phoneFiles.map((file, index) => ({id: file.id, path: overlaysFixtures[index === 0 ? 'next.overlays.dev.phonePathOne' : 'next.overlays.dev.phonePathTwo'], canDelete: true})), canSplit: true, canMerge: true}, manageSurface: 'phone'} : {audience: 'viewer'}, {t}, 'phone');
@@ -171,6 +179,7 @@ export default defineGalleryFamily({id: 'overlays', labelKey: 'next.overlays.gal
   {id: 'recording-dialog', labelKey: 'next.overlays.deleteRecordingTitle', width: 1440, height: 900, render: RecordingDialog},
   {id: 'side-panel', labelKey: 'next.overlays.gallery.panel', width: 1440, height: 1260, render: Panel},
   {id: 'side-panel-owner', labelKey: 'next.overlays.gallery.panelOwner', width: 1440, height: 1260, render: OwnerPanel},
+  {id: 'side-panel-windowed', labelKey: 'next.overlays.gallery.panelWindowed', width: 1440, height: 1260, render: WindowedPanel},
   {id: 'sheet-half', labelKey: 'next.overlays.gallery.sheetHalf', width: 390, height: 844, render: HalfSheet},
   {id: 'sheet-full', labelKey: 'next.overlays.gallery.sheetFull', width: 390, height: 844, render: FullSheet},
   {id: 'phone-menu', labelKey: 'next.overlays.gallery.phoneMenu', width: 390, height: 844, render: PhoneMenu},
