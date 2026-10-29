@@ -21,19 +21,21 @@ export type ReaderSurfaceMountOptions<P extends object> = Readonly<{
   settled?: Promise<void>;
   /** Actual platform book fold for this window; absent when no hinge is reported. */
   crease?: ReaderCrease;
+  /** Page arrows' reach from each side edge (px), while they are drawn. */
+  turnClearance?: number;
 }>;
-const key = (crease: ReaderCrease | undefined) => crease ? `${crease.left}:${crease.right}` : '';
-export type ReaderSurfaceMount = Readonly<{ready: Promise<void>; close: () => Promise<void>; setCrease: (crease: ReaderCrease | undefined) => void}>;
+const key = (crease: ReaderCrease | undefined, clearance?: number) => (crease ? `${crease.left}:${crease.right}` : '') + (clearance ? `|${clearance}` : '');
+export type ReaderSurfaceMount = Readonly<{ready: Promise<void>; close: () => Promise<void>; setCrease: (crease: ReaderCrease | undefined) => void; setTurnClearance: (clearance: number | undefined) => void}>;
 
 /** The core owns the document, preferences, location and view; this owns only DOM lifetime. */
-export function mountReaderSurface<P extends object>({controller, source, format, initialLocation, metadata, signal, authority, container, reportError, settled = Promise.resolve(), crease: initialCrease}: ReaderSurfaceMountOptions<P>): ReaderSurfaceMount {
-  let active = true, opened = false, opening = false, frame: number | undefined, width = 0, height = 0, crease = initialCrease;
+export function mountReaderSurface<P extends object>({controller, source, format, initialLocation, metadata, signal, authority, container, reportError, settled = Promise.resolve(), crease: initialCrease, turnClearance: initialClearance}: ReaderSurfaceMountOptions<P>): ReaderSurfaceMount {
+  let active = true, opened = false, opening = false, frame: number | undefined, width = 0, height = 0, crease = initialCrease, turnClearance = initialClearance;
   // Applied engine state, not desired: a same-size posture change must still reach
   // the engine. In-flight resizes serialize and then drain the latest request.
   let engineKey = '', inflight = false, dirty = false;
   let closeResult: Promise<void> | undefined;
   const current = () => active && authority.isCurrent() && !signal?.aborted;
-  const viewport = (): ReaderViewport => ({width, height, ...(crease ? {crease} : {})});
+  const viewport = (): ReaderViewport => ({width, height, ...(crease ? {crease} : {}), ...(turnClearance ? {turnClearance} : {})});
   let offAuthority = () => {}, offSession = () => {}, resolveSize: (() => void) | undefined;
   const waitForSize = new Promise<void>(resolve => { resolveSize = resolve; });
   const observer = new ResizeObserver(() => {
@@ -56,7 +58,7 @@ export function mountReaderSurface<P extends object>({controller, source, format
   const resize = () => {
     frame = undefined;
     if (!current() || controller.getSnapshot().status !== 'ready') return;
-    const nextWidth = container.clientWidth, nextHeight = container.clientHeight, nextCrease = key(crease);
+    const nextWidth = container.clientWidth, nextHeight = container.clientHeight, nextCrease = key(crease, turnClearance);
     if (nextWidth <= 0 || nextHeight <= 0) return;
     if (inflight) {dirty = true; return;}
     if (nextWidth === width && nextHeight === height && nextCrease === engineKey) return;
@@ -94,10 +96,10 @@ export function mountReaderSurface<P extends object>({controller, source, format
     if (!current()) return;
     width = container.clientWidth; height = container.clientHeight;
     opening = true;
-    const openedCrease = crease;
+    const openedCrease = key(crease, turnClearance);
     await controller.open({source, format, container, metadata, signal, motion: webReaderMotion(container.ownerDocument), location: initialLocation, viewport: viewport()});
     opening = false;
-    if (current()) {engineKey = key(openedCrease);}
+    if (current()) {engineKey = openedCrease;}
     if (!current()) { await close(); return; }
     opened = true;
     // A replacement open retires this mount before its old parent can abort.
@@ -116,5 +118,9 @@ export function mountReaderSurface<P extends object>({controller, source, format
     // zero-size or not-yet-open surface takes the crease when it opens.
     if (opened) {frame = undefined; resize();}
   };
-  return Object.freeze({ready, close, setCrease});
+  const setTurnClearance = (next: number | undefined) => {
+    turnClearance = next;
+    if (opened) {frame = undefined; resize();}
+  };
+  return Object.freeze({ready, close, setCrease, setTurnClearance});
 }

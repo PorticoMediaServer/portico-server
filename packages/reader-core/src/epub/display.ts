@@ -25,10 +25,11 @@ export function epubDisplay(preferences: EpubDisplayPreferences, viewport: Reade
   const normalLineHeight = phoneLandscape ? 26/16 : compact ? 28/17 : 1.6;
   const lineHeight = normalLineHeight * {tight: 0.875, normal: 1, loose: 1.15625}[p.lineSpacing];
   const normalMargin = phoneLandscape ? 56 : compact ? 24 : viewport.width < 1024 ? 84 : viewport.width >= 1400 ? 150 : 76;
-  // W07: a desktop-width single column (also the page beside the open Contents panel) starts at the mock-up's 120 px
-  // inset, clear of the 40-92 px page arrow.
-  const arrowClear = !compact && viewport.width >= 900 && viewport.width < 1400 && !(p.layout === 'pages' && p.twoPages && (spreadFits(viewport) || creaseSpread(viewport)));
-  const margin = (arrowClear ? Math.max(normalMargin, 120) : normalMargin) * {narrow:0.65,normal:1,wide:1.35}[p.margins];
+  // W07: where the host draws page arrows, a single column starts clear of them (the mock-up's 120 px inset), also
+  // in the narrower area beside an open Contents panel. Keyed on the arrows, not on the area's width.
+  const spread = p.layout === 'pages' && p.twoPages && (spreadFits(viewport) || creaseSpread(viewport));
+  const clearance = !spread && Number.isFinite(viewport.turnClearance) ? Math.max(0, viewport.turnClearance!) : 0;
+  const margin = Math.max(normalMargin * {narrow:0.65,normal:1,wide:1.35}[p.margins], clearance);
   const fold = creaseSpread(viewport);
   const columns = p.layout === 'pages' && p.twoPages && (spreadFits(viewport) || compactLandscape(viewport) || creaseSpread(viewport)) ? 2 : 1;
   const top = phoneLandscape ? 40 : compact ? 86 : 100;

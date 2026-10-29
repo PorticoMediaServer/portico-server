@@ -36,7 +36,8 @@ export type ReaderComicFormat = 'cbz' | 'cbr';
 export type ReaderFormat = 'epub' | 'pdf' | ReaderComicFormat;
 export type ReaderCrease = Readonly<{left: number; right: number}>;
 /** Window-local vertical hinge band reported by the platform, when there is one. */
-export type ReaderViewport = Readonly<{width: number; height: number; crease?: ReaderCrease}>;
+/** `turnClearance`: the host's page arrows cover this many px from each side edge; text starts clear of them. */
+export type ReaderViewport = Readonly<{width: number; height: number; crease?: ReaderCrease; turnClearance?: number}>;
 export type ReaderRect = Readonly<{x: number; y: number; width: number; height: number}>;
 type ObservedLocation = Readonly<{
   progression: number;

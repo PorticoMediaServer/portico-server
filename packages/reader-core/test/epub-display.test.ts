@@ -27,6 +27,11 @@ test('default text geometry follows exact desktop, phone and tablet reader frame
   const phone=epubDisplay(p,{width:390,height:844},fonts);assert.equal(phone.margin,24);assert.equal(phone.top,86);assert.match(phone.css,/font-size:17px/);
   const sideways=epubDisplay(p,{width:844,height:390},fonts);assert.equal(sideways.margin,56);assert.equal(sideways.top,40);assert.match(sideways.css,/font-size:16px/);
   const tablet=epubDisplay(p,{width:1180,height:820},fonts);assert.equal(tablet.margin,76);assert.equal(tablet.top,100);assert.equal(tablet.bottom,112);
-  const beside=epubDisplay(p,{width:988,height:900},fonts);assert.equal(beside.columns,1);assert.equal(beside.margin,120);
+  const beside=epubDisplay(p,{width:988,height:900,turnClearance:120},fonts);assert.equal(beside.columns,1);assert.equal(beside.margin,120);
+  // W07 round 4: beside the open panel the text area is narrower than the window, but the arrows are still drawn.
+  const panel1024=epubDisplay(p,{width:572,height:900,turnClearance:120},fonts);assert.equal(panel1024.margin,120);
+  const panel1280=epubDisplay(p,{width:828,height:900,turnClearance:120},fonts);assert.equal(panel1280.margin,120);
+  const noArrows=epubDisplay(p,{width:988,height:900},fonts);assert.equal(noArrows.margin,84);
+  const roomy=epubDisplay(p,{width:1440,height:900,turnClearance:120},fonts);assert.equal(roomy.margin,150);
   const upright=epubDisplay(p,{width:820,height:1180},fonts);assert.equal(upright.margin,84);assert.equal(upright.bottom,120);
 });

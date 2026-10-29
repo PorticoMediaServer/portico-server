@@ -14,6 +14,9 @@ export type ReadReaderProps<P extends object> = ReaderSurfaceProps<P> & Readonly
   onBack: () => void;
 }>;
 
+/** The page arrows sit 40-92 px from each edge (reader.module.css); text starts at the mock-up's 120 px inset.
+ * A coarse pointer never draws them. */
+const turnClearance = (shown: boolean) => shown && !(typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches) ? 120 : undefined;
 /** The checked main controller is the single state and navigation owner for all formats. */
 export function ReadReader<P extends object>({controller, source, format, initialLocation, metadata, signal, authority, reportError, presentation, state, onBack, crease}: ReadReaderProps<P>) {
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
@@ -60,7 +63,7 @@ export function ReadReader<P extends object>({controller, source, format, initia
     fixedPage={format !== 'epub'} comic={format === 'cbz' || format === 'cbr'} holdOpen={chrome.holdOpen || !publicationReady || snapshot.selection !== null}
     textSelectionActive={snapshot.selection !== null}
     subscribeSurfaceInput={controller.subscribeSurfaceInput} readActivity={readActivity} onTurn={turn} onSeek={seek} onBack={onBack}>
-    <ReaderSurface controller={controller} source={source} format={format} initialLocation={initialLocation} metadata={metadata} signal={signal} authority={authority} reportError={reportError} crease={crease} />
+    <ReaderSurface controller={controller} source={source} format={format} initialLocation={initialLocation} metadata={metadata} signal={signal} authority={authority} reportError={reportError} crease={crease} turnClearance={turnClearance(chrome.showPageArrows)} />
     {snapshot.status !== 'ready' && state && <div className={styles.state}>{state(snapshot)}</div>}
   </ReaderChrome>;
 }
