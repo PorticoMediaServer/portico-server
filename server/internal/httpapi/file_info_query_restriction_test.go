@@ -182,9 +182,13 @@ func fileInfoQueryRestrictionCheck(t *testing.T) {
 		if w := call(http.MethodGet, "/v1/items/"+public, token); w.Code != http.StatusNotFound {
 			t.Fatalf("%s can still see the restricted title: %d %s", name, w.Code, w.Body.String())
 		}
-		// Replaying the owner's real opening for the hidden item is stale; the
-		// hidden item's lane never becomes readable to the restricted caller.
-		stale(call(http.MethodGet, fileInfoLanePath(public, "/file-info", f.opening), token))
+		// A path naming a hidden item is concealed before even a real foreign
+		// opening is parsed; the opaque query endpoint stays uniformly stale.
+		if w := call(http.MethodGet, fileInfoLanePath(public, "/file-info", f.opening), token); w.Code != http.StatusNotFound {
+			t.Fatalf("hidden opening was not concealed: %d %s", w.Code, w.Body.String())
+		} else {
+			private(w)
+		}
 		stale(call(http.MethodGet, path, token))
 		for range 2 {
 			deleted(call(http.MethodDelete, path, token))
@@ -218,6 +222,18 @@ func fileInfoQueryRestrictionCheck(t *testing.T) {
 		}
 	}
 	ownerReady()
+
+	// A malformed lane request must not disclose a hidden catalogue identity
+	// by failing input validation before its live visibility admission.
+	for _, token := range []string{profileToken.AccessToken, memberToken.AccessToken} {
+		for _, suffix := range []string{"/file-info", "/file-info?unexpected=1", "/file-info?limit=0", "/file-info?opening=x&opening=y", "/file-info/groups", "/file-info/groups/members?group=matrix", "/file-info/groups/head-tracks?group=matrix&lane=audio", "/file-info/tracks?occurrence=matrix&lane=audio", "/file-info/sources", "/file-info/disc-titles?occurrence=matrix"} {
+			hidden := call(http.MethodGet, "/v1/items/"+public+suffix, token)
+			absent := call(http.MethodGet, "/v1/items/"+strings.Repeat("A", 22)+suffix, token)
+			if hidden.Code != http.StatusNotFound || absent.Code != hidden.Code || errorCode(t, hidden) != errorCode(t, absent) {
+				t.Fatalf("hidden malformed lane differs from absent: %s hidden%d/%s absent%d/%s", suffix, hidden.Code, hidden.Body.String(), absent.Code, absent.Body.String())
+			}
+		}
+	}
 
 	// Owner cancellation is private and idempotent; the retired handle is stale.
 	for range 2 {

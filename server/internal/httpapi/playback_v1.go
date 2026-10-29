@@ -376,6 +376,13 @@ func (d Dependencies) v1Authorize(ctx context.Context, r *http.Request, m apikit
 	if err != nil {
 		return nil, v1AuthError(err)
 	}
+	// Conceal FileInfo item identities before the registry validates query
+	// fields; hidden and absent items must not have different error shapes.
+	if fileInfoLaneRoute(m) {
+		if _, _, e := d.detailContentFenceFor(r, p); e != nil {
+			return nil, v1Error(e)
+		}
+	}
 	// Playback routes act for a device; other typed routes don't need one.
 	device, err := d.deviceOf(ctx, p)
 	if err != nil && (m.Access == apikit.Device || m.Access == apikit.ViewerItem) {
