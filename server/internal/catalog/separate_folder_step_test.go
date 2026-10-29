@@ -88,7 +88,7 @@ func newSeparateFolderStepFixture(t *testing.T, book bool) separateFolderStepFix
 			Library: f.library, Object: object, Revision: "r1", Source: source, Directory: "split",
 			SourceGeneration: generation, SourceIncarnation: incarnation, RootIdentity: rootIdentity, AssetPath: path,
 			OldContainer: old.ID, NewContainer: f.new, Child: original.ID, Asset: asset, HasElsewhere: true,
-			Link: compactcatalog.Link{Part: 0, Start: 5, End: &end, Edition: "edition"},
+			Link:   compactcatalog.Link{Part: 0, Start: 5, End: &end, Edition: "edition"},
 			Before: func(context.Context, *sql.Tx) error { return nil },
 		})
 		f.outside = append(f.outside, original.Asset)
@@ -273,15 +273,33 @@ func TestSeparateFolderFileRefusalsAndRollback(t *testing.T) {
 
 func TestSeparateFolderFileRejectsChangedSourceAndAssociation(t *testing.T) {
 	for name, mutate := range map[string]func(separateFolderStepFixture){
-		"object revision": func(f separateFolderStepFixture) { f.c.Exec(`UPDATE inventory_objects SET revision='r2' WHERE id=?`, f.requests[0].Object) },
-		"object folder": func(f separateFolderStepFixture) { f.c.Exec(`UPDATE inventory_objects SET directory_path='other' WHERE id=?`, f.requests[0].Object) },
-		"source generation": func(f separateFolderStepFixture) { f.c.Exec(`UPDATE library_sources SET generation=generation+1 WHERE id=?`, f.requests[0].Source) },
-		"root incarnation": func(f separateFolderStepFixture) { f.c.Exec(`UPDATE library_sources SET incarnation='changed' WHERE id=?`, f.requests[0].Source) },
-		"source disabled": func(f separateFolderStepFixture) { f.c.Exec(`UPDATE library_sources SET enabled=0 WHERE id=?`, f.requests[0].Source) },
-		"object retired": func(f separateFolderStepFixture) { f.c.Exec(`UPDATE inventory_objects SET retired=1 WHERE id=?`, f.requests[0].Object) },
-		"asset replaced": func(f separateFolderStepFixture) { f.c.Exec(`UPDATE catalog_assets SET modified_ns=2 WHERE id=?`, f.requests[0].Asset) },
-		"old parent": func(f separateFolderStepFixture) { f.c.Exec(`UPDATE catalog_songs SET album_id=? WHERE entity_id=?`, f.new, f.requests[0].Child) },
-		"child retired": func(f separateFolderStepFixture) { f.c.Exec(`UPDATE catalog_entities SET retired=1 WHERE id=?`, f.requests[0].Child) },
+		"object revision": func(f separateFolderStepFixture) {
+			f.c.Exec(`UPDATE inventory_objects SET revision='r2' WHERE id=?`, f.requests[0].Object)
+		},
+		"object folder": func(f separateFolderStepFixture) {
+			f.c.Exec(`UPDATE inventory_objects SET directory_path='other' WHERE id=?`, f.requests[0].Object)
+		},
+		"source generation": func(f separateFolderStepFixture) {
+			f.c.Exec(`UPDATE library_sources SET generation=generation+1 WHERE id=?`, f.requests[0].Source)
+		},
+		"root incarnation": func(f separateFolderStepFixture) {
+			f.c.Exec(`UPDATE library_sources SET incarnation='changed' WHERE id=?`, f.requests[0].Source)
+		},
+		"source disabled": func(f separateFolderStepFixture) {
+			f.c.Exec(`UPDATE library_sources SET enabled=0 WHERE id=?`, f.requests[0].Source)
+		},
+		"object retired": func(f separateFolderStepFixture) {
+			f.c.Exec(`UPDATE inventory_objects SET retired=1 WHERE id=?`, f.requests[0].Object)
+		},
+		"asset replaced": func(f separateFolderStepFixture) {
+			f.c.Exec(`UPDATE catalog_assets SET modified_ns=2 WHERE id=?`, f.requests[0].Asset)
+		},
+		"old parent": func(f separateFolderStepFixture) {
+			f.c.Exec(`UPDATE catalog_songs SET album_id=? WHERE entity_id=?`, f.new, f.requests[0].Child)
+		},
+		"child retired": func(f separateFolderStepFixture) {
+			f.c.Exec(`UPDATE catalog_entities SET retired=1 WHERE id=?`, f.requests[0].Child)
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := newSeparateFolderStepFixture(t, false)
@@ -309,7 +327,9 @@ func TestSeparateFolderFileReparentAndBookProjectionBlocker(t *testing.T) {
 				}
 			}
 			// Parent has proved that the child's only remaining file is here.
-			f.c.Write(func(ctx context.Context, tx *sql.Tx) error { return compactcatalog.UnlinkAssetTx(ctx, tx, req.Child, f.outside[0]) })
+			f.c.Write(func(ctx context.Context, tx *sql.Tx) error {
+				return compactcatalog.UnlinkAssetTx(ctx, tx, req.Child, f.outside[0])
+			})
 			got, changes, err := separateFolderStepRun(t, f, req)
 			if err != nil || got.Child != req.Child || got.Repeated {
 				t.Fatalf("reparent: %+v %v", got, err)
@@ -332,7 +352,9 @@ func TestSeparateFolderFileReparentPublishesEachAlbumVersion(t *testing.T) {
 	f := newSeparateFolderStepFixture(t, false)
 	req := f.requests[0]
 	req.HasElsewhere = false
-	f.c.Write(func(ctx context.Context, tx *sql.Tx) error { return compactcatalog.UnlinkAssetTx(ctx, tx, req.Child, f.outside[0]) })
+	f.c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		return compactcatalog.UnlinkAssetTx(ctx, tx, req.Child, f.outside[0])
+	})
 	other := req
 	other.AssetPath = "/music/split/another.flac"
 	var token string

@@ -878,6 +878,13 @@ func New(d Dependencies) http.Handler {
 			}
 		}
 	}
+	if d.Catalog != nil && d.Prepared != nil {
+		d.Catalog.SeparateFolderRetirement = catalog.SeparateFolderHooks{
+			CancelJob:     preparedmedia.CancelForRetirementTx,
+			Interrupt:     func(id string) { d.Prepared.Interrupt(context.Background(), id) },
+			RevokeReceipt: downloads.RevokeForRetirement,
+		}
+	}
 	if d.Scheduler != nil && d.Catalog != nil {
 		found := false
 		for _, kind := range d.Scheduler.Kinds() {

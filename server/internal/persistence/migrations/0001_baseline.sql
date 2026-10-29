@@ -4960,6 +4960,7 @@ CREATE UNIQUE INDEX inventory_objects_path ON inventory_objects(source_id,relati
 CREATE INDEX inventory_objects_identity ON inventory_objects(object_identity,size,modified_ns,asset_id);
 CREATE INDEX inventory_objects_source ON inventory_objects(source_id,retired,id);
 CREATE INDEX inventory_objects_asset ON inventory_objects(asset_id,state,retired);
+CREATE INDEX inventory_objects_separate_folder ON inventory_objects(asset_id,source_id,root_incarnation,directory_path,id) WHERE retired=0;
 CREATE INDEX inventory_objects_analysis ON inventory_objects(source_id,seen_job,analysis_state,id);
 CREATE INDEX inventory_changes_source ON inventory_changes(source_id,sequence);
 CREATE INDEX inventory_analysis_pending ON inventory_analysis_queue(job_id,state,object_id);

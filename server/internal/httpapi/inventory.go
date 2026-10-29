@@ -2,7 +2,9 @@ package httpapi
 
 import (
 	"database/sql"
+	"errors"
 	"net/http"
+	"portico.local/apikit/apierror"
 	"portico.local/server/internal/catalog"
 )
 
@@ -223,8 +225,13 @@ func (d Dependencies) inventoryRoutes(mux *http.ServeMux) {
 		case "separate-folder":
 			// separate-folder: this file's folder is an album or book of its own.
 			var container string
-			if container, e = d.Catalog.SeparateFolder(r.Context(), r.PathValue("id"), r.PathValue("object"), body.Revision, authorize); e == nil {
+			if container, e = d.Catalog.SeparateFolder(catalog.WithSeparateFolderActor(r.Context(), p), r.PathValue("id"), r.PathValue("object"), body.Revision, authorize); e == nil {
 				write(w, 200, map[string]any{"itemId": container})
+				return
+			}
+			var coded *apierror.Error
+			if errors.As(e, &coded) {
+				policyErrors.Write(w, r, e)
 				return
 			}
 		case "separate":
