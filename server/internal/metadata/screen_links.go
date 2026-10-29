@@ -48,6 +48,9 @@ type screenLink struct{ source, provider, kind, id string }
 // unchanged set writes nothing: a republished stored document (every wake
 // inside the freshness window) must not churn rows it would rewrite as-is.
 func publishScreenLinks(ctx context.Context, tx *sql.Tx, entity int64, r metadataprovider.ScreenRecord) error {
+	if err := compactcatalog.RequireEntityAcquirableTx(ctx, tx, entity); err != nil {
+		return err
+	}
 	similar := []screenLink{}
 	for _, target := range r.Similar {
 		if kind, ok := screenLinkKind(target); ok {
@@ -109,6 +112,9 @@ func publishScreenLinks(ctx context.Context, tx *sql.Tx, entity int64, r metadat
 // clearScreenLinks drops a work's provider links: its identity was cleared, or
 // is about to be replaced by one that has not been published yet.
 func clearScreenLinks(ctx context.Context, tx *sql.Tx, entity int64) error {
+	if err := compactcatalog.RequireEntityAcquirableTx(ctx, tx, entity); err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM catalog_similar WHERE entity_id=? AND source IN(`+screenLinkSources+`)`, entity); err != nil {
 		return err
 	}

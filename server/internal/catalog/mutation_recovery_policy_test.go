@@ -195,14 +195,12 @@ func TestP252bAutomaticMissingNeverUnwindsAndRestoresAcquisition(t *testing.T) {
 	c.Exec(`INSERT INTO server_settings(singleton,"library.missingTitles") VALUES(1,'immediately') ON CONFLICT(singleton) DO UPDATE SET "library.missingTitles"='immediately'`)
 	ctx := context.WithValue(context.Background(), automaticMissingKey{}, true)
 	cutoff := time.Now()
-	for i := 0; i < 8; i++ {
+	pumpFixture(t, "automatic missing pin flip", pinnedRemovalTurns(1), func() bool {
 		if _, e := New(c.DB).EmptyMissing(ctx, "m", cutoff, nil); e != nil {
 			t.Fatal(e)
 		}
-		if rows(t, c, `SELECT count(*) FROM mb_song_links WHERE item_id=?`, song) == 0 {
-			break
-		}
-	}
+		return rows(t, c, `SELECT count(*) FROM mb_song_links WHERE item_id=?`, song) == 0
+	})
 	c.Exec(`UPDATE server_settings SET "library.missingTitles"='never' WHERE singleton=1`)
 	out, e := New(c.DB).EmptyMissingDue(context.Background())
 	if e != nil || out.Titles != 0 || out.Files != 0 {
@@ -223,6 +221,9 @@ func TestP252bAutomaticMissingNeverUnwindsAndRestoresAcquisition(t *testing.T) {
 		}
 		return compactcatalog.LinkAssetTx(ctx, tx, song, asset, compactcatalog.Link{})
 	})
+	// Inventory restoration is published by the ordinary source/availability
+	// worker; observing the file is not itself a maintained missing-row update.
+	c.Drain()
 	if n := rows(t, c, `SELECT count(*) FROM catalog_missing_titles WHERE entity_id=?`, song); n != 0 {
 		t.Fatal("actual restoration left missing title", n)
 	}
@@ -257,16 +258,14 @@ func TestP252bAutomaticNeverPreservesManualMissingCommand(t *testing.T) {
 		t.Fatal("automatic never drained manual pin")
 	}
 	titles := 0
-	for turn := 0; turn < 8; turn++ {
+	pumpFixture(t, "manual missing command under never", pinnedRemovalTurns(1), func() bool {
 		out, e := s.EmptyMissing(context.Background(), "m", cutoff, nil)
 		if e != nil {
 			t.Fatal(e)
 		}
 		titles += out.Titles
-		if !out.More {
-			break
-		}
-	}
+		return !out.More
+	})
 	if titles != 1 {
 		t.Fatal("manual empty-now under never did not finish", titles)
 	}

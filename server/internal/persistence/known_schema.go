@@ -239,6 +239,7 @@ index catalog_facet_bases_demand
 index catalog_facet_group_recent
 index catalog_facet_members_previous_group
 index catalog_identities_public
+index catalog_identities_retention
 index catalog_item_attribute_edges_first
 index catalog_item_attribute_edges_term
 index catalog_item_version_counts_value

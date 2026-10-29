@@ -45,7 +45,9 @@ func claimSessionProgress(tx *sql.Tx, p identity.Principal, item, id string, res
 // resume mutation fences even an earlier accepted candidate still preparing.
 func activatePersonalWriter(tx *sql.Tx, p identity.Principal, item, id string, resume float64, ordinal int64) error {
 	var entity int64
-	if err := tx.QueryRow(`SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)`, item).Scan(&entity); err != nil {
+	if err := tx.QueryRow(`SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)`, item).Scan(&entity); errors.Is(err, sql.ErrNoRows) {
+		return nil // Preserve the existing no-effect path for a vanished item.
+	} else if err != nil {
 		return err
 	}
 	if err := compactcatalog.RequireEntityAcquirableTx(context.Background(), tx, entity); err != nil {

@@ -761,7 +761,7 @@ func TestP252bAudioIdentityCollisionAdmitsAtPublicationTail(t *testing.T) {
 	})
 	var root string
 	c.DB.QueryRow(`SELECT mutation_id FROM catalog_entity_mutations WHERE owner_kind='identity' AND mode='merge'`).Scan(&root)
-	for i := 0; i < 12; i++ {
+	pumpFixture(t, "deferred local audio merge", accountingMutationTurns, func() bool {
 		out, e := New(c.DB).MutationAdapter().Step(context.Background(), root)
 		if e != nil {
 			t.Fatal(e)
@@ -770,10 +770,10 @@ func TestP252bAudioIdentityCollisionAdmitsAtPublicationTail(t *testing.T) {
 			if n := rows(t, c, `SELECT count(*) FROM catalog_asset_links WHERE entity_id=? AND asset_id=?`, target, asset); n != 1 {
 				t.Fatal("source file did not follow completed merge")
 			}
-			return
+			return true
 		}
-	}
-	t.Fatal("deferred local audio merge never finished")
+		return false
+	})
 }
 func TestP252bManualMergeRequiresFreshAuthorityAfterDrain(t *testing.T) {
 	c, album, songs := drainFixture(t, 1)
@@ -794,9 +794,15 @@ func TestP252bManualMergeRequiresFreshAuthorityAfterDrain(t *testing.T) {
 	from, into := c.Public(source), c.Public(target)
 	revoked := errors.New("authority revoked")
 	calls := 0
-	e := New(c.DB).MergeTitles(context.Background(), from, into, func(*sql.Tx) error {
+	e := New(c.DB).MergeTitles(context.Background(), from, into, func(tx *sql.Tx) error {
 		calls++
-		if calls >= 5 {
+		// Revoke at the actual committed pin flip, independently of the
+		// number of private preparation/fold turns it required.
+		var pinned bool
+		if e := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM mb_song_links WHERE item_id=?)`, source).Scan(&pinned); e != nil {
+			return e
+		}
+		if !pinned {
 			return revoked
 		}
 		return nil
