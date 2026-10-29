@@ -164,6 +164,13 @@ func (s *Service) computeLibrarySummaryCoreWithReading(ctx context.Context, view
 
 func (s *Service) computeLibrarySummaryCandidates(ctx context.Context, viewer Viewer, library Library, reading *readingBrowseScope, partial bool) (librarySummaryCore, error) {
 	out := librarySummaryCore{Counts: []LibraryKindCount{}, Empty: true}
+	// A building Reading image already promises only a lower bound. Bound its
+	// raw work to one small window instead of recounting 20,000 titles on each
+	// import revision. Live eligibility and privacy still follow the window.
+	candidateCap := librarySummaryCap
+	if partial {
+		candidateCap = 128
+	}
 	kinds := summaryKinds(library.Kind)
 	clause, args := EntityRestrictionSQL("e.id", viewer.Restrictions)
 	publicationTypeSQL := "NULL"
@@ -201,8 +208,8 @@ func (s *Service) computeLibrarySummaryCandidates(ctx context.Context, viewer Vi
 		if err != nil {
 			return out, err
 		}
-		selections = append(selections, `SELECT * FROM (SELECT e.id,e.public_id,e.kind,e.added_ms FROM catalog_entities e INDEXED BY catalog_entities_summary_added WHERE e.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND e.kind=? AND e.retired=0 ORDER BY e.added_ms DESC,e.id DESC LIMIT 20001)`)
-		values = append(values, library.ID, code)
+		selections = append(selections, `SELECT * FROM (SELECT e.id,e.public_id,e.kind,e.added_ms FROM catalog_entities e INDEXED BY catalog_entities_summary_added WHERE e.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND e.kind=? AND e.retired=0 ORDER BY e.added_ms DESC,e.id DESC LIMIT ?)`)
+		values = append(values, library.ID, code, candidateCap+1)
 	}
 	values = append(values, args...)
 	values = append(values, memberArgs...)
@@ -231,7 +238,12 @@ func (s *Service) computeLibrarySummaryCandidates(ctx context.Context, viewer Vi
 			return out, err
 		}
 		visited[kind]++
-		if visited[kind] > librarySummaryCap {
+		if visited[kind] > candidateCap {
+			// The extra raw row is not counted, but an eligible witness still
+			// proves non-empty. An ineligible window never proves emptiness.
+			if partial && visible {
+				out.Empty = false
+			}
 			continue
 		}
 		if !visible {
@@ -270,16 +282,16 @@ func (s *Service) computeLibrarySummaryCandidates(ctx context.Context, viewer Vi
 	}
 	out.EmptyKnown = !partial
 	for _, n := range visited {
-		if n > librarySummaryCap {
+		if n > candidateCap {
 			out.EmptyKnown = false
 		}
 	}
 	for _, kind := range kinds {
-		out.Counts = append(out.Counts, LibraryKindCount{Kind: kind, Count: counts[kind], AtLeast: partial || visited[kind] > librarySummaryCap})
+		out.Counts = append(out.Counts, LibraryKindCount{Kind: kind, Count: counts[kind], AtLeast: partial || visited[kind] > candidateCap})
 	}
 	if library.Kind == "book" && !partial {
 		for _, kind := range []string{"book", "magazine", "newspaper"} {
-			out.PublicationCounts = append(out.PublicationCounts, LibraryKindCount{Kind: kind, Count: publicationCounts[kind], AtLeast: visited["ebook"] > librarySummaryCap})
+			out.PublicationCounts = append(out.PublicationCounts, LibraryKindCount{Kind: kind, Count: publicationCounts[kind], AtLeast: visited["ebook"] > candidateCap})
 		}
 	}
 	out.Targets = targets
