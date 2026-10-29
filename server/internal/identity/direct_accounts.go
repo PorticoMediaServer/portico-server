@@ -79,6 +79,11 @@ type directCaller struct {
 	deviceID  string
 	profileID string
 	familyID  string
+	// accountScoped: this session proved the account and has not been bound to a
+	// viewing profile yet. Its profileID is the primary profile's id, which the
+	// sign-in wrote as a placeholder rather than a choice, so the first profile
+	// chosen from it is a launch, not a switch away from anything.
+	accountScoped bool
 }
 
 func directName(v string) bool {
@@ -374,6 +379,10 @@ func (s *Service) directCallerTx(ctx context.Context, tx *sql.Tx, bearer string,
 	}
 	c.manage = primary == 1
 	sessionRole = record.principal.Role
+	// The family record, not any client input, says whether this session is
+	// account-scoped: directSignInTx mints role "account" until a profile is
+	// chosen, and no profile selection ever mints that role.
+	c.accountScoped = sessionRole == "account"
 
 	var libs string
 	e := tx.QueryRowContext(ctx, `SELECT a.username,a.profile_id,a.epoch,m.role,m.revision,m.disabled,m.allowed_libraries FROM accounts a JOIN direct_memberships m ON m.account_id=a.id WHERE a.id=?`, c.account.ID).Scan(&c.account.Username, &c.account.PrimaryProfileID, &c.epoch, &c.account.Role, &c.account.Revision, &c.account.Disabled, &libs)

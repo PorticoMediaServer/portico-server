@@ -63,8 +63,15 @@ test('continue preserves the nested item attribution unchanged', async () => {
 });
 
 test('malformed attribution is rejected, never invented or repaired', async () => {
+  // O-159 (R-09): a newer server's attribution source is vocabulary, not damage. The author it
+  // labels is left out (never guessed) and the book still shows.
+  {
+    const f = setup(() => ({items: [{...row(), author: {value: 'Ann', source: 'provider'}}]}));
+    const out = await f.client.list({limit: 1});
+    assert.equal(out.items.length, 1);
+    assert.equal(out.items[0].author, undefined, 'unknown source: the author is left out, not invented');
+  }
   for (const [name, bad] of [
-    ['unknown source', {...row(), author: {value: 'Ann', source: 'provider'}}],
     ['empty author', {...row(), author: {value: '', source: 'owner'}}],
     ['open author object', {...row(), author: {value: 'Ann', source: 'owner', extra: 1}}],
     ['empty series id', {...row(), series: {id: '', name: 'Saga', source: 'folder'}}],
