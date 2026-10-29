@@ -431,7 +431,9 @@ func (w *Worker) prepare(ctx context.Context) error {
 		return rows.Err()
 	})
 	if err == nil {
-		err = dbwork.WithWriteTx(ctx, w.db, dbwork.ClassMaintenance, func(tx *sql.Tx) error { return SampleBrowseCounterIntegrityTx(ctx, tx) })
+		// Each sampled holder is checked in its own maintenance writer so the
+		// startup sample never holds the writer across all of them.
+		err = sampleBrowseCounterIntegrity(ctx, w.db)
 	}
 	if err == nil {
 		w.mu.Lock()
@@ -565,11 +567,14 @@ func (w *Worker) Step(ctx context.Context, limit int) (int, error) {
 		}
 		return finishGeneration(ctx, tx)
 	})
+	took := time.Since(began)
+	if !began.IsZero() && took > dbwork.SlowReadThreshold {
+		log.Printf("Catalogue maintenance turn held the writer for %s: domain=%d lastStep=%d units=%d rows=%d backfill=%t retry=%t", took.Round(time.Millisecond), domain, step, n, rows, backfilled, retried)
+	}
 	if err != nil {
 		w.setAside(ctx, domain, failed, step, backfilled, retried, err)
 		return 0, err
 	}
-	took := time.Since(began)
 	if paced > -2 {
 		w.observeBatch(paced, n, took, rows)
 	}
@@ -892,7 +897,7 @@ func (w *Worker) runSteps(ctx context.Context, tx *sql.Tx, limit int) (int, int,
 	w.mu.Lock()
 	kind := w.stepTurn % len(steps)
 	w.mu.Unlock()
-	total, idle := 0, 0
+	total, idle, lastKind := 0, 0, -1
 	// Stop adding steps once the batch has changed a write plan's worth of
 	// rows; the next batch takes the rest.
 	var before int64
@@ -913,6 +918,7 @@ func (w *Worker) runSteps(ctx context.Context, tx *sql.Tx, limit int) (int, int,
 			return 0, kind, err
 		}
 		if n > 0 {
+			lastKind = kind
 			total += n
 			if kind == readingAttributionStep || kind == readingAttributionStep+1 {
 				// Its EOF, obsolete cleanup and ready publication must be
@@ -928,7 +934,7 @@ func (w *Worker) runSteps(ctx context.Context, tx *sql.Tx, limit int) (int, int,
 	w.mu.Lock()
 	w.stepTurn = (kind + 1) % len(steps)
 	w.mu.Unlock()
-	return total, -1, nil
+	return total, lastKind, nil
 }
 
 // setAside keeps one failing unit from stalling the Worker: the transaction

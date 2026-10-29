@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"time"
+
+	"portico.local/server/internal/dbwork"
 )
 
 // Browse counter repair (P2-64 B/B1). The maintained counters are
@@ -33,7 +35,10 @@ const (
 // Domain25 for an item or a catalog_browse_counter_repairs row plus Domain35
 // for a container.
 func SampleBrowseCounterIntegrityTx(ctx context.Context, tx *sql.Tx) error {
-	seed := time.Now().Unix()
+	return sampleBrowseCounterIntegrityTxAt(ctx, tx, time.Now().Unix())
+}
+
+func sampleBrowseCounterIntegrityTxAt(ctx context.Context, tx *sql.Tx, seed int64) error {
 	if err := sampleBrowseItemCountersTx(ctx, tx, seed); err != nil {
 		return err
 	}
@@ -43,79 +48,177 @@ func SampleBrowseCounterIntegrityTx(ctx context.Context, tx *sql.Tx) error {
 	return sampleBrowseRepairCleanupTx(ctx, tx, seed)
 }
 
-// sampleBrowseRepairCleanupTx drops at most eight repair rows whose container
-// was deleted: the row has no foreign key, and its dirty key may be gone too.
-func sampleBrowseRepairCleanupTx(ctx context.Context, tx *sql.Tx, seed int64) error {
-	repairs, err := sampleBrowseIDs(ctx, tx, seed,
-		`SELECT COALESCE(max(entity_id),0) FROM catalog_browse_counter_repairs`,
-		`SELECT entity_id FROM catalog_browse_counter_repairs WHERE entity_id>=? ORDER BY entity_id LIMIT ?`,
-		`SELECT entity_id FROM catalog_browse_counter_repairs WHERE entity_id<? ORDER BY entity_id DESC LIMIT ?`)
-	if err != nil {
-		return err
-	}
-	for _, id := range repairs {
-		var exists bool
-		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_entities WHERE id=?)`, id).Scan(&exists); err != nil {
-			return err
-		}
-		if exists {
-			continue
-		}
-		if _, err = tx.ExecContext(ctx, `DELETE FROM catalog_browse_counter_repairs WHERE entity_id=?`, id); err != nil {
-			return err
-		}
-	}
-	return nil
+// sampleBrowseCounterIntegrity is the startup sample outside one long writer.
+// It picks the same bounded key sets the transactional form uses in one short
+// background read snapshot, then checks and queues a single holder per
+// maintenance write transaction, yielding the writer between holders. A key
+// that ages between the snapshot and its point write is harmless: the point
+// helper re-reads the holder and does nothing when its row is gone.
+func sampleBrowseCounterIntegrity(ctx context.Context, db *sql.DB) error {
+	return sampleBrowseCounterIntegrityAt(ctx, db, time.Now().Unix())
 }
 
-func sampleBrowseItemCountersTx(ctx context.Context, tx *sql.Tx, seed int64) error {
-	items, err := sampleBrowseIDs(ctx, tx, seed,
-		`SELECT COALESCE(max(item_id),0) FROM catalog_browse_item_metrics`,
-		`SELECT item_id FROM catalog_browse_item_metrics WHERE item_id>=? ORDER BY item_id LIMIT ?`,
-		`SELECT item_id FROM catalog_browse_item_metrics WHERE item_id<? ORDER BY item_id DESC LIMIT ?`)
+func sampleBrowseCounterIntegrityAt(ctx context.Context, db *sql.DB, seed int64) error {
+	var items, containers, repairs []int64
+	readCtx := dbwork.WithClass(ctx, dbwork.ClassMaintenance)
+	err := dbwork.WithReadSnapshot(readCtx, db, func(ctx context.Context) error {
+		tx := dbwork.Snapshot(ctx)
+		var err error
+		if items, err = sampleBrowseItemCounterIDs(ctx, tx, seed); err != nil {
+			return err
+		}
+		if containers, err = sampleBrowseContainerCounterIDs(ctx, tx, seed); err != nil {
+			return err
+		}
+		repairs, err = sampleBrowseRepairCleanupIDs(ctx, tx, seed)
+		return err
+	})
 	if err != nil {
 		return err
 	}
 	for _, item := range items {
-		drift, err := browseItemCounterDriftedTx(ctx, tx, item)
-		if err != nil {
+		if err := sampleBrowseCounterWriter(ctx, db, func(tx *sql.Tx) error {
+			return sampleBrowseItemCounterPointTx(ctx, tx, item)
+		}); err != nil {
 			return err
 		}
-		if drift {
-			if err = TouchTx(ctx, tx, DomainItemMetrics, item); err != nil {
-				return err
-			}
+	}
+	for _, container := range containers {
+		if err := sampleBrowseCounterWriter(ctx, db, func(tx *sql.Tx) error {
+			return sampleBrowseContainerCounterPointTx(ctx, tx, container)
+		}); err != nil {
+			return err
+		}
+	}
+	for _, id := range repairs {
+		if err := sampleBrowseCounterWriter(ctx, db, func(tx *sql.Tx) error {
+			return sampleBrowseRepairCleanupPointTx(ctx, tx, id)
+		}); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
-func sampleBrowseContainerCountersTx(ctx context.Context, tx *sql.Tx, seed int64) error {
-	containers, err := sampleBrowseIDs(ctx, tx, seed,
-		`SELECT COALESCE(max(entity_id),0) FROM catalog_browse_member_links`,
-		`SELECT entity_id FROM catalog_browse_member_links WHERE entity_id>=? ORDER BY entity_id LIMIT ?`,
-		`SELECT entity_id FROM catalog_browse_member_links WHERE entity_id<? ORDER BY entity_id DESC LIMIT ?`)
+// sampleBrowseCounterWriter applies one holder's point check in its own
+// maintenance writer and yields before the next holder takes the writer.
+func sampleBrowseCounterWriter(ctx context.Context, db *sql.DB, fn func(*sql.Tx) error) error {
+	started := time.Now()
+	if err := dbwork.WithWriteTx(ctx, db, dbwork.ClassMaintenance, fn); err != nil {
+		return err
+	}
+	if !dbwork.PaceBackground(ctx, started) {
+		return ctx.Err()
+	}
+	return nil
+}
+
+// sampleBrowseRepairCleanupTx drops at most eight repair rows whose container
+// was deleted: the row has no foreign key, and its dirty key may be gone too.
+func sampleBrowseRepairCleanupTx(ctx context.Context, tx *sql.Tx, seed int64) error {
+	repairs, err := sampleBrowseRepairCleanupIDs(ctx, tx, seed)
 	if err != nil {
 		return err
 	}
-	for _, container := range containers {
-		drift, err := browseContainerCounterDriftedTx(ctx, tx, container)
-		if err != nil {
-			return err
-		}
-		if !drift {
-			continue
-		}
-		// Keep an interrupted repair's progress; its revision check restarts
-		// it if the container changed again.
-		if _, err = tx.ExecContext(ctx, `INSERT INTO catalog_browse_counter_repairs(entity_id) VALUES(?) ON CONFLICT(entity_id) DO NOTHING`, container); err != nil {
-			return err
-		}
-		if err = TouchTx(ctx, tx, DomainContainerRefresh, container); err != nil {
+	for _, id := range repairs {
+		if err = sampleBrowseRepairCleanupPointTx(ctx, tx, id); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func sampleBrowseRepairCleanupIDs(ctx context.Context, tx *sql.Tx, seed int64) ([]int64, error) {
+	return sampleBrowseIDs(ctx, tx, seed,
+		`SELECT COALESCE(max(entity_id),0) FROM catalog_browse_counter_repairs`,
+		`SELECT entity_id FROM catalog_browse_counter_repairs WHERE entity_id>=? ORDER BY entity_id LIMIT ?`,
+		`SELECT entity_id FROM catalog_browse_counter_repairs WHERE entity_id<? ORDER BY entity_id DESC LIMIT ?`)
+}
+
+// sampleBrowseRepairCleanupPointTx removes one repair row whose container no
+// longer exists. A row that still has its container is left alone.
+func sampleBrowseRepairCleanupPointTx(ctx context.Context, tx *sql.Tx, id int64) error {
+	var exists bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_entities WHERE id=?)`, id).Scan(&exists); err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	_, err := tx.ExecContext(ctx, `DELETE FROM catalog_browse_counter_repairs WHERE entity_id=?`, id)
+	return err
+}
+
+func sampleBrowseItemCountersTx(ctx context.Context, tx *sql.Tx, seed int64) error {
+	items, err := sampleBrowseItemCounterIDs(ctx, tx, seed)
+	if err != nil {
+		return err
+	}
+	for _, item := range items {
+		if err = sampleBrowseItemCounterPointTx(ctx, tx, item); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func sampleBrowseItemCounterIDs(ctx context.Context, tx *sql.Tx, seed int64) ([]int64, error) {
+	return sampleBrowseIDs(ctx, tx, seed,
+		`SELECT COALESCE(max(item_id),0) FROM catalog_browse_item_metrics`,
+		`SELECT item_id FROM catalog_browse_item_metrics WHERE item_id>=? ORDER BY item_id LIMIT ?`,
+		`SELECT item_id FROM catalog_browse_item_metrics WHERE item_id<? ORDER BY item_id DESC LIMIT ?`)
+}
+
+// sampleBrowseItemCounterPointTx checks one item's counters and queues Domain25
+// when they drifted. A deleted item has no metrics row and is left alone.
+func sampleBrowseItemCounterPointTx(ctx context.Context, tx *sql.Tx, item int64) error {
+	drift, err := browseItemCounterDriftedTx(ctx, tx, item)
+	if err != nil {
+		return err
+	}
+	if !drift {
+		return nil
+	}
+	return TouchTx(ctx, tx, DomainItemMetrics, item)
+}
+
+func sampleBrowseContainerCountersTx(ctx context.Context, tx *sql.Tx, seed int64) error {
+	containers, err := sampleBrowseContainerCounterIDs(ctx, tx, seed)
+	if err != nil {
+		return err
+	}
+	for _, container := range containers {
+		if err = sampleBrowseContainerCounterPointTx(ctx, tx, container); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func sampleBrowseContainerCounterIDs(ctx context.Context, tx *sql.Tx, seed int64) ([]int64, error) {
+	return sampleBrowseIDs(ctx, tx, seed,
+		`SELECT COALESCE(max(entity_id),0) FROM catalog_browse_member_links`,
+		`SELECT entity_id FROM catalog_browse_member_links WHERE entity_id>=? ORDER BY entity_id LIMIT ?`,
+		`SELECT entity_id FROM catalog_browse_member_links WHERE entity_id<? ORDER BY entity_id DESC LIMIT ?`)
+}
+
+// sampleBrowseContainerCounterPointTx checks one container's counters and queues
+// its bounded repair plus Domain35 when they drifted. A deleted container has no
+// member-links row and is left alone.
+func sampleBrowseContainerCounterPointTx(ctx context.Context, tx *sql.Tx, container int64) error {
+	drift, err := browseContainerCounterDriftedTx(ctx, tx, container)
+	if err != nil {
+		return err
+	}
+	if !drift {
+		return nil
+	}
+	// Keep an interrupted repair's progress; its revision check restarts it if
+	// the container changed again.
+	if _, err = tx.ExecContext(ctx, `INSERT INTO catalog_browse_counter_repairs(entity_id) VALUES(?) ON CONFLICT(entity_id) DO NOTHING`, container); err != nil {
+		return err
+	}
+	return TouchTx(ctx, tx, DomainContainerRefresh, container)
 }
 
 // sampleBrowseIDs reads at most browseCounterSample primary keys around a
