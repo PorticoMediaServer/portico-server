@@ -40,8 +40,20 @@ func TestDetailFileInfoLazyAndPrivate(t *testing.T) {
 	// accepted Detail to bind to and refuses rather than serving an eager page.
 	for _, token := range []string{owner, member} {
 		response := editorRequest(t, h, "GET", "/v1/items/"+id+"/file-info", token, "", nil)
-		if response.Code != 400 || strings.Contains(response.Body.String(), "Alpha.mkv") {
-			t.Fatalf("bare file info %d %s", response.Code, response.Body.String())
+		want, code := 400, "invalid_request"
+		if token == member {
+			want, code = 404, "not_found"
+		}
+		var body struct {
+			Error struct {
+				Code string `json:"code"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		if response.Code != want || body.Error.Code != code || strings.Contains(response.Body.String(), "Alpha.mkv") || strings.Contains(response.Body.String(), id) {
+			t.Fatalf("bare file info: want %d/%s, got %d %s", want, code, response.Code, response.Body.String())
 		}
 	}
 }

@@ -54,6 +54,9 @@ func filmStreams(t *testing.T, f *v1Fixture, index int, bitsPerSecond int64) {
 // where the request comes from; automatic steps along the ladder in place.
 func TestPlaybackV1QualityDefaultsAndAutomaticSteps(t *testing.T) {
 	f := replanFixtureV1(t, 1)
+	// The viewer's home network is declared; the start below from
+	// 192.168.1.20 must be a home request on any host.
+	v1HomeNetworks(t, f, "192.168.1.0/24")
 	filmStreams(t, f, 0, 12_000_000)
 	var s playbackv1.SessionView
 	f.call("POST", "/v1/playback/sessions", map[string]string{"Idempotency-Key": "quality-default-0001"}, startBody(f.items[0], nil), 201, &s)

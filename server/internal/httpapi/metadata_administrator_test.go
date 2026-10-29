@@ -15,6 +15,7 @@ import (
 
 func TestMetadataAdministratorEditsAndLiveDemotion(t *testing.T) {
 	d, _, member := tl6SupportFixture(t)
+	installBulkPreviewTestStore(t, d.Catalog)
 	movie := tl6FixtureMovie(t, d, "private-library", "Admin.mkv", "Admin title", 2020)
 	if _, err := d.DB.Exec(`UPDATE direct_memberships SET role='admin' WHERE account_id='member'`); err != nil {
 		t.Fatal(err)
@@ -27,6 +28,7 @@ func TestMetadataAdministratorEditsAndLiveDemotion(t *testing.T) {
 	h := New(d)
 	raw, _ := json.Marshal(catalog.BulkMetadataPreviewRequest{Targets: []catalog.BulkMetadataTarget{{Kind: "item", ContentKind: "movie", ID: movie.Public, LibraryID: "private-library"}}})
 	response := editorRequest(t, h, "POST", "/v1/metadata/bulk/preview", admin.AccessToken, "application/json", raw)
+	response = bulkPreviewHTTPReady(t, h, admin.AccessToken, response)
 	if response.Code != 200 {
 		t.Fatalf("admin preview %d %s", response.Code, response.Body.String())
 	}
