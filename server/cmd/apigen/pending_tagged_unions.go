@@ -51,7 +51,6 @@ var pendingTaggedUnions = map[string]bool{
 	"post_setup_resume":                          true,
 	"search":                                     true,
 	"setup_server":                               true,
-	"start_playback_session":                     true,
 	"get_library_browse_selection_query":         true,
 	"get_library_reading_facet_query":            true,
 	"get_metadata_bulk_preview_query":            true,

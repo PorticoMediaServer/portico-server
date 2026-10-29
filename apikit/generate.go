@@ -690,8 +690,14 @@ func tsType(s map[string]any) string {
 	for _, key := range []string{"anyOf", "oneOf"} {
 		if alternatives, ok := s[key].([]any); ok {
 			types := make([]string, 0, len(alternatives))
+			tag, tagged := s["x-discriminator"].(string)
 			for _, alternative := range alternatives {
-				types = append(types, tsType(alternative.(map[string]any)))
+				rendered := tsType(alternative.(map[string]any))
+				// A tagged alternative carries its tag as a literal, so consumers narrow on it.
+				if value, ok := singleTag(alternative.(map[string]any), tag); tagged && ok {
+					rendered = fmt.Sprintf("(%s & { %q: %s })", rendered, tag, value)
+				}
+				types = append(types, rendered)
 			}
 			if len(types) == 0 {
 				return "never"

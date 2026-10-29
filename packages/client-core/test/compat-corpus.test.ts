@@ -26,10 +26,22 @@ import {
 } from '../src/file-info-pages.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), 'compat-corpus');
-const releases = readdirSync(root, {withFileTypes: true}).filter(entry => entry.isDirectory()).map(entry => entry.name).sort();
+const recorded = readdirSync(root, {withFileTypes: true}).filter(entry => entry.isDirectory()).map(entry => entry.name).sort();
+/** R-09b: 'main-1.1' is a newer server of the same major. Every object in every recorded main
+ * response, at every depth, gains a member this client has never seen. A 1.0 client must read it
+ * exactly as it reads main (O-159: additive only within a major). */
+const NEWER = 'main-1.1';
+const releases = recorded.includes('main') ? [...recorded, NEWER] : recorded;
+const newer = (value: unknown): unknown => Array.isArray(value) ? value.map(newer)
+  : value !== null && typeof value === 'object' ? {...Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, newer(entry)])), addedInNewerRelease: {since: '1.1'}}
+  : value;
 
 type Recorded = Readonly<{request: {method: string; path: string; body?: unknown}; status: number; body: any}>;
 const read = (release: string, name: string): Recorded | undefined => {
+  if (release === NEWER) {
+    const base = read('main', name);
+    return base && {...base, body: newer(base.body)};
+  }
   const file = join(root, release, `${name}.json`);
   return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) as Recorded : undefined;
 };
@@ -61,7 +73,7 @@ function check(release: string, name: string, run: (recorded: Recorded) => void 
 
 for (const release of releases) {
   const home = read(release, 'home')?.body;
-  const manifest = JSON.parse(readFileSync(join(root, release, 'manifest.json'), 'utf8')) as {library: {id: string}; itemId: string};
+  const manifest = JSON.parse(readFileSync(join(root, release === NEWER ? 'main' : release, 'manifest.json'), 'utf8')) as {library: {id: string}; itemId: string};
   const serverId: string = home?.serverId ?? read(release, 'item-detail')?.body?.scope?.serverId ?? 'srv';
   const scope = {serverId, viewerId: 'corpus-viewer'};
   const target = {libraryId: manifest.library.id, itemId: manifest.itemId};
@@ -142,7 +154,7 @@ for (const release of releases) {
 // IDENTITY_KEY / KEEP_KEYS in scripts/compat-corpus/scrub.mjs; keep it small.
 test('compat corpus: no file contains anything shaped like a credential', () => {
   const problems: string[] = [];
-  for (const release of releases) {
+  for (const release of recorded) {
     for (const file of readdirSync(join(root, release))) {
       const text = readFileSync(join(root, release, file), 'utf8');
       for (const [label, pattern] of [['JWT', /eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{4,}/], ['Bearer', /Bearer /], ['PEM', /-----BEGIN/], ['/home/ path', /\/home\//]] as const) {

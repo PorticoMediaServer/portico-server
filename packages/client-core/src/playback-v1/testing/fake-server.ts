@@ -357,7 +357,7 @@ export class FakePlaybackServer {
     const prior = this.keys.get(key);
     if (prior) {
       if (prior.body !== canonical) return this.error(422, 'idempotency_key_reused');
-      if (prior.rounds > 0) { prior.rounds--; return {status: 202, headers: {'Retry-After': '1'}, body: {retryAfterMs: 500}}; }
+      if (prior.rounds > 0) { prior.rounds--; return {status: 202, headers: {'Retry-After': '1'}, body: {variant: 'wait', retryAfterMs: 500}}; }
       if (prior.status === 202) return this.start2(key, body, prior);
       return {status: prior.status, headers: {'Idempotent-Replayed': 'true'}, body: prior.response};
     }
@@ -366,7 +366,7 @@ export class FakePlaybackServer {
     const rounds = this.o.prepareRounds?.(body) ?? 0;
     const record = {body: canonical, status: 202, response: undefined as unknown, rounds};
     this.keys.set(key, record);
-    if (rounds > 0) { record.rounds--; return {status: 202, headers: {'Retry-After': '1'}, body: {retryAfterMs: 500}}; }
+    if (rounds > 0) { record.rounds--; return {status: 202, headers: {'Retry-After': '1'}, body: {variant: 'wait', retryAfterMs: 500}}; }
     return this.start2(key, body, record);
   }
 
