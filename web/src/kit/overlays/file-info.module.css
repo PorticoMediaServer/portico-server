@@ -1,8 +1,7 @@
 .panel.panel { box-shadow: -40px 0 80px -30px rgba(0,0,0,.75), -1px 0 0 rgba(237,245,250,.06); }
 .panelHeader { position: relative; padding: 30px 32px 0; }
 .panelHeader h2 { margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -.03em; line-height: normal; }
-.panelHeader.panelHeader > button { top: 28px; right: 24px; width: 40px; height: 40px; }
-.panelHeader > button svg { width: 22px; height: 22px; }
+.panelHeader.panelHeader > button { top: 28px; right: 24px; width: 40px; height: 40px; color: var(--color-text-secondary); }
 .panel > p { margin: 6px 32px 10px; font-size: 14.5px; line-height: normal; color: var(--color-text-secondary); }
 .count { margin-left: 12px; }
 .panelBody.panelBody { padding: 0 32px 32px; }

@@ -179,7 +179,7 @@ export function BrowseFilters({controller, model, labels, compact, medium = fals
   return compact ? <BottomSheet open={open} onOpenChange={opened => {if (!opened) closeFilters();}} showCloseButton={false} detent={1}
     headerClassName={styles.phoneFilterHeader} title={<span className={styles.filterTitle}>{t('next.browse.filters')}<Button variant="text" size="small" onClick={clearAll}>{t('next.browse.clearAll')}</Button></span>}
     footerClassName={styles.filterFooter} footer={<>{onSaveView && <Button variant="glass" size="hero" disabled={!canSaveView} onClick={saveView}>{t('next.browse.saveView')}</Button>}<Button variant="primary" size="hero" disabled={!resultCount} aria-label={resultCount ? undefined : t('next.browse.filters')} onClick={closeFilters}>{resultCount ? t('next.browse.showCount', {count: resultCount}) : <Skeleton width={116} height={20}/>}</Button></>}>{body}</BottomSheet> :
-    <Dialog responsive={false} open={open} onOpenChange={opened => {if (!opened) closeFilters();}} title={t('next.browse.filters')} placement="right" width={medium ? 420 : 520}
+    <Dialog responsive={false} open={open} onOpenChange={opened => {if (!opened) closeFilters();}} title={t('next.browse.filters')} placement="right" width={medium ? 420 : 520} closeIconSize={22}
       headerClassName={styles.filterHeader} bodyClassName={styles.filterBody} footerClassName={styles.filterFooter}
       description={resultCount ? <span className={styles.filterCount}><b>{resultCount}</b> {t('next.browse.match')}</span> : undefined} footer={footer}>{body}</Dialog>;
 }
