@@ -45,24 +45,18 @@ func TestCheckpointPinnedReaderBoundsGateRestoresPolicyAndRecovers(t *testing.T)
 	if stats := copyWALForTest(t, ctx, db); stats.LogFrames < CheckpointTruncateFrames {
 		t.Fatalf("fixture has only%d WAL frames", stats.LogFrames)
 	}
-	bg := ReadHandle(WithClass(ctx, ClassMaintenance), db)
-	spare, err := bg.Conn(ctx)
+	control := context.WithValue(WithClass(ctx, ClassMaintenance), checkpointReaderBypassKey{}, true)
+	pool := ReadHandle(control, db)
+	spare, err := pool.Conn(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer spare.Close()
-	policyConn, err := bg.Conn(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = policyConn.ExecContext(ctx, `PRAGMA busy_timeout=3210`); err != nil {
-		t.Fatal(err)
-	}
-	policyConn.Close()
-	// Occupy all foreground slots, including the pinned reader. Maintenance
-	// must still use the remaining background slot rather than wait for these.
+	// Leave one control slot beside the pinned reader, the spare and the
+	// foreground loans. This is the existing public-pool headroom checkpoint
+	// control uses; the sole background connection is not a recovery resource.
 	foreground := []*sql.Conn{}
-	for i := 0; i < db.Stats().MaxOpenConnections-1; i++ {
+	for i := 0; i < pool.Stats().MaxOpenConnections-3; i++ {
 		loanCtx, cancel := context.WithTimeout(ctx, time.Second)
 		conn, err := db.Conn(loanCtx)
 		cancel()
@@ -71,6 +65,14 @@ func TestCheckpointPinnedReaderBoundsGateRestoresPolicyAndRecovers(t *testing.T)
 		}
 		foreground = append(foreground, conn)
 	}
+	policyConn, err := pool.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = policyConn.ExecContext(ctx, `PRAGMA busy_timeout=3210`); err != nil {
+		t.Fatal(err)
+	}
+	policyConn.Close()
 	defer func() {
 		for _, conn := range foreground {
 			conn.Close()
@@ -100,7 +102,7 @@ func TestCheckpointPinnedReaderBoundsGateRestoresPolicyAndRecovers(t *testing.T)
 	assertBusy := func() {
 		t.Helper()
 		var actual int
-		if err := bg.QueryRow(`PRAGMA busy_timeout`).Scan(&actual); err != nil {
+		if err := pool.QueryRow(`PRAGMA busy_timeout`).Scan(&actual); err != nil {
 			t.Fatal(err)
 		}
 		if actual != 3210 {
@@ -121,13 +123,16 @@ func TestCheckpointPinnedReaderBoundsGateRestoresPolicyAndRecovers(t *testing.T)
 		t.Fatalf("unexpected cancelled checkpoint: %v", cancelled.Err)
 	}
 	assertBusy()
-	for _, conn := range foreground {
-		conn.Close()
-	}
-	foreground = nil
 	if err = reader.Rollback(); err != nil {
 		t.Fatal(err)
 	}
+	// Keep the released reader's slot borrowed so policy checks still inspect
+	// the exact control connection rather than an unrelated pooled connection.
+	releasedReader, err := pool.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer releasedReader.Close()
 	recovered := Checkpoint(ctx, db)
 	if recovered.Err != nil || recovered.Busy != 0 || recovered.Mode != "truncate" || recovered.LogFrames != 0 {
 		t.Fatalf("checkpoint did not recover after reader drained: %+v", recovered)

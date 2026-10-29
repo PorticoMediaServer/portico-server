@@ -65,12 +65,14 @@ func writerHandle(db *sql.DB) *sql.DB {
 
 // ReadHandle selects the single-connection background read pool for classified
 // background work. The public handle remains the six-connection foreground
-// pool; neither can borrow the other's read capacity.
+// pool. Checkpoint control uses its existing reader-admission bypass and the
+// public pool: the background connection may hold the long read that recovery
+// must cancel, so waiting for that connection would prevent recovery itself.
 func ReadHandle(ctx context.Context, db *sql.DB) *sql.DB {
 	if db == nil {
 		return nil
 	}
-	if d, ok := db.Driver().(*splitDriver); ok && ClassFrom(ctx, ClassInteractive).Background() {
+	if d, ok := db.Driver().(*splitDriver); ok && ClassFrom(ctx, ClassInteractive).Background() && ctx.Value(checkpointReaderBypassKey{}) == nil {
 		return d.background
 	}
 	return db

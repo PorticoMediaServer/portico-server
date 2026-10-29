@@ -48,6 +48,10 @@ func TestHardPressureCancelsTheLongReadButABackupOnlyWaits(t *testing.T) {
 		})
 	}()
 	<-started
+	background := ReadHandle(long, db)
+	if background == db || background.Stats().MaxOpenConnections != 1 || background.Stats().InUse != 1 {
+		t.Fatalf("long snapshot did not pin the sole background connection: %+v", background.Stats())
+	}
 
 	// The backup: one page per writer ticket, with a pause between steps so
 	// it spans the recovery.
@@ -98,13 +102,19 @@ func TestHardPressureCancelsTheLongReadButABackupOnlyWaits(t *testing.T) {
 	if _, err = ExecWrite(ctx, db, ClassInteractive, `INSERT INTO sample VALUES(99)`); err != nil {
 		t.Fatal(err)
 	}
+	recoveryStarted := time.Now()
 	result := checkpoint(ctx, db, schedulePressureFile(t))
-	spanned := !finished.Load()
-	if err = <-ended; !errors.Is(err, ErrReadPressure) {
-		t.Fatalf("the long read ended with %v, want the retryable read-pressure refusal", err)
+	if result.Err != nil || result.Outcome != "truncated" || time.Since(recoveryStarted) > CheckpointDeadline {
+		t.Fatalf("hard pressure did not reset within its budget with a backup running: %+v", result)
 	}
-	if result.Err != nil || result.Outcome != "truncated" {
-		t.Fatalf("hard pressure did not reset with a backup running: %+v", result)
+	spanned := !finished.Load()
+	select {
+	case err = <-ended:
+		if !errors.Is(err, ErrReadPressure) {
+			t.Fatalf("the long read ended with %v, want the retryable read-pressure refusal", err)
+		}
+	case <-time.After(CheckpointDeadline):
+		t.Fatal("hard recovery left the long background snapshot running")
 	}
 	select {
 	case err = <-backupDone:
