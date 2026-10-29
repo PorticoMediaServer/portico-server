@@ -122,14 +122,6 @@ export type MediaItem = {
   backdropUrl?: string;
   progressSeconds: number;
   available: boolean;
-  sources?: {
-    id: string;
-    container: string;
-    videoCodec: string;
-    audioCodec: string;
-    width: number;
-    height: number;
-  }[];
 };
 /** Whether a session's audio can go through the effects engine: a version 2 plan
  * the device decodes (`direct`/`converted`). */
@@ -2615,7 +2607,7 @@ export {LibraryNavigationService,navigationStorageKey,type NavigationScope,type 
 export {readListeningSimilar,LibraryContentService,type ContentView,type ContentSurface,type ContentRoute,type ContentScope,type ContentReadContext,type LibraryContentApi,type ContentEntryKind,type ContentHeading,type ContentEntry,type ContentSection,type ContentProjection,type LibraryContentSnapshot} from './library-content.ts';
 
 export * from './hosted-security.ts';
-export {DetailService,type DetailScope,type DetailTarget,type DetailApi,type PersonalState,type PersonalOfflineMutation,type PersonalConflict,type DetailAction,type DetailMetadata,type DetailEpisodeInfo,type DetailSongInfo,type DetailBookFileInfo,type DetailSource,type DetailItem,type DetailProjection,type PersonalIntent,type DetailError,type DetailSnapshot} from './detail.ts';
+export {DetailService,type DetailScope,type DetailTarget,type DetailApi,type PersonalState,type PersonalOfflineMutation,type PersonalConflict,type DetailAction,type DetailMetadata,type DetailEpisodeInfo,type DetailSongInfo,type DetailBookFileInfo,type DetailItem,type DetailProjection,type PersonalIntent,type DetailError,type DetailSnapshot} from './detail.ts';
 export * from "./personal-saved.ts";
 export {SearchService,searchPath,parseSearchHistory,type SearchGroup,type SearchSort,type SearchDirection,type SearchGroupStatus,type SearchGroupErrorCode,type SearchQuery,type SearchEntry,type SearchGroupResult,type SearchGroupCapability,type SearchCapabilities,type SearchData,type SearchSnapshot,type SearchHistoryEntry,type SearchHistoryPage} from './search.ts';
 export {readSearchGenres, releaseSearchGenres, searchGenresReadMetadata, searchGenresPath, parseSearchGenres, parseSearchGenrePreparing, type SearchGenreArt, type SearchGenre, type SearchGenrePage, type SearchGenreRequest, type SearchGenreReadOptions} from './search-genres.ts';

@@ -8,9 +8,7 @@ export function parseMediaItem(raw:unknown):MediaItem {
  if(!object(item)||!['id','kind','title','libraryId'].every(k=>typeof item[k]==='string')||typeof item.available!=='boolean'||typeof item.duration!=='number'||typeof item.progressSeconds!=='number')throw new Error(unreadableServerResponse);
  const audioFacts=item.kind==='song'?parseMusicTechnicalFacts(item.audioFacts):undefined;
  if(audioFacts)item.audioFacts=audioFacts;else delete item.audioFacts;
- if(item.sources!==undefined){
-  if(!Array.isArray(item.sources)||item.sources.length>64)throw new Error(unreadableServerResponse);
-  item.sources=item.sources.map(source=>wireDurations(source,{duration:'durationMs'}));
- }
+ // P2-29: an item no longer carries its sources; they are a File info lane of their own.
+ delete item.sources;
  return item as unknown as MediaItem;
 }
