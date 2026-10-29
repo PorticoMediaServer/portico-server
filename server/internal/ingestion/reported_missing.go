@@ -102,6 +102,11 @@ func (s *Service) removedPathEvidence(ctx context.Context, paths []string) ([]re
 }
 func applyReportedMissingTx(ctx context.Context, tx *sql.Tx, evidence []reportedMissing) error {
 	for _, v := range evidence {
+		if deferred, err := catalog.DeferInventorySourceTx(ctx, tx, v.source); err != nil {
+			return err
+		} else if deferred {
+			continue
+		}
 		var current bool
 		err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id WHERE o.id=? AND o.revision=? AND o.retired=0 AND o.root_incarnation=? AND s.incarnation=? AND s.root_identity=? AND s.enabled=1 AND s.health NOT IN('root_changed','removing'))`, v.object, v.revision, v.incarnation, v.incarnation, v.identity).Scan(&current)
 		if err != nil {

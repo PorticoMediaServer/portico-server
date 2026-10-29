@@ -413,6 +413,12 @@ func (s *Service) CommitMedia(ctx context.Context, job, library, path string, f 
 	if status != "running" {
 		return context.Canceled
 	}
+	if e = compactcatalog.RequireLibraryInventoryFreeTx(ctx, tx, library); e != nil {
+		if errors.Is(e, compactcatalog.ErrEntityMutating) {
+			return ErrInventoryItemOperation
+		}
+		return e
+	}
 	if f.InventoryOnly && s.storage != nil && s.storage.IsRemote(path) {
 		var prior string
 		var associated bool

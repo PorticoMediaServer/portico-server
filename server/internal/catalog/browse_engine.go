@@ -60,6 +60,7 @@ type BrowseApplied struct {
 	Seek  *BrowseSeek           `json:"seek,omitempty"`
 }
 type BrowseResult struct {
+	Importing        bool `json:"importing,omitempty"`
 	selectionRelease func()
 	Pivot            string                 `json:"pivot"`
 	Applied          BrowseApplied          `json:"applied"`
@@ -480,6 +481,13 @@ func (s *Service) BrowseEntities(viewer Viewer, request BrowseRequest) (BrowseRe
 	out, rows, err := s.browseSelect(request)
 	if errors.Is(err, ErrVisibilityBuilding) || errors.Is(err, ErrStaleContinuation) {
 		if lib, lookupErr := s.library(request.Library); lookupErr == nil && isReadingLibrary(lib.Kind) {
+			if errors.Is(err, ErrVisibilityBuilding) && request.Cursor == "" && request.Range == nil && request.SelectionBasis == "" {
+				out.Importing, out.PageInfo.TotalIsLowerBound = true, true
+				return out, nil
+			}
+			if out.PageInfo.Revision != "" {
+				return out, &ReadingRevisionMismatch{Revision: out.PageInfo.Revision}
+			}
 			return out, ErrReadingProjectionChanged
 		}
 	}
@@ -564,11 +572,12 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	if err != nil {
 		return out, nil, err
 	}
-	if err := s.browseReady(request.Library); err != nil {
-		if readingReady != nil {
-			return out, nil, ErrStaleContinuation
+	if readingReady == nil {
+		if err := s.browseReady(request.Library); err != nil {
+			return out, nil, err
 		}
-		return out, nil, err
+	} else {
+		out.Importing = readingReady.importing
 	}
 	if !pivot.Browsable {
 		if pivot.Aggregate == "" {
@@ -582,6 +591,7 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 		return out, nil, err
 	}
 	out.Applied = BrowseApplied{Query: request.Query, Sort: sorts, Seek: request.Seek}
+
 	if len(sorts) == 1 && sorts[0].Field == "forYou" {
 		fixed := *s
 		fixed.browseInstant = s.recommendationNow(s.browseInstant)
@@ -623,6 +633,15 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	}
 	where += " AND " + clause
 	args = append(args, compiler.args...)
+	if readingReady != nil && readingReady.generation.Ready == 0 {
+		if request.Cursor != "" || request.Range != nil || request.SelectionBasis != "" {
+			return out, nil, ErrReadingProjectionChanged
+		}
+		// No published image yet: this is a building lower bound, never an exact
+		// empty library or a whole-selection witness.
+		out.PageInfo.TotalIsLowerBound = true
+		return out, nil, nil
+	}
 	unrestricted, unrestrictedArgs := where, append([]any{}, args...)
 	// The viewer's content restriction is the last clause, after the authorized
 	// library scope and the client's own query, so neither can widen it.

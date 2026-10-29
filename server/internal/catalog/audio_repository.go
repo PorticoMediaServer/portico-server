@@ -325,6 +325,9 @@ func (s *Service) artist(ctx context.Context, tx *sql.Tx, library int64, name st
 }
 
 func (s *Service) commitAudio(ctx context.Context, tx *sql.Tx, library, kind, root, asset, path string, f assets.Facts) (err error) {
+	if err := compactcatalog.RequireLibraryInventoryFreeTx(ctx, tx, library); err != nil {
+		return err
+	}
 	_, outer := ctx.Value(audioMergeKey{}).(*audioMergeAdmissions)
 	ctx, admissions := withAudioMergeAdmissions(ctx)
 	defer func() {

@@ -79,6 +79,14 @@ func (s *Service) readySource(ctx context.Context, job string, source *catalog.L
 		if state != "running" {
 			return context.Canceled
 		}
+		if deferred, e := catalog.DeferInventorySourceTx(ctx, tx, source.ID); e != nil {
+			return e
+		} else if deferred {
+			if e = gated.Commit(); e != nil {
+				return e
+			}
+			return catalog.ErrInventoryItemOperation
+		}
 		if _, e = tx.ExecContext(ctx, `UPDATE library_sources SET root_identity=? WHERE id=? AND root_identity='' AND generation=?`, actual, source.ID, source.Generation); e != nil {
 			return e
 		}

@@ -48,8 +48,14 @@ func DeferInventorySourceTx(ctx context.Context, tx *sql.Tx, source string) (boo
 	return true, nil
 }
 
-func (s *Service) DeferInventorySource(ctx context.Context, source string) (deferred bool, err error) {
-	err = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
+func (s *Service) DeferInventorySource(ctx context.Context, source string) (bool, error) {
+	return DeferInventorySource(ctx, s.db, source)
+}
+
+// DeferInventorySource also serves the independent verification worker, which
+// needs only the database and has no catalogue read-service dependency.
+func DeferInventorySource(ctx context.Context, db *sql.DB, source string) (deferred bool, err error) {
+	err = dbwork.WithWriteTx(ctx, db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
 		var e error
 		deferred, e = DeferInventorySourceTx(ctx, tx, source)
 		return e

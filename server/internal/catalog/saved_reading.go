@@ -52,7 +52,7 @@ func (s *Service) savedReading(r ContentRequest, libraries []string, flag string
 			rows.Close()
 			return out, err
 		}
-		if scope.generation.Ready == 0 || scope.generation.Input != scope.generation.Ready || rule != compactcatalog.ReadingProjectionRuleVersion {
+		if scope.generation.Ready == 0 || rule != compactcatalog.ReadingProjectionRuleVersion {
 			rows.Close()
 			return out, ErrReadingProjectionChanged
 		}

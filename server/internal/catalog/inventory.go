@@ -423,6 +423,9 @@ func (s *Service) commitInventoryPageTx(ctx context.Context, tx *sql.Tx, job str
 	return true, nil
 }
 func (s *Service) observeInventoryTx(ctx context.Context, tx *sql.Tx, job string, source LibrarySource, relative string, v storage.Snapshot, reason string, policy ScanPolicy, movedOut map[string]bool) (bool, error) {
+	if err := requireInventorySourceFreeTx(ctx, tx, source.ID); err != nil {
+		return false, err
+	}
 	var removed bool
 	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_scan_issues WHERE job_id=? AND relative_path=? AND reason='reported_file_removed')`, job, relative).Scan(&removed); err != nil {
 		return false, err
@@ -1259,6 +1262,9 @@ func completedScanOperations(p ScanPolicy) string {
 // fresh observation. It runs in bounded pages, never as a startup-wide rewrite.
 // Two complete inventories and the source grace still govern missing status.
 func (s *Service) AdoptLegacyInventoryTx(ctx context.Context, tx *sql.Tx, source LibrarySource, asset, relative string, v storage.Snapshot) error {
+	if err := requireInventorySourceFreeTx(ctx, tx, source.ID); err != nil {
+		return err
+	}
 	revision, evidence, err := observationRevision(source, v)
 	if err != nil {
 		return err
