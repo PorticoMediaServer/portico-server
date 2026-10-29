@@ -312,6 +312,7 @@ func (h *ClaimHandler) runWebClaimWatch(expected ClaimExpected, guard ClaimReque
 		return webClaimAnswer("approval_closed"), true
 	}
 	var status ClaimStatus
+	recorded := false
 	apply := func() error {
 		return h.runner.Do(ctx, func(ctx context.Context) error {
 			ctx, e := guardedClaimRequest(ctx, h.store, guard)
@@ -319,15 +320,20 @@ func (h *ClaimHandler) runWebClaimWatch(expected ClaimExpected, guard ClaimReque
 				return e
 			}
 			v, e := h.expected(ctx, expected)
+			if errors.Is(e, ErrStale) && recorded {
+				// A retry finds this watch's own progress: the approval it recorded moved the
+				// revision on. Continue that same operation, never a cancelled or reset one.
+				v, e = h.approvedContinuation(ctx, expected)
+			}
 			if e != nil {
 				return e
 			}
-			// A retry after a transient failure finds the approval already recorded.
 			if v.Stage == Prepared {
 				if _, e = h.store.Approve(ctx, v, d.Envelope); e != nil {
 					return e
 				}
 			}
+			recorded = true
 			coordinator, e := NewCoordinator(v.OperationID, h.store.audience, h.store, h.transport, h.signer)
 			if e != nil {
 				return e
@@ -361,6 +367,34 @@ func (h *ClaimHandler) runWebClaimWatch(expected ClaimExpected, guard ClaimReque
 		return webClaimAnswer("approval_changed"), true
 	}
 	return out, true
+}
+
+// approvedContinuation is the same claim operation after this server recorded its approval:
+// the same local generation, still this server's active or pending claim, a revision at or
+// past the one the watch began with, and a stage that only follows an approval.
+func (h *ClaimHandler) approvedContinuation(ctx context.Context, want ClaimExpected) (Intent, error) {
+	gated, e := h.store.tx(ctx)
+	if e != nil {
+		return Intent{}, e
+	}
+	defer gated.Rollback()
+	tx := gated.Tx()
+	id, e := readIdentity(ctx, tx)
+	if e != nil {
+		return Intent{}, e
+	}
+	if (!id.active.Valid || id.active.String != want.OperationID) && (!id.pending.Valid || id.pending.String != want.OperationID) {
+		return Intent{}, ErrStale
+	}
+	v, e := loadIntentTx(ctx, tx, want.OperationID)
+	if e != nil {
+		return Intent{}, e
+	}
+	if v.LocalGeneration != want.LocalGeneration || v.Revision < want.Revision ||
+		(v.Stage != Approved && v.Stage != Finalizing && v.Stage != Retrieving && v.Stage != Installed) {
+		return Intent{}, ErrStale
+	}
+	return v.Intent, nil
 }
 
 // retryWebApproval applies an approval the person already gave, through transient Hosted
