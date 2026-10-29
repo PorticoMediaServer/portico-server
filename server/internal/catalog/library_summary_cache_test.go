@@ -663,7 +663,7 @@ func TestLibrarySummaryCoreFlightsCancellationAndBounds(t *testing.T) {
 			}
 		}
 		for i := 0; i < 200; i++ {
-			cache.get(context.Background(), summaryKey{Library: fmt.Sprint(i), Policy: strings.Repeat("x", 60000)}, compute)
+			cache.get(context.Background(), summaryKey{Library: fmt.Sprint(i), Policy: strings.Repeat("x", summaryCacheValueBytes-(summaryKey{}).size()-256)}, compute)
 		}
 		if cache.bytes > summaryCacheBytes || len(cache.entries) >= summaryCacheEntries {
 			t.Fatal("byte eviction", cache.bytes, len(cache.entries))

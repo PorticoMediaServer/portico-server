@@ -90,6 +90,7 @@ type summaryKey struct {
 	Algorithm, Cap                                      int
 	Kinds                                               [3]string
 	Revision, OrderRevision, Generation, Classification int64
+	PolicyEpoch                                         int64
 	Domains                                             [100]summaryDomain
 	Reading                                             summaryReading
 }
@@ -295,6 +296,11 @@ func (s *Service) librarySummaryKey(ctx context.Context, viewer Viewer, library 
 		return key, telemetry.SummaryBypassRetaining
 	}
 	if viewer.Restrictions.Active() {
+		// Cross-library members can change this library's visibility after all
+		// work drains. Bind the existing authority epoch, not content churn.
+		if err = s.read().QueryRowContext(ctx, `SELECT policy_epoch FROM catalog_facet_source_state WHERE singleton=1`).Scan(&key.PolicyEpoch); err != nil || key.PolicyEpoch < 1 {
+			return key, telemetry.SummaryBypassIdentity
+		}
 		var dirty, failed bool
 		err = s.read().QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_dirty),EXISTS(SELECT 1 FROM catalog_derivation_failures)`).Scan(&dirty, &failed)
 		if err != nil {
@@ -307,24 +313,32 @@ func (s *Service) librarySummaryKey(ctx context.Context, viewer Viewer, library 
 			return key, telemetry.SummaryBypassFailure
 		}
 	}
-	rows, err := s.read().QueryContext(ctx, `SELECT domain,version,active_slot,rebuilding,cleaning,first_build FROM catalog_derivations ORDER BY domain`)
-	if err != nil {
-		return key, telemetry.SummaryBypassIdentity
-	}
-	reason := telemetry.SummaryCacheEvent("")
-	for rows.Next() {
-		var domain, slot int
-		var version int64
-		var rebuild, clean, first bool
-		if err = rows.Scan(&domain, &version, &slot, &rebuild, &clean, &first); err != nil {
-			break
+	// Only the domains the cached core actually reads belong in the key. A
+	// non-restricted policy compiles the visibility clause to the literal "1",
+	// so candidate counts read synchronous facts and the static kind table and
+	// no derived row at all. An active policy additionally reads browse row
+	// existence (domain 18) and membership edges (domain 19). The pending-work
+	// probe above stays global: membership edges carry no revision wake, so no
+	// per-library pending-work fence is proved yet. Domains outside this set are
+	// explicitly not inputs; their rebuilds must not discard a correct entry.
+	if viewer.Restrictions.Active() {
+		rows, err := s.read().QueryContext(ctx, `SELECT domain,version,active_slot,rebuilding,cleaning,first_build FROM catalog_derivations WHERE domain IN(?,?) ORDER BY domain`, compactcatalog.DomainBrowseRows, compactcatalog.DomainBrowseEdges)
+		if err != nil {
+			return key, telemetry.SummaryBypassIdentity
 		}
-		if domain < 1 || domain >= len(key.Domains) || version < 1 {
-			reason = telemetry.SummaryBypassIdentity
-			break
-		}
-		key.Domains[domain] = summaryDomain{version, slot, true}
-		if viewer.Restrictions.Active() {
+		reason := telemetry.SummaryCacheEvent("")
+		for rows.Next() {
+			var domain, slot int
+			var version int64
+			var rebuild, clean, first bool
+			if err = rows.Scan(&domain, &version, &slot, &rebuild, &clean, &first); err != nil {
+				break
+			}
+			if domain < 1 || domain >= len(key.Domains) || version < 1 {
+				reason = telemetry.SummaryBypassIdentity
+				break
+			}
+			key.Domains[domain] = summaryDomain{version, slot, true}
 			if rebuild {
 				reason = telemetry.SummaryBypassRebuild
 			}
@@ -335,16 +349,16 @@ func (s *Service) librarySummaryKey(ctx context.Context, viewer Viewer, library 
 				reason = telemetry.SummaryBypassFirstBuild
 			}
 		}
-	}
-	if err == nil {
-		err = rows.Err()
-	}
-	rows.Close()
-	if err != nil {
-		return key, telemetry.SummaryBypassIdentity
-	}
-	if reason != "" {
-		return key, reason
+		if err == nil {
+			err = rows.Err()
+		}
+		rows.Close()
+		if err != nil {
+			return key, telemetry.SummaryBypassIdentity
+		}
+		if reason != "" {
+			return key, reason
+		}
 	}
 	if isReadingLibrary(library.Kind) {
 		r, e := s.readingBrowseScope(library.ID)
