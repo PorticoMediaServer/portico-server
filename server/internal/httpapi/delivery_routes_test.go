@@ -14,6 +14,9 @@ import (
 // can narrow its lane; it can never widen it, and it can never claim locality.
 func TestDeliveryPolicyRouteResolvesTheViewersLane(t *testing.T) {
 	f := preferenceHTTP(t)
+	// The viewer's home network is declared rather than inherited from the
+	// host's interfaces; 192.168.4.10 below is inside it.
+	declareHomeNetworks(t, f.db, "192.168.4.0/24")
 
 	read := func(peer, transport string) map[string]any {
 		t.Helper()

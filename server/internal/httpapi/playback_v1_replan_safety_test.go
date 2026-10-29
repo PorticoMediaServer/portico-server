@@ -89,6 +89,9 @@ func TestPlaybackV1ReadAndReplayRecheckVisibility(t *testing.T) {
 
 func TestPlaybackV1ReplanRecordsCurrentLocality(t *testing.T) {
 	f := replanFixtureV1(t, 1)
+	// The viewer's home network is declared; 192.168.1.20 below is a home
+	// request on any host, while 203.0.113.9 stays remote.
+	v1HomeNetworks(t, f, "192.168.1.0/24")
 	filmStreams(t, f, 0, 6_000_000)
 	var initial playbackv1.SessionView
 	w := f.rawFrom("192.168.1.20:5000", "POST", "/v1/playback/sessions", f.owner.AccessToken, map[string]string{"Idempotency-Key": "locality-replan-001"}, startBody(f.items[0], nil))
