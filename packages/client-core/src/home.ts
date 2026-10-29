@@ -366,8 +366,10 @@ export function homeShellFence(document: Pick<HomeDocument, 'viewerFence' | 'pri
   return document.privacyFence ?? document.viewerFence;
 }
 export function validateHomeDocument(value: unknown): HomeDocument {
-  if (!object(value) || !id(value.serverId) || !id(value.viewerFence) || !Array.isArray(value.rows) || value.rows.length > 64 || !Array.isArray(value.spotlight) || value.spotlight.length>5) invalid();
-  const spotlight=Object.freeze(value.spotlight.map(parseHomeSpotlight));
+  if (!object(value) || !id(value.serverId) || !id(value.viewerFence) || !Array.isArray(value.rows) || value.rows.length > 64 || (value.spotlight !== undefined && (!Array.isArray(value.spotlight) || value.spotlight.length>5))) invalid();
+  // R-10 (O-159 two-tier parsing): spotlights are presentation, not identity or safety. One this
+  // client cannot read is left out alone; an absent list is no spotlight. Home itself still shows.
+  const spotlight=Object.freeze(keepReadable('home', 'spotlight', (value.spotlight ?? []) as unknown[], parseHomeSpotlight));
   const layout = validateHomeLayout(value.layout);
   const readable = keepReadable('home', 'rows', value.rows, raw => {
     const row = validateHomeRow(raw);

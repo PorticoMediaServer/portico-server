@@ -130,3 +130,17 @@ test('E-web-14: a music session at the "limit" tier over the video ladder is rea
 test('E-web-14: an unoffered current quality is still refused when the source itself or the delivery is invalid',async()=>{
  for(const change of [(d:any)=>d.current.sourceId='absent',(d:any)=>d.current.delivery='remote',(d:any)=>d.current.qualityId='']){const d=data();d.current.qualityId='limit';change(d);const s=service(async()=>d);await s.select(q);assert.equal(s.getSnapshot().phase,'error');s.dispose();}
 });
+
+// R-09 (O-159): a 1.0 client reads a "1.1" offers document. An unknown control is
+// left out and an unknown session state is kept as text; the four known controls
+// are still required, and an unknown delivery still fails closed.
+test('R-09: a newer offers document with an unknown control and session state stays readable',async()=>{
+ const newer=data();newer.controls=[...newer.controls,{id:'spatial_audio',enabled:true,reason:''}];newer.current.state='buffering';
+ const s=service(async()=>newer);await s.select(q);
+ assert.equal(s.getSnapshot().phase,'ready',JSON.stringify(s.getSnapshot().error));
+ assert.deepEqual(s.getSnapshot().data!.controls.map(c=>c.id),['source','audio','subtitles','quality']);
+ assert.equal(s.getSnapshot().data!.current!.state,'buffering');s.dispose();
+ for(const change of [(d:any)=>d.controls=d.controls.slice(1),(d:any)=>d.current.delivery='dash',(d:any)=>d.current.state='']){
+  const d=data();change(d);const bad=service(async()=>d);await bad.select(q);assert.notEqual(bad.getSnapshot().phase,'ready');bad.dispose();
+ }
+});

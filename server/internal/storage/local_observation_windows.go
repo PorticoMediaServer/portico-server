@@ -75,7 +75,10 @@ func windowsFileBinding(file *os.File) (string, string, error) {
 	if basic.LastWriteTime != int64(uint64(info.LastWriteTime.HighDateTime)<<32|uint64(info.LastWriteTime.LowDateTime)) {
 		return "", "", ErrObservedSourceLost
 	}
-	return object, fmt.Sprintf("%d", basic.ChangeTime), nil
+	// The change token is content identity: file ID, size and last write time.
+	// ChangeTime also moves on attribute, ACL and archive-bit writes (backup and
+	// antivirus tools), which change no byte (DECISIONS 29 Oct, never ctime).
+	return object, fmt.Sprintf("fp1:%s:size:%d:mtime:%d", object, int64(info.FileSizeHigh)<<32|int64(info.FileSizeLow), basic.LastWriteTime), nil
 }
 
 func checkLocalRoot(path string) error {
