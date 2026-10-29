@@ -164,7 +164,7 @@ func registerPlaybackHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/prepared_media.go:91
-	if err := apikit.RegisterHTTP[preparedmedia.Request, preparedmedia.Job](registry, apikit.Metadata{Audience: apikit.Clients, ID: "post_items_id_optimizations", Method: "POST", Path: "/v1/items/{id}/optimizations", Summary: "Run title optimizations", Access: apikit.Device, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[preparedmedia.Request, preparedmedia.Job](registry, apikit.Metadata{Audience: apikit.Clients, ID: "post_items_id_optimizations", Method: "POST", Path: "/v1/items/{id}/optimizations", Summary: "Run title optimizations", Access: apikit.Device, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "request_in_progress", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/prepared_media.go:110
@@ -220,7 +220,7 @@ func registerPlaybackHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/activity.go:36
-	if err := apikit.RegisterHTTP[preparedmedia.Command, preparedmedia.Job](registry, apikit.Metadata{Audience: apikit.Clients, ID: "post_optimization_jobs_id_retry", Method: "POST", Path: "/v1/optimization-jobs/{id}/retry", Summary: "Run optimization jobs retry", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[preparedmedia.Command, preparedmedia.Job](registry, apikit.Metadata{Audience: apikit.Clients, ID: "post_optimization_jobs_id_retry", Method: "POST", Path: "/v1/optimization-jobs/{id}/retry", Summary: "Run optimization jobs retry", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "request_in_progress", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/activity.go:36

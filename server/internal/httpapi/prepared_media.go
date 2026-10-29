@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 
+	"portico.local/apikit/apierror"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/livechannels"
@@ -20,6 +21,11 @@ func (d Dependencies) ContinuePreparedMedia(ctx context.Context, tx *sql.Tx, p i
 	return d.playbackFamilyAuthorityTx(ctx, tx, p, item)
 }
 func preparedFailure(w http.ResponseWriter, e error) {
+	var domain *apierror.Error
+	if errors.As(e, &domain) {
+		policyErrors.Write(w, w.Header().Get("X-Request-Id"), domain)
+		return
+	}
 	if writerRefused(w, e) {
 		return
 	}

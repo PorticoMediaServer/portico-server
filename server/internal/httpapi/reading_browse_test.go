@@ -2,10 +2,16 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/readingtest"
 	"strings"
 	"testing"
 
@@ -152,5 +158,100 @@ func TestReadingBrowseColdImageIsHonestBuildingOverHTTP(t *testing.T) {
 		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &page) != nil || !page.Importing || len(page.Entries) != 0 || !page.PageInfo.TotalIsLowerBound || page.WholeSelection != nil {
 			t.Fatalf("prepared=%v cold page: %d %s", prepared, w.Code, w.Body.String())
 		}
+	}
+}
+
+func TestReadingBrowseImportingKeysetSurvivesContinuousAppend(t *testing.T) {
+	r := newReadingFixture(t, "book", "pdf")
+	for i := 0; i < 4; i++ {
+		readingTreeFile(t, r, fmt.Sprintf("Stable/Book-%d.pdf", i))
+	}
+	readingScan(t, r.f, r.library)
+	readingSeriesDrain(t, r)
+	var handle, ready int64
+	if err := r.f.db.QueryRow(`SELECT c.id,s.ready_generation FROM catalog_libraries c JOIN reading_attribution_state s ON s.library_id=c.id WHERE c.library_id=?`, r.library).Scan(&handle, &ready); err != nil || ready == 0 {
+		t.Fatal(ready, err)
+	}
+	rows, err := r.f.db.Query(`SELECT pid(e.public_id) FROM reading_attribution_members m JOIN catalog_entities e ON e.id=m.item_id WHERE m.library_id=? AND m.generation=? ORDER BY e.sort_key,e.id`, handle, ready)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var expected []string
+	for rows.Next() {
+		var id string
+		if err = rows.Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		expected = append(expected, id)
+	}
+	if err = rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	rows.Close()
+	if len(expected) != 5 {
+		t.Fatalf("published fixture: %v", expected)
+	}
+	appendInput := func(turn int) {
+		t.Helper()
+		path := filepath.Join(filepath.Dir(r.path), fmt.Sprintf("Appended-%d.pdf", turn))
+		if err := os.WriteFile(path, readingtest.PDF(), 0600); err != nil {
+			t.Fatal(err)
+		}
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = dbwork.WithWriteTx(context.Background(), r.f.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
+			entity, _, e := compactcatalog.EnsureEntityTx(context.Background(), tx, compactcatalog.Entity{Library: handle, Kind: compactcatalog.Ebook, Key: path, Title: fmt.Sprintf("Appended %d", turn)})
+			if e != nil {
+				return e
+			}
+			asset, _, e := compactcatalog.UpsertAssetTx(context.Background(), tx, compactcatalog.Asset{Path: path, Size: info.Size(), ModifiedNS: info.ModTime().UnixNano(), Container: "pdf"})
+			if e != nil {
+				return e
+			}
+			if e = compactcatalog.LinkAssetTx(context.Background(), tx, entity, asset, compactcatalog.Link{}); e != nil {
+				return e
+			}
+			_, e = tx.Exec(`INSERT INTO reading_publications(item_id,asset_id,format) VALUES(?,?,'pdf')`, entity, asset)
+			return e
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	d := r.d
+	d.PrepareReadingBrowse = true
+	h := New(d)
+	cursor := ""
+	var got []string
+	for turn := 0; turn < 3; turn++ {
+		appendInput(turn) // every request sees newer source input, old image remains
+		var current int64
+		if err = r.f.db.QueryRow(`SELECT ready_generation FROM reading_attribution_state WHERE library_id=?`, handle).Scan(&current); err != nil || current != ready {
+			t.Fatal(current, ready, err)
+		}
+		body := map[string]any{"pivot": "books", "limit": 2}
+		if cursor != "" {
+			body["cursor"] = cursor
+		}
+		w := readingHTTP(t, h, "POST", "/v1/libraries/"+r.library+"/browse", r.f.owner.AccessToken, "", body)
+		var page catalog.BrowseResult
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &page) != nil || !page.Importing || !page.PageInfo.TotalIsLowerBound || len(page.PositionIndex) != 0 {
+			t.Fatalf("turn %d: %d %s", turn, w.Code, w.Body.String())
+		}
+		for _, entry := range page.Entries {
+			got = append(got, entry.ID)
+		}
+		cursor = page.PageInfo.NextCursor
+		if turn < 2 && cursor == "" {
+			t.Fatalf("turn %d lost continuation", turn)
+		}
+		if turn == 2 && (cursor != "" || page.PageInfo.HasMore) {
+			t.Fatal("published image did not end")
+		}
+	}
+	if fmt.Sprint(got) != fmt.Sprint(expected) {
+		t.Fatalf("duplicates/skips/new unpublished members: got %v want %v", got, expected)
 	}
 }

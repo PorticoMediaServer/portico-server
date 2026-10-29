@@ -3,11 +3,29 @@ package catalog
 import (
 	"context"
 	"portico.local/server/internal/dbwork"
+	"strings"
 )
 
-// ReadingBrowseBuilding answers only a cold image. A published image follows
-// the ordinary bounded count preparation; an absent image is an honest empty
-// lower bound, without allocating a doomed count job or returning 412.
+const readingImportingCursorPrefix = "browse_reading_import_"
+
+func (s *Service) readingImportingPage(scope *readingBrowseScope, request BrowseRequest) (bool, error) {
+	if request.Query != nil || request.Range != nil || request.Seek != nil || request.SelectionBasis != "" || request.HomeRowDisplay != "" {
+		return false, nil
+	}
+	if request.Cursor == "" {
+		return scope.importing, nil
+	}
+	signed, err := s.readSignedBrowseCursor(request.Cursor)
+	if err != nil {
+		return false, err
+	}
+	return strings.HasPrefix(signed.Fingerprint, readingImportingCursorPrefix), nil
+}
+
+// ReadingBrowseBuilding serves a cold image or an importing keyset stream
+// without an exact-count preparation. It reuses the signed cursor envelope:
+// the opaque fingerprint identifies the stream, and TotalPresent remains false.
+// All other queries and conditional ranges retain exact preparation.
 func (s *Service) ReadingBrowseBuilding(viewer Viewer, request BrowseRequest) (BrowseResult, bool, error) {
 	if dbwork.Snapshot(s.Context()) == nil {
 		var page BrowseResult
@@ -26,8 +44,17 @@ func (s *Service) ReadingBrowseBuilding(viewer Viewer, request BrowseRequest) (B
 	if err != nil {
 		return BrowseResult{}, false, err
 	}
-	if scope == nil || scope.generation.Ready > 0 {
+	if scope == nil {
 		return BrowseResult{}, false, nil
+	}
+	if scope.generation.Ready > 0 {
+		lower, e := s.readingImportingPage(scope, request)
+		if e != nil {
+			return BrowseResult{}, false, e
+		}
+		if !lower {
+			return BrowseResult{}, false, nil
+		}
 	}
 	page, err := s.BrowseEntities(viewer, request)
 	return page, true, err

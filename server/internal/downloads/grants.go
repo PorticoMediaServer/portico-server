@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"path"
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/entityid"
 	"strconv"
@@ -165,6 +166,23 @@ func (s *Service) IssueGrant(ctx context.Context, p identity.Principal, id strin
 		}
 		return out, e
 	}
+	// A new address, or an extension of an existing one, is fresh authorization
+	// for the title, so it is admission. It must not be written while an actual
+	// catalog mutation owns the title or a bounded ancestor. Everything above
+	// has already been decided, including usable's ending of a claim whose file
+	// is gone: a read, that cleanup and a completed idempotent replay returned
+	// earlier are not held here. The mutation's retryable answer is propagated
+	// as it is, never remapped to a missing, unavailable or changed title.
+	entity, e := entityid.Resolve(ctx, tx, current.ItemID)
+	if errors.Is(e, entityid.ErrNotFound) {
+		return out, ErrNotFound
+	}
+	if e != nil {
+		return out, e
+	}
+	if e = compactcatalog.RequireEntityAcquirableTx(ctx, tx, entity); e != nil {
+		return out, e
+	}
 	expires := now + int64(GrantIdle/time.Millisecond)
 	token, issued, renewed := "", now, false
 	if r.Renew != "" {
@@ -185,13 +203,6 @@ func (s *Service) IssueGrant(ctx context.Context, p identity.Principal, id strin
 	}
 	if token == "" {
 		token = identity.Token()
-		entity, e := entityid.Resolve(ctx, tx, current.ItemID)
-		if errors.Is(e, entityid.ErrNotFound) {
-			return out, ErrNotFound
-		}
-		if e != nil {
-			return out, e
-		}
 		if _, e = tx.ExecContext(ctx, `INSERT INTO download_grants(hash,preparation_id,profile_key,item_id,artifact_digest,issued_ms,expires_ms) VALUES(?,?,?,?,?,?,?)`, identity.Digest(token), id, key, entity, current.Artifact.SHA256, now, expires); e != nil {
 			return out, e
 		}

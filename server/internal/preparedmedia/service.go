@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"portico.local/server/internal/capabilityreport"
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/entityid"
 	"portico.local/server/internal/worker"
@@ -286,6 +287,17 @@ func (s *Service) Submit(ctx context.Context, p identity.Principal, r Request) (
 	if e != nil {
 		return out, e
 	}
+	// Producer admission fence. A new claim for this title must not be created
+	// behind an actual catalog mutation (SeparateFolder retirement, merge,
+	// deletion) that already owns this entity or one of its bounded ancestors.
+	// This is the same writer and the same custody probe the mutation's own
+	// units use, checked after authority, receipt replay and source validation
+	// and immediately before the create. It is not a read barrier: already-held
+	// playback, an existing job's cancellation and worker publication are not
+	// fenced. A busy title is refused with the mutation's own retryable error.
+	if e = compactcatalog.RequireEntityAcquirableTx(ctx, tx, entity); e != nil {
+		return out, e
+	}
 	_, e = tx.ExecContext(ctx, `INSERT INTO prepared_media_jobs(id,item_id,asset_id,library_id,profile_id,target_id,selection_json,source_revision,principal_json,state,phase,created_ms,updated_ms) VALUES(?,?,?,?,?,?,?,?,?,'queued','waiting',?,?)`, id, entity, sel.Asset, sel.Library, r.ProfileID, r.TargetID, string(selectionJSON), hash(sel), string(principalJSON), now, now)
 	if e != nil {
 		return out, e
@@ -417,6 +429,16 @@ func (s *Service) Command(ctx context.Context, p identity.Principal, id, action 
 			return out, ErrConfiguration
 		}
 		if e = capacity(ctx, tx, out.ItemID); e != nil {
+			return out, e
+		}
+		// Reactivating this job is a producer admission too: it must not be
+		// requeued behind an actual catalog mutation that owns the title or a
+		// bounded ancestor. Cancellation above is deliberately not fenced.
+		retryEntity, resolveErr := entityid.Resolve(ctx, tx, out.ItemID)
+		if resolveErr != nil {
+			return out, resolveErr
+		}
+		if e = compactcatalog.RequireEntityAcquirableTx(ctx, tx, retryEntity); e != nil {
 			return out, e
 		}
 		principal, _ := json.Marshal(p)
