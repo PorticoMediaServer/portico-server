@@ -142,7 +142,8 @@ test('one part of a title page that cannot be read is left out and the page is k
  assert.deepEqual([metadata.metadata.ratings.length,metadata.metadata.genres.length,metadata.metadata.status,metadata.metadata.creditTotals],[1,1,'available',undefined]);
  // What the page is only drawn with reads neutrally; fields this app does not know are ignored.
  const bare=await read(d=>{d.item={id:'item',libraryId:'library',kind:'hologram',year:-1,overview:42,posterUrl:'bad\nurl',future:1};d.personal={revision:4,rating:11,status:'syncing',conflicts:[{id:'c'},{id:'c1',field:'rating',baseRevision:1,choices:[{operationId:'o',deviceId:'d',authoredAt:'t',value:1},{}]}]};delete d.metadata;d.actions=undefined;d.future={a:1};d.markers='nope';});
- assert.deepEqual(bare.item,{id:'item',libraryId:'library',title:'',kind:'hologram',duration:0,progressSeconds:0,available:false});
+ // P2-29: a length the page does not carry stays unknown, never a made-up zero.
+ assert.deepEqual(bare.item,{id:'item',libraryId:'library',title:'',kind:'hologram',progressSeconds:0,available:false});
  assert.deepEqual(bare.personal,{watchlisted:false,favorite:false,rating:null,revision:4,watched:false,progressSeconds:0,lastPlayedAt:'',status:'current',conflicts:[{id:'c1',field:'rating',baseRevision:1,baseValue:undefined,choices:[{operationId:'o',deviceId:'d',authoredAt:'t',value:1}]}]});
  assert.deepEqual([bare.metadata,bare.actions,bare.markers,'future' in bare],[{status:'unavailable',ratings:[],genres:[],credits:[]},[],[],false]);
  // Related rows this app cannot read are left out whole.
