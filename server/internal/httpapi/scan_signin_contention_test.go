@@ -13,11 +13,16 @@ package httpapi
 //
 // The scan is released afterwards and must still finish, so the test also
 // proves the held analysis does not leak a writer or leave the job wedged.
+// Completion is the server's own shape: the catalogue derived worker that runs
+// beside the scanner is started at the release, because an analysis frame the
+// scan accepts is published by that worker and acknowledged by a later quantum.
 
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -27,6 +32,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/assets"
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/identity"
 )
 
@@ -152,6 +158,28 @@ func TestScanOutsideWriterDoesNotBlockDirectSignIn(t *testing.T) {
 	}
 
 	// Release the analysis window and require the same scan to finish normally.
+	//
+	// The server runs the catalogue derived worker beside the scanner, and an
+	// analysis frame the scan accepts is published by that source41 worker, not
+	// by the scan quantum (ingestion/info_publication_test.go states the same
+	// fixture requirement: "the application runs the catalogue worker alongside
+	// scans"). Start the real worker from the release, so the same scan can be
+	// acknowledged instead of waiting for a publisher this fixture never ran.
+	workerDone := make(chan struct{})
+	go func() {
+		defer close(workerDone)
+		compactcatalog.NewWorker(f.db).Run(ctx)
+	}()
+	// Wait for the worker before the fixture closes its database, including on a
+	// failure return, so it never steps on a closed handle.
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case <-workerDone:
+		case <-time.After(5 * time.Second):
+			t.Error("catalogue worker did not stop")
+		}
+	})
 	unblock()
 	deadline := time.Now().Add(5 * time.Second)
 	for {
@@ -177,7 +205,7 @@ func TestScanOutsideWriterDoesNotBlockDirectSignIn(t *testing.T) {
 			break
 		}
 		if state.Status == "failed" || time.Now().After(deadline) {
-			t.Fatalf("released scan did not finish: %+v", state)
+			t.Fatalf("released scan did not finish: %+v %s", state, scanHoldPosition(f.db, job.ID))
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -187,4 +215,42 @@ func TestScanOutsideWriterDoesNotBlockDirectSignIn(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("scan loop did not stop")
 	}
+	select {
+	case <-workerDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("catalogue worker did not stop")
+	}
+}
+
+// scanHoldPosition reports where a released run durably stands, so a failure
+// names whether the analysis frame was accepted and deferred for publication or
+// the quantum ended without progress. It only reads rows the scan already
+// wrote; it never changes a status.
+func scanHoldPosition(db *sql.DB, job string) string {
+	counts := func(query string, args ...any) string {
+		rows, err := db.Query(query, args...)
+		if err != nil {
+			return "error:" + err.Error()
+		}
+		defer rows.Close()
+		out := ""
+		for rows.Next() {
+			var name string
+			var n int64
+			if rows.Scan(&name, &n) != nil {
+				return "scan-error"
+			}
+			if out != "" {
+				out += ","
+			}
+			out += fmt.Sprintf("%s=%d", name, n)
+		}
+		return out
+	}
+	queue := counts(`SELECT state,count(*) FROM inventory_analysis_queue WHERE job_id=? GROUP BY state`, job)
+	stages := counts(`SELECT state,count(*) FROM analysis_stage_runs WHERE job_id=? GROUP BY state`, job)
+	changes := counts(`SELECT CAST(phase AS TEXT),count(*) FROM catalog_info_changes GROUP BY phase`)
+	objects := counts(`SELECT analysis_state,count(*) FROM inventory_objects WHERE source_id=(SELECT source_id FROM inventory_runs WHERE job_id=?) GROUP BY analysis_state`, job)
+	return fmt.Sprintf("queue[%s] stages[%s] infoChanges[%s] objects[%s]",
+		queue, stages, changes, objects)
 }
