@@ -188,3 +188,24 @@ test('an album or a book reads its flat files: each listed with its raw tracks, 
   assert.equal(calls[0], 'GET /v1/items/m1/file-info?opening=o1&limit=40');
   session.retire();
 });
+
+test('P2-29 amendment: only the opening preparation may omit its Detail; once a window is read, every preparation names it', async () => {
+  const bare = {kind: 'file-info-preparing', state: 'preparing', queryId: 'p1', retryAfterMs: 10};
+  const replies = [
+    response(202, bare, {Location: '/v1/file-info-queries/p1', 'Retry-After': '1'}),
+    response(200, envelope('file-info-groups', 'p1', {surface, groups: [groupRow(1)]}, {nextCursor: 'n1'})),
+    response(202, bare, {Location: '/v1/file-info-queries/p2', 'Retry-After': '1'}),
+  ];
+  const timers: (() => void)[] = [];let time = 0;
+  const session = new FileInfoSession({opening, isCurrent: () => true,
+    runtime: {now: () => time, random: () => 0, setTimeout: (callback, ms) => {timers.push(() => {time += ms; callback();}); return timers.length;}, clearTimeout: () => {}},
+    api: {requestRaw: (_path, method) => Promise.resolve(method === 'DELETE' ? response(204) : replies.shift()!)}});
+  const first = session.groups();
+  for (let i = 0; i < 40 && !timers.length; i++) await Promise.resolve();
+  assert.equal(session.getSnapshot().groups.status, 'preparing', 'the opening preparation is shown as preparing, not as an error');
+  timers.shift()!();await first;
+  assert.equal(session.getSnapshot().groups.status, 'ready');
+  await session.groups('next');
+  assert.equal(session.getSnapshot().groups.status, 'failed', 'after a window was read, a preparation without its Detail is refused');
+  session.retire();
+});

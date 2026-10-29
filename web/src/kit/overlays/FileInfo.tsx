@@ -35,6 +35,9 @@ export type FileInfoProps = Pick<OverlaySurfaceProps, 'open' | 'onOpenChange' | 
   /** The owner's ordered disc titles from the same authorized read; absent otherwise. */
   disc?: FileInfoDisc;
   continuation?: FileInfoContinuation;
+  /** Still preparing (for instance the opening preparation, before its Detail is known): the same
+   * panel with quiet version-shaped lines, so nothing moves when the versions arrive. */
+  pending?: boolean;
   onManage: (action: FileInfoAction) => void;
   detent?: number;
   onDetentChange?: (index: number) => void;
@@ -100,8 +103,16 @@ function FileInfoBody({model, layout, pickedFileId, disc, continuation, onManage
   </section>}</div>;
 }
 
+/** Version-card shaped quiet lines in the panel's own layout; no shimmer (motion rules). */
+function PendingBody({layout}: {layout: FileInfoProps['layout']}) {
+  const line = <span className={styles.pending} />;
+  return <div className={styles.files} data-layout={layout} aria-busy="true">{[0, 1].map(version => <section key={version} className={styles.version} aria-hidden="true">
+    <h3>{line}</h3><dl>{[0, 1, 2, 3].map(row => <Fragment key={row}><dt>{line}</dt><dd>{line}</dd></Fragment>)}</dl>
+  </section>)}</div>;
+}
+
 /** The model supplies authorized facts/actions; this renderer only emits real callbacks. */
-export function FileInfo({model, subject, layout, pickedFileId, disc, continuation, onManage, detent, onDetentChange, scrollRef, ...surface}: FileInfoProps) {
+export function FileInfo({model, subject, layout, pickedFileId, disc, continuation, pending = false, onManage, detent, onDetentChange, scrollRef, ...surface}: FileInfoProps) {
   const [scrollBody, setScrollBody] = useState<HTMLDivElement | null>(null), [scrolled, setScrolled] = useState(false);
   const bodyRef = useCallback((element: HTMLDivElement | null) => {
     setScrollBody(element);
@@ -114,7 +125,7 @@ export function FileInfo({model, subject, layout, pickedFileId, disc, continuati
     update(); scrollBody.addEventListener('scroll', update, {passive: true});
     return () => scrollBody.removeEventListener('scroll', update);
   }, [scrollBody]);
-  const body = <FileInfoBody model={model} layout={layout} pickedFileId={pickedFileId} disc={disc} continuation={continuation} onManage={onManage} />;
+  const body = pending ? <PendingBody layout={layout} /> : <FileInfoBody model={model} layout={layout} pickedFileId={pickedFileId} disc={disc} continuation={continuation} onManage={onManage} />;
   if (layout === 'phone') return <BottomSheet {...surface} title={<>{model.heading}<small className={styles.subject}>{subject}</small></>} className={[styles.sheet, scrolled ? styles.scrolled : undefined].filter(Boolean).join(' ')} headerClassName={styles.sheetHeader} bodyClassName={styles.sheetBody} detents={[554, 740]} detent={detent} onDetentChange={onDetentChange} scrollRef={bodyRef}>{body}</BottomSheet>;
-  return <Dialog {...surface} title={model.heading} description={<>{subject}<span className={styles.count}>{t('next.overlays.versionCount', {count: continuation?.versionCount ?? model.files.length})}</span></>} responsive={false} placement="right" width={560} className={styles.panel} headerClassName={styles.panelHeader} bodyClassName={styles.panelBody}>{body}</Dialog>;
+  return <Dialog {...surface} title={model.heading} description={<>{subject}{!pending && <span className={styles.count}>{t('next.overlays.versionCount', {count: continuation?.versionCount ?? model.files.length})}</span>}</>} responsive={false} placement="right" width={560} className={styles.panel} headerClassName={styles.panelHeader} bodyClassName={styles.panelBody}>{body}</Dialog>;
 }

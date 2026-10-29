@@ -106,7 +106,10 @@ function Opened({session, binding, data, surface, phone, returnFocusRef, onClose
         : snapshot.surface && !owner ? <StateView title={t('title.nothingHere')} /> : <DetailLoading shape="panel" />}
     </Dialog>;
   }
-  if (!model) return <Dialog open onOpenChange={close} title={t('next.overlays.fileInfo')} returnFocusRef={returnFocusRef}>{failed ? <ScreenFailure retry={retry} /> : <DetailLoading shape="panel" />}</Dialog>;
+  if (!model && failed) return <Dialog open onOpenChange={close} title={t('next.overlays.fileInfo')} returnFocusRef={returnFocusRef}><ScreenFailure retry={retry} /></Dialog>;
+  // Preparing (including the opening preparation, which may not name its Detail yet): the panel
+  // itself, with quiet version-shaped lines, so the versions take their place without a jump.
+  if (!model) return <FileInfo pending model={{heading: t('next.kit.fileInfo'), files: []}} subject={data.item.title} layout={phone ? 'phone' : 'desktop'} open onOpenChange={close} returnFocusRef={returnFocusRef} onManage={() => {}} />;
   return <FileInfo model={model} subject={data.item.title} disc={disc} continuation={continuation} layout={phone ? 'phone' : 'desktop'} open onOpenChange={close} returnFocusRef={returnFocusRef}
     onManage={action => {
       binding.current(data);

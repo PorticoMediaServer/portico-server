@@ -247,8 +247,11 @@ export function parseFileInfoDiscPage(raw: unknown, opening: FileInfoOpening, at
   return Object.freeze({basis: page.basis, window: page.window, occurrence: at, discKind: page.discKind, total: total(page, response),
     titles: unique(titles, value => String(value.number), response)});
 }
-export function parseFileInfoPreparing(raw: unknown, opening: FileInfoOpening, response?: PreparationResponse): PreparingRead {
-  if (!obj(raw) || raw.kind !== 'file-info-preparing' || raw.state !== 'preparing' || !opaque(raw.queryId) || !count(raw.retryAfterMs) || !sameDetail(raw.detail, opening)) invalid(response);
+/** P2-29 amendment: `detail` may be absent only on the opening preparation, before any Detail
+ * was accepted for the item (`opening`); every later preparation echoes the original Detail. */
+export function parseFileInfoPreparing(raw: unknown, opening: FileInfoOpening, response?: PreparationResponse, detailMayBeAbsent = false): PreparingRead {
+  if (!obj(raw) || raw.kind !== 'file-info-preparing' || raw.state !== 'preparing' || !opaque(raw.queryId) || !count(raw.retryAfterMs)
+    || !(raw.detail === undefined && detailMayBeAbsent || sameDetail(raw.detail, opening))) invalid(response);
   return Object.freeze({queryId: raw.queryId, retryAfterMs: raw.retryAfterMs});
 }
 /** The handle of any ready window, read before its rows so a malformed page is still released. */

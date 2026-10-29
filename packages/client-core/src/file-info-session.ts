@@ -76,6 +76,8 @@ export class FileInfoSession {
   private readonly lanes = new Map<string, Lane<unknown, unknown, unknown>>();
   private readonly controller = new AbortController();
   private retired = false;
+  /** A window of this opening has been read: from then on every preparation must name its Detail. */
+  private accepted = false;
 
   constructor(options: FileInfoSessionOptions) {
     this.options = options;
@@ -103,8 +105,8 @@ export class FileInfoSession {
   private window<Read extends Readonly<{cursor?: string}>, Page extends Readonly<{window: FileInfoWindowFacts}>>(path: (read: Read, cursor?: string) => string, parse: (body: unknown, response: PreparationResponse) => Page, onPreparing: () => void) {
     return new FileInfoWindowSession<Read, Page>({
       api: this.options.api, path, poll: fileInfoPaths.query, cancel: fileInfoPaths.query,
-      parse: (body, _read, response) => parse(body, response), window: page => page.window,
-      parsePreparing: (body, response) => parseFileInfoPreparing(body, this.options.opening, response),
+      parse: (body, _read, response) => {const page = parse(body, response); this.accepted = true; return page;}, window: page => page.window,
+      parsePreparing: (body, response) => parseFileInfoPreparing(body, this.options.opening, response, !this.accepted),
       readyQueryId: fileInfoReadyQueryId, errorFromResponse: this.options.errorFromResponse ?? browsePreparationError,
       isCurrent: this.live, signal: this.controller.signal, runtime: this.options.runtime, onPreparing,
     });
