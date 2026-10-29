@@ -312,37 +312,43 @@ func (h *ClaimHandler) runWebClaimWatch(expected ClaimExpected, guard ClaimReque
 		return webClaimAnswer("approval_closed"), true
 	}
 	var status ClaimStatus
-	e = h.runner.Do(ctx, func(ctx context.Context) error {
-		ctx, e := guardedClaimRequest(ctx, h.store, guard)
-		if e != nil {
-			return e
-		}
-		v, e := h.expected(ctx, expected)
-		if e != nil {
-			return e
-		}
-		if _, e = h.store.Approve(ctx, v, d.Envelope); e != nil {
-			return e
-		}
-		coordinator, e := NewCoordinator(v.OperationID, h.store.audience, h.store, h.transport, h.signer)
-		if e != nil {
-			return e
-		}
-		for range 4 {
-			next, e := coordinator.Step(ctx)
+	apply := func() error {
+		return h.runner.Do(ctx, func(ctx context.Context) error {
+			ctx, e := guardedClaimRequest(ctx, h.store, guard)
 			if e != nil {
 				return e
 			}
-			if next.Stage == Installed && next.InstallationAcknowledged {
-				if e = h.afterWebClaimInstalled(ctx, next, local, resume); e != nil {
-					return e
-				}
-				status, e = h.snapshot(ctx)
+			v, e := h.expected(ctx, expected)
+			if e != nil {
 				return e
 			}
-		}
-		return ErrUnavailable
-	})
+			// A retry after a transient failure finds the approval already recorded.
+			if v.Stage == Prepared {
+				if _, e = h.store.Approve(ctx, v, d.Envelope); e != nil {
+					return e
+				}
+			}
+			coordinator, e := NewCoordinator(v.OperationID, h.store.audience, h.store, h.transport, h.signer)
+			if e != nil {
+				return e
+			}
+			for range 4 {
+				next, e := coordinator.Step(ctx)
+				if e != nil {
+					return e
+				}
+				if next.Stage == Installed && next.InstallationAcknowledged {
+					if e = h.afterWebClaimInstalled(ctx, next, local, resume); e != nil {
+						return e
+					}
+					status, e = h.snapshot(ctx)
+					return e
+				}
+			}
+			return ErrUnavailable
+		})
+	}
+	e = retryWebApproval(ctx, apply)
 	if e != nil {
 		if errors.Is(e, ErrOwnerCollision) || errors.Is(e, ErrClaimOwnerRequired) || errors.Is(e, ErrStale) || errors.Is(e, ErrApprovalRequired) {
 			withdraw()
@@ -355,6 +361,46 @@ func (h *ClaimHandler) runWebClaimWatch(expected ClaimExpected, guard ClaimReque
 		return webClaimAnswer("approval_changed"), true
 	}
 	return out, true
+}
+
+// retryWebApproval applies an approval the person already gave, through transient Hosted
+// failures (a timeout, 5xx, a dropped connection): quickly at first (1, 2, 4, 8 s, honouring
+// Retry-After) for about two minutes, then every half minute until the claim request itself
+// expires. One slow Hosted response must never leave setup stuck. A refusal is final at once.
+func retryWebApproval(ctx context.Context, apply func() error) error {
+	started := time.Now()
+	for attempt := 0; ; attempt++ {
+		e := apply()
+		if e == nil || !transientWebApprovalFailure(e) {
+			return e
+		}
+		next := RetryAt(time.Now(), time.Second, attempt, 3, ControlRetryAt(e))
+		if time.Since(started) > webApprovalFastRetry {
+			next = RetryAt(time.Now(), webApprovalSlowRetry, 0, 0, ControlRetryAt(e))
+		}
+		log.Printf("Claim approval from the web is waiting for Portico Services, trying again in %s: %v", time.Until(next).Round(time.Second), e)
+		timer := time.NewTimer(time.Until(next))
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return e
+		case <-timer.C:
+		}
+	}
+}
+
+const (
+	webApprovalFastRetry = 2 * time.Minute
+	webApprovalSlowRetry = 30 * time.Second
+)
+
+func transientWebApprovalFailure(e error) bool {
+	if errors.Is(e, ErrOwnerCollision) || errors.Is(e, ErrClaimOwnerRequired) || errors.Is(e, ErrStale) || errors.Is(e, ErrApprovalRequired) ||
+		errors.Is(e, ErrCancelled) || errors.Is(e, ErrInvalid) || ControlRejected(e) || NeedsClaimReconciliation(e) {
+		return false
+	}
+	var timeout interface{ Timeout() bool }
+	return errors.Is(e, ErrUnavailable) || errors.As(e, &timeout) && timeout.Timeout()
 }
 
 // A genuine installed acknowledgement wakes its ordinary TLS and route work
