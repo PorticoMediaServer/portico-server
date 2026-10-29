@@ -150,7 +150,7 @@ export type ServerClaimEventsResponse = { "approvalEnvelope": unknown; "status":
 export type ServerClaimFinalizeRequest = { "payload": string; "signature": string };
 export type ServerClaimFinalizeResponse = { "claimGeneration": string; "credentialGeneration": string; "operationId": string; "serverId": string };
 export type ServerClaimLookupRequest = { "code": string; "replacesServerId"?: string };
-export type ServerClaimLookupResponse = { "address": string; "code": string; "currentOwnerUsername"?: string; "expiresAt": string; "name": string; "otherPeopleCount"?: number; "ownerTransactionId"?: string; "previousOwnerRole"?: string; "purpose": string; "requestedAt": string; "returnRegistration"?: { "id": string; "origin": string }; "serverId": string; "setupTransactionId"?: string; "status": string; "transitionMode"?: string };
+export type ServerClaimLookupResponse = { "address": string; "code": string; "currentOwnerUsername"?: string; "expiresAt": string; "name": string; "otherPeopleCount"?: number; "ownerTransactionId"?: string; "previousOwnerRole"?: string; "purpose": string; "requestedAt": string; "returnRegistration"?: { "id": string; "origin": string }; "serverId": string; "setupInstalled"?: boolean; "setupTransactionId"?: string; "status": string; "transitionMode"?: string };
 export type ServerClaimNonceRequest = { "payload": string; "signature": string };
 export type ServerClaimNonceResponse = { "expiresAt": string; "issuedAt": string; "nonce": string; "nonceId": string; "requestDigest": string };
 export type ServerClaimPendingRequest = { "payload": string; "signature": string } | { "ownerStart": { "payload": string; "signature": string }; "ownerSwitchCount"?: { "payload": string; "signature": string }; "payload": string; "signature": string } | { "payload": string; "setupStart": { "payload": string; "signature": string }; "signature": string };
@@ -177,7 +177,7 @@ export type ServerRemoveRequest = { "claimGeneration": string; "credentialGenera
 export type ServerRemoveResponse = { "code": string; "status": string };
 export type ServerReturnCompleteRequest = {  };
 export type ServerReturnCompleteResponse = { "location": string };
-export type ServerReturnExchangeRequest = { "code": string; "installationId": string; "purpose": string; "registrationId": string; "serverChallenge": string; "transactionId": string; "verifier": string } | { "installationId": string; "purpose": string; "registrationId": string; "serverChallenge": string; "state": string; "transactionId": string; "verifier": string } | { "installationId": string; "purpose": string; "registrationId": string; "serverChallenge": string; "state": string; "transactionId": string; "verifier": string };
+export type ServerReturnExchangeRequest = { "code": string; "installationId": string; "purpose": string; "registrationId": string; "serverChallenge": string; "transactionId": string; "verifier": string } | { "installationId": string; "purpose": string; "registrationId": string; "serverChallenge": string; "state": string; "transactionId": string; "verifier": string } | { "installationId": string; "purpose": string; "serverChallenge": string; "state": string; "transactionId": string; "verifier": string };
 export type ServerReturnExchangeResponse = { "assertion": { "certificate"?: { "keyId": string; "notAfter": string; "notBefore": string; "publicKey": string; "purpose": string; "revision": number; "revoked": Array<string>; "signature": string }; "keyId": string; "payload": string; "signature": string } };
 export type ServerReturnRegistrationRequest = { "origin": string };
 export type ServerReturnRegistrationResponse = { "id": string; "origin": string };
@@ -190,7 +190,7 @@ export type ServerRoutesObserveResponse = { "generation": string };
 export type ServerRoutesProveRequest = { "endpoint": { "baseUrl": string; "registrationId": string }; "generation": string };
 export type ServerRoutesProveResponse = { "baseUrl": string; "verifiedAt": string };
 export type ServersListRequest = {  };
-export type ServersListResponse = { "items": Array<{ "baseUrl": string; "challengeId"?: string; "claimGeneration"?: string; "credentialGeneration"?: string; "endpointVerified": boolean; "id": string; "lastSeenAt": string; "name": string; "ownedByMe": boolean; "policyRevision": number; "presence": { "lastSeenAt": string | null }; "publicKey": string; "role": string; "routes"?: { "certificate"?: { "keyId": string; "notAfter": string; "notBefore": string; "publicKey": string; "purpose": string; "revision": number; "revoked": Array<string>; "signature": string }; "keyId": string; "payload": string; "signature": string }; "status": string }>; "membershipEnding"?: { "cause": string; "expiresAt": string; "membershipId": string; "sequence": number; "serverId": string; "serverName"?: string }; "version": string; "watch": string };
+export type ServersListResponse = { "items": Array<{ "baseUrl": string; "challengeId"?: string; "claimGeneration"?: string; "credentialGeneration"?: string; "endpointVerified": boolean; "id": string; "lastSeenAt": string; "name": string; "ownedByMe": boolean; "policyRevision": number; "presence": { "lastSeenAt": string | null }; "publicKey": string; "role": string; "routes"?: { "certificate"?: { "keyId": string; "notAfter": string; "notBefore": string; "publicKey": string; "purpose": string; "revision": number; "revoked": Array<string>; "signature": string }; "keyId": string; "payload": string; "signature": string }; "secureConnection": string; "status": string }>; "membershipEnding"?: { "cause": string; "expiresAt": string; "membershipId": string; "sequence": number; "serverId": string; "serverName"?: string }; "version": string; "watch": string };
 export type SessionCreateRequest = { "password": string; "requestId": string; "sessionMode": string; "username": string };
 export type SessionCreateResponse = { "accessToken": string; "account": { "displayName": string; "id": string; "username": string }; "expiresAt": string; "familyId"?: string; "refreshExpiresAt"?: string; "refreshToken"?: string };
 export type SessionCurrentDeleteRequest = {  };
@@ -205,7 +205,6 @@ export type SystemGetRequest = {  };
 export type SystemGetResponse = { "buildId": string; "builtAt": string; "proof": string; "sourceDigest": string; "version": string };
 export type TvAuthorizationTokenRequest = { "deviceCode": string };
 export type TvAuthorizationTokenResponse = { "ciphertext": string; "issuer": string; "kind": string; "nonce": string; "publicKey": string; "recipientKey": string; "requestId": string; "salt": string; "version": number };
-
 export type RouteContracts = {
 "account_create": { request: AccountCreateRequest; response: AccountCreateResponse };
 "account_deletion_accept": { request: AccountDeletionAcceptRequest; response: AccountDeletionAcceptResponse };

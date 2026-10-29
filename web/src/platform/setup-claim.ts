@@ -321,11 +321,11 @@ export class BrowserSetupClaim {
       await current(); connected.api.setAccessToken(record.setupToken);
       const raw = await connected.api.request<unknown>(routePath('get_networking_claim'), 'GET', undefined, operation.signal);
       await current();
-      // Only an exact installed continuation names a return registration here.
+      // Only an exact installed continuation completes admission.
       const continuation = setupContinuation(raw, parseClaimStatus(raw, record.pin), record);
       if (continuation.phase !== 'installed') throw invalid();
       grant = parseDirectSignIn(await connected.api.request(routePath('post_auth_portico_return_exchange'), 'POST', {transactionId: handoff.transactionId, state: record.state,
-        verifier: record.verifier, registrationId: continuation.registrationId, installationId: record.installationId, serverChallenge: proof.start.serverChallenge, purpose: 'setup'}, operation.signal));
+        verifier: record.verifier, installationId: record.installationId, serverChallenge: proof.start.serverChallenge, purpose: 'setup'}, operation.signal));
       await current();
       if (!setupOwnerGrantValid(grant, record)) throw invalid();
       const accountId = grant.snapshot.account.hostedAccountId!;

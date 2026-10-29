@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/preparedmedia"
@@ -38,6 +39,11 @@ func (s *Service) Offers(ctx context.Context, p identity.Principal, scope Offers
 	}
 	tx := gated.Tx()
 	defer gated.Rollback()
+	var kindNum int64
+	if e = tx.QueryRowContext(ctx, `SELECT kind FROM catalog_entities WHERE public_id=pid_blob(?)`, scope.ItemID).Scan(&kindNum); e != nil && !errors.Is(e, sql.ErrNoRows) {
+		return out, e
+	}
+	itemKind, _ := compactcatalog.Kind(kindNum).Name()
 	// Facts are written synchronously now; the item's assets, links, stream
 	// facts and boundaries need no readiness wait (the deleted
 	// CheckItemReadiness only guarded the old projection).
@@ -140,6 +146,10 @@ func (s *Service) Offers(ctx context.Context, p identity.Principal, scope Offers
 		if facts.Video != nil && facts.Video.BitRate > 0 {
 			rate = facts.Video.BitRate
 		}
+		if audioOnlyKind(itemKind) {
+			source.Qualities = MusicQualityOffers(itemKind == "song" || itemKind == "track", source.Available && source.FactsStatus == "known", out.TranscodingOpen, rate)
+			continue
+		}
 		source.Qualities = QualityOffers(source.Height, source.Available && source.FactsStatus == "known", cfg.VideoConversionAllowed(legacyEnabled), policy, rate)
 	}
 
@@ -190,6 +200,7 @@ func (s *Service) Offers(ctx context.Context, p identity.Principal, scope Offers
 		if plan, planErr := loadDeliveryPlan(ctx, tx, session); planErr == nil && plan != nil && plan.QualityID != "" {
 			c.QualityID = plan.QualityID
 		}
+		c.QualityID = currentRungID(c.QualityID, out.Sources[indexes[c.SourceID]].Qualities)
 		out.Current = c
 		// A prepared derivative is not the original marker clock, for the same
 		// reason it is not the original chapter clock. Publish no segments rather

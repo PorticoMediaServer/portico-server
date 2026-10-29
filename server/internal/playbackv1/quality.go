@@ -98,6 +98,10 @@ func (q Quality) apply(c *playback.V1Choice) {
 		}
 	case QualityLimit:
 		c.QualityID = QualityLimit
+		// A pure audio limit carries its kbps in its id, the rung id the offers publish.
+		if q.MaxAudioBitrateKbps > 0 && q.MaxVideoBitrateKbps == 0 && q.MaxHeight == 0 {
+			c.QualityID = playback.LimitQualityID(q.MaxAudioBitrateKbps)
+		}
 		c.Limit = true
 		c.MaxVideoBitrateBPS, c.MaxAudioBitrateBPS, c.MaxVideoHeight = q.MaxVideoBitrateKbps*1000, q.MaxAudioBitrateKbps*1000, q.MaxHeight
 	default:

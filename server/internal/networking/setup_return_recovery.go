@@ -21,7 +21,7 @@ func (h *ClaimHandler) resumeSetupReturnBinding(parent context.Context, restore 
  JOIN networking_claim_identity k ON k.singleton=1 AND k.active_operation_id=i.operation_id AND k.installed_operation_id=i.operation_id
  JOIN identity_setup_completions c ON c.operation_id=i.operation_id
  WHERE i.purpose='setup' AND i.stage='installed' AND i.installation_acknowledged=1
- AND w.watch<>'' AND c.phase='prepared' AND c.registration_id='' AND c.expires_ms>? LIMIT 1`, time.Now().UnixMilli()).Scan(&raw, &operation, &generation)
+ AND w.watch<>'' AND c.phase='prepared' AND c.expires_ms>? LIMIT 1`, time.Now().UnixMilli()).Scan(&raw, &operation, &generation)
 	if err != nil {
 		return
 	}

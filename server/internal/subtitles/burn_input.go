@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/identity"
 	"portico.local/server/internal/mediaartifact"
 )
 
@@ -24,7 +25,7 @@ func (s *Service) SelectedBurnInput(ctx context.Context, session, resource strin
 	var size, offset int64
 	e = gate.Tx().QueryRowContext(ctx, `SELECT v.digest,v.size,st.offset_us FROM playback_subtitle_state st
  JOIN playback_sessions ps ON ps.id=st.session_id AND ps.generation=st.generation
- JOIN authorization_access auth ON auth.hash=ps.session_hash AND auth.revoked=0 AND auth.expires_at>strftime('%Y-%m-%dT%H:%M:%SZ','now') AND (auth.authority!='local' OR EXISTS(SELECT 1 FROM accounts ac WHERE ac.id=auth.account_id AND ac.epoch=auth.epoch))
+ JOIN authorization_access auth ON auth.hash=`+identity.CurrentFamilyTokenSQL("ps.session_hash")+` AND auth.revoked=0 AND auth.expires_at>strftime('%Y-%m-%dT%H:%M:%SZ','now') AND (auth.authority!='local' OR EXISTS(SELECT 1 FROM accounts ac WHERE ac.id=auth.account_id AND ac.epoch=auth.epoch))
  JOIN playback_source_pins source ON source.session_id=ps.id
   JOIN catalog_assets a ON a.token=source.asset_id AND a.size=source.size AND a.modified_ns=source.modified_ns AND a.available=1
  JOIN playback_subtitle_pins pin ON pin.session_id=st.session_id AND pin.resource_id=st.resource_id AND pin.resource_revision=st.resource_revision

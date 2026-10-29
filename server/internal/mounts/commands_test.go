@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"portico.local/server/internal/requestinput"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -182,15 +183,36 @@ func TestReceiptRestartUsesOneOwnedReplacement(t *testing.T) {
 		t.Fatal(e)
 	}
 	pidPath := r.Mount.MountPath + ".fixture-pid"
+	// fixturePID accepts only a complete canonical positive decimal PID that is
+	// not the previous child. The fixture publishes its PID with os.WriteFile,
+	// which truncates before writing; an unvalidated read can therefore catch a
+	// transient empty or torn value and mistake it for the replacement.
+	fixturePID := func(raw []byte, old string) (string, bool) {
+		value := string(raw)
+		pid, err := strconv.Atoi(value)
+		if err != nil || pid <= 0 || strconv.Itoa(pid) != value || value == old {
+			return "", false
+		}
+		return value, true
+	}
 	waitPID := func(old string) string {
 		t.Helper()
 		deadline := time.Now().Add(5 * time.Second)
+		previous := ""
 		for time.Now().Before(deadline) {
 			s.reconcile(ctx)
-			raw, err := os.ReadFile(pidPath)
-			if err == nil && string(raw) != old {
-				return string(raw)
+			current := ""
+			if raw, err := os.ReadFile(pidPath); err == nil {
+				if pid, ok := fixturePID(raw, old); ok {
+					current = pid
+				}
 			}
+			// The same complete replacement PID must be observed twice in a row,
+			// so a value torn by the fixture's rewrite is never taken as the child.
+			if current != "" && current == previous {
+				return current
+			}
+			previous = current
 			time.Sleep(10 * time.Millisecond)
 		}
 		t.Fatal("fixture owned replacement unavailable")

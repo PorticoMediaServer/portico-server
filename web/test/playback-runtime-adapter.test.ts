@@ -1149,6 +1149,23 @@ test('dock completion keeps real listening auto-advance and marks only the confi
   assert.ok(finishedSessions.includes(last.sessionId));
 });
 
+test('E-web-14: a music queue start whose offers carry an unoffered "limit" quality still publishes a dock presentation', async t => {
+  const f = setup(t), port = f.runtime.selectionPlayback(() => true);
+  f.intercept(async (request, response) => {
+    if (request.path.includes('/playback-offers?')) {
+      const body = response.body as {current: Record<string, unknown>};
+      return {...response, body: {...body, current: {...body.current, qualityId: 'limit'}}};
+    }
+    return response;
+  });
+  await port.play({context: selectionContext, items: [selectionLeaf('song-first'), selectionLeaf('song-last')], signal: new AbortController().signal});
+  await f.arrive();
+  const snapshot = f.runtime.getSnapshot();
+  assert.ok(snapshot.fence, 'the queue fence exists');
+  assert.ok(snapshot.presentation, 'the dock presentation is published');
+  assert.equal(snapshot.playback.itemId, 'song-first');
+});
+
 test('dock completion with zero countdown advances only after the real controller publishes its held completion', async t => {
   const f = setup(t);
   f.intercept(async (request, response) => request.method === 'GET' && /^\/v1\/queues\/[^/]+$/.test(request.path)
@@ -2972,7 +2989,7 @@ test('WEB002 EACH five same-authority hints preserve actual media owners in all 
     const time=manualClock(),hub=new FreshnessHub({...time,random:()=>0});
     let retired=0,homeFence=homeViewerFence,revision=1;
     const session={sessionFamilyId:'family',viewer:{...viewer,role:'owner'}} as import('@core/index.ts').LocalSession;
-    const system={id:'server',name:'Study',version:'1',signIn:'local' as const,move:null,setupRequired:false,hostedConfigured:false,hostedAttached:false, apiLevel: 1};
+    const system={id:'server',name:'Study',version:'1',signIn:'local' as const,move:null,setupRequired:false,hostedConfigured:false,hostedAttached:false, apiLevel: 1, apiVersion: '1.0', apiMajors: [1], capabilities: []};
     const direct=()=>({authority:'local',serverId:'server',canManage:true,capabilities:{manageAccount:true,managePeople:true,manageServer:true,manageSignIn:true},account:{id:'account',username:'viewer '+revision,primaryProfileId:'profile',role:'owner',revision,disabled:false,allowedLibraries:[]},profiles:[{id:'profile',name:'Evening '+revision,primary:true,position:0,art:'mint',revision,pinRevision:1,pinRequired:false}]});
     const witnesses={system,direct:parseDirectSnapshot(direct())};
     const preferences={effective:{},deviceClass:'web'} as import('../src/shell/bootstrap.ts').ShellFacts['preferences'];
@@ -3327,5 +3344,377 @@ test('P2-74 E-web-14: artist and album Play mount the music dock AND start the m
     assert.ok(presentation && dockView(s.dock, [presentation]), `${kind}: the dock mounts`);
     assert.equal(s.dock.local?.expanded, false, `${kind}: music sits in the dock`);
     assert.ok(f.video.plays > 0, `${kind}: the media element was told to play`);
+  }
+});
+
+// O-159 watchdog: an accepted start is drawn at once, and is never left silent.
+const startingDisplay = {subject: {kind: 'music' as const, item: {id: 'song_album', kind: 'song' as const, title: 'The pressed album'}}};
+const hangOffers = (request: {path: string; signal?: AbortSignal}) => new Promise<never>((_, reject) => {
+  const stop = () => reject(Object.assign(new Error('aborted'), {name: 'AbortError'}));
+  if (request.signal?.aborted) stop(); else request.signal?.addEventListener('abort', stop, {once: true});
+});
+const spin = async () => {for (let i = 0; i < 20; i++) await new Promise(setImmediate);};
+
+test('O-159: offers that never become current draw the starting dock at once, then stop with a diagnostic at the deadline', async t => {
+  const {openAppLogContext, captureAppLog} = await import('../src/platform/app-log.ts');
+  const closeLog = openAppLogContext(() => true); t.after(closeLog);
+  const f = setup(t, {}, {}, undefined, undefined, {homeFence: false}), life = new AbortController();
+  f.intercept(async (request, response) => /\/playback-offers/.test(request.path) ? hangOffers(request) : response);
+  const start = f.runtime.playFromQueue({container: {kind: 'album', id: 'song_album'}}, {signal: life.signal, isCurrent: () => true}, {display: startingDisplay});
+  // Drawn within the press itself, before any answer: the card's own title.
+  const drawn = f.runtime.getSnapshot().starting;
+  assert.equal(drawn?.display.subject.item.title, 'The pressed album');
+  await start; await f.arrive(); await spin();
+  let s = f.runtime.getSnapshot();
+  assert.ok(s.starting, 'accepted but not drawable: still starting');
+  assert.equal(s.presentation, undefined, 'never claims playing: no Pause, no progress');
+  for (let step = 0; step < 10; step++) {f.clock.advance?.(2500); await spin();}
+  s = f.runtime.getSnapshot();
+  assert.equal(s.starting, undefined);
+  assert.ok(s.startTimedOut, '"Couldn\'t start playback" with Try again');
+  assert.equal(s.session, undefined, 'the accepted start was ended, nothing half-started is left');
+  assert.ok(captureAppLog().entries.some(entry => entry.code === 'playback_not_drawn_offers'), 'the diagnostic names the read that never became current');
+});
+
+test('O-159: a slow but successful start goes from the starting dock to the real dock with no gap', async t => {
+  const f = setup(t, {}, {}, undefined, undefined, {homeFence: false}), life = new AbortController();
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => {release = resolve;});
+  f.intercept(async (request, response) => {if (/\/playback-offers/.test(request.path)) await gate; return response;});
+  const seen: {starting: boolean; presented: boolean}[] = [];
+  const off = f.runtime.subscribe(() => {const s = f.runtime.getSnapshot(); seen.push({starting: !!s.starting, presented: !!s.presentation});});
+  t.after(off);
+  await f.runtime.playFromQueue({container: {kind: 'album', id: 'song_album'}}, {signal: life.signal, isCurrent: () => true}, {display: startingDisplay});
+  await f.arrive(); f.clock.advance?.(3000); await spin();
+  assert.ok(f.runtime.getSnapshot().starting, 'starting while the offers are slow');
+  release(); for (let step = 0; step < 3; step++) await f.arrive();
+  const s = f.runtime.getSnapshot();
+  assert.equal(s.starting, undefined); assert.equal(s.presentation?.kind, 'music'); assert.equal(s.startTimedOut, undefined);
+  const first = seen.findIndex(value => value.starting);
+  assert.ok(first >= 0 && seen.slice(first).every(value => value.starting || value.presented), 'no publication between them draws nothing');
+  f.clock.advance?.(25000); await spin();
+  assert.equal(f.runtime.getSnapshot().startTimedOut, undefined, 'a drawn dock ends the watch; buffering never trips it');
+});
+
+test('O-159: Stop on the starting dock cancels the accepted start cleanly', async t => {
+  const f = setup(t, {}, {}, undefined, undefined, {homeFence: false}), life = new AbortController();
+  f.intercept(async (request, response) => /\/playback-offers/.test(request.path) ? hangOffers(request) : response);
+  await f.runtime.playFromQueue({container: {kind: 'album', id: 'song_album'}}, {signal: life.signal, isCurrent: () => true}, {display: startingDisplay});
+  await f.arrive(); await spin();
+  f.runtime.getSnapshot().starting!.stop(); await spin();
+  let s = f.runtime.getSnapshot();
+  assert.equal(s.starting, undefined); assert.equal(s.session, undefined); assert.equal(s.dock.local, null);
+  f.clock.advance?.(25000); await spin();
+  s = f.runtime.getSnapshot();
+  assert.equal(s.startTimedOut, undefined, 'a stopped start is never reported as a failure');
+  // Before acceptance, Stop is the viewer's own cancel.
+  const g = setup(t, {}, {}, undefined, undefined, {homeFence: false});
+  g.intercept(async (request, response) => request.method === 'POST' && request.path === '/v1/queues' ? hangOffers(request) : response);
+  const early = g.runtime.playFromQueue({container: {kind: 'album', id: 'song_album'}}, {signal: life.signal, isCurrent: () => true}, {display: startingDisplay});
+  g.runtime.getSnapshot().starting!.stop();
+  await assert.rejects(early, (error: Error) => error.name === 'AbortError');
+  assert.equal(g.runtime.getSnapshot().starting, undefined);
+});
+
+// P2-61: every playback start is drawn at once and watched, not only the O-159 reference paths.
+type StartFixture = ReturnType<typeof setup>;
+const videoDisplay = {subject: {kind: 'video' as const, item: {id: 'movie', kind: 'movie' as const, title: 'The pressed movie'}}};
+const startPaths: {name: string; title: string; post: string; live?: boolean; early?: boolean;
+  prepare?: (f: StartFixture) => Promise<void>; run(f: StartFixture, life: AbortSignal): Promise<unknown>; drawn(f: StartFixture): Promise<unknown>}[] = [
+  {name: 'start', title: 'movie', post: '/v1/queues', early: true,
+    run: f => f.runtime.start({entry: selectionLeaf('movie').entry, target: {itemId: 'movie'}}), drawn: f => f.arrive()},
+  {name: 'play (Cast continue here)', title: 'The pressed movie', post: '/v1/queues', early: true,
+    run: f => f.runtime.play('movie', 0, undefined, videoDisplay), drawn: f => f.arrive()},
+  {name: 'play a different version', title: 'movie', post: '/v1/queues',
+    prepare: async f => {
+      f.intercept(async (request, response) => {
+        if (request.path === '/v1/items/movie/playback-options') {
+          const body = response.body as {versions: {id: string}[]};
+          return {...response, body: {...body, versions: [...body.versions, {...body.versions[0], id: 'v2'}]}};
+        }
+        return response;
+      });
+      await f.runtime.play('movie', 25); await f.arrive();
+    },
+    run: (f, signal) => f.runtime.playVersion({itemId: 'movie', versionId: 'v2', context: selectionContext, signal}, () => true), drawn: f => f.arrive()},
+  {name: 'guide channel', title: 'channel', post: '/v1/playback/sessions', live: true, early: true,
+    run: (f, signal) => f.runtime.playFromGuide(homeChannel.channel, {signal, isCurrent: () => true}), drawn: f => f.arriveLive()},
+  {name: 'Home channel', title: 'channel', post: '/v1/playback/sessions', live: true, early: true,
+    run: (f, signal) => f.runtime.playChannel(homeChannel, selectionContext, signal, () => true), drawn: f => f.arriveLive()},
+];
+const spinUntil = async (f: StartFixture, done: () => boolean) => {for (let i = 0; i < 40 && !done(); i++) await spin();};
+const startTitle = (f: StartFixture) => {const subject = f.runtime.getSnapshot().starting?.display.subject; return subject?.kind === 'channel' ? subject.channelName : subject?.item.title;};
+
+// A second edition for the version path; every path's fixture passes through this.
+const withSecondVersion = (request: V1Request, response: V1Response): V1Response => {
+  if (request.path !== '/v1/items/movie/playback-options') return response;
+  const body = response.body as {versions: {id: string}[]};
+  return {...response, body: {...body, versions: [...body.versions, {...body.versions[0], id: 'v2'}]}};
+};
+for (const path of startPaths) {
+  /** After the server accepts, the start can't be drawn: the offers never become current, or the live join never answers. */
+  const undrawable = (request: V1Request) => path.live ? request.method === 'PATCH' && request.path.startsWith('/v1/playback/sessions/live') : /\/playback-offers/.test(request.path);
+  const hold = (f: StartFixture, gate?: Promise<void>) => f.intercept(async (request, response) => {
+    if (undrawable(request)) {if (!gate) return hangOffers(request); await gate;}
+    return withSecondVersion(request, response);
+  });
+  test(`P2-61 ${path.name}: the starting dock is drawn, then the real dock replaces it in place`, async t => {
+    const f = setup(t, {}, {}, undefined, undefined, {homeFence: false}), life = new AbortController();
+    await path.prepare?.(f);
+    let release!: () => void;
+    hold(f, new Promise<void>(resolve => {release = resolve;}));
+    const seen: {starting: boolean; presented: boolean}[] = [];
+    const off = f.runtime.subscribe(() => {const s = f.runtime.getSnapshot(); seen.push({starting: !!s.starting, presented: !!s.presentation});});
+    t.after(off);
+    const start = path.run(f, life.signal);
+    if (path.early) assert.equal(startTitle(f), path.title, 'drawn within the press itself, from the facts the start truly has');
+    await start; await spinUntil(f, () => !!f.runtime.getSnapshot().starting);
+    const waiting = f.runtime.getSnapshot();
+    assert.equal(startTitle(f), path.title);
+    assert.equal(waiting.presentation, undefined, 'never claims playing before the real dock exists');
+    assert.equal(waiting.startTimedOut, undefined);
+    release(); for (let step = 0; step < 3; step++) await path.drawn(f);
+    const s = f.runtime.getSnapshot();
+    assert.equal(s.starting, undefined); assert.ok(s.presentation, 'the real dock is drawn'); assert.equal(s.startTimedOut, undefined);
+    const first = seen.findIndex(value => value.starting);
+    assert.ok(first >= 0 && seen.slice(first).every(value => value.starting || value.presented), 'no publication between them draws nothing');
+    f.clock.advance?.(25000); await spin();
+    assert.equal(f.runtime.getSnapshot().startTimedOut, undefined, 'a drawn dock ends the watch');
+  });
+
+  test(`P2-61 ${path.name}: Stop on the starting dock cancels the accepted start`, async t => {
+    const f = setup(t, {}, {}, undefined, undefined, {homeFence: false}), life = new AbortController();
+    await path.prepare?.(f);
+    hold(f);
+    const outcome = path.run(f, life.signal).then(() => 'started', (error: Error) => error.name);
+    await spinUntil(f, () => !!f.runtime.getSnapshot().starting); await spin();
+    let s = f.runtime.getSnapshot();
+    assert.ok(s.starting, 'accepted and not drawable: still starting');
+    s.starting!.stop(); await spin();
+    s = f.runtime.getSnapshot();
+    assert.equal(s.starting, undefined); assert.equal(s.session, undefined); assert.equal(s.fence, undefined);
+    if (!path.prepare) assert.equal(s.dock.local, null, 'nothing half-started is left'); // a different version keeps the title it replaced as its paused bookmark
+    f.clock.advance?.(25000); await spin();
+    assert.equal(f.runtime.getSnapshot().startTimedOut, undefined, 'a stopped start is never reported as a failure');
+    assert.ok(['started', 'AbortError'].includes(await outcome));
+  });
+
+  if (path.early) test(`P2-61 ${path.name}: Stop before the server answers is the viewer's own cancel`, async t => {
+    const f = setup(t, {}, {}, undefined, undefined, {homeFence: false}), life = new AbortController();
+    await path.prepare?.(f);
+    let posted: AbortSignal | undefined;
+    f.intercept(async (request, response) => request.method === 'POST' && request.path === path.post ? (posted = request.signal, hangOffers(request)) : withSecondVersion(request, response));
+    const rejected = assert.rejects(path.run(f, life.signal), (error: Error) => error.name === 'AbortError');
+    await spinUntil(f, () => !!f.runtime.getSnapshot().starting && !!posted);
+    f.runtime.getSnapshot().starting!.stop();
+    await rejected;
+    assert.equal(f.runtime.getSnapshot().starting, undefined); assert.equal(f.runtime.getSnapshot().session, undefined);
+    f.clock.advance?.(25000); await spin();
+    assert.equal(f.runtime.getSnapshot().startTimedOut, undefined);
+  });
+
+  if (!path.live) test(`P2-61 ${path.name}: an accepted start never drawn stops at the deadline with a named diagnostic, and Try again reruns it`, async t => {
+    const {openAppLogContext, captureAppLog} = await import('../src/platform/app-log.ts');
+    const closeLog = openAppLogContext(() => true); t.after(closeLog);
+    const f = setup(t, {}, {}, undefined, undefined, {homeFence: false}), life = new AbortController();
+    await path.prepare?.(f);
+    hold(f);
+    await path.run(f, life.signal).catch(() => {});
+    await spinUntil(f, () => !!f.runtime.getSnapshot().starting);
+    let s = f.runtime.getSnapshot();
+    assert.ok(s.starting, 'accepted but not drawable: still starting'); assert.equal(s.startTimedOut, undefined);
+    for (let step = 0; step < 10; step++) {f.clock.advance?.(2500); await spin();}
+    s = f.runtime.getSnapshot();
+    assert.equal(s.starting, undefined);
+    assert.ok(s.startTimedOut, '"Couldn\'t start playback" with Try again');
+    assert.equal(s.session, undefined, 'the accepted start was ended, nothing half-started is left');
+    assert.ok(captureAppLog().entries.some(entry => /^playback_not_drawn_(session|offers|presentation)$/.test(entry.code)), 'a named diagnostic is recorded');
+    // Try again reruns the same start, now unobstructed.
+    f.intercept(async (_request, response) => withSecondVersion(_request, response));
+    const posts = () => f.log.filter(request => request.method === 'POST' && request.path === path.post).length, before = posts();
+    await s.startTimedOut!.retry();
+    for (let step = 0; step < 3; step++) await path.drawn(f);
+    assert.equal(posts(), before + 1, 'the same start ran again');
+    assert.equal(f.runtime.getSnapshot().startTimedOut, undefined); assert.ok(f.runtime.getSnapshot().presentation, 'and drew its real dock');
+  });
+  const slowLiveToBound = async (t: TestContext) => {
+    // Mock time before setup: a real timer armed by setup's own requests could not be cleared by a
+    // mocked clearTimeout, and would hold the process open after the file's tests end.
+    t.mock.timers.enable({apis: ['setTimeout', 'Date'], now: Date.now()});
+    const f = setup(t, {}, {}, undefined, undefined, {homeFence: false}), life = new AbortController();
+    slowChannel(f, {ready: false});
+    const run = path.run(f, life.signal).catch(() => {});
+    await spinUntil(f, () => !!f.runtime.getSnapshot().starting);
+    assert.ok(f.runtime.getSnapshot().starting, 'the starting dock is drawn on acceptance');
+    // Past the 20 s watchdog with no stream: still starting, never timed out.
+    await tickLive(t, f, 25_000, () => {
+      const s = f.runtime.getSnapshot();
+      assert.ok(s.starting, 'the starting dock stays'); assert.equal(s.startTimedOut, undefined);
+    });
+    // Past the channel's own 60 s bound.
+    await tickLive(t, f, 40_000);
+    await run;
+    return f;
+  };
+  if (path.live) test(`P2-61 ${path.name}: a Live tune never trips the 20 s watchdog and is ended at the channel's 60 s bound`, async t => {
+    const f = await slowLiveToBound(t), s = f.runtime.getSnapshot();
+    assert.equal(s.startTimedOut, undefined, 'it is the channel bound, not the watchdog');
+    assert.equal(s.presentation, undefined);
+    assert.ok(f.log.some(r => r.method === 'DELETE' && r.path.startsWith('/v1/playback/sessions/live')), 'the tuner is freed');
+  });
+  if (path.live) test(`P2-61 ${path.name}: channel_start_timeout ends the starting dock and is reported`, async t => {
+    const f = await slowLiveToBound(t), s = f.runtime.getSnapshot();
+    assert.equal(s.starting, undefined, 'the start ended');
+  });
+}
+
+/** A Live tune answered at generation 0 with no url, as the live server does: reads stay without a
+ * url (generation 1) until `ready` is set, then the real session shows. `reason` makes reads say
+ * the source is recoverable. Only the channel's own polling is on the (mocked) real timers. */
+function slowChannel(f: ReturnType<typeof setup>, state: {ready: boolean; reason?: string}) {
+  const early = (body: any, generation: number) => ({...body, presentation: {...body.presentation, generation, url: '',
+    linear: {...body.presentation.linear, windowEndMs: 0, liveEdgeMs: 0, state: state.reason ? 'recoverable' : 'preparing', ...(state.reason ? {errorCode: state.reason} : {})}}});
+  f.intercept(async (request, response) => {
+    if (!/^\/v1\/playback\/sessions(\/live_session_\d+.*)?$/.test(request.path) || !response.body) return response;
+    if (request.method === 'POST' && request.path === '/v1/playback/sessions') return {...response, body: early(response.body, 0)};
+    if (state.ready) return response;
+    if (request.method === 'GET') return {...response, body: early(response.body, 1)};
+    if (request.method === 'PUT') { const b = response.body as {session?: unknown}; return b.session ? {...response, body: {...b, session: early(b.session, 1)}} : response; }
+    return response;
+  });
+}
+/** Moves the mocked channel clock and the runtime's manual clock together in 500 ms polls. */
+async function tickLive(t: TestContext, f: ReturnType<typeof setup>, totalMs: number, each?: () => void) {
+  for (let elapsed = 0; elapsed < totalMs; elapsed += 500) { t.mock.timers.tick(500); f.clock.advance(500); await settle(); each?.(); }
+}
+
+test('P2-61 Live: a slow stream keeps the starting dock with no watchdog, then the real dock replaces it', async t => {
+  t.mock.timers.enable({apis: ['setTimeout', 'Date'], now: Date.now()}); // before setup (see above)
+  const f = setup(t, {}, {}, undefined, undefined, {homeFence: false}), life = new AbortController();
+  const state = {ready: false};
+  slowChannel(f, state);
+  const run = f.runtime.playFromGuide(homeChannel.channel, {signal: life.signal, isCurrent: () => true}).catch(() => {});
+  await spin();
+  assert.ok(f.runtime.getSnapshot().starting, 'starting from acceptance');
+  await tickLive(t, f, 8_000, () => {
+    const s = f.runtime.getSnapshot();
+    assert.ok(s.starting, 'the starting dock stays while the stream is absent'); assert.equal(s.startTimedOut, undefined);
+    assert.equal(s.presentation, undefined);
+  });
+  state.ready = true;
+  await tickLive(t, f, 1_500);
+  await f.arriveLive(); await run;
+  const s = f.runtime.getSnapshot();
+  assert.equal(s.starting, undefined, 'the start clears');
+  assert.equal(s.startTimedOut, undefined);
+  assert.ok(s.presentation, 'the real dock arrives');
+  assert.equal(f.log.filter(r => r.method === 'PATCH' && (r.body as {seek?: {live?: boolean}})?.seek?.live === true).length, 1, 'exactly one go-live');
+});
+
+test('P2-61 Live: a recoverable session reads as waiting on the channel source within one poll', async t => {
+  t.mock.timers.enable({apis: ['setTimeout', 'Date'], now: Date.now()}); // before setup (see above)
+  const f = setup(t, {}, {}, undefined, undefined, {homeFence: false}), life = new AbortController();
+  const state: {ready: boolean; reason?: string} = {ready: false};
+  slowChannel(f, state);
+  const run = f.runtime.playFromGuide(homeChannel.channel, {signal: life.signal, isCurrent: () => true}).catch(() => {});
+  await spin();
+  assert.equal(f.runtime.getSnapshot().starting?.waiting, undefined, 'no reason is claimed before the server gives one');
+  state.reason = 'source_unavailable';
+  await tickLive(t, f, 500);
+  assert.equal(f.runtime.getSnapshot().starting?.waiting, 'channel_source');
+  f.runtime.getSnapshot().starting!.stop(); await tickLive(t, f, 1_000); await run;
+});
+
+test('P2-61 local queue: the stored title is drawn at once, replaced in place, Stopped and watched', async t => {
+  const {openAppLogContext, captureAppLog} = await import('../src/platform/app-log.ts');
+  const closeLog = openAppLogContext(() => true); t.after(closeLog);
+  const lifetime = () => ({signal: new AbortController().signal, isCurrent: () => true});
+  // 1. Drawn from the prepared queue's first stored title while the native load is outstanding, then replaced in place.
+  {
+    const port = new ControlledLocalMedia(), f = setup(t, {}, {createPlayer: () => port, createRender: null}, localScope);
+    let release!: () => void;
+    port.gate = () => new Promise<void>(resolve => {release = resolve;});
+    const seen: {starting: boolean; presented: boolean}[] = [];
+    const off = f.runtime.subscribe(() => {const s = f.runtime.getSnapshot(); seen.push({starting: !!s.starting, presented: !!s.presentation});}); t.after(off);
+    const start = f.runtime.playLocalQueue({preparation: localPreparation(), release: async () => {}}, lifetime());
+    assert.equal(startTitle(f), 'Stored song 1');
+    assert.equal(f.runtime.getSnapshot().presentation, undefined, 'never claims playing');
+    await spin(); release(); await start; await spin();
+    const s = f.runtime.getSnapshot();
+    assert.equal(s.starting, undefined); assert.equal(s.presentation?.kind, 'music');
+    const first = seen.findIndex(value => value.starting);
+    assert.ok(first >= 0 && seen.slice(first).every(value => value.starting || value.presented), 'no publication between them draws nothing');
+  }
+  // 2. Stop while the native load is outstanding is the viewer's own cancel and releases the preparation.
+  {
+    const port = new ControlledLocalMedia(), f = setup(t, {}, {createPlayer: () => port, createRender: null}, localScope);
+    let released = 0;
+    port.gate = () => new Promise<void>((_, reject) => port.contexts.at(-1)!.signal.addEventListener('abort', () => reject(new DOMException('Local selection retired', 'AbortError')), {once: true}));
+    const early = f.runtime.playLocalQueue({preparation: localPreparation(), release: async () => {released++;}}, lifetime());
+    const rejected = assert.rejects(early, (error: Error) => error.name === 'AbortError');
+    f.runtime.getSnapshot().starting!.stop(); await rejected; await spin();
+    assert.equal(f.runtime.getSnapshot().starting, undefined); assert.equal(f.runtime.getSnapshot().local, undefined);
+    assert.equal(released, 1, 'the preparation is released exactly once');
+    f.clock.advance?.(25000); await spin();
+    assert.equal(f.runtime.getSnapshot().startTimedOut, undefined);
+  }
+  // 3. An accepted load whose dock is never drawn stops at the deadline with a diagnostic; Stop after acceptance also cancels.
+  for (const how of ['deadline', 'stop'] as const) {
+    const port = new ControlledLocalMedia(), f = setup(t, {}, {createPlayer: () => port, createRender: null}, localScope);
+    let released = 0;
+    // The native port accepted the load but has not yet reported the title as playing.
+    const observed = port.observe.bind(port); port.observe = () => ({...observed(), state: 'loading'});
+    await f.runtime.playLocalQueue({preparation: localPreparation(), release: async () => {released++;}}, lifetime()); await spin();
+    let s = f.runtime.getSnapshot();
+    assert.equal(s.presentation, undefined);
+    if (how === 'stop') {
+      assert.ok(s.starting, 'accepted but not drawable: still starting');
+      s.starting!.stop(); await spin();
+      s = f.runtime.getSnapshot();
+      assert.equal(s.starting, undefined); assert.equal(s.local, undefined);
+      f.clock.advance?.(25000); await spin();
+      assert.equal(f.runtime.getSnapshot().startTimedOut, undefined);
+    } else {
+      for (let step = 0; step < 10; step++) {f.clock.advance?.(2500); await spin();}
+      s = f.runtime.getSnapshot();
+      assert.equal(s.starting, undefined); assert.ok(s.startTimedOut, '"Couldn\'t start playback" with Try again');
+      assert.ok(captureAppLog().entries.some(entry => /^playback_not_drawn_(session|offers|presentation)$/.test(entry.code)));
+    }
+    assert.equal(released, 1, `${how}: the preparation is released exactly once`);
+  }
+});
+
+test('P2-61 local queue: Try again after the watchdog re-acquires a fresh resource and never replays the released one', async t => {
+  const lifetime = () => ({signal: new AbortController().signal, isCurrent: () => true});
+  const stall = async () => {
+    const port = new ControlledLocalMedia(), f = setup(t, {}, {createPlayer: () => port, createRender: null}, localScope);
+    const observed = port.observe.bind(port); port.observe = () => ({...observed(), state: 'loading'});
+    return {port, f};
+  };
+  const expire = async (f: ReturnType<typeof setup>) => {for (let step = 0; step < 10; step++) {f.clock.advance?.(2500); await spin();}};
+  // 1. reacquire supplies resource #2, which is what plays; #1 is released once and never re-attached.
+  {
+    const {port, f} = await stall();
+    const log: string[] = [];
+    const second = {preparation: {...localPreparation(), preparationId: 'fresh_preparation'}, release: async () => {log.push('release2');}};
+    const first = {preparation: localPreparation(), release: async () => {log.push('release1');}, reacquire: async () => {log.push('reacquire'); return second;}};
+    await f.runtime.playLocalQueue(first, lifetime()); await spin(); await expire(f);
+    const timedOut = f.runtime.getSnapshot().startTimedOut;
+    assert.ok(timedOut); assert.deepEqual(log, ['release1']);
+    port.observe = ControlledLocalMedia.prototype.observe.bind(port);
+    await timedOut!.retry(); await spin();
+    assert.deepEqual(log, ['release1', 'reacquire'], 'resource #1 is released once and not touched again; #2 is live');
+    assert.equal(f.runtime.getSnapshot().startTimedOut, undefined);
+    assert.equal(f.runtime.getSnapshot().local?.preparation.preparationId, 'fresh_preparation');
+  }
+  // 2. No reacquire: Try again fails with the named error, not a silent no-op.
+  {
+    const {f} = await stall();
+    let released = 0;
+    await f.runtime.playLocalQueue({preparation: localPreparation(), release: async () => {released++;}}, lifetime()); await spin(); await expire(f);
+    const timedOut = f.runtime.getSnapshot().startTimedOut;
+    assert.ok(timedOut);
+    await assert.rejects(timedOut!.retry(), /local_playback_unavailable/);
+    assert.equal(released, 1);
   }
 });

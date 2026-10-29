@@ -20,7 +20,7 @@ import {CollectionBanner, LiveCard, PosterCard, RankedCard, SquareCard, WideCard
 import {HomeSkeleton, StateLayout} from '../../kit/states';
 import type {ShellArtwork} from '../../shell/artwork';
 import {useShellWidth} from '../../shell/viewport';
-import {currentHomeLive, heroArtworkTreatment, homeCardModel, homeLiveDeadline, homePlaybackTarget, homeSpotlights} from './model';
+import {currentHomeLive, heroArtworkTreatment, homeCardModel, homeLiveDeadline, homeLiveDelay, homePlaybackTarget, homeSpotlights, HOME_LIVE_MIN_MS, type HomeLiveSchedule} from './model';
 import {PagedShelf} from '../browse/PagedShelf';
 import {cardScale, type ScreenAppearance} from '../browse/appearance';
 import styles from './home.module.css';
@@ -117,17 +117,24 @@ export function HomeScreen(bindings: HomeBindings) {
   const refreshLive = useCallback(() => display.invalidate(), [display]);
   const [now, setNow] = useState(Date.now);
   const document = snapshot.document;
+  const liveSchedule = useRef<HomeLiveSchedule>({streak: 0}), liveReadAt = useRef(0);
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
+    const refresh = () => { liveReadAt.current = Date.now(); refreshLive(); };
     const update = () => {
       if (timer) clearTimeout(timer);
       if (globalThis.document.hidden) return;
       const time = Date.now(); setNow(time);
-      if (document?.rows.some(row => row.live && !currentHomeLive(row.live, time))) refreshLive();
-      const deadline = document && homeLiveDeadline(document.rows, time);
-      if (deadline !== undefined) timer = setTimeout(() => {
-        setNow(Date.now()); refreshLive();
-      }, Math.min(60000, Math.max(1, deadline - time)));
+      // An expired live row is withdrawn at once (currentHomeLive) and re-read, but at most once
+      // per HOME_LIVE_MIN_MS: a server whose expiry is past or barely ahead never loops Home.
+      const expired = document?.rows.some(row => row.live && !currentHomeLive(row.live, time));
+      if (expired && time - liveReadAt.current >= HOME_LIVE_MIN_MS) refresh();
+      const deadline = document && (homeLiveDeadline(document.rows, time) ?? (expired ? time : undefined));
+      if (deadline !== undefined) {
+        const next = homeLiveDelay(deadline, time, liveSchedule.current);
+        liveSchedule.current = next.schedule;
+        timer = setTimeout(() => { setNow(Date.now()); refresh(); }, next.delayMs);
+      }
     };
     update(); globalThis.document.addEventListener('visibilitychange', update);
     window.addEventListener('resize', update);

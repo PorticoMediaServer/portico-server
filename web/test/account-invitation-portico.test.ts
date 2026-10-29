@@ -16,7 +16,7 @@ async function fixture(destination: 'adopt' | 'server-origin' = 'adopt',short=fa
   const serverId = 'srv_' + routeBase64(new Uint8Array(await crypto.subtle.digest('SHA-256', input)));
   const pin = {serverId, publicKey: routeBase64(publicBytes), fingerprint: routeBase64(new Uint8Array(await crypto.subtle.digest('SHA-256', publicBytes)))};
   const origin = 'https://inviting.example', hostedOrigin = 'https://account.example', accountId = 'current-hosted-account', code = 'c'.repeat(43);
-  const system = {id: serverId, name: 'Proven inviting server', version: '1', signIn: 'portico', move: null, setupRequired: false, hostedConfigured: true, hostedAttached: true, apiLevel: 1};
+  const system = {id: serverId, name: 'Proven inviting server', version: '1', signIn: 'portico', move: null, setupRequired: false, hostedConfigured: true, hostedAttached: true, apiLevel: 1, apiVersion: '1.0', apiMajors: [1], capabilities: []};
   let selected: unknown;
   const calls: string[] = [], retired: string[] = [], admitted: string[] = [], tokens: string[] = [];
   let current = true, grantAccount = accountId, invalidProof = false;

@@ -38,8 +38,14 @@ func TestSystemKindProducerUsesCanonicalSetupAuthority(t *testing.T) {
 		if err := json.Unmarshal(out.Body.Bytes(), &fields); err != nil {
 			t.Fatal(err)
 		}
-		if len(fields) != 10 {
+		// O-159 adds the negotiation facts: apiVersion, apiMajors and capabilities.
+		if len(fields) != 13 {
 			t.Fatalf("unexpected public fields: %v", fields)
+		}
+		for _, key := range []string{"apiVersion", "apiMajors", "capabilities"} {
+			if _, ok := fields[key]; !ok {
+				t.Fatalf("negotiation field %s missing", key)
+			}
 		}
 		for _, key := range []string{"accessToken", "refreshToken", "owner", "account", "email", "returnRegistrationId"} {
 			if _, ok := fields[key]; ok {

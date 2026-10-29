@@ -8,7 +8,13 @@ export type WebLocalQueueMember = Readonly<{id: string; revision: number; itemId
 export type WebLocalQueuePreparation = Readonly<{preparationId: string; scope: LocalPlaybackScope; selectionRevision: string; items: readonly WebLocalQueueMember[]}>;
 /** Runtime takes ownership through stop, replacement or retained paused restoration.
  * release retires only this app-owned preparation, never another queue's handles. */
-export type WebLocalQueueResource = Readonly<{preparation: WebLocalQueuePreparation; release(): Promise<void>}>;
+export type WebLocalQueueResource = Readonly<{preparation: WebLocalQueuePreparation; release(): Promise<void>;
+  /** Part of the offline-resource contract (O-159). Supplied by the launch host: prepares a FRESH
+   * resource (new handle or blob URL) for the same items, itself carrying reacquire. Try again
+   * after a watchdog stop uses it, because the stopped start's resource is already released. A
+   * host without it gets the named failure `local_playback_unavailable`, never a silent no-op.
+   * No web path builds local resources today; the planned desktop host must implement it. */
+  reacquire?(): Promise<WebLocalQueueResource>}>;
 export type WebLocalQueueSnapshot = Readonly<{
   phase: 'idle' | 'loading' | 'ready' | 'ended' | 'error' | 'disposed'; preparation: WebLocalQueuePreparation; index: number;
   fence?: LocalPlaybackFence; observation?: PlayerObservation; problem?: string;

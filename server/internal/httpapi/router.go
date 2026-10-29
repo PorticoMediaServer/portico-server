@@ -1038,7 +1038,7 @@ func New(d Dependencies) http.Handler {
 			value := ends.Format(time.RFC3339)
 			moveEnds = &value
 		}
-		write(w, 200, SystemInfo{Move: move, MoveEndsAt: moveEnds, ID: d.Identity.ID(), Name: d.Identity.Name(), SignIn: kind, SetupRequired: d.Identity.SetupRequired(), HostedConfigured: d.Hosted != nil && d.Hosted.Configured(), HostedAttached: d.Identity.Hosted(), Version: buildinfo.Info()["version"], APILevel: APILevel})
+		write(w, 200, systemAPI(SystemInfo{Move: move, MoveEndsAt: moveEnds, ID: d.Identity.ID(), Name: d.Identity.Name(), SignIn: kind, SetupRequired: d.Identity.SetupRequired(), HostedConfigured: d.Hosted != nil && d.Hosted.Configured(), HostedAttached: d.Identity.Hosted(), Version: buildinfo.Info()["version"]}))
 	})
 	d.httpHandle(mux, "GET /v1/me", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.principal(r)

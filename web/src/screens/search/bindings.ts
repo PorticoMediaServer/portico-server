@@ -1,4 +1,5 @@
 import {forwardIdentity} from '../detail/context';
+import {entryStartDisplay} from '../../platform/playback/subject';
 import {SearchService, readSearchHistory, clearSearchHistory, deleteSearchHistoryEntry, type SearchEntry, type SearchGroup, type SearchQuery} from '@core/search.ts';
 import {serviceI18n} from '@core/presentation/service-text.ts';
 import {guideWindow, parseChannelGuide, type GuideChannel} from '@core/channel-guide.ts';
@@ -181,7 +182,7 @@ export function createSearchBindings(context: ScreenContext) {
     async play(entry: SearchEntry) {
       life.assert();
       if (results.getSnapshot().phase !== 'ready' || !visible.has(entry) || !('libraryId' in entry) || !entry.libraryId || !entry.playback || entry.available !== true) throw new DOMException('Search playback changed', 'AbortError');
-      await commandContext.effects.play({libraryId: entry.libraryId, itemId: entry.playback.itemId, startSeconds: entry.playback.startSeconds ?? 0}, life.signal(), () => visible.has(entry));
+      await commandContext.effects.play({libraryId: entry.libraryId, itemId: entry.playback.itemId, startSeconds: entry.playback.startSeconds ?? 0, display: entryStartDisplay(entry)}, life.signal(), () => visible.has(entry));
     },
     canPlayArtist(entry: SearchEntry) {
       return life.current() && results.getSnapshot().phase === 'ready' && visible.has(entry)

@@ -1,5 +1,5 @@
 import {routePath, encodedRoutePath} from "../../../contracts/src/route-paths.ts";
-import {decodeStartPlaybackSessionResponse} from '../../../contracts/src/decoders.ts';
+import {decodeOpen} from '../../../contracts/src/runtime.ts';
 import type {StartPlaybackSessionResponse} from '../../../contracts/src/types.ts';
 /**
  * Playback sessions (spec §5) and the controller that plays one on a `MediaPlayer`.
@@ -116,7 +116,8 @@ const freezeWire = <T,>(value: T): T => {
  * A retry-only reply never passes through parseSession or gains a resource identity. */
 export function parseStartPreparation(value: unknown): Readonly<{retryAfterMs: number; session?: PreparingSessionView}> {
   let decoded: StartPlaybackSessionResponse;
-  try {decoded = decodeStartPlaybackSessionResponse(value);} catch {throw new ContractError('preparation response');}
+  // O-159 open tier (R-09): an optional member or list entry with a newer server's enum value is left out.
+  try {decoded = decodeOpen('StartPlaybackSessionResponse', value) as StartPlaybackSessionResponse;} catch {throw new ContractError('preparation response');}
   const retryAfterMs: unknown = Reflect.get(decoded, 'retryAfterMs');
   if (typeof retryAfterMs !== 'number' || !Number.isSafeInteger(retryAfterMs) || retryAfterMs < 1 || retryAfterMs > 10_000)
     throw new ContractError('preparation retry');

@@ -461,3 +461,31 @@ test('Root69 an adapter decode success keeps the exact original identity and its
   assert.deepEqual(result, {id: 'original_session', generation: 1, body: decoded});
   assert.equal(calls, 2); assert.equal(c.jobs.size, 0);
 });
+
+// R-09 (O-159): a 1.0 client reads a "1.1" start. An unknown quality mode, an unknown
+// optional stream action and a subtitle file of an unknown time domain are left out of the
+// 202 preparation view; the 201 session maps unknown kind and state to `other`. A required
+// presentation mode outside the vocabulary still fails closed.
+test('R-09: a newer start with unknown enum values is still read', async () => {
+  const {parseSession} = await import('../src/playback-v1/types.ts');
+  const {decodeOpen} = await import('../../contracts/src/runtime.ts');
+  const newer = () => {
+    const body: any = {...real(), retryAfterMs: 500};
+    body.presentation = {...body.presentation, quality: {mode: 'hi-res'},
+      decision: {...body.presentation.decision, subtitles: {action: 'render', reasons: []}},
+      subtitles: [{trackId: 'future', format: 'webvtt', url: '/v1/sub.vtt', offsetMs: 0, timeDomain: 'presentation-relative'}]};
+    return body;
+  };
+  const parsed = parseStartPreparation(newer());
+  assert.equal(parsed.session?.id, 'original_session');
+  assert.equal((parsed.session?.presentation as any).quality?.mode, undefined);
+  assert.deepEqual((parsed.session?.presentation as any).subtitles, []);
+  const session = parseSession({...real(), kind: 'hologram', state: 'warming'});
+  assert.equal(session.kind, 'other');
+  assert.equal(session.state, 'other');
+  const read = decodeOpen('GetPlaybackSessionResponse', {...real(), playbackInfo: {basis: 'future_basis'}}) as any;
+  assert.equal(read.playbackInfo?.basis, undefined);
+  const required: any = newer();
+  required.presentation.mode = 'teleport';
+  assert.throws(() => parseStartPreparation(required), ContractError);
+});

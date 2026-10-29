@@ -62,7 +62,7 @@ func NetworkingClaimAuthorizer(id *identity.Service, origins []string, policies 
 				}}
 				if d.Hosted != nil && d.Networking != nil && actor.WebOrigin != "" {
 					actor.ResolveSetupReturn = func(ctx context.Context) error {
-						_, err := d.Hosted.PrepareSetupCompletion(ctx, d.Networking, secret, actor.WebOrigin)
+						err := d.Hosted.PrepareSetupCompletion(ctx, d.Networking, secret, actor.WebOrigin)
 						return networkingOwnerStartError(err)
 					}
 				}
@@ -115,7 +115,7 @@ func NetworkingSetupReturnResolver(id *identity.Service, control *hosted.Service
 			return networking.ErrClaimOwnerRequired
 		}
 		pending := identity.PendingAccountSetup{ServerID: id.ID(), RequestID: saved.SetupOperationID, Revision: saved.SetupRevision, AuthMode: "hosted", ClaimRequired: true}
-		_, err := control.PrepareCapturedSetupCompletion(ctx, handler, pending, saved.SetupProof, operation)
+		err := control.PrepareCapturedSetupCompletion(ctx, handler, pending, saved.SetupProof, operation)
 		return networkingOwnerStartError(err)
 	}
 }

@@ -74,7 +74,10 @@ test('Search All continuation admits its appended action objects and withdraws t
     assert.equal(combined.groups[0].nextCursor, '');
     binding.open(continued);await binding.play(continued);
     assert.deepEqual(opened, [continued]);
-    assert.deepEqual(played, [{libraryId: 'library', itemId: 'library-movies-next', startSeconds: 7}]);
+    // The pressed card names the starting dock (title and art) until the real dock replaces it.
+    // The pressed card names the starting dock (title and art) until the real dock replaces it.
+    assert.deepEqual(JSON.parse(JSON.stringify(played)), [{libraryId: 'library', itemId: 'library-movies-next', startSeconds: 7,
+      display: {subject: {kind: 'video', item: {id: 'library-movies-next', kind: 'movie', title: 'library-movies'}}}}]);
     await binding.select('other query', {groups: ['movies']});
     assert.throws(() => binding.open(continued), {name: 'AbortError'});
     await assert.rejects(binding.play(continued), {name: 'AbortError'});

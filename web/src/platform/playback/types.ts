@@ -30,7 +30,13 @@ import type {WebPreparingStarts} from './preparing-start';
 export type WebPlaybackAuthority = V1Viewer & Readonly<{epoch: string | number; viewerFence?: string}>;
 export type WebPlaybackStart = Readonly<{entry: ContentEntry; target: NonNullable<ContentEntry['playback']>; origin?: Readonly<{kind: 'home-row'; rowId: string}>}>;
 export type WebPlaybackVersionStart = Readonly<{itemId: string; versionId: string; context: SelectionContext; signal: AbortSignal}>;
-export type WebPlaybackScreenTarget = Readonly<{libraryId: string; itemId: string; startSeconds: number; versionId?: string; storedResume?: boolean}>;
+/** O-159: the pressed card's own facts, so an accepted start is drawn at once (the starting dock). */
+export type WebPlaybackStartDisplay = Readonly<{subject: PlaybackSubject; posterUrl?: string}>;
+export type WebPlaybackScreenTarget = Readonly<{libraryId: string; itemId: string; startSeconds: number; versionId?: string; storedResume?: boolean; display?: WebPlaybackStartDisplay}>;
+/** A start with no drawable dock yet: drawn from its display facts with Stop only, never "playing". */
+export type WebPlaybackStarting = Readonly<{key: string; display: WebPlaybackStartDisplay; stop: () => void; /** The server reports why it isn't ready yet. */ waiting?: 'channel_source'}>;
+/** An accepted start that never became drawable by its deadline: stopped, with Try again. */
+export type WebPlaybackStartTimedOut = Readonly<{key: string; retry: () => Promise<void>; close: () => void}>;
 export type WebPlaybackScreenLifetime = Readonly<{signal: AbortSignal; isCurrent(): boolean}>;
 export type WebPlaybackSettings = Readonly<{
   audiobookPreferences?: () => AudiobookPreferences;
@@ -98,6 +104,8 @@ export type WebPlaybackRuntimeSnapshot = Readonly<{
   startFailure?: WebPlaybackStartFailure;
   /** The server refused conversion capacity and directed an exact idempotent retry. */
   capacityWait?: WebPlaybackCapacityWait;
+  /** O-159 watchdog: a start drawn before its dock exists, and one stopped at its deadline. */
+  starting?: WebPlaybackStarting; startTimedOut?: WebPlaybackStartTimedOut;
   /** Actual app-local receipt/queue state, never projected as a V1 session or queueView. */
   local?: WebLocalQueueSnapshot;
   nativeVideoSurfaceActive: boolean;

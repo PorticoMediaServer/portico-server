@@ -15,7 +15,7 @@ function fixture(options: {hold?: Promise<void>; route?: AbortSignal} = {}) {
     const path = new URL(String(input)).pathname; calls.push({path, method: init.method ?? 'GET'});
     if (path === routePath('post_reading_sessions')) { if (options.hold) await options.hold; return new Response(JSON.stringify({itemId: 'unit-book', sourceId: 'unit-source', sessionId: `unit-session-${++sequence}`,
       revision: 'a'.repeat(64), format: 'pdf', size: 1024, metadata: {title: 'Stored unit title'}}), {headers: {'Content-Type': 'application/json', ETag: '"' + 'a'.repeat(64) + '"'}}); }
-    if (init.method === 'DELETE') return new Response(null, {status: 204});
+    if (init.method === 'DELETE') {if (init.keepalive) calls.push({path, method: 'DELETE keepalive'}); return new Response(null, {status: 204});}
     throw new Error('unexpected unit operation');
   });
   const source = {getSnapshot: () => preferences, subscribe: () => () => {}};
@@ -93,4 +93,22 @@ test('an open on its way when the route guard aborts is released on arrival', as
   await assert.rejects(opening, error => error instanceof ReadingError && error.code === 'cancelled');
   await f.bound.dispose();
   assert.deepEqual(f.calls.map(call => call.method), ['POST', 'DELETE']);
+});
+
+test('a hard page leave (reload, tab close) releases the held session with a keepalive farewell (E-web-33)', async () => {
+  const page = new EventTarget(), before = (globalThis as {window?: unknown}).window;
+  (globalThis as {window?: unknown}).window = page;
+  try {
+    const f = fixture(), opened = await f.bound.open({itemId: 'unit-book', sourceId: 'unit-source'});
+    page.dispatchEvent(Object.assign(new Event('pagehide'), {persisted: true}));
+    assert.equal(f.calls.some(call => call.method === 'DELETE keepalive'), false, 'a page kept for Back keeps its session');
+    page.dispatchEvent(new Event('pagehide'));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.ok(f.calls.some(call => call.method === 'DELETE keepalive' && call.path === routePath('delete_reading_sessions_sessionId', {sessionId: opened.manifest.sessionId})), JSON.stringify(f.calls));
+    await f.bound.dispose();
+    const count = f.calls.length;
+    page.dispatchEvent(new Event('pagehide'));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(f.calls.length, count, 'a disposed binding sends nothing');
+  } finally {(globalThis as {window?: unknown}).window = before;}
 });

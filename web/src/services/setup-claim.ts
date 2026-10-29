@@ -12,7 +12,8 @@ export type HostedSetupClaimCapture = Readonly<{request?: HostedSetupClaimLink}>
 export type HostedSetupClaimReview = Readonly<{
   request: HostedSetupClaimLink; identity: AccountIdentity; serverId: string; name: string; address: string;
   transactionId: string; requestedAt: string; expiresAt: string; status: 'pending' | 'approved';
-  registration?: Readonly<{id: string; origin: string}>;
+  /** The claim is installed (Hosted `setupInstalled`); only then is Return offered. */
+  installed: boolean;
 }>;
 const invalid = () => new ApiError(400, 'invalid_return', 'invalid_return', false);
 const unavailable = () => new ApiError(409, 'claim_stale', 'claim_stale', false);
@@ -46,7 +47,7 @@ function captureReview(value: HostedSetupClaimReview): HostedSetupClaimReview {
   return Object.freeze({request: captureLink(value.request), identity: Object.freeze({accountId: value.identity.accountId, familyId: value.identity.familyId}),
     serverId: value.serverId, name: value.name, address: value.address, transactionId: value.transactionId,
     requestedAt: value.requestedAt, expiresAt: value.expiresAt, status: value.status,
-    ...(value.registration ? {registration: Object.freeze({id: value.registration.id, origin: value.registration.origin})} : {})});
+    installed: value.installed === true});
 }
 
 /** Synchronous capture only: no store, session restoration or request starts. */
@@ -83,17 +84,12 @@ async function lookup(account: ServicesAccount, request: HostedSetupClaimLink, s
     routeBytes(claim.serverId.slice(4), 32);
     ownerOrigin(claim.address);
     if (claim.otherPeopleCount !== undefined) throw invalid();
-    let registration: HostedSetupClaimReview['registration'];
-    if (claim.returnRegistration) {
-      const value = claim.returnRegistration;
-      if (claim.status !== 'approved' || !value.id.startsWith('ret_') || !value.origin.startsWith('https://') || routeOrigin(value.origin) !== value.origin) throw invalid();
-      routeBytes(value.id.slice(4), 32);
-      registration = Object.freeze({id: value.id, origin: value.origin});
-    }
+    // Setup has no return registration; `setupInstalled` is strictly true, only on approval.
+    if (claim.returnRegistration !== undefined || claim.setupInstalled !== undefined && (claim.setupInstalled !== true || claim.status !== 'approved')) throw invalid();
     const review: HostedSetupClaimReview = Object.freeze({request, identity: Object.freeze(accountIdentity(session)),
       serverId: claim.serverId, name: claim.name, address: claim.address, transactionId: claim.setupTransactionId,
       requestedAt: claim.requestedAt, expiresAt: claim.expiresAt, status: claim.status,
-      ...(registration ? {registration} : {})});
+      installed: claim.setupInstalled === true});
     fresh(review, now);
     return review;
   }, expected);
@@ -106,7 +102,7 @@ export function reviewHostedSetupClaim(account: ServicesAccount, request: Hosted
 function sameClaim(prior: HostedSetupClaimReview, current: HostedSetupClaimReview) {
   if (prior.serverId !== current.serverId || prior.name !== current.name || prior.address !== current.address ||
       prior.transactionId !== current.transactionId || prior.requestedAt !== current.requestedAt || prior.expiresAt !== current.expiresAt ||
-      prior.registration && (!current.registration || prior.registration.id !== current.registration.id || prior.registration.origin !== current.registration.origin)) throw invalid();
+      prior.installed && !current.installed) throw invalid();
 }
 
 /** Explicit approval/denial uses the same current Hosted account and family
@@ -128,7 +124,7 @@ export async function decideHostedSetupClaim(account: ServicesAccount, review: H
 }
 
 /** The private producer returns to the original signed address, while its
- * installed HTTPS registration may be a different managed address. Never
+ * HTTPS registration, once attached, may be a different managed address. Never
  * substitute that registration, a URL hint or an arbitrary return parameter. */
 export function validateHostedSetupReturn(location: string, review: Pick<HostedSetupClaimReview, 'address' | 'transactionId'>) {
   if (!identifier(review.transactionId)) throw invalid();
@@ -137,14 +133,14 @@ export function validateHostedSetupReturn(location: string, review: Pick<HostedS
   return location;
 }
 
-/** Explicit completion only after lookup resolves the genuine installed
- * registration. No polling, ordinary Start, exchange or Server session write. */
+/** Explicit completion only after lookup reports the claim installed.
+ * No polling, ordinary Start, exchange or Server session write. */
 export async function completeHostedSetupClaim(account: ServicesAccount, review: HostedSetupClaimReview, signal: AbortSignal) {
   review = captureReview(review);
   fresh(review);
   const current = await lookup(account, review.request, signal, review.identity);
   sameClaim(review, current);
-  if (current.status !== 'approved' || !current.registration) return;
+  if (current.status !== 'approved' || !current.installed) return;
   const location = await currentAccountWork(account, async session => {
     signal.throwIfAborted(); fresh(current);
     const raw = await account.api.send(encodedRoutePath('server_return_complete', {id: encodeURIComponent(current.transactionId)}), 'POST', {}, signal, session.accessToken);

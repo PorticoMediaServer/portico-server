@@ -366,7 +366,9 @@ type PorticoReturnBinding struct {
 // setup/session/ownership writer, closing the gap after the network exchange.
 func CheckPorticoReturnTx(ctx context.Context, tx *sql.Tx, who PorticoIdentity) error {
 	r := who.Return
-	if r == nil || !r.ExpiresAt.After(time.Now()) || r.RegistrationID == "" || r.ClaimGeneration < 1 || r.CredentialGeneration < 1 {
+	// Setup admission completes at claim install, before any HTTPS return registration
+	// exists (O-163); every other return names its verified registration.
+	if r == nil || !r.ExpiresAt.After(time.Now()) || (r.Purpose == "setup") != (r.RegistrationID == "") || r.ClaimGeneration < 1 || r.CredentialGeneration < 1 {
 		return ErrUnauthorized
 	}
 	if r.Purpose == "sign-in" && (r.CurrentOwnerAccountID != "" || r.PreviousOwnerRole != "") {

@@ -3,6 +3,8 @@
 export const APP_LOG_CODES = Object.freeze([
   'audio_transition_unavailable', 'audio_edge_late', 'audio_processing_unavailable',
   'equalizer_filter_unavailable', 'audio_autoplay_blocked',
+  // O-159: an accepted start that never became drawable, by the read it was still missing.
+  'playback_not_drawn_session', 'playback_not_drawn_offers', 'playback_not_drawn_presentation',
 ] as const);
 export type AppLogCode = (typeof APP_LOG_CODES)[number];
 export type AppLogLevel = 'info' | 'warn' | 'error';

@@ -1,5 +1,5 @@
 import {HttpLocalApi, type HostedServer, type LocalSession} from '@core/index.ts';
-import {ServerSignInProbe, assertSameApiLevel, parseServerSignIn, type ServerSignIn} from '@core/sign-in.ts';
+import {ServerSignInProbe, negotiateServer, parseServerSignIn, type ServerSignIn} from '@core/sign-in.ts';
 import {directSignIn, directSignInContinuation, shouldRetireAccountSession, completeDirectSignInChallenge, changeRequiredPassword, parseDirectSnapshot, type DirectSignIn, type DirectSnapshot} from '@core/profile-management.ts';
 import {inspectDirectServer, connectPairedServer, connectPairedPorticoServer, connectHostedServer, rememberNativeSession, type ConnectionEnvironment, type RememberedServer} from '@core/server-connections.ts';
 import {assertFirstContactIdentity, RouteError, sameServerPin, type ServerPin} from '@core/route-identity.ts';
@@ -171,7 +171,7 @@ export class BrowserAccountEntry {
    const verified=parseServerSignIn(await api.request(routePath('get_system'),'GET',undefined,op.signal));
    if(!guard.current())return false;
    if(pin.serverId!==server.id||pin.publicKey!==server.publicKey||connected.hosted.origin!==account.origin||connected.hosted.accountId!==account.accountId||verified.id!==server.id||verified.signIn!=='portico'||verified.setupRequired)throw new RouteError('identity_mismatch','The server identity or sign-in changed.');
-   assertSameApiLevel(verified);
+   negotiateServer(verified);
    const saved=await this.ports.store.read();if(!guard.current())return false;
    if(saved.revision!==revision)throw new CodedError('cancelled','The server selection changed.');
    assertFirstContactIdentity(origin,pin,{linkId:server.id,knownRoutes:knownServerRoutes(saved)});
