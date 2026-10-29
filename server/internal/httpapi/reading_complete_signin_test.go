@@ -21,15 +21,18 @@ import (
 
 // Exercise real multi-page Reading inventory transactions, the supervised
 // path worker and real HTTP identity writes. The storage guard holds the next
-// outside-writer step after 129 objects, so success cannot mean an idle scan.
+// outside-writer step midway through the folder. Inventory publishes one name
+// per turn, so both sides of the hold contain many genuine committed pages.
 func TestReadingCompleteMultiPageScanAllowsRealHTTPSignIn(t *testing.T) {
+	const files = 130
+	const heldPages = files / 2
 	f := newV1Fixture(t, 0)
 	root := t.TempDir()
 	folder := filepath.Join(root, "Writer", "Series")
 	if err := os.MkdirAll(folder, 0700); err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 130; i++ {
+	for i := 0; i < files; i++ {
 		if err := os.WriteFile(filepath.Join(folder, fmt.Sprintf("Series %03d.pdf", i)), readingtest.PDF(), 0600); err != nil {
 			t.Fatal(err)
 		}
@@ -52,7 +55,7 @@ func TestReadingCompleteMultiPageScanAllowsRealHTTPSignIn(t *testing.T) {
 			if err := f.db.QueryRow(`SELECT count(*) FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id WHERE s.library_id=?`, library.ID).Scan(&n); err != nil {
 				return err
 			}
-			if n >= 129 {
+			if n >= heldPages {
 				once.Do(func() { close(entered); <-release })
 			}
 		}
@@ -81,7 +84,19 @@ func TestReadingCompleteMultiPageScanAllowsRealHTTPSignIn(t *testing.T) {
 	select {
 	case <-entered:
 	case <-time.After(15 * time.Second):
+		// A refused inventory step fails the job and never reaches the guard;
+		// report that instead of blaming an idle scan.
+		if state, err := scan.Get(job.ID); err == nil && state.Status == "failed" {
+			t.Fatalf("Reading scan failed before sign-in: %+v", state)
+		}
 		t.Fatal("scan did not publish multiple actual Reading pages")
+	}
+	var observedFiles int
+	if err = f.db.QueryRow(`SELECT count(*) FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id WHERE s.library_id=?`, library.ID).Scan(&observedFiles); err != nil {
+		t.Fatal(err)
+	}
+	if observedFiles < heldPages || observedFiles >= files {
+		t.Fatalf("sign-in must interrupt a live multi-page scan: %d of %d files", observedFiles, files)
 	}
 	var series int
 	if err = f.db.QueryRow(`SELECT count(*) FROM reading_path_head WHERE series IS NOT NULL`).Scan(&series); err != nil || series != 0 {
@@ -122,7 +137,7 @@ func TestReadingCompleteMultiPageScanAllowsRealHTTPSignIn(t *testing.T) {
 			if err = f.db.QueryRow(`SELECT count(*) FROM reading_path_head WHERE series='Series' AND author='Writer'`).Scan(&series); err != nil {
 				t.Fatal(err)
 			}
-			if series == 130 {
+			if series == files {
 				break
 			}
 		}
