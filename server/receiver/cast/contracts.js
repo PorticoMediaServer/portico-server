@@ -108719,14 +108719,6 @@ var PorticoCastContracts = (function(exports) {
 						},
 						"expiresAt": { "type": "string" },
 						"phase": { "type": "string" },
-						"returnRegistration": {
-							"properties": {
-								"id": { "type": "string" },
-								"origin": { "type": "string" }
-							},
-							"required": ["id", "origin"],
-							"type": "object"
-						},
 						"start": {
 							"properties": {
 								"payload": { "type": "string" },
@@ -165572,12 +165564,6 @@ var PorticoCastContracts = (function(exports) {
 						"const": "setup",
 						"type": "string"
 					},
-					"registrationId": {
-						"maxLength": 128,
-						"minLength": 1,
-						"pattern": "^[A-Za-z0-9_-]+$",
-						"type": "string"
-					},
 					"serverChallenge": {
 						"maxLength": 128,
 						"minLength": 32,
@@ -165607,7 +165593,6 @@ var PorticoCastContracts = (function(exports) {
 					"transactionId",
 					"state",
 					"verifier",
-					"registrationId",
 					"installationId",
 					"serverChallenge",
 					"purpose"
@@ -174919,14 +174904,6 @@ var PorticoCastContracts = (function(exports) {
 						},
 						"expiresAt": { "type": "string" },
 						"phase": { "type": "string" },
-						"returnRegistration": {
-							"properties": {
-								"id": { "type": "string" },
-								"origin": { "type": "string" }
-							},
-							"required": ["id", "origin"],
-							"type": "object"
-						},
 						"start": {
 							"properties": {
 								"payload": { "type": "string" },
@@ -175080,14 +175057,6 @@ var PorticoCastContracts = (function(exports) {
 						},
 						"expiresAt": { "type": "string" },
 						"phase": { "type": "string" },
-						"returnRegistration": {
-							"properties": {
-								"id": { "type": "string" },
-								"origin": { "type": "string" }
-							},
-							"required": ["id", "origin"],
-							"type": "object"
-						},
 						"start": {
 							"properties": {
 								"payload": { "type": "string" },
@@ -175244,14 +175213,6 @@ var PorticoCastContracts = (function(exports) {
 						},
 						"expiresAt": { "type": "string" },
 						"phase": { "type": "string" },
-						"returnRegistration": {
-							"properties": {
-								"id": { "type": "string" },
-								"origin": { "type": "string" }
-							},
-							"required": ["id", "origin"],
-							"type": "object"
-						},
 						"start": {
 							"properties": {
 								"payload": { "type": "string" },
@@ -175408,14 +175369,6 @@ var PorticoCastContracts = (function(exports) {
 						},
 						"expiresAt": { "type": "string" },
 						"phase": { "type": "string" },
-						"returnRegistration": {
-							"properties": {
-								"id": { "type": "string" },
-								"origin": { "type": "string" }
-							},
-							"required": ["id", "origin"],
-							"type": "object"
-						},
 						"start": {
 							"properties": {
 								"payload": { "type": "string" },
@@ -175633,14 +175586,6 @@ var PorticoCastContracts = (function(exports) {
 						},
 						"expiresAt": { "type": "string" },
 						"phase": { "type": "string" },
-						"returnRegistration": {
-							"properties": {
-								"id": { "type": "string" },
-								"origin": { "type": "string" }
-							},
-							"required": ["id", "origin"],
-							"type": "object"
-						},
 						"start": {
 							"properties": {
 								"payload": { "type": "string" },
@@ -175877,14 +175822,6 @@ var PorticoCastContracts = (function(exports) {
 						},
 						"expiresAt": { "type": "string" },
 						"phase": { "type": "string" },
-						"returnRegistration": {
-							"properties": {
-								"id": { "type": "string" },
-								"origin": { "type": "string" }
-							},
-							"required": ["id", "origin"],
-							"type": "object"
-						},
 						"start": {
 							"properties": {
 								"payload": { "type": "string" },
