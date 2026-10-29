@@ -7,6 +7,7 @@ import (
 	"errors"
 	"time"
 
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/personalstate"
@@ -182,17 +183,21 @@ func (s *Service) SetReadingMarkAll(server, library string, in ReadingMarkAllCom
 	}
 	cte := `WITH actor(profile) AS (VALUES (?)), targets AS (` + targets + `) `
 	args := append([]any{viewer.Profile}, targetArgs...)
-	var conflicts, overflow int64
+	var conflicts, overflow, held int64
 	// Reading's existing setter compares its watched value (including the
 	// authored zero resume value) before rereading untouched location/progress.
 	// Preserve that revision rule without writing any reading or AV location.
 	changed := `NOT COALESCE(` + personalstate.SQL("actor.profile", "t.item_id") + `,0) OR COALESCE((SELECT position FROM progress WHERE profile_id=actor.profile AND item_id=t.item_id),0)<>0`
 	err = tx.QueryRowContext(ctx, cte+`SELECT count(*),COALESCE(sum(CASE WHEN `+changed+` THEN 1 ELSE 0 END),0),
  COALESCE(sum(EXISTS(SELECT 1 FROM personal_conflicts c WHERE c.profile_id=actor.profile AND c.item_id=t.item_id AND c.field='watched' AND c.resolved=0)),0),
- COALESCE(sum(CASE WHEN (`+changed+`) AND COALESCE(p.revision,0)>=9007199254740991 THEN 1 ELSE 0 END),0)
- FROM targets t CROSS JOIN actor LEFT JOIN personal_items p ON p.profile_id=actor.profile AND p.item_id=t.item_id`, args...).Scan(&out.Count, &out.Changed, &conflicts, &overflow)
+ COALESCE(sum(CASE WHEN (`+changed+`) AND COALESCE(p.revision,0)>=9007199254740991 THEN 1 ELSE 0 END),0),
+ COALESCE(sum(EXISTS(SELECT 1 FROM catalog_entity_mutations WHERE status<>'terminal' AND (entity_id=t.item_id OR target_id=t.item_id))),0)
+ FROM targets t CROSS JOIN actor LEFT JOIN personal_items p ON p.profile_id=actor.profile AND p.item_id=t.item_id`, args...).Scan(&out.Count, &out.Changed, &conflicts, &overflow, &held)
 	if err != nil {
 		return out, err
+	}
+	if held != 0 {
+		return out, compactcatalog.ErrEntityMutating
 	}
 	if out.Count < 0 || out.Count > 9007199254740991 {
 		return out, ErrReadingProjectionChanged

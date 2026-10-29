@@ -1,9 +1,11 @@
 package playback
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"math"
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/operations"
 )
@@ -42,6 +44,13 @@ func claimSessionProgress(tx *sql.Tx, p identity.Principal, item, id string, res
 // Private candidates and retries do not claim progress. A newer manual watched/
 // resume mutation fences even an earlier accepted candidate still preparing.
 func activatePersonalWriter(tx *sql.Tx, p identity.Principal, item, id string, resume float64, ordinal int64) error {
+	var entity int64
+	if err := tx.QueryRow(`SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)`, item).Scan(&entity); err != nil {
+		return err
+	}
+	if err := compactcatalog.RequireEntityAcquirableTx(context.Background(), tx, entity); err != nil {
+		return err
+	}
 	key := identity.PersonalKey(p.Viewer)
 	if _, err := tx.Exec(`INSERT OR IGNORE INTO playback_personal_claims(playback_id,profile_key,item_id,accepted_ordinal) SELECT ?,?,e.id,? FROM catalog_entities e WHERE e.public_id=pid_blob(?)`, id, key, ordinal, item); err != nil {
 		return err

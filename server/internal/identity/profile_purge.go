@@ -47,8 +47,18 @@ const (
 	// purgePlanVersion changes whenever a builder or predicate semantic changes.
 	// It is mixed into the cursor digest together with the literal SQL of every
 	// unit, so a builder edit cannot silently reinterpret an old cursor.
-	purgePlanVersion = "p2-62-profile-purge-v6-share-edges"
+	purgePlanVersion = "p2-62-profile-purge-v7-o022"
 )
+
+// The O022 job retains its actual mutation/generation and plan digest. Clearing
+// the owner invalidates capture; its owner must drain any old private header
+// before restarting raw discovery, never treating this reset as copy-complete.
+const purgeCatalogCaptureResetSet = "local_account='',local_profile=''," +
+	"local_membership_incarnation='',local_profile_lifetime=''," +
+	"owner_after='',owner_value='',owner_started=0,current_state_id=NULL," +
+	"capture_arm=0,source_after=0,reading_arm='current',reading_started=0," +
+	"reading_asset_after=0,reading_state_after=0,reading_source_after=''," +
+	"identity_after=0,cursor='',state='pending',attempt=0,next_attempt_ms=0,reason=''"
 
 // purgeRevokeFamilySQL is the one compiled statement of the revocation unit.
 const purgeRevokeFamilySQL = `SELECT id FROM authorization_session_families WHERE authority='local' AND account_id=? AND profile_id=? AND revoked=0 ORDER BY id LIMIT 1`
@@ -124,25 +134,27 @@ const (
 type purgeScope uint8
 
 const (
-	scopeNone          purgeScope = iota
-	scopePersonal                 // profile_id = PersonalKey(local, account, profile)
-	scopeTuple                    // authority/account_id/profile_id
-	scopeTuple2                   // account_id/profile_id
-	scopeViewerKey                // profile_key = JSON ["local",account,profile]
-	scopeOwnerKey                 // owner_key = PersonalKey
-	scopeOwned                    // owner_authority/owner_account/owner_profile
-	scopeActor                    // actor = JSON ["local",account,profile]
-	scopeConsole                  // scope IN (viewer, profile:, device:web|mobile|television, report:)
-	scopeAudiences                // api_change_pending/api_events audiences of this profile
-	scopeProfileID                // profile_id = the raw profile id
-	scopeDeviceLast               // account_id + last_profile_id
-	scopeRecipient                // recipient_profile_id
-	scopeP251                     // account scope row + profile id + exact profile incarnation
-	scopeRawActor                 // actor authority/account/profile, the raw tuple
-	scopeCursor                   // profile_cursor = the retiring personal key
-	scopeRoot                     // account + profile + exact profile incarnation (P251 root)
-	scopeRetained                 // retained_title_state: raw profile id OR canonical owner key
-	scopePreparedActor            // prepared_media_jobs principal_json actor tuple
+	scopeNone                 purgeScope = iota
+	scopePersonal                        // profile_id = PersonalKey(local, account, profile)
+	scopeTuple                           // authority/account_id/profile_id
+	scopeTuple2                          // account_id/profile_id
+	scopeViewerKey                       // profile_key = JSON ["local",account,profile]
+	scopeOwnerKey                        // owner_key = PersonalKey
+	scopeOwned                           // owner_authority/owner_account/owner_profile
+	scopeActor                           // actor = JSON ["local",account,profile]
+	scopeConsole                         // scope IN (viewer, profile:, device:web|mobile|television, report:)
+	scopeAudiences                       // api_change_pending/api_events audiences of this profile
+	scopeProfileID                       // profile_id = the raw profile id
+	scopeDeviceLast                      // account_id + last_profile_id
+	scopeRecipient                       // recipient_profile_id
+	scopeP251                            // account scope row + profile id + exact profile incarnation
+	scopeRawActor                        // actor authority/account/profile, the raw tuple
+	scopeCursor                          // profile_cursor = the retiring personal key
+	scopeRoot                            // account + profile + exact profile incarnation (P251 root)
+	scopeRetained                        // retained_title_state: raw profile id OR canonical owner key
+	scopePreparedActor                   // prepared_media_jobs principal_json actor tuple
+	scopeCatalogLocalBinding             // O022 exact account/profile, across stale lifetimes
+	scopeCatalogRetainedOwner            // O022 canonical local or legacy raw owner frontier
 )
 
 type purgeHop struct{ table, keys, fk string }
@@ -642,7 +654,7 @@ func (j *purgeJob) scopeArgs(scope purgeScope) []any {
 		return []any{personal}
 	case scopeTuple, scopeOwned:
 		return []any{"local", j.account, j.profile}
-	case scopeTuple2, scopeDeviceLast:
+	case scopeTuple2, scopeDeviceLast, scopeCatalogLocalBinding:
 		return []any{j.account, j.profile}
 	case scopeViewerKey, scopeActor:
 		return []any{viewerKey}
@@ -654,7 +666,7 @@ func (j *purgeJob) scopeArgs(scope purgeScope) []any {
 		return []any{j.profile}
 	case scopeP251, scopeRoot:
 		return []any{j.account, j.profile, j.profileLifetime}
-	case scopeRetained:
+	case scopeRetained, scopeCatalogRetainedOwner:
 		return []any{personal, j.profile}
 	case scopePreparedActor:
 		return []any{"local", j.account, j.profile}
@@ -684,6 +696,10 @@ func purgeScopeSQL(scope purgeScope) string {
 		return "p.scope IN(?,?,?,?,?,?)"
 	case scopeRoot:
 		return "p.account_id=? AND p.profile_id=? AND p.profile_incarnation=?"
+	case scopeCatalogLocalBinding:
+		return "p.local_account=? AND p.local_profile=?"
+	case scopeCatalogRetainedOwner:
+		return "p.owner_value IN(?,?)"
 	case scopePreparedActor:
 		return "json_extract(p.principal_json,'$.authority')=? AND json_extract(p.principal_json,'$.accountId')=? AND json_extract(p.principal_json,'$.profileId')=?"
 	case scopeRetained:

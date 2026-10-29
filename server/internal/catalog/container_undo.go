@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/entityid"
 	"portico.local/server/internal/identity"
@@ -186,6 +187,9 @@ func (s *Service) UndoContainerPersonal(ctx context.Context, p identity.Principa
 			return ErrPersonalConflict
 		}
 
+		if e = compactcatalog.RequirePersonalContainerWriteTx(ctx, tx, container); e != nil {
+			return e
+		}
 		beforeStates, e := readPersonalBatch(ctx, tx, profile, ids)
 		if e != nil {
 			return e

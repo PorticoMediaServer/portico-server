@@ -29,6 +29,7 @@ import (
 
 	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/persistence"
 	"portico.local/server/internal/readingtest"
 )
@@ -44,8 +45,8 @@ type captureFixture struct {
 	root                 string
 }
 
-// newCaptureFixture builds a real reading title and a real admitted removal
-// mutation through the production writers.
+// newCaptureFixture builds the real owner and Reading title before mutation
+// admission, through the production writers.
 func newCaptureFixture(t *testing.T) *captureFixture {
 	t.Helper()
 	c := catalogtest.Open(t)
@@ -60,6 +61,17 @@ func newCaptureFixture(t *testing.T) *captureFixture {
 	f.root = t.TempDir()
 	library := c.Library("reading", "Reading", "book", f.root)
 	f.item, f.token = captureAddPDF(t, c, library, 0, f.root, "original.pdf")
+	return f
+}
+
+// Admission follows fixture construction so the real mutation captures every
+// version and attachment. Tests cannot append files behind held custody.
+func beginCaptureFixture(t *testing.T, f *captureFixture) {
+	t.Helper()
+	if f.m.Ref.ID != "" {
+		return
+	}
+	c := f.c
 	var ref compactcatalog.MutationRef
 	c.Write(func(ctx context.Context, tx *sql.Tx) error {
 		var err error
@@ -72,7 +84,6 @@ func newCaptureFixture(t *testing.T) *captureFixture {
 		f.m, err = compactcatalog.ReadEntityMutationTx(ctx, tx, ref)
 		return err
 	})
-	return f
 }
 
 // captureAddPDF writes one real publication file and links it to the item (or
@@ -178,23 +189,11 @@ func captureCurrentPosition(t *testing.T, c *catalogtest.Catalog, owner string, 
 }
 
 // captureDrive runs the real step until publication, a terminal finish or an
-// unexpected error. Sentinels are no-write outcomes and are not rolled back.
+// unexpected error. Every refusal rolls back through the actual writer boundary.
 func captureDrive(t *testing.T, c *catalogtest.Catalog, m compactcatalog.EntityMutation, max int) (bool, int) {
 	t.Helper()
 	for i := 0; i < max; i++ {
-		var published bool
-		var stepErr error
-		c.Write(func(ctx context.Context, tx *sql.Tx) error {
-			published, stepErr = captureRetainedOwnerStepTx(ctx, tx, m)
-			if stepErr == nil {
-				return nil
-			}
-			if errors.Is(stepErr, errRetainedCaptureRoot) || errors.Is(stepErr, errRetainedCaptureState) || errors.Is(stepErr, errRetainedCaptureFinished) {
-				// No write was made by a sentinel outcome.
-				return nil
-			}
-			return stepErr
-		})
+		published, _, stepErr := captureStepOnce(t, c, m)
 		if stepErr != nil {
 			switch {
 			case errors.Is(stepErr, errRetainedCaptureFinished):
@@ -214,21 +213,13 @@ func captureDrive(t *testing.T, c *catalogtest.Catalog, m compactcatalog.EntityM
 
 func captureStepOnce(t *testing.T, c *catalogtest.Catalog, m compactcatalog.EntityMutation) (bool, bool, error) {
 	t.Helper()
-	var published, progressed bool
-	var stepErr error
-	c.Write(func(ctx context.Context, tx *sql.Tx) error {
-		published, stepErr = captureRetainedOwnerStepTx(ctx, tx, m)
-		if stepErr == nil {
-			progressed = true
-			return nil
-		}
-		if errors.Is(stepErr, errRetainedCaptureRoot) || errors.Is(stepErr, errRetainedCaptureState) || errors.Is(stepErr, errRetainedCaptureFinished) {
-			// Sentinels make no write and must not roll back anything.
-			return nil
-		}
-		return stepErr
+	var published bool
+	stepErr := dbwork.WithWriteTx(context.Background(), c.DB, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
+		var err error
+		published, err = captureRetainedOwnerStepTx(context.Background(), tx, m)
+		return err
 	})
-	return published, progressed, stepErr
+	return published, stepErr == nil, stepErr
 }
 
 func captureJob(t *testing.T, c *catalogtest.Catalog, mutation string) (arm int, ownerStarted bool, state, reason, ownerValue, lifetime string, current sql.NullInt64, identityAfter int) {
@@ -266,6 +257,7 @@ func TestRetainedCapturePublishesOneCompleteOwner(t *testing.T) {
 		{token: f.token, revision: "old-equal", observed: 100, progression: .9},
 		{token: newerToken, revision: "old-newer", observed: 300, progression: .7},
 	})
+	beginCaptureFixture(t, f)
 	captureSeedJob(t, f.c, f.m.Ref.ID, f.m.Ref.Generation, f.owner, identities, true, f.account, f.profile, f.lifetime, f.membership)
 
 	published, _ := captureDrive(t, f.c, f.m, 64)
@@ -307,9 +299,13 @@ func TestRetainedCapturePublishesOneCompleteOwner(t *testing.T) {
 	if n := captureCount(t, f.c, `SELECT title_count FROM retained_title_state_counts WHERE profile_id=?`, f.owner); n != 2 {
 		t.Fatalf("maintained count=%d want 2 (old header plus published header)", n)
 	}
-	// The private header never carried a published mapping.
-	if n := captureCount(t, f.c, `SELECT count(*) FROM retained_title_identities WHERE state_id=?`, old); n != 1 {
-		t.Fatalf("old identity mapping lost: %d", n)
+	// Every mapping moves at publication, while the old complete header and its
+	// children stay untouched for later bounded garbage collection.
+	if n := captureCount(t, f.c, `SELECT count(*) FROM retained_title_identities WHERE state_id=?`, old); n != 0 {
+		t.Fatalf("old header still owns %d published mappings", n)
+	}
+	if n := captureCount(t, f.c, `SELECT count(*) FROM retained_reading_progress WHERE state_id=?`, old); n != 2 {
+		t.Fatalf("old header children changed at publication: %d", n)
 	}
 	arm, ownerStarted, state, _, ownerValue, _, current, _ := captureJob(t, f.c, f.m.Ref.ID)
 	if arm != retainedCaptureArmPublished || ownerStarted || state != "running" || ownerValue != f.owner || current.Valid {
@@ -330,6 +326,7 @@ func TestRetainedCaptureHasNoReadingVersionCeiling(t *testing.T) {
 	}
 	captureCurrentPosition(t, f.c, f.owner, f.item, captureAssetID(t, f.c, tokens[0]), "revision-0", .01, 1000)
 	identities := []string{"local:/reading|book:many"}
+	beginCaptureFixture(t, f)
 	captureSeedJob(t, f.c, f.m.Ref.ID, f.m.Ref.Generation, f.owner, identities, true, f.account, f.profile, f.lifetime, f.membership)
 	published, steps := captureDrive(t, f.c, f.m, versions*3)
 	if !published {
@@ -475,6 +472,7 @@ func TestRetainedCaptureMappingDriftResetsPrivateCopy(t *testing.T) {
 	identity := "local:/reading|book:drift"
 	a := captureOldState(t, f.c, f.owner, []string{identity}, []captureChild{{token: aToken, revision: "a", observed: 20, progression: .2}})
 	b := captureOldState(t, f.c, f.owner, nil, []captureChild{{token: bToken, revision: "b", observed: 30, progression: .3}})
+	beginCaptureFixture(t, f)
 	captureSeedJob(t, f.c, f.m.Ref.ID, f.m.Ref.Generation, f.owner, []string{identity}, true, f.account, f.profile, f.lifetime, f.membership)
 
 	// Drive until the witness captured the old mapping and at least one of its
@@ -574,6 +572,7 @@ func TestRetainedCaptureBindingRotationAndDestruction(t *testing.T) {
 		f := newCaptureFixture(t)
 		captureCurrentPosition(t, f.c, f.owner, f.item, captureAssetID(t, f.c, f.token), "current", .4, 40)
 		identity := "local:/reading|book:rotation"
+		beginCaptureFixture(t, f)
 		captureSeedJob(t, f.c, f.m.Ref.ID, f.m.Ref.Generation, f.owner, []string{identity}, true, f.account, f.profile, f.lifetime, f.membership)
 		// Build the private header, then rotate the profile lifetime.
 		for i := 0; i < 2; i++ {
@@ -609,6 +608,7 @@ func TestRetainedCaptureBindingRotationAndDestruction(t *testing.T) {
 		f := newCaptureFixture(t)
 		captureCurrentPosition(t, f.c, f.owner, f.item, captureAssetID(t, f.c, f.token), "current", .4, 40)
 		identity := "local:/reading|book:destroyed"
+		beginCaptureFixture(t, f)
 		captureSeedJob(t, f.c, f.m.Ref.ID, f.m.Ref.Generation, f.owner, []string{identity}, true, f.account, f.profile, f.lifetime, f.membership)
 		for i := 0; i < 2; i++ {
 			if _, _, err := captureStepOnce(t, f.c, f.m); err != nil {
@@ -648,6 +648,7 @@ func TestRetainedCaptureMissingHeaderIsNotCompletion(t *testing.T) {
 	f := newCaptureFixture(t)
 	captureCurrentPosition(t, f.c, f.owner, f.item, captureAssetID(t, f.c, f.token), "current", .5, 50)
 	identity := "local:/reading|book:missing"
+	beginCaptureFixture(t, f)
 	captureSeedJob(t, f.c, f.m.Ref.ID, f.m.Ref.Generation, f.owner, []string{identity}, true, f.account, f.profile, f.lifetime, f.membership)
 	for i := 0; i < 2; i++ {
 		if _, _, err := captureStepOnce(t, f.c, f.m); err != nil {
@@ -682,8 +683,10 @@ func TestRetainedCaptureMissingHeaderIsNotCompletion(t *testing.T) {
 	if err := f.c.DB.QueryRow(`SELECT state_id FROM retained_title_identities WHERE identity=? AND profile_id=?`, identity, f.owner).Scan(&newID); err != nil {
 		t.Fatal(err)
 	}
-	if newID == deleted {
-		t.Fatal("missing header was reused as complete")
+	var ready bool
+	var capture sql.NullString
+	if err := f.c.DB.QueryRow(`SELECT ready,capture_mutation_id FROM retained_title_state WHERE id=?`, newID).Scan(&ready, &capture); err != nil || !ready || capture.Valid {
+		t.Fatalf("recapture was not published: ready=%v capture=%v err=%v", ready, capture, err)
 	}
 	if n := captureCount(t, f.c, `SELECT count(*) FROM retained_reading_progress WHERE state_id=?`, newID); n != 1 {
 		t.Fatalf("recaptured header has %d children, want the current position", n)
@@ -699,6 +702,7 @@ func TestRetainedCaptureRefusesMalformedPremises(t *testing.T) {
 		for i := range identities {
 			identities[i] = "local:/reading|book:" + strconv.Itoa(i)
 		}
+		beginCaptureFixture(t, f)
 		captureSeedJob(t, f.c, f.m.Ref.ID, f.m.Ref.Generation, f.owner, identities, true, f.account, f.profile, f.lifetime, f.membership)
 		if _, err := f.c.DB.Exec(`INSERT INTO catalog_purge_identities(mutation_id,ordinal,identity) VALUES(?,13,'overflow')`, f.m.Ref.ID); err == nil {
 			t.Fatal("thirteenth identity bypassed the installed ordinal constraint")
@@ -710,6 +714,7 @@ func TestRetainedCaptureRefusesMalformedPremises(t *testing.T) {
 
 	t.Run("misaligned owner frontier", func(t *testing.T) {
 		f := newCaptureFixture(t)
+		beginCaptureFixture(t, f)
 		captureSeedJob(t, f.c, f.m.Ref.ID, f.m.Ref.Generation, f.owner, []string{"x"}, true, f.account, f.profile, f.lifetime, f.membership)
 		f.c.Exec(`UPDATE catalog_purge_jobs SET owner_after='somebody-else' WHERE mutation_id=?`, f.m.Ref.ID)
 		if _, _, err := captureStepOnce(t, f.c, f.m); !errors.Is(err, errRetainedCaptureState) {
@@ -719,6 +724,7 @@ func TestRetainedCaptureRefusesMalformedPremises(t *testing.T) {
 
 	t.Run("no identity facts finishes without a private header", func(t *testing.T) {
 		f := newCaptureFixture(t)
+		beginCaptureFixture(t, f)
 		captureSeedJob(t, f.c, f.m.Ref.ID, f.m.Ref.Generation, f.owner, nil, true, f.account, f.profile, f.lifetime, f.membership)
 		if published, _, err := captureStepOnce(t, f.c, f.m); err != nil || published {
 			t.Fatalf("zero identities published=%v err=%v", published, err)
@@ -736,6 +742,7 @@ func TestRetainedCaptureRefusesMalformedPremises(t *testing.T) {
 		f := newCaptureFixture(t)
 		opaque := "viewer:opaque-legacy-owner"
 		captureCurrentPosition(t, f.c, opaque, f.item, captureAssetID(t, f.c, f.token), "current", .6, 60)
+		beginCaptureFixture(t, f)
 		captureSeedJob(t, f.c, f.m.Ref.ID, f.m.Ref.Generation, opaque, []string{"local:/reading|book:opaque"}, false, "", "", "", "")
 		if published, _, err := captureStepOnce(t, f.c, f.m); err != nil || published {
 			// First step only builds the private header.
@@ -764,6 +771,7 @@ func TestRetainedCaptureResetsWitnessesBeforeSwitchingOwner(t *testing.T) {
 	for i := range identities {
 		identities[i] = "local:/reading|book:witness-" + strconv.Itoa(i)
 	}
+	beginCaptureFixture(t, f)
 	captureSeedJob(t, f.c, f.m.Ref.ID, f.m.Ref.Generation, f.owner, identities, true, f.account, f.profile, f.lifetime, f.membership)
 	if published, _ := captureDrive(t, f.c, f.m, 64); !published {
 		t.Fatal("first owner did not publish")
@@ -804,5 +812,67 @@ func TestRetainedCaptureResetsWitnessesBeforeSwitchingOwner(t *testing.T) {
 	}
 	if n := captureCount(t, f.c, `SELECT count(*) FROM retained_title_identities WHERE profile_id=?`, f.owner); n != 12 {
 		t.Fatal("next owner changed prior owner's mappings")
+	}
+}
+
+// A previously retained header may be published after our private header was
+// allocated. If it is restored/deleted and replaced while its child copy is
+// in flight, its integer id must not let a different header satisfy our witness.
+func TestRetainedCaptureMappingReplacementDoesNotMixHeaderChildren(t *testing.T) {
+	f := newCaptureFixture(t)
+	_, oldToken := captureAddPDF(t, f.c, 0, f.item, f.root, "prior-old.pdf")
+	_, newToken := captureAddPDF(t, f.c, 0, f.item, f.root, "prior-new.pdf")
+	captureCurrentPosition(t, f.c, f.owner, f.item, captureAssetID(t, f.c, f.token), "current", .1, 10)
+	identity := "local:/reading|book:replacement"
+	beginCaptureFixture(t, f)
+	captureSeedJob(t, f.c, f.m.Ref.ID, f.m.Ref.Generation, f.owner, []string{identity}, true, f.account, f.profile, f.lifetime, f.membership)
+	readyForPrior := false
+	for i := 0; i < 8; i++ {
+		if _, _, err := captureStepOnce(t, f.c, f.m); err != nil {
+			t.Fatal(err)
+		}
+		arm, _, _, _, _, _, _, _ := captureJob(t, f.c, f.m.Ref.ID)
+		if arm == retainedCaptureArmRetained {
+			readyForPrior = true
+			break
+		}
+	}
+	if !readyForPrior {
+		t.Fatal("fixture did not reach prior-mapping capture")
+	}
+	prior := captureOldState(t, f.c, f.owner, []string{identity}, []captureChild{{token: oldToken, revision: "old", observed: 20, progression: .2}})
+	// Capture its mapping, then copy its first real child in separate turns.
+	for i := 0; i < 2; i++ {
+		if _, _, err := captureStepOnce(t, f.c, f.m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, _, _, _, _, _, private, _ := captureJob(t, f.c, f.m.Ref.ID)
+	if !private.Valid || captureCount(t, f.c, `SELECT count(*) FROM retained_reading_progress WHERE state_id=? AND source_id=?`, private.Int64, oldToken) != 1 {
+		t.Fatal("old child was not copied before replacement")
+	}
+	// This models another title restoring that complete header, then a new title
+	// retaining a replacement under the same identity. Both are legal row deletes
+	// and inserts; no private capture progress or witness is fabricated.
+	f.c.Exec(`DELETE FROM retained_title_state WHERE id=?`, prior)
+	replacement := captureOldState(t, f.c, f.owner, []string{identity}, []captureChild{{token: newToken, revision: "new", observed: 30, progression: .3}})
+	t.Logf("retired header=%d replacement=%d private=%d", prior, replacement, private.Int64)
+	sawReset := false
+	published, _ := captureDriveObserved(t, f.c, f.m, 96, func() {
+		arm, _, _, _, _, _, _, _ := captureJob(t, f.c, f.m.Ref.ID)
+		sawReset = sawReset || arm == retainedCaptureArmReset
+	})
+	if !published || !sawReset {
+		t.Fatalf("mapping replacement published=%v reset=%v", published, sawReset)
+	}
+	var kept int64
+	if err := f.c.DB.QueryRow(`SELECT state_id FROM retained_title_identities WHERE identity=? AND profile_id=?`, identity, f.owner).Scan(&kept); err != nil {
+		t.Fatal(err)
+	}
+	if captureCount(t, f.c, `SELECT count(*) FROM retained_reading_progress WHERE state_id=? AND source_id=?`, kept, oldToken) != 0 {
+		t.Fatal("retired header child leaked into replacement")
+	}
+	if captureCount(t, f.c, `SELECT count(*) FROM retained_reading_progress WHERE state_id=? AND source_id=?`, kept, newToken) != 1 {
+		t.Fatal("replacement header child was lost")
 	}
 }
