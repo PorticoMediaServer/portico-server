@@ -53,7 +53,7 @@ export type HomeEffects = Readonly<{
   reportError: (error: unknown) => void;
   openHome?: () => void;
 }>;
-export type HomeBindings = Readonly<{service: HomeService; displayDocument?: FreshDocument; artwork: ShellArtwork; effects: HomeEffects; selection: HomeSelection; time: TimeEnvironment; reducedMotion: boolean; appearance?: ScreenAppearance; serverName?: string; customization?: HomeCustomizationBindings; readingContinue?: ReadingContinueBindings; musicMixes?: MusicMixesBinding; musicMixesMore?: ReactNode}>;
+export type HomeBindings = Readonly<{/** One quiet line above the rows, such as libraries that did not load. */notice?: ReactNode; service: HomeService; displayDocument?: FreshDocument; artwork: ShellArtwork; effects: HomeEffects; selection: HomeSelection; time: TimeEnvironment; reducedMotion: boolean; appearance?: ScreenAppearance; serverName?: string; customization?: HomeCustomizationBindings; readingContinue?: ReadingContinueBindings; musicMixes?: MusicMixesBinding; musicMixesMore?: ReactNode}>;
 type HomePresentation = Pick<HomeBindings, 'artwork' | 'effects' | 'selection' | 'time' | 'reducedMotion' | 'appearance'>;
 const t = defaultI18n.t;
 const pageSubscribe = (listener: () => void) => { document.addEventListener('visibilitychange', listener); return () => document.removeEventListener('visibilitychange', listener); };
@@ -148,7 +148,7 @@ export function HomeScreen(bindings: HomeBindings) {
 }
 
 type Spotlight = Omit<ReturnType<typeof homeSpotlights>[number], 'reason'> & HeroCandidate & {causalReason: HomeReason; source: HomeSpotlight};
-export function HomeView({service, customization, document, nowMs, onMore, refreshLive, artwork, effects, selection, time, reducedMotion, appearance, musicMixes, musicMixesMore}: HomeBindings & {document: HomeDocument; nowMs: number; onMore: (rowId: string) => void; refreshLive: () => void}) {
+export function HomeView({service, customization, document, nowMs, onMore, refreshLive, artwork, effects, selection, time, reducedMotion, appearance, musicMixes, musicMixesMore, notice}: HomeBindings & {document: HomeDocument; nowMs: number; onMore: (rowId: string) => void; refreshLive: () => void}) {
   const width = useShellWidth(), layout = homeLayout(width), {platform, sizeClass} = layout;
   const heroPixels = Math.max(width, heroSpec.backdropWidth[platform === 'desktop' || sizeClass === 'medium' ? 'web' : 'phone']) * devicePixelRatio;
   const hero = useVisible(), env = useMemo(() => ({t, locale: time.locale}), [time.locale]);
@@ -179,6 +179,7 @@ export function HomeView({service, customization, document, nowMs, onMore, refre
           aria-label={t(slide.entry.watchlisted ? 'next.home.removeMyList' : 'next.home.addMyList')}
           onClick={() => { void effects.setMyList(slide.source).catch(effects.reportError); }}>{t('next.home.myList')}</Button>}
       </>} /></div>}
+    {notice}
     {selection.toolbar}
     <div className={styles.rows} data-with-hero={candidates.length > 0}>
       {rows.map((row, index) => <Fragment key={row.id}><HomeRowView focusScope={service} row={row} rowIndex={index} platform={platform} layout={layout} nowMs={nowMs} refreshLive={refreshLive} onMore={() => onMore(row.id)}

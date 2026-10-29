@@ -40,7 +40,9 @@ export type ShellAssemblyContext = Readonly<{
   api: HttpLocalApi; session: () => LocalSession; auth: LocalSessionRefresher; events: EventsClient;
   freshness: FreshnessRuntime; home: HomeService; inbox: InboxService; artwork: ShellArtwork;
   libraryRouteProof?: LibraryRouteProof; libraryRouteSignal?: AbortSignal;
-  facts: ShellFacts; factsSource?: ShellFactsSource; homeAuthority?: () => void; observeDirect?: (snapshot: DirectSnapshot) => void; preferences?: PreferencesReader; epoch: number; viewerFence?: string; isCurrent: () => boolean;
+  facts: ShellFacts; factsSource?: ShellFactsSource; homeAuthority?: () => void;
+  /** Read the library directory again now (an inline Try again after it did not answer). */
+  retryLibraries?: () => void; observeDirect?: (snapshot: DirectSnapshot) => void; preferences?: PreferencesReader; epoch: number; viewerFence?: string; isCurrent: () => boolean;
   signOut: () => void; signOutPorticoAccount?: () => void; switchProfile:(profileId:string,pin:string,signal:AbortSignal)=>Promise<void>; switchServer:(serverId:string,expectedRevision?:number)=>Promise<void>; savedServers:readonly {id:string;label:string}[];
 }>;
 export type ShellAssembly = Readonly<{
@@ -117,9 +119,16 @@ export async function currentShellProfile(api: HttpLocalApi, session: LocalSessi
 
 }
 /** Initial admitted observations and their complete private proof witnesses. */
+/** The one automatic re-read of a library directory that did not answer at sign-in. */
+export const LIBRARY_DIRECTORY_RETRY_MS = 2000;
 export async function readShellIdentity(api: HttpLocalApi, session: LocalSession, signal: AbortSignal) {
   const [libraries, profile, system, guide] = await Promise.all([
-    api.request(routePath('get_libraries'), 'GET', undefined, signal).then(parseLibraryList),
+    // One slow or failed library directory never stops the shell: it is unavailable, never empty,
+    // and the shell's directory interest reads it again. Authority answers still stop sign-in.
+    api.request(routePath('get_libraries'), 'GET', undefined, signal).then(parseLibraryList).then(value => value.items, error => {
+      if (signal.aborted || [401, 403].includes((error as {status?: unknown} | null)?.status as number)) throw error;
+      return undefined;
+    }),
     api.request(routePath('get_direct_account'), 'GET', undefined, signal).then(raw => parseDirectSnapshot(raw, {authority:'local',accountId:session.viewer.accountId,serverId:session.viewer.serverId})), api.request(routePath('get_system'), 'GET', undefined, signal).then(parseServerSignIn),
     fetchGuideSourceSummaries(api, session.viewer.serverId, Intl.DateTimeFormat().resolvedOptions().timeZone, signal).catch(error => {
       if ((error as {status?: number}).status === 403) return undefined;
@@ -128,15 +137,15 @@ export async function readShellIdentity(api: HttpLocalApi, session: LocalSession
   ]);
   if (system.id !== session.viewer.serverId) throw new Error('The server identity changed.');
   assertSameApiLevel(system);
-  return {libraries: libraries.items, direct: profile, profile: shellAccount(profile, session.viewer.profileId), system, guide, liveAvailable: !!guide?.sources.length};
+  return {libraries: libraries ?? [], ...(libraries ? {} : {librariesUnavailable: true as const}), direct: profile, profile: shellAccount(profile, session.viewer.profileId), system, guide, liveAvailable: !!guide?.sources.length};
 }
 async function readFacts(api: HttpLocalApi, session: LocalSession, preferences: PreferencesReader, inbox: InboxService, signal: AbortSignal): Promise<{facts: ShellFacts; witnesses: ShellFactWitnesses}> {
   const [read, settings] = await Promise.all([readShellIdentity(api, session, signal), preferences.preferences('web')]);
-  const {libraries, profile, system, liveAvailable} = read;
+  const {libraries, profile, system, liveAvailable} = read, librariesUnavailable = 'librariesUnavailable' in read;
   rememberShell(session.sessionFamilyId, system.name);
   await inbox.load();
   signal.throwIfAborted();
-  return {witnesses: {system: read.system, direct: read.direct, guide: read.guide && {viewerFence:read.guide.viewerFence, revision:read.guide.revision}}, facts: {identity: {viewer: session.viewer, libraries, serverName: system.name, serverVersion: system.version, signIn:system.signIn, ...profile,
+  return {witnesses: {system: read.system, direct: read.direct, guide: read.guide && {viewerFence:read.guide.viewerFence, revision:read.guide.revision}}, facts: {identity: {viewer: session.viewer, libraries, ...(librariesUnavailable ? {librariesUnavailable: true as const} : {}), serverName: system.name, serverVersion: system.version, signIn:system.signIn, ...profile,
     accountFacts:[{id:'sign-in',role:'status',text:defaultI18n.t(signInLabelKey(system.signIn))}],
     liveAvailable, unread: inbox.getSnapshot().unread, showNotificationDot: settings.effective['notifications.badges'] === true}, preferences: settings, serverName: system.name}};
 }
@@ -398,6 +407,12 @@ export class ShellBootstrap {
     factOwner = createShellFactOwner({api, session: () => session, auth, preferences, home, hub: freshness.hub,
       initial: initialFacts, witnesses, libraryRouteProof, isCurrent, retire: () => {if (isCurrent()) this.restart();}, readonlyAccess: this.environment.readonlyAccess});
     cleanups.push(factOwner.dispose);
+    // The directory did not answer at sign-in: one automatic try after a short wait; after that the
+    // freshness hub's own backoff and the inline Try again take over. Nothing blocks meanwhile.
+    if (initialFacts.identity.librariesUnavailable) {
+      const timer = setTimeout(() => {if (isCurrent()) factOwner?.request('directory');}, LIBRARY_DIRECTORY_RETRY_MS);
+      cleanups.push(() => clearTimeout(timer));
+    }
     const factsSource = factOwner.source;
     const facts = () => factsSource.getSnapshot();
     freshness.hub.attach(events);
@@ -412,7 +427,7 @@ export class ShellBootstrap {
     const saved=(await (this.environment.actions?.()??browserAppSessionActions()).store.read()).servers;
     const savedServers=await display.choices(saved.map(value=>({pin:value.connection.pin,origin:value.connection.logicalOrigin,signIn:value.signIn})),signal);
     if (!isCurrent()) return;
-    const context: ShellAssemblyContext = {api, session: () => session, auth, events, freshness, home, inbox, artwork, factsSource, libraryRouteProof: libraryRouteProof.source, homeAuthority: factOwner.authority, observeDirect: factOwner.observeDirect, get facts() {return facts();}, preferences, epoch, get viewerFence() {return homeFence.viewerFence;}, isCurrent, signOut,signOutPorticoAccount,switchProfile,switchServer:this.selectServer,get savedServers() {return savedServers.map(value => value.id === session.viewer.serverId ? {...value, label: facts().serverName} : value);}};
+    const context: ShellAssemblyContext = {api, session: () => session, auth, events, freshness, home, inbox, artwork, factsSource, libraryRouteProof: libraryRouteProof.source, homeAuthority: factOwner.authority, observeDirect: factOwner.observeDirect, retryLibraries: () => {if (isCurrent()) factOwner?.request('directory');}, get facts() {return facts();}, preferences, epoch, get viewerFence() {return homeFence.viewerFence;}, isCurrent, signOut,signOutPorticoAccount,switchProfile,switchServer:this.selectServer,get savedServers() {return savedServers.map(value => value.id === session.viewer.serverId ? {...value, label: facts().serverName} : value);}};
     const assembly = await this.assemble(context);
     if (!isCurrent()) { assembly.dispose(); return; }
     cleanups.push(() => assembly.dispose());

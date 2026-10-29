@@ -22,6 +22,7 @@ export const browseMessages = {
   'next.browse.editPins': 'Edit pins',
   'next.browse.librarySettings': 'Library settings',
   'next.browse.scan': 'Scan for new files',
+  'next.browse.librarySummariesUnavailable': 'Counts and covers didn’t load.',
   'next.browse.server': 'Server',
   'next.browse.ownerOnly': 'Owner only',
   'next.browse.filters': 'Filters',

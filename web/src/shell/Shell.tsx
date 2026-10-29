@@ -29,6 +29,9 @@ export type ShellIdentity = Readonly<{
   viewer: Viewer; signIn?:SignInKind; capabilities?:ManagementCapabilities; username?: string; profileName: string; profileArt?: ProfileTone; serverName: string; serverVersion?: string;
   primaryProfile?: boolean; profiles: readonly ProfileIdentity[]; canManageProfiles: boolean; accountFacts: readonly FactPart[];
   libraries: readonly Library[]; liveAvailable: boolean; unread: number; showNotificationDot: boolean;
+  /** The library directory did not answer (a timeout, a busy server). `libraries` is then not known
+   * to be empty: no screen may treat it as "no libraries". Cleared when the directory answers. */
+  librariesUnavailable?: true;
 }>;
 export type ShellProps = Readonly<{
   identity: ShellIdentity;

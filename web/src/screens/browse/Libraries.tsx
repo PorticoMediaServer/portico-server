@@ -1,3 +1,4 @@
+import type {ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import type {readLibrarySummaries} from '@core/library-summary.ts';
 import {LibraryCard, LibraryRow} from '../../kit/cards';
@@ -9,12 +10,14 @@ export type LibrariesBindings = Readonly<{
   libraries: Awaited<ReturnType<typeof readLibrarySummaries>>;
   artwork: ShellArtwork;
   onOpen: (id: string) => void;
+  /** One quiet line under the heading, such as counts that did not load. */
+  notice?: ReactNode;
 }>;
 const pivots: Readonly<Record<string, string>> = {movie: 'movies', show: 'shows', artist: 'artists', album: 'albums', song: 'songs', book: 'books'};
 /** The overview uses bounded library summaries, never reads their title catalogues. */
-export function LibrariesScreen({libraries, artwork, onOpen}: LibrariesBindings) {
+export function LibrariesScreen({libraries, artwork, onOpen, notice}: LibrariesBindings) {
   const compact = useShellWidth() < 600;
-  return <section className={styles.libraries}><h1>{defaultI18n.t('next.browse.libraries')}</h1><div className={styles.libraryCards} data-compact={compact}>
+  return <section className={styles.libraries}><h1>{defaultI18n.t('next.browse.libraries')}</h1>{notice}<div className={styles.libraryCards} data-compact={compact}>
     {libraries.map((library, index) => {
       const model = {title: library.name, caption: library.summary.counts.map(count => ({id: count.kind, role: 'supplement' as const,
         text: defaultI18n.t(count.atLeast ? 'lib.countAtLeast' : 'lib.count', {count: count.count, pivot: pivots[count.kind] ?? count.kind})}))};

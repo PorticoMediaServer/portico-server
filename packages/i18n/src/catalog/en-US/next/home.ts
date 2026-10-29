@@ -1,4 +1,5 @@
 export const homeMessages = {
+  'next.home.librariesUnavailable': 'Your libraries didn’t load. Portico will keep trying.',
   'next.home.shell.main': 'Main',
   'next.home.shell.home': 'Home',
   'next.home.shell.search': 'Search',

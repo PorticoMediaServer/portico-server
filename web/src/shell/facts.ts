@@ -116,7 +116,7 @@ export function createShellFactOwner(o: Readonly<{
       // Same successful body, separate strict membership witness. Tolerant loss
       // may update labels but cannot ever prove a route absent.
       if (proofTicket) o.libraryRouteProof?.directory(proofTicket, raw);
-      return await publish(context, captured, () => updateIdentity({libraries: value.items}));
+      return await publish(context, captured, () => updateIdentity({libraries: value.items, librariesUnavailable: undefined}));
     } catch (error) {return failed(error);}
   });
   const serverSystem = add('server-system', [dependsOn.settings('server')], async context => {

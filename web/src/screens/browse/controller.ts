@@ -116,7 +116,13 @@ export class BrowseController {
   private builder(caps: BrowseCapabilities, predicates: readonly BrowseNode[], sort: BrowseSortSelection) {
     return browseSessionBuilder(this.sessionQuery(caps, predicates, sort)).limit(60);
   }
-  private reset(next: Partial<Pick<BrowseState, 'predicates' | 'sort'>> = {}) {
+  /** One automatic re-read per query when its FIRST page is refused as stale (a 412
+   * revision_mismatch while a library imports): nothing is shown yet, so nothing jumps. A second
+   * refusal is shown as this library's error, never a loop. A stale continuation deeper in a list
+   * that has already answered keeps the explicit refresh, so the viewer's place never resets. */
+  private staleRetried = false;
+  private reset(next: Partial<Pick<BrowseState, 'predicates' | 'sort'>> = {}, automatic = false) {
+    if (!automatic) this.staleRetried = false;
     const {capabilities: caps, predicates, sort} = {...this.state, ...next};
     if (!caps || !sort) return;
     const epoch = ++this.epoch;
@@ -133,7 +139,10 @@ export class BrowseController {
       onWhole: () => this.publish({}),
       onWholeUnavailable: () => this.publish({}),
       onPreparationError: error => this.publish({error}),
-      onStale: error => this.publish({revision: undefined, error})});
+      onStale: error => {
+        if (!this.staleRetried && this.state.revision === undefined && this.current() && epoch === this.epoch) {this.staleRetried = true; this.reset({}, true); return;}
+        this.publish({revision: undefined, error});
+      }});
     this.session = session;
     this.collection.invalidate(session.fetchPage);
     this.collection.ensureRange(0, 0);

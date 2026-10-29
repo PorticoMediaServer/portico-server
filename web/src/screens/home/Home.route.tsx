@@ -12,6 +12,8 @@ import {MemberEmptyState} from './member-empty-state';
 import {createReadingContinueBindings, type ReadingContinueBindings} from './reading-continue';
 import {useMusicMixes} from '../browse/music-mixes-hook';
 import {MusicDiscoverMore} from '../browse/music-discover-navigation';
+import {Banner} from '../../kit/overlays';
+import {defaultI18n} from '@i18n';
 
 function HomeRouteScreen() {
   const captured = useProtectedWebScreenContext();
@@ -31,11 +33,15 @@ function HomeRouteScreen() {
     return () => {void binding.dispose().catch(() => {});};
   }, [context, supported]);
   const identity = context?.facts.identity;
-  if (captured && context?.isCurrent() && context.session().viewer.role === 'owner' && identity?.primaryProfile === true
+  // A library directory that did not answer is not "no libraries": never the empty states then.
+  const unknown = identity?.librariesUnavailable === true;
+  const notice = unknown && context ? <Banner icon="i-warn" action={{label: defaultI18n.t('next.states.tryAgain'), onAction: () => {if (context.isCurrent()) context.retryLibraries?.();}}}>
+    {defaultI18n.t('next.home.librariesUnavailable')}</Banner> : undefined;
+  if (!unknown && captured && context?.isCurrent() && context.session().viewer.role === 'owner' && identity?.primaryProfile === true
     && identity.capabilities?.manageServer === true && identity.libraries.length === 0 && !identity.liveAvailable) return <FirstLibraryState captured={captured}/>;
-  if (captured && context?.isCurrent() && context.session().viewer.role !== 'owner'
+  if (!unknown && captured && context?.isCurrent() && context.session().viewer.role !== 'owner'
     && identity?.libraries.length === 0 && !identity.liveAvailable) return <MemberEmptyState captured={captured}/>;
-  return captured ? <HomeScreen {...captured.binding.home} appearance={appearance} musicMixes={musicMixes} musicMixesMore={<MusicDiscoverMore captured={captured}/>}
+  return captured ? <HomeScreen {...captured.binding.home} notice={notice} appearance={appearance} musicMixes={musicMixes} musicMixesMore={<MusicDiscoverMore captured={captured}/>}
     readingContinue={reading && reading.context === context && supported ? reading.binding : undefined}/> : null;
 }
 

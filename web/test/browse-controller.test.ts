@@ -317,3 +317,23 @@ test('search-unavailable publication reaches the live controller and clears imme
   assert.equal(controller.wholeSelectionUnavailable(), undefined);
  } finally {off();controller.dispose();}
 });
+
+test('a first page refused as stale while a library imports is read once more, and a second refusal is the error, never a loop', async () => {
+ let refusals = 2, pages = 0;
+ const controller = new BrowseController({async request<T>(path: string, _method?: string, body?: unknown) {
+  if (path.includes('capabilities')) return caps as T;
+  pages++;
+  if (refusals > 0) {refusals--; throw Object.assign(new Error('Reading projection changed'), {status: 412, code: 'revision_mismatch'});}
+  return payload((body as {range: {start: number}}).range.start, 1) as T;
+ }}, {libraryId: 'lib', pivot: 'movies'}, () => true);
+ try {
+  await controller.load();await settle();
+  assert.equal(pages, 2, 'exactly one automatic re-read');
+  assert.ok(controller.getSnapshot().error, 'the second refusal is shown as this library\'s error');
+  await settle();assert.equal(pages, 2, 'no loop');
+  controller.retry();await settle();
+  assert.equal(controller.getSnapshot().revision, 'revision-one', 'an explicit Try again reads it');
+  refusals = 1;controller.setQuery([], {field: 'title', direction: 'desc'});await settle();
+  assert.equal(controller.getSnapshot().revision, 'revision-one', 'a new query earns its own single re-read');
+ } finally {controller.dispose();}
+});

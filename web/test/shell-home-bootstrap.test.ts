@@ -166,3 +166,20 @@ test('shell identity loads during a building Reading generation and retains Sett
   assert.equal(read.system.name, 'Test server');
   assert.ok(calls.includes('/v1/libraries') && calls.includes('/v1/direct') && calls.includes('/v1/system'));
 });
+
+test('a library directory that times out never stops sign-in: the libraries are unavailable, not empty, and authority answers still stop', async () => {
+  const api = (libraries: () => unknown) => ({request: async (path: string) => {
+    if (path === '/v1/libraries') return libraries();
+    if (path === '/v1/direct') return directRecord();
+    if (path === '/v1/system') return {id: 'server-a', name: 'Test server', version: '1', signIn: 'local', move: null, setupRequired: false, hostedConfigured: false, hostedAttached: false, apiLevel: 1};
+    if (path.startsWith('/v1/guide/sources?')) throw Object.assign(new Error('not permitted'), {status: 403});
+    throw new Error(`Unexpected shell read ${path}`);
+  }}) as unknown as HttpLocalApi;
+  const busy = await readShellIdentity(api(() => {throw Object.assign(new Error('timeout'), {status: 503, code: 'metadata_unavailable'});}), directSession, new AbortController().signal);
+  assert.deepEqual(busy.libraries, []);
+  assert.equal('librariesUnavailable' in busy && busy.librariesUnavailable, true, 'unknown, never "no libraries"');
+  assert.equal(busy.profile.profileName, 'Evening profile', 'the rest of the shell still loads');
+  const settled = await readShellIdentity(api(() => ({items: []})), directSession, new AbortController().signal);
+  assert.equal('librariesUnavailable' in settled, false, 'a real empty directory is just empty');
+  await assert.rejects(readShellIdentity(api(() => {throw Object.assign(new Error('signed out'), {status: 401});}), directSession, new AbortController().signal), /signed out/);
+});
