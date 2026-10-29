@@ -134,8 +134,7 @@ def main():
     bindings = [line for line in old_unit.splitlines() if line.startswith('Environment=PORTICO_BIND=')]
     allowed_bindings = {'Environment=PORTICO_BIND=66.94.102.39:32500',
                         'Environment=PORTICO_BIND=127.0.0.1:32510',
-                        'Environment=PORTICO_BIND=0.0.0.0:32500',
-                        'Environment=PORTICO_BIND=:32500'}
+                        'Environment=PORTICO_BIND=0.0.0.0:32500'}
     if len(bindings) != 1 or bindings[0] not in allowed_bindings:
         parser.error('Unknown managed listener; inspect before resetting')
     # Stop the watchdog and socket activation before the server. Otherwise a
@@ -161,9 +160,7 @@ def main():
     state.mkdir(mode=0o700)
     for name in ['data', 'cache', 'transcode', 'tmp', 'recordings']:
         (state / name).mkdir(mode=0o700)
-    # Use the product default dual-stack socket. An IPv4-only override also
-    # deliberately excludes IPv6 from topology publication.
-    atomic(unit, old_unit.replace(old_build, str(build)).replace(bindings[0], 'Environment=PORTICO_BIND=:32500'))
+    atomic(unit, old_unit.replace(old_build, str(build)).replace(bindings[0], 'Environment=PORTICO_BIND=0.0.0.0:32500'))
     atomic(WORK / 'health.py', health_source)
     run(['systemctl', '--user', 'daemon-reload'])
     run(['systemctl', '--user', 'start', 'portico-test-live.service', 'portico-test-server.service'])
@@ -180,7 +177,7 @@ def main():
     receipt = {'commit': args.commit, 'build': str(build), 'state': str(state), 'media': str(media),
                'ready': ready, 'provisioned': False, 'hostedClaimed': False,
                'retiredState': str(retired_state), 'retiredMedia': None if reuse else str(retired_media), 'resetAt': stamp,
-               'listener': ':32500', 'localProxyRequired': False,
+               'listener': '0.0.0.0:32500', 'localProxyRequired': False,
                'freshMediaReused': bool(reuse), 'inspectedMediaManifestSHA256': inspected}
     atomic(WORK / 'deployment.json', json.dumps(receipt, indent=2) + '\n')
     if not ready:

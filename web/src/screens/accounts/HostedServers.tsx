@@ -1,4 +1,4 @@
-import {useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore} from 'react';
+import {useEffect, useLayoutEffect, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import {RouteError} from '@core/route-identity.ts';
 import {browserAccount} from '../../platform/account';
@@ -59,7 +59,10 @@ function Replace({to}: {to: string}) {
 
 type Loaded = Readonly<{flow: ServicesDirectoryFlow<Admitted>; saved: ReadonlyMap<string, string>}>;
 function BoundServers({session}: {session: Session}) {
-  const account = browserAccount(), scope = useMemo(() => accountIdentity(session), [session]);
+  // One scope per mounted account and family (the parent keys on both). A refreshed session is a
+  // new object with the same identity; it must not restart the directory read (live 29 Oct: an
+  // effect loop that queued thousands of account locks and never showed the list).
+  const account = browserAccount(), [scope] = useState(() => accountIdentity(session));
   const [loaded, setLoaded] = useState<Loaded>(), [error, setError] = useState<unknown>(), [attempt, setAttempt] = useState(0);
   useLayoutEffect(() => {
     let live = true;

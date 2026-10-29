@@ -9,7 +9,6 @@ import (
 
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/catalog"
-	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/persistence"
 )
 
@@ -58,11 +57,6 @@ func TestSamePathReplacementKeepsIdentityAndReturnRestoresAvailability(t *testin
 				t.Fatal(e)
 			}
 			if state.Status == "complete" {
-				// Scan completion releases the finite source41 reducer. Observe
-				// availability only after that ordinary derived work settles.
-				if err := compactcatalog.Drain(ctx, db); err != nil {
-					t.Fatal(err)
-				}
 				return
 			}
 			if state.Status == "failed" {
