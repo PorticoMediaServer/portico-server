@@ -55,18 +55,18 @@ func BuildInfoInput(ctx context.Context, tx *sql.Tx, asset int64, token string, 
 		}
 	}
 	families := []compactcatalog.InfoSourceFamily{
-		{Number: 6, Count: 1, Row: func(i int64) (compactcatalog.InfoStageRow, error) {
+		{Number: 6, Count: 1, Row: func(_ context.Context, _ *sql.Tx, i int64) (compactcatalog.InfoStageRow, error) {
 			return compactcatalog.InfoSubtitleFactRow{InputOrdinal: i, AssetID: token, Revision: revision, Size: size, ModifiedNS: modified, OriginUS: f.OriginUS, TimingKnown: boolean(f.TimingKnown), Status: f.Status, Fingerprint: fingerprint}, nil
 		}},
 	}
 	if len(sidecars) > 0 {
-		families = append(families, compactcatalog.InfoSourceFamily{Number: 7, Count: int64(len(sidecars)), Row: func(i int64) (compactcatalog.InfoStageRow, error) {
+		families = append(families, compactcatalog.InfoSourceFamily{Number: 7, Count: int64(len(sidecars)), Row: func(_ context.Context, _ *sql.Tx, i int64) (compactcatalog.InfoStageRow, error) {
 			t := sidecars[i]
 			return compactcatalog.InfoSubtitleSidecarRow{InputOrdinal: i, ID: stable("sidecar:" + t.Locator), Path: t.Locator, Size: t.Size, ModifiedNS: t.ModifiedNS, Digest: t.Digest}, nil
 		}})
 	}
 	families = append(families,
-		compactcatalog.InfoSourceFamily{Number: 8, Count: int64(len(f.Tracks)), Row: func(i int64) (compactcatalog.InfoStageRow, error) {
+		compactcatalog.InfoSourceFamily{Number: 8, Count: int64(len(f.Tracks)), Row: func(_ context.Context, _ *sql.Tx, i int64) (compactcatalog.InfoStageRow, error) {
 			t := f.Tracks[i]
 			locator := t.Locator
 			var sidecar *string
@@ -78,7 +78,7 @@ func BuildInfoInput(ctx context.Context, tx *sql.Tx, asset int64, token string, 
 			}
 			return compactcatalog.InfoSubtitleRow{InputOrdinal: i, ID: stable(token + ":" + t.Origin + ":" + locator), AssetID: token, Origin: t.Origin, Locator: locator, StreamIndex: int64(t.StreamIndex), SidecarID: sidecar, Format: t.Format, Language: t.Language, Title: t.Title, IsDefault: boolean(t.Default), IsForced: boolean(t.Forced), Reason: t.Reason, HearingImpaired: boolean(t.HearingImpaired)}, nil
 		}},
-		compactcatalog.InfoSourceFamily{Number: 9, Count: 1, Row: func(i int64) (compactcatalog.InfoStageRow, error) {
+		compactcatalog.InfoSourceFamily{Number: 9, Count: 1, Row: func(_ context.Context, _ *sql.Tx, i int64) (compactcatalog.InfoStageRow, error) {
 			return compactcatalog.InfoSubtitleEvidenceRow{InputOrdinal: i, AssetID: token, Revision: revision, Evidence: f.SourceEvidence}, nil
 		}},
 	)

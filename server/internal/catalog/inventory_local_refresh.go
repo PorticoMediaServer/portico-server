@@ -8,7 +8,6 @@ import (
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/localmetadata"
-	"portico.local/server/internal/subtitles"
 )
 
 // CommitInventoryLocalRefresh publishes a file's re-read local metadata
@@ -18,7 +17,7 @@ import (
 // and current sidecars; video naming is untouched. This publishes under the
 // same fences as CommitInventoryAnalysis and settles the analysis queue row the same way. f.AnalysisOperations is the
 // object's complete operation list after the refresh.
-func (s *Service) CommitInventoryLocalRefresh(ctx context.Context, job, object, revision string, policyRevision int64, f assets.Facts) error {
+func (s *Service) commitInventoryLocalRefreshApplied(ctx context.Context, job, object, revision string, policyRevision int64, f assets.Facts) error {
 	ctx, audioAdmissions := withAudioMergeAdmissions(ctx)
 	gated, err := dbwork.Begin(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive))
 	if err != nil {
@@ -67,11 +66,6 @@ func (s *Service) CommitInventoryLocalRefresh(ctx context.Context, job, object, 
 			return context.Canceled
 		}
 	}
-	if policy.Allows("subtitles") && f.SubtitleInventory != nil {
-		if err = subtitles.Persist(tx, asset, size, modified, f.SubtitleInventory); err != nil {
-			return err
-		}
-	}
 	var sidecarObservation *sidecarRead
 	if f.ArtworkObserved {
 		ctx, sidecarObservation = withSidecarRead(ctx, asset)
@@ -79,9 +73,6 @@ func (s *Service) CommitInventoryLocalRefresh(ctx context.Context, job, object, 
 	f.ObservedRevision = revision
 	if policy.Allows("local_metadata") {
 		if audio {
-			if err = assets.PersistChapters(tx, asset, size, modified, f); err != nil {
-				return err
-			}
 			if err = s.commitInventoryAudioTx(ctx, tx, source, asset, kind, filepath.Join(source.ResolvedPath, relative), f); err != nil {
 				return err
 			}

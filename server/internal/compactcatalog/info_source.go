@@ -19,7 +19,7 @@ type InfoSourceFamily struct {
 	Number int
 	Count  int64
 	Parent bool
-	Row    func(i int64) (InfoStageRow, error)
+	Row    func(context.Context, *sql.Tx, int64) (InfoStageRow, error)
 }
 
 // InfoSourceCheck revalidates the producer's job/object/root/policy or physical
@@ -114,7 +114,7 @@ func PublishInfoSource(ctx context.Context, db *sql.DB, check InfoSourceCheck, p
 					bytes := 0
 					started := time.Now()
 					for at := staged; at < family.Count && len(rows) < 8; at++ {
-						row, err := family.Row(at)
+						row, err := family.Row(ctx, tx, at)
 						if err != nil {
 							return err
 						}

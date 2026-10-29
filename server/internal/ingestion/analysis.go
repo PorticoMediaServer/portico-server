@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/catalog"
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/disc"
 	"portico.local/server/internal/localmetadata"
@@ -774,11 +775,15 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 	f.AnalysisOperations = completed
 	f.AnalysisAlgorithm = mediaanalysis.Algorithm
 	f.SubtitleTextPending = !descriptor && policy.Allows("subtitles") && s.Subtitles != nil && f.VideoCodec != ""
-	if err = s.catalog.CommitInventoryAnalysis(ctx, job, object, revision, policy.Revision, f); err != nil {
+	receipt, err := s.catalog.AcceptInventoryAnalysis(ctx, job, object, revision, policy.Revision, f)
+	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return nil
 		}
 		return s.analysisOutcome(parent, job, object, revision, queuedPolicy, true, "analysis_publication_failed")
+	}
+	if receipt.State != compactcatalog.InfoInputApplied {
+		return nil
 	}
 	return s.finishBasicAnalysis(parent, ctx, job, object, revision, queuedPolicy, policy, source, completed, descriptor, deep, f.SubtitleTextPending)
 }
@@ -943,11 +948,15 @@ func (s *Service) refreshLocalMetadata(parent, ctx context.Context, job, object,
 	f.ArtworkObserved = r.metadata && s.LocalMetadata != nil && *artworkObserved && f.LocalMetadataIssue == ""
 	f.AnalysisOperations = completed
 	f.SubtitleTextPending = f.SubtitleInventory != nil && s.Subtitles != nil
-	if err = s.catalog.CommitInventoryLocalRefresh(ctx, job, object, revision, policy.Revision, f); err != nil {
+	receipt, err := s.catalog.AcceptInventoryLocalRefresh(ctx, job, object, revision, policy.Revision, f)
+	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return nil
 		}
 		return s.analysisOutcome(parent, job, object, revision, queuedPolicy, true, "analysis_publication_failed")
+	}
+	if receipt.State != compactcatalog.InfoInputApplied {
+		return nil
 	}
 	return s.finishBasicAnalysis(parent, ctx, job, object, revision, queuedPolicy, policy, source, completed, false, deep, f.SubtitleTextPending)
 }

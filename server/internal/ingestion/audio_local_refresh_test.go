@@ -85,7 +85,7 @@ func newAudioRefreshFixture(t *testing.T, kind string, embeddedCue bool) *audioR
 	facts.AnalysisOperations = []string{"probe", "local_metadata", "subtitles", assets.PlaybackAnalysisRevision}
 	dbwork.ResetPlans()
 	started := time.Now()
-	if err = f.s.catalog.CommitInventoryAnalysis(context.Background(), job.ID, a.object, a.revision, a.policy, facts); err != nil {
+	if err = settleInventoryAnalysis(t, f.s.catalog, f.db, context.Background(), job.ID, a.object, a.revision, a.policy, facts); err != nil {
 		t.Fatal(err)
 	}
 	stats := dbwork.Plans()
@@ -292,7 +292,7 @@ func TestAudioRefreshPublicationFences(t *testing.T) {
 			case "baseline":
 				f.exec(`DELETE FROM audio_file_metadata WHERE asset_id=?`, f.asset)
 			}
-			err = f.s.catalog.CommitInventoryLocalRefresh(context.Background(), job.ID, f.object, f.revision, f.policy, *baseline)
+			err = settleInventoryLocalRefresh(t, f.s.catalog, f.db, context.Background(), job.ID, f.object, f.revision, f.policy, *baseline)
 			if !errors.Is(err, context.Canceled) && !errors.Is(err, sql.ErrNoRows) {
 				t.Fatalf("fence accepted or unexpected error: %v", err)
 			}

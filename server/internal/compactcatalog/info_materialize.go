@@ -325,6 +325,13 @@ type infoCopyStep struct {
 }
 
 func infoCopyRemoveStep(family int, table, staged string, tuple infoCopyTuple, scope infoCopyScope, children ...string) infoCopyStep {
+	keep := "SELECT EXISTS(SELECT 1 FROM " + staged + " n WHERE n.change_id=? AND " + tuple.predicate("n")
+	if family == 11 {
+		keep += " AND n.selection_token=(SELECT c.selection_token FROM inventory_disc_titles c WHERE c.object_id=n.object_id AND c.title_key=n.title_key)"
+	} else if family == 12 || family == 13 || family == 14 || family == 16 || family == 17 || family == 18 {
+		keep += " AND (NOT EXISTS(SELECT 1 FROM catalog_info_changes f WHERE f.id=n.change_id AND f.family_mask&1024<>0) OR EXISTS(SELECT 1 FROM catalog_info_new_disc_titles nt JOIN inventory_disc_titles ct ON ct.object_id=nt.object_id AND ct.title_key=nt.title_key AND ct.selection_token=nt.selection_token WHERE nt.change_id=n.change_id AND nt.object_id=n.object_id AND nt.title_key=n.title_key))"
+	}
+	keep += ")"
 	return infoCopyStep{
 		kind:     infoCopyRemove,
 		family:   family,
@@ -333,7 +340,7 @@ func infoCopyRemoveStep(family int, table, staged string, tuple infoCopyTuple, s
 		scope:    scope,
 		children: children,
 		walk:     "SELECT " + tuple.columns("c") + " FROM " + table + " c WHERE " + scope.predicate("c"),
-		probe:    "SELECT EXISTS(SELECT 1 FROM " + staged + " n WHERE n.change_id=? AND " + tuple.predicate("n") + ")",
+		probe:    keep,
 		del:      "DELETE FROM " + table + " WHERE " + tuple.predicate(""),
 	}
 }
@@ -361,6 +368,15 @@ func infoCopyInsertStep(family int, staged string, scope infoCopyScope, insert s
 // installed parent before child. Steps of a family outside the change mask are
 // skipped. The order is fixed source schema, never caller-controlled SQL.
 var infoCopySteps = []infoCopyStep{
+	// Replace the former physical cascade one raw request at a time. Requests
+	// for a surviving exact title identity remain untouched.
+	{
+		kind: infoCopyRemove, family: 11, table: "inventory_disc_title_requests", scope: infoCopyObjectScope,
+		tuple: infoCopyTextTuple("object_id", "title_key", "job_id"),
+		walk:  "SELECT c.object_id,c.title_key,c.job_id FROM inventory_disc_title_requests c INDEXED BY inventory_disc_title_requests_object_id_title_key_fk WHERE c.object_id=?",
+		probe: "SELECT EXISTS(SELECT 1 FROM catalog_info_new_disc_titles n JOIN inventory_disc_titles t ON t.object_id=n.object_id AND t.title_key=n.title_key AND t.selection_token=n.selection_token JOIN inventory_disc_title_requests r ON r.object_id=t.object_id AND r.title_key=t.title_key WHERE n.change_id=? AND r.object_id=? AND r.title_key=? AND r.job_id=?)",
+		del:   "DELETE FROM inventory_disc_title_requests WHERE object_id=? AND title_key=? AND job_id=?",
+	},
 	// Disc tree, deepest child first. Every tuple is the canonical PK, so the
 	// walk is one index seek and the DELETE names exactly one row.
 	infoCopyRemoveStep(18, "inventory_disc_title_media_members", "catalog_info_new_disc_title_media_members",
@@ -378,8 +394,8 @@ var infoCopySteps = []infoCopyStep{
 		infoCopyIntTuple("object_id", "title_key", "chapter_order"), infoCopyObjectScope),
 	infoCopyRemoveStep(15, "inventory_disc_media_members", "catalog_info_new_disc_media_members",
 		infoCopyTextTuple("object_id", "path"), infoCopyObjectScope),
-	// A pending disc title request is not a staged family: an obsolete title
-	// that still has one fails closed instead of cascading the request away.
+	// The explicit request pass above has retired only obsolete identities.
+	// Every remaining child still vetoes a destructive parent delete.
 	infoCopyRemoveStep(11, "inventory_disc_titles", "catalog_info_new_disc_titles",
 		infoCopyTextTuple("object_id", "title_key"), infoCopyObjectScope,
 		"inventory_disc_clips", "inventory_disc_streams", "inventory_disc_chapters",
@@ -577,6 +593,21 @@ func MaterializeInfoChangeTx(ctx context.Context, tx *sql.Tx, changeID int64) (b
 		}
 	}
 	run := infoCopyRun{changeID: changeID, token: token, object: object}
+	// Timed facts are independent per-title observations. A nonempty family16
+	// pins one exact title; an empty family16 is the structure-wide reset.
+	if mask&((1<<15)|(1<<16)|(1<<17)) != 0 {
+		var expected int64
+		e := tx.QueryRowContext(ctx, `SELECT rows_expected FROM catalog_info_input_families WHERE change_id=? AND family=16 AND sealed=1`, changeID).Scan(&expected)
+		if e != nil || expected > 1 {
+			return false, fmt.Errorf("%w: timed title manifest", ErrInfoInvariant)
+		}
+		if expected == 1 {
+			if e = tx.QueryRowContext(ctx, `SELECT title_key FROM catalog_info_new_disc_title_media WHERE change_id=? AND object_id=? LIMIT 1`, changeID, object).Scan(&run.timedTitle); e != nil {
+				return false, e
+			}
+			run.timedScoped = true
+		}
+	}
 	budget := newInfoCopyBudget()
 	next := int(step)
 	for next < len(infoCopySteps) && !budget.exhausted() {
@@ -715,9 +746,11 @@ func verifyInfoCopyInput(ctx context.Context, tx *sql.Tx, changeID int64, token 
 
 // infoCopyRun carries the immutable scope of one materialize call.
 type infoCopyRun struct {
-	changeID int64
-	token    string
-	object   string
+	changeID    int64
+	token       string
+	object      string
+	timedTitle  string
+	timedScoped bool
 }
 
 // walkSQL builds the single-key seek of one remove or park step. The bind order
@@ -726,6 +759,10 @@ type infoCopyRun struct {
 func (r infoCopyRun) walkSQL(step *infoCopyStep, cursor infoCopyCursor) (string, []any) {
 	query := step.walk
 	args := step.scope.args(r.token, r.object)
+	if r.timedScoped && step.family >= 16 && step.family <= 18 {
+		query += " AND c.title_key=?"
+		args = append(args, r.timedTitle)
+	}
 	if cursor.valid {
 		query += " AND " + step.tuple.rowValue("c") + " > (" + infoCopyPlaceholders(len(step.tuple.cols)) + ")"
 		args = append(args, step.tuple.args(cursor)...)

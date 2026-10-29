@@ -598,3 +598,131 @@ func TestInfoMaterializeRefusesIncompleteInput(t *testing.T) {
 		t.Fatalf("a refused input still wrote %d canonical lanes", got)
 	}
 }
+
+func TestInfoMaterializeRotatesTitleIdentityWithBoundedRequestRetirement(t *testing.T) {
+	c := catalogtest.Open(t)
+	films := c.Library("rotation", "Rotation", "movie", "/rotation")
+	movie := c.Movie(films, "/rotation/one.iso", "One", 2026)
+	c.Drain()
+	c.Exec(`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns) SELECT 'rotation-object',s.id,a.token,s.incarnation,'one.iso','r','{}',a.size,a.modified_ns FROM catalog_assets a JOIN library_sources s ON s.library_id='rotation' WHERE a.id=?`, movie.Asset)
+	c.Exec(`INSERT INTO inventory_disc_facts(object_id,asset_id,source_revision,source_generation,root_incarnation,kind,packaging,encryption,fingerprint) VALUES('rotation-object',?,'r',1,'old-root','dvd','iso','none',?)`, movie.Token, strings.Repeat("a", 64))
+	c.Exec(`INSERT INTO inventory_disc_titles(object_id,title_key,selection_token,title_number,disc_order,duration_ms,angle_count,dvd_title,vts,pgc) VALUES('rotation-object','1','old-title-token',1,0,600000,1,1,1,1)`)
+	c.Exec(`INSERT INTO inventory_disc_chapters(object_id,title_key,chapter_order,start_ms) VALUES('rotation-object','1',0,0)`)
+	c.Exec(`INSERT INTO jobs(id,library_id,status,created_at) VALUES('rotation-job','rotation','running','unit')`)
+	c.Exec(`INSERT INTO inventory_disc_title_requests(job_id,object_id,title_key,source_revision,fingerprint) VALUES('rotation-job','rotation-object','1','r',?)`, strings.Repeat("a", 64))
+	change := infoTestChangeObject(t, c.DB, movie.Asset, movie.Token, "rotation-object", ((1<<18)-1)&^((1<<9)-1))
+	c.Exec(`INSERT INTO catalog_info_new_disc_facts(change_id,input_ordinal,object_id,asset_id,source_revision,source_generation,root_incarnation,kind,packaging,encryption,fingerprint) VALUES(?,0,'rotation-object',?,'r',2,'new-root','dvd','iso','none',?)`, change, movie.Token, strings.Repeat("b", 64))
+	c.Exec(`INSERT INTO catalog_info_new_disc_titles(change_id,input_ordinal,object_id,title_key,selection_token,title_number,disc_order,duration_ms,angle_count,dvd_title,vts,pgc) VALUES(?,0,'rotation-object','1','new-title-token',1,0,600000,1,1,1,1)`, change)
+	c.Exec(`INSERT INTO catalog_info_new_disc_chapters(change_id,input_ordinal,object_id,title_key,chapter_order,start_ms) VALUES(?,0,'rotation-object','1',0,1)`, change)
+	for family := 10; family <= 18; family++ {
+		count := 0
+		if family == 10 || family == 11 || family == 14 {
+			count = 1
+		}
+		infoTestSeal(t, c.DB, change, family, count)
+	}
+	infoTestBeginPhase2(t, c.DB, change)
+	infoTestFinish(t, c.DB, change)
+	if got := infoTestString(t, c.DB, `SELECT selection_token FROM inventory_disc_titles WHERE object_id='rotation-object'`); got != "new-title-token" {
+		t.Fatal("new incarnation reused OLD title identity", got)
+	}
+	if got := infoTestCount(t, c.DB, `SELECT count(*) FROM inventory_disc_title_requests WHERE object_id='rotation-object'`); got != 0 {
+		t.Fatal("old title request survived identity retirement", got)
+	}
+	if got := infoTestCount(t, c.DB, `SELECT start_ms FROM inventory_disc_chapters WHERE object_id='rotation-object'`); got != 1 {
+		t.Fatal("old child retained across identity replacement", got)
+	}
+}
+
+// A timed probe replaces one title's complete technical frame. Other titles
+// and objects retain their independent accepted observations. A structure reset
+// with no staged title-media row still clears the whole object's timed sets.
+func TestInfoMaterializeTimedTitleScopeAndEmptyStructureReset(t *testing.T) {
+	c := catalogtest.Open(t)
+	lib := c.Library("timed", "Timed", "movie", "/timed")
+	movie := c.Movie(lib, "/timed/disc.iso", "Disc", 2000)
+	c.Drain()
+	c.Exec(`INSERT INTO library_sources(id,library_id,configured_root,root) VALUES('timed-source','timed','/timed-source','/timed-source')`)
+	for _, object := range []string{"object-a", "object-b"} {
+		c.Exec(`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns) SELECT ?,'timed-source',token,'root',?,'r','{}',size,modified_ns FROM catalog_assets WHERE id=?`, object, object, movie.Asset)
+		c.Exec(`INSERT INTO inventory_disc_facts(object_id,asset_id,source_revision,source_generation,root_incarnation,kind,packaging,encryption,fingerprint) VALUES(?,?,'r',1,'root','dvd','iso','none',?)`, object, movie.Token, strings.Repeat("f", 64))
+		for n, title := range []string{"A", "B"} {
+			c.Exec(`INSERT INTO inventory_disc_titles(object_id,title_key,selection_token,title_number,disc_order,duration_ms,angle_count) VALUES(?,?,?,?,0,60000,1)`, object, title, object+title, n+1)
+			c.Exec(`INSERT INTO inventory_disc_title_media(object_id,title_key,source_revision,fingerprint,revision,container,video_codec,audio_codec,width,height,duration_ms) VALUES(?,?,'r','fp','old','dvd','h264','aac',720,480,60000)`, object, title)
+			c.Exec(`INSERT INTO inventory_disc_title_media_streams VALUES(?,?,0,'audio','aac','','',2,'stereo',1,0,'','','{}','{}')`, object, title)
+			c.Exec(`INSERT INTO inventory_disc_title_media_members VALUES(?,?,'old.vob','identity',10,20,1,0)`, object, title)
+		}
+	}
+	c.Drain()
+	publish := func(object, title string, empty bool) {
+		t.Helper()
+		mask := int64(1<<15 | 1<<16 | 1<<17)
+		if empty {
+			mask |= 1 << 10
+		}
+		change := infoTestChangeObject(t, c.DB, movie.Asset, movie.Token, object, mask)
+		count := 0
+		if !empty {
+			// Unchanged canonical parents are explicitly witnessed in staging; the
+			// staging FK never permits a child to borrow another observation's tree.
+			c.Exec(`INSERT INTO catalog_info_new_disc_facts(change_id,input_ordinal,object_id,asset_id,source_revision,source_generation,root_incarnation,kind,packaging,encryption,fingerprint,owner_title_key,choice_revision,media_title_key,media_stream_revision,media_chapter_revision) SELECT ?,0,object_id,asset_id,source_revision,source_generation,root_incarnation,kind,packaging,encryption,fingerprint,owner_title_key,choice_revision,media_title_key,media_stream_revision,media_chapter_revision FROM inventory_disc_facts WHERE object_id=?`, change, object)
+			c.Exec(`INSERT INTO catalog_info_new_disc_titles(change_id,input_ordinal,object_id,title_key,selection_token,title_number,disc_order,duration_ms,angle_count,playlist,dvd_title,vts,pgc) SELECT ?,0,object_id,title_key,selection_token,title_number,disc_order,duration_ms,angle_count,playlist,dvd_title,vts,pgc FROM inventory_disc_titles WHERE object_id=? AND title_key=?`, change, object, title)
+			infoTestSeal(t, c.DB, change, 10, 1)
+			infoTestSeal(t, c.DB, change, 11, 1)
+			c.Exec(`INSERT INTO catalog_info_new_disc_title_media(change_id,input_ordinal,object_id,title_key,source_revision,fingerprint,revision,container,video_codec,audio_codec,width,height,duration_ms,origin_us,timing_known) VALUES(?,0,?,?,'r','fp','new','dvd','h264','aac',720,480,60000,0,1)`, change, object, title)
+			count = 1
+		} else {
+			infoTestSeal(t, c.DB, change, 11, 0)
+		}
+		infoTestSeal(t, c.DB, change, 16, count)
+		infoTestSeal(t, c.DB, change, 17, 0)
+		infoTestSeal(t, c.DB, change, 18, 0)
+		infoTestBeginPhase2(t, c.DB, change)
+		infoTestFinish(t, c.DB, change)
+		c.Exec(`UPDATE catalog_info_changes SET phase=5 WHERE id=?`, change)
+
+		retired := false
+		for turn := 0; turn < 512; turn++ {
+			err := dbwork.WithWriteTx(context.Background(), c.DB, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
+				var e error
+				retired, e = compactcatalog.AdvanceInfoPublicationTx(context.Background(), tx, movie.Asset, movie.Token, compactcatalog.NewInfoMaterializer())
+				return e
+			})
+			if err != nil {
+				t.Fatal("raw retirement", err)
+			}
+			if retired {
+				break
+			}
+		}
+		if !retired {
+			t.Fatal("source input retirement did not finish")
+		}
+	}
+	publish("object-a", "A", false)
+	if got := infoTestString(t, c.DB, `SELECT revision FROM inventory_disc_title_media WHERE object_id='object-a' AND title_key='B'`); got != "old" {
+		t.Fatal("alternate title lost", got)
+	}
+	if got := infoTestCount(t, c.DB, `SELECT count(*) FROM inventory_disc_title_media_streams WHERE object_id='object-a' AND title_key='B'`); got != 1 {
+		t.Fatal("alternate streams lost", got)
+	}
+	if got := infoTestCount(t, c.DB, `SELECT count(*) FROM inventory_disc_title_media_members WHERE object_id='object-a' AND title_key='B'`); got != 1 {
+		t.Fatal("alternate members lost", got)
+	}
+	publish("object-b", "B", false)
+	if got := infoTestString(t, c.DB, `SELECT revision FROM inventory_disc_title_media WHERE object_id='object-a' AND title_key='A'`); got != "new" {
+		t.Fatal("other object's accepted update lost", got)
+	}
+	publish("object-a", "", true)
+	for _, table := range []string{"inventory_disc_titles", "inventory_disc_title_media", "inventory_disc_title_media_streams", "inventory_disc_title_media_members"} {
+		if got := infoTestCount(t, c.DB, `SELECT count(*) FROM `+table+` WHERE object_id='object-a'`); got != 0 {
+			t.Fatal("empty structure retained timed children", table, got)
+		}
+	}
+	if got := infoTestCount(t, c.DB, `SELECT count(*) FROM inventory_disc_title_media WHERE object_id='object-b'`); got != 2 {
+		t.Fatal("other object changed during reset", got)
+	}
+	if got := infoTestString(t, c.DB, `SELECT revision FROM inventory_disc_title_media WHERE object_id='object-b' AND title_key='B'`); got != "new" {
+		t.Fatal("mixed sequence lost final frame", got)
+	}
+}

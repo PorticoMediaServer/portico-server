@@ -57,14 +57,14 @@ func BuildInfoStreams(ctx context.Context, tx *sql.Tx, asset int64, token string
 		return 0
 	}
 	return []compactcatalog.InfoSourceFamily{
-		{Number: 1, Count: 1, Row: func(i int64) (compactcatalog.InfoStageRow, error) {
+		{Number: 1, Count: 1, Row: func(_ context.Context, _ *sql.Tx, i int64) (compactcatalog.InfoStageRow, error) {
 			return compactcatalog.InfoStreamFactRow{InputOrdinal: i, AssetID: token, Revision: revision, Size: size, ModifiedNS: modified, Fingerprint: fingerprint, DetailVersion: StreamDetailVersion}, nil
 		}},
-		{Number: 2, Count: int64(len(streams)), Row: func(i int64) (compactcatalog.InfoStageRow, error) {
+		{Number: 2, Count: int64(len(streams)), Row: func(_ context.Context, _ *sql.Tx, i int64) (compactcatalog.InfoStageRow, error) {
 			s := streams[i]
 			return compactcatalog.InfoStreamRow{InputOrdinal: i, AssetID: token, StreamIndex: int64(s.Index), Type: s.Type, Codec: s.Codec, Language: s.Language, Title: s.Title, Channels: int64(s.Channels), ChannelLayout: s.ChannelLayout, IsDefault: boolean(s.Default), IsForced: boolean(s.Forced), ColorTransfer: streamText(s.ColorTransfer, 32), ColorPrimaries: streamText(s.ColorPrimaries, 32), DetailJSON: s.EncodeDetail()}, nil
 		}},
-		{Number: 3, Count: int64(len(streams)), Row: func(i int64) (compactcatalog.InfoStageRow, error) {
+		{Number: 3, Count: int64(len(streams)), Row: func(_ context.Context, _ *sql.Tx, i int64) (compactcatalog.InfoStageRow, error) {
 			s := streams[i]
 			b := s.Detail.StreamBreadth
 			return compactcatalog.InfoStreamBreadthRow{InputOrdinal: i, AssetID: token, StreamIndex: int64(s.Index), AudioDescription: boolean(b.AudioDescription), AudioVariant: b.AudioVariant, ChromaSubsampling: b.ChromaSubsampling, FPSNumerator: int64(b.FrameRateNumerator), FPSDenominator: int64(b.FrameRateDenominator), FrameRateMode: b.FrameRateMode, InterlaceAnalysis: b.InterlaceAnalysis, Telecine: boolean(b.Telecine), DOVIRPU: boolean(b.DolbyVisionRPU), DOVIBaseLayer: boolean(b.DolbyVisionBaseLayer), DOVIMetadataKnown: boolean(b.DolbyVisionMetadataKnown), DOVIEnhancementType: b.DolbyVisionEnhancementType, DOVICMVersion: b.DolbyVisionCMVersion}, nil
@@ -112,10 +112,10 @@ func BuildInfoChapters(ctx context.Context, tx *sql.Tx, asset int64, token strin
 		return nil, err
 	}
 	return []compactcatalog.InfoSourceFamily{
-		{Number: 4, Count: 1, Row: func(i int64) (compactcatalog.InfoStageRow, error) {
+		{Number: 4, Count: 1, Row: func(_ context.Context, _ *sql.Tx, i int64) (compactcatalog.InfoStageRow, error) {
 			return compactcatalog.InfoChapterFactRow{InputOrdinal: i, AssetID: token, Revision: revision, Size: size, ModifiedNS: modified, Status: status, Fingerprint: fingerprint}, nil
 		}},
-		{Number: 5, Count: int64(len(chapters)), Row: func(i int64) (compactcatalog.InfoStageRow, error) {
+		{Number: 5, Count: int64(len(chapters)), Row: func(_ context.Context, _ *sql.Tx, i int64) (compactcatalog.InfoStageRow, error) {
 			c := chapters[i]
 			return compactcatalog.InfoChapterRow{InputOrdinal: i, AssetID: token, ChapterIndex: i + 1, Title: streamText(c.Title, 500), StartSeconds: c.Start, EndSeconds: c.End}, nil
 		}},

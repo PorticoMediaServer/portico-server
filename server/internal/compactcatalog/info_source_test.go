@@ -39,10 +39,10 @@ func TestInfoSourceResumesOnlyCommittedRawPrefix(t *testing.T) {
 		}
 		spec := compactcatalog.InfoInputSpec{AssetID: movie.Asset, Token: movie.Token, ExpectedEpoch: epoch, FamilyMask: 3, Fingerprint: [32]byte{1}, Witnesses: []compactcatalog.InfoWitness{{Kind: compactcatalog.InfoWitnessAsset, Fingerprint: [32]byte{1}}}}
 		families := []compactcatalog.InfoSourceFamily{
-			{Number: 1, Count: 1, Row: func(i int64) (compactcatalog.InfoStageRow, error) {
+			{Number: 1, Count: 1, Row: func(_ context.Context, _ *sql.Tx, i int64) (compactcatalog.InfoStageRow, error) {
 				return compactcatalog.InfoStreamFactRow{InputOrdinal: i, AssetID: movie.Token, Revision: 1, Size: size, ModifiedNS: modified, Fingerprint: "test-input"}, nil
 			}},
-			{Number: 2, Count: 129, Row: func(i int64) (compactcatalog.InfoStageRow, error) {
+			{Number: 2, Count: 129, Row: func(_ context.Context, _ *sql.Tx, i int64) (compactcatalog.InfoStageRow, error) {
 				if i == 17 && !stopped {
 					stopped = true
 					return nil, interrupted
