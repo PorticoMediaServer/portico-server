@@ -32,6 +32,11 @@ const (
 	DiscoverNewIssues  = "new-issues"
 )
 
+// DiscoverRevision is the authorized catalog/viewer content revision of the
+// snapshot a series composition read. It is the same revision a conditional
+// read checks; a refusal carries it so the caller can answer without a probe.
+type DiscoverRevision struct{ Catalog, Viewer int64 }
+
 // Discover composes real title rows and, when requested, exact series summaries
 // from the same authorized ready projection. Classification and reading-length
 // rows require their own real producers and are not inferred here.
@@ -41,6 +46,11 @@ type Discover struct {
 	ShortReads []ShortRead
 	NewIssues  []LibraryRow
 	Newspaper  *PeriodicalGroup
+	// Revision and Importing are the facts of the one library's ready image the
+	// series row was composed from. They are absent (nil/false) unless that
+	// authorized composition ran, so an unauthorized read reports no revision.
+	Revision  *DiscoverRevision
+	Importing bool
 	// Next continues each row by key; an absent key means the row is complete.
 	Next    map[string]string
 	cursors map[string]func(int) (string, error)
@@ -178,6 +188,7 @@ func (s *Service) Discover(ctx context.Context, p identity.Principal, library st
 			return out, err
 		}
 		out.Series, out.cursors[DiscoverSeriesRow] = row.series, row.cursorAt
+		out.Revision, out.Importing = row.revision, row.importing
 		if row.next != "" {
 			out.Next[DiscoverSeriesRow] = row.next
 		}

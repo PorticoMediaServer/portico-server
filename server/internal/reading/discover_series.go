@@ -27,6 +27,10 @@ type discoverSeriesRow struct {
 	series   []DiscoverSeries
 	next     string
 	cursorAt func(int) (string, error)
+	// revision and importing come from the same ready snapshot that composed
+	// the page; they are withheld when no page composition was authorized.
+	revision  *DiscoverRevision
+	importing bool
 }
 
 func (s *Service) discoverSeriesTx(ctx context.Context, tx *sql.Tx, p identity.Principal, library, cursor string, limit int, visible string, visibleArgs []any) (discoverSeriesRow, error) {
@@ -49,6 +53,20 @@ func (s *Service) discoverSeriesTx(ctx context.Context, tx *sql.Tx, p identity.P
 	if err != nil {
 		return out, err
 	}
+	// These are the facts of the image the page composes. Input newer than ready
+	// is the lower bound of a pending import; the old ready image is still served.
+	out.revision = &DiscoverRevision{Catalog: scope.Catalog, Viewer: scope.Viewer}
+	out.importing = generation.Input > generation.Ready
+	// A continuation that no longer matches this image is refused with the same
+	// revision a fresh read publishes. The cursor was not the authority test:
+	// library, profile and series scope already succeeded above.
+	stale := func() error { return &RevisionError{Catalog: scope.Catalog, Viewer: scope.Viewer} }
+	staleIfChanged := func(e error) error {
+		if errors.Is(e, ErrChanged) {
+			return stale()
+		}
+		return e
+	}
 	// The cursor binds the row and the viewer's scope, not its page size: a
 	// shelf may continue with a different page than it opened with.
 	digest, err := seriesScopeDigest(library, "", "discover-series-v1", scope, 20)
@@ -64,17 +82,17 @@ func (s *Service) discoverSeriesTx(ctx context.Context, tx *sql.Tx, p identity.P
 	if cursor != "" {
 		captured, e := decodeSeriesCursor(cursor, key, time.Now())
 		if e != nil {
-			return out, e
+			return out, staleIfChanged(e)
 		}
 		if captured.Namespace != current.Namespace || captured.Input != current.Input || captured.Ready != current.Ready || captured.Catalog != current.Catalog || captured.Viewer != current.Viewer || captured.Scope != current.Scope {
-			return out, ErrChanged
+			return out, stale()
 		}
 		anchor, e := seriesAnchorTx(ctx, tx, handle, generation.Ready, captured.Anchor)
 		if e != nil {
-			return out, e
+			return out, staleIfChanged(e)
 		}
 		if tuple, e := (seriesTuple{Sort: anchor.Key + "\x00" + anchor.ID, Item: captured.Anchor}).digest(); e != nil || tuple != captured.Tuple {
-			return out, ErrChanged
+			return out, stale()
 		}
 		after = &anchor.Key
 		current.Expiry = captured.Expiry

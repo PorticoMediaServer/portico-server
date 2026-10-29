@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"portico.local/apikit"
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/reading"
 )
 
@@ -72,6 +73,13 @@ func (ReadingDiscoverSeries) JSONSchema() map[string]any {
 // ReadingDiscoverResponse publishes only rows supported by real producers.
 type ReadingDiscoverResponse struct {
 	Rows []ReadingDiscoverRow `json:"rows"`
+	// Importing is true while the library's input is ahead of the ready image
+	// these rows came from. The rows are still that published image, not a
+	// recomputed membership; the member is omitted otherwise.
+	Importing bool `json:"importing,omitempty"`
+	// Revision is the existing catalog/viewer content revision the rows came
+	// from. Absent on a read that did not resolve an authorized library image.
+	Revision *catalog.ContentRevision `json:"revision,omitempty"`
 }
 
 func (d Dependencies) readingDiscover(w http.ResponseWriter, r *http.Request) {
@@ -186,6 +194,12 @@ func (d Dependencies) readingDiscover(w http.ResponseWriter, r *http.Request) {
 	if group := discover.Newspaper; group != nil {
 		newspaper := &ReadingPeriodicalGroup{ID: group.ID, Name: group.Name, IssueCount: group.IssueCount, Latest: ReadingPeriodicalIssue{Item: readingItemProjection(group.Latest), IssueDate: ReadingIssueDate(group.Latest.IssueDate)}}
 		out.Rows = append(out.Rows, ReadingDiscoverRow{Key: "newspaper", Items: []ReadingItem{}, Newspaper: newspaper})
+	}
+	// These accompany the rows only when an authorized library series image was
+	// resolved. Importing is the lower bound from that same ready snapshot.
+	out.Importing = discover.Importing
+	if discover.Revision != nil {
+		out.Revision = &catalog.ContentRevision{Catalog: discover.Revision.Catalog, Viewer: discover.Revision.Viewer}
 	}
 	write(w, 200, out)
 }

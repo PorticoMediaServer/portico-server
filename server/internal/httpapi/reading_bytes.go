@@ -84,6 +84,9 @@ func readingFailure(w http.ResponseWriter, err error) {
 	}
 	switch {
 	case errors.Is(err, reading.ErrChanged), errors.Is(err, reading.ErrConflict), errors.Is(err, storage.ErrObservedSourceLost), errors.Is(err, storage.ErrRemoteChanged):
+		if readingRevisionFailure(w, err) {
+			return
+		}
 		policyError(w, "revision_mismatch")
 	case errors.Is(err, reading.ErrUnavailable):
 		// Match the concealed content-restriction response: availability must
