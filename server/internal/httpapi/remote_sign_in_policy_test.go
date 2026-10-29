@@ -10,7 +10,6 @@ import (
 
 	"portico.local/server/internal/connectivity"
 	"portico.local/server/internal/identity"
-	"portico.local/server/internal/operations"
 )
 
 // The owner's "who may sign in from outside this network" setting, tried on
@@ -22,12 +21,18 @@ const (
 	remotePeer = "203.0.113.9:5000"
 )
 
+// The network homePeer is posed in is named explicitly. Automatic home
+// networks follow the host's attached interfaces, so the LAN has to be the
+// owner's saved network, not whichever range the test runner happens to have.
+const fixtureHomeNetwork = "192.168.1.0/24"
+
 func remotePolicyFixture(t *testing.T) *v1Fixture {
 	t.Helper()
 	f := memberLimitsFixture(t, 0)
-	f.deps.Console = operations.New(f.db)
-	f.handler = New(f.deps)
-	f.deps.v1 = f.v1
+	// Save the owner's LAN policy before the router's first request and rebuild
+	// the router, so that request reads the saved document through a cold
+	// policy cache instead of the runner's interfaces.
+	v1HomeNetworks(t, f, fixtureHomeNetwork)
 	return f
 }
 
