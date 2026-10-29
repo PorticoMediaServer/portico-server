@@ -8,6 +8,7 @@ import (
 	"errors"
 	"regexp"
 	"sync"
+	"time"
 )
 
 var digest = regexp.MustCompile(`^[a-f0-9]{64}$`)
@@ -41,7 +42,10 @@ func NewAuthorityGate(incarnation string, denied bool) (*AuthorityGate, error) {
 	return &AuthorityGate{incarnation: incarnation, denied: denied, leases: make(map[*AuthorityLease]struct{}), drained: drained}, nil
 }
 func (g *AuthorityGate) Acquire(ctx context.Context) (*AuthorityLease, error) {
+	began := time.Now()
 	g.mu.Lock()
+	waited := time.Since(began)
+	defer warnAuthorityLockWait(waited)
 	defer g.mu.Unlock()
 	if g.denied || ctx.Err() != nil {
 		return nil, ErrFenced
@@ -62,7 +66,14 @@ func (l *AuthorityLease) check() error {
 	}
 	return nil
 }
-func (l *AuthorityLease) Check() error { l.gate.mu.Lock(); defer l.gate.mu.Unlock(); return l.check() }
+func (l *AuthorityLease) Check() error {
+	began := time.Now()
+	l.gate.mu.Lock()
+	waited := time.Since(began)
+	defer warnAuthorityLockWait(waited)
+	defer l.gate.mu.Unlock()
+	return l.check()
+}
 
 // Commit linearizes admission under a short lock, then runs the durable effect
 // as counted in-flight work. Quiesce immediately denies/cancels even if the
@@ -70,19 +81,27 @@ func (l *AuthorityLease) Check() error { l.gate.mu.Lock(); defer l.gate.mu.Unloc
 // A commit admitted before quiesce may finish during drain, never during install.
 func (l *AuthorityLease) Commit(commit func() error) error {
 	g := l.gate
+	began := time.Now()
 	g.mu.Lock()
+	waited := time.Since(began)
 	if err := l.check(); err != nil {
 		g.mu.Unlock()
+		warnAuthorityLockWait(waited)
 		return err
 	}
 	if commit == nil || l.committing {
 		g.mu.Unlock()
+		warnAuthorityLockWait(waited)
 		return ErrFenced
 	}
 	l.committing = true
 	g.mu.Unlock()
+	warnAuthorityLockWait(waited)
 	defer func() {
+		began := time.Now()
 		g.mu.Lock()
+		waited := time.Since(began)
+		defer warnAuthorityLockWait(waited)
 		defer g.mu.Unlock()
 		l.committing = false
 		if l.closed {
@@ -96,7 +115,10 @@ func (l *AuthorityLease) Commit(commit func() error) error {
 }
 func (l *AuthorityLease) Close() {
 	g := l.gate
+	began := time.Now()
 	g.mu.Lock()
+	waited := time.Since(began)
+	defer warnAuthorityLockWait(waited)
 	defer g.mu.Unlock()
 	if l.closed {
 		return

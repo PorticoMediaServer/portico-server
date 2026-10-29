@@ -276,6 +276,10 @@ func (g *Gate) acquireTicket(ctx context.Context, t *ticket, stuck stuckClock) (
 			}
 			g.stuckLogged = false
 			held := time.Now()
+			var maintenanceSite callSite
+			if class == ClassMaintenance {
+				maintenanceSite = captureSite(2)
+			}
 			g.holderClass, g.heldSince, g.holderOwner = class, held, t.owner
 			metrics := &g.byClass[class]
 			metrics.acquired++
@@ -319,6 +323,13 @@ func (g *Gate) acquireTicket(ctx context.Context, t *ticket, stuck stuckClock) (
 					g.holder = ""
 					g.signalLocked()
 					g.mu.Unlock()
+					// Resolve and log only a slow maintenance holder, after the
+					// gate is free. No query text, bound values or authority
+					// descriptors enter this local operator diagnostic.
+					if class == ClassMaintenance && time.Duration(elapsed) > SlowReadThreshold {
+						function, file, line, _ := maintenanceSite.resolve()
+						log.Printf("Maintenance writer held the gate for %s at %s:%d (%s)", time.Duration(elapsed).Round(time.Millisecond), file, line, function)
+					}
 				})
 			}, nil
 		}
