@@ -1,11 +1,11 @@
-package main
+package httpapi
 
-// grandfatheredUnionTags keeps the domain tags response unions already had
+// GrandfatheredUnionTags keeps the domain tags response unions already had
 // before R-09b (an event's type, a reading location's format, an offline
 // refresh's outcome), keyed "route path". Every other response union is tagged
 // by variant; apigen fails on anything else. Do not add entries: new unions use
 // variant.
-var grandfatheredUnionTags = map[string]string{
+var GrandfatheredUnionTags = map[string]string{
 	"get_reading_sessions_sessionId_annotations $.entries[items].location":  "format",
 	"post_metadata_bulk_preview $|oneOf0.fields[additionalProperties]":      "state",
 	"get_shows_id_recommendations_row $.seeAll":                             "type",

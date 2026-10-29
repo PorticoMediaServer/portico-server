@@ -277,6 +277,9 @@ type Options struct {
 	// GrandfatheredUnionTags keeps a pre-R-09b domain tag ("route path" → tag);
 	// every other response union is tagged by variant.
 	GrandfatheredUnionTags map[string]string
+	// RequireGrandfatheredUse fails generation on a grandfathered entry that
+	// matches no union. Set only by the full generator, not route subsets.
+	RequireGrandfatheredUse bool
 	// Components gives reusable wire types descriptive names in OpenAPI.
 	Components map[string]reflect.Type
 	// ServiceAccessRules lists access labels this service authenticates itself,
@@ -442,7 +445,7 @@ func GenerateWith(definitions []Definition, options Options) (Artifacts, error) 
 		routes = append(routes, d.Metadata)
 	}
 	for key := range options.GrandfatheredUnionTags {
-		if !grandfatherUsed[key] {
+		if options.RequireGrandfatheredUse && !grandfatherUsed[key] {
 			return Artifacts{}, fmt.Errorf("grandfathered union tag %q matches no response union; remove it", key)
 		}
 	}
