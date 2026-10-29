@@ -49,6 +49,14 @@ function Control({icon, label, action, disabled, main, skip, large, buttonRef, a
   </button>;
 }
 
+/** The "Ends 4:48 PM" clock formatter, one per locale rather than one per progress tick. */
+const endClocks = new Map<string, Intl.DateTimeFormat>();
+const endClock = (locale: string) => {
+  let format = endClocks.get(locale);
+  if (!format) { format = new Intl.DateTimeFormat(locale, {hour: 'numeric', minute: '2-digit'}); endClocks.set(locale, format); }
+  return format;
+};
+
 /** Only drawn controls and geometry targets. The parent's MediaSurface remains its sole video. */
 export function WatchScreen({binding, snapshot, expanded, onCollapse, onControlsVisibleChange, publishDockPanels, dockPanelsCurrent, subscribeDockPanels, surfaceSlotRef, surfaces, live, windowPort, geometry, videoGesture}: WatchScreenProps) {
   const size = useSyncExternalStore(subscribeWindow, windowSize, serverSize).split(':').map(Number), width = size[0]!, height = size[1]!;
@@ -274,7 +282,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   const trickplay = surfaces?.trickplay;
   const preview = open && chromeVisible && !panel && !more && !shortcuts ? watchPreviewFrame(snapshot, trickplay, previewSeconds) : null;
   const endsAt = presentation?.playing && duration > position && presentation.rate > 0
-    ? new Intl.DateTimeFormat(binding.environment.locale ?? 'en-US', {hour: 'numeric', minute: '2-digit'}).format(new Date(Date.now() + (duration - position) / presentation.rate * 1000)) : undefined;
+    ? endClock(binding.environment.locale ?? 'en-US').format(new Date(Date.now() + (duration - position) / presentation.rate * 1000)) : undefined;
   const mainKind = presentation?.finished ? 'replay' : presentation?.playing ? 'pause' : 'play';
   const episode = identity?.subtitle.some(part => part.id === 'episode-label');
   // desktop-player f1: Previous and Next follow the queue and name the title they would play.

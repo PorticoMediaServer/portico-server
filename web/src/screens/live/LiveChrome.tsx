@@ -148,7 +148,7 @@ export function LiveChrome({port, playing, onCollapse, onStop, onPlayPause, onSk
       </div>
       <div className={styles.times}>
         <span><b>{time(displayWindow.positionMs)}</b>{behind && <><i className={styles.gap}/><em>{behind}</em></>}</span>
-        {!window.atLive && <button type="button" className={styles.goLive} style={{left: `${railFacts.edge}%`}} aria-label={t('player.live.goLive')}
+        {!window.atLive && <button type="button" className={styles.goLive} style={{left: `clamp(72px, ${railFacts.edge}%, calc(100% - 72px))`}} aria-label={t('player.live.goLive')}
           onClick={() => act(port.goLive)}><i/>{t('player.live.goLive')}</button>}
         <span>{programme && t('guide.ends', {time: time(programme.endMs)})}</span>
       </div>
