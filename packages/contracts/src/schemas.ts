@@ -50444,7 +50444,8 @@ export const schemas = {
         ],
         "type": "object"
       }
-    ]
+    ],
+    "x-discriminator": "kind"
   },
   "GetFeedbackCapabilitiesRequest": {
     "properties": {},
@@ -67671,7 +67672,8 @@ export const schemas = {
                     "required": [
                       "type"
                     ],
-                    "type": "object"
+                    "type": "object",
+                    "x-discriminator": "type"
                   },
                   "start": {
                     "maximum": 9007199254740991,
@@ -73852,7 +73854,8 @@ export const schemas = {
               "required": [
                 "type"
               ],
-              "type": "object"
+              "type": "object",
+              "x-discriminator": "type"
             },
             "start": {
               "maximum": 9007199254740991,
@@ -83502,7 +83505,8 @@ export const schemas = {
               "required": [
                 "type"
               ],
-              "type": "object"
+              "type": "object",
+              "x-discriminator": "type"
             },
             "start": {
               "maximum": 9007199254740991,
@@ -89683,7 +89687,8 @@ export const schemas = {
         "required": [
           "type"
         ],
-        "type": "object"
+        "type": "object",
+        "x-discriminator": "type"
       },
       "start": {
         "maximum": 9007199254740991,
@@ -90201,7 +90206,8 @@ export const schemas = {
         ],
         "type": "object"
       }
-    ]
+    ],
+    "x-discriminator": "kind"
   },
   "GetItemFileInfoGroupsRequest": {
     "properties": {},
@@ -90639,7 +90645,8 @@ export const schemas = {
         ],
         "type": "object"
       }
-    ]
+    ],
+    "x-discriminator": "kind"
   },
   "GetItemFileInfoHeadTracksRequest": {
     "properties": {},
@@ -90973,7 +90980,8 @@ export const schemas = {
         ],
         "type": "object"
       }
-    ]
+    ],
+    "x-discriminator": "kind"
   },
   "GetItemFileInfoMembersRequest": {
     "properties": {},
@@ -91374,7 +91382,8 @@ export const schemas = {
         ],
         "type": "object"
       }
-    ]
+    ],
+    "x-discriminator": "kind"
   },
   "GetItemFileInfoSourcesRequest": {
     "properties": {},
@@ -91667,7 +91676,8 @@ export const schemas = {
         ],
         "type": "object"
       }
-    ]
+    ],
+    "x-discriminator": "kind"
   },
   "GetItemFileInfoTracksRequest": {
     "properties": {},
@@ -91993,7 +92003,8 @@ export const schemas = {
         ],
         "type": "object"
       }
-    ]
+    ],
+    "x-discriminator": "kind"
   },
   "GetItemsIdAnalysisArtifactsArtifactRequest": {
     "properties": {},
@@ -97865,7 +97876,8 @@ export const schemas = {
         ],
         "type": "object"
       }
-    ]
+    ],
+    "x-discriminator": "kind"
   },
   "GetItemsIdListeningRequest": {
     "properties": {},
@@ -107343,7 +107355,8 @@ export const schemas = {
                     "required": [
                       "type"
                     ],
-                    "type": "object"
+                    "type": "object",
+                    "x-discriminator": "type"
                   },
                   "start": {
                     "maximum": 9007199254740991,
@@ -113524,7 +113537,8 @@ export const schemas = {
               "required": [
                 "type"
               ],
-              "type": "object"
+              "type": "object",
+              "x-discriminator": "type"
             },
             "start": {
               "maximum": 9007199254740991,
@@ -119747,7 +119761,8 @@ export const schemas = {
               "required": [
                 "type"
               ],
-              "type": "object"
+              "type": "object",
+              "x-discriminator": "type"
             },
             "start": {
               "maximum": 9007199254740991,
@@ -125928,7 +125943,8 @@ export const schemas = {
         "required": [
           "type"
         ],
-        "type": "object"
+        "type": "object",
+        "x-discriminator": "type"
       },
       "start": {
         "maximum": 9007199254740991,
@@ -150172,7 +150188,8 @@ export const schemas = {
                   ],
                   "type": "object"
                 }
-              ]
+              ],
+              "x-discriminator": "state"
             },
             "type": "object"
           },
@@ -151384,7 +151401,8 @@ export const schemas = {
                       ],
                       "type": "object"
                     }
-                  ]
+                  ],
+                  "x-discriminator": "kind"
                 },
                 "songCount": {
                   "maximum": 200,
@@ -180017,7 +180035,8 @@ export const schemas = {
         ],
         "type": "object"
       }
-    ]
+    ],
+    "x-discriminator": "kind"
   },
   "GetSelectionActionRequest": {
     "properties": {},
@@ -187510,7 +187529,8 @@ export const schemas = {
                     "required": [
                       "type"
                     ],
-                    "type": "object"
+                    "type": "object",
+                    "x-discriminator": "type"
                   },
                   "start": {
                     "maximum": 9007199254740991,
@@ -193691,7 +193711,8 @@ export const schemas = {
               "required": [
                 "type"
               ],
-              "type": "object"
+              "type": "object",
+              "x-discriminator": "type"
             },
             "start": {
               "maximum": 9007199254740991,
@@ -199917,7 +199938,8 @@ export const schemas = {
               "required": [
                 "type"
               ],
-              "type": "object"
+              "type": "object",
+              "x-discriminator": "type"
             },
             "start": {
               "maximum": 9007199254740991,
@@ -206098,7 +206120,8 @@ export const schemas = {
         "required": [
           "type"
         ],
-        "type": "object"
+        "type": "object",
+        "x-discriminator": "type"
       },
       "start": {
         "maximum": 9007199254740991,
@@ -242402,7 +242425,8 @@ export const schemas = {
                   ],
                   "type": "object"
                 }
-              ]
+              ],
+              "x-discriminator": "state"
             },
             "type": "object"
           },
@@ -248011,7 +248035,8 @@ export const schemas = {
                               ],
                               "type": "object"
                             }
-                          ]
+                          ],
+                          "x-discriminator": "format"
                         },
                         "observedAt": {
                           "maximum": 9007199254740991,
@@ -248105,7 +248130,8 @@ export const schemas = {
               ],
               "type": "object"
             }
-          ]
+          ],
+          "x-discriminator": "outcome"
         },
         "maxItems": 50,
         "type": "array"
@@ -248745,7 +248771,8 @@ export const schemas = {
                     ],
                     "type": "object"
                   }
-                ]
+                ],
+                "x-discriminator": "format"
               },
               "observedAt": {
                 "maximum": 9007199254740991,

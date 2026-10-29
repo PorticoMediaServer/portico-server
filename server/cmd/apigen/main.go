@@ -41,7 +41,7 @@ func main() {
 			fail(fmt.Errorf("development contracts require a devtrust build"))
 		}
 	}
-	artifacts, err := apikit.GenerateWith(definitions, apikit.Options{Errors: registry.ErrorDefinitions(), Components: components, WireSchemas: wire})
+	artifacts, err := apikit.GenerateWith(definitions, apikit.Options{Errors: registry.ErrorDefinitions(), Components: components, WireSchemas: wire, PendingTaggedUnions: pendingTaggedUnions})
 	if err != nil {
 		fail(err)
 	}

@@ -52966,7 +52966,8 @@
             ],
             "type": "object"
           }
-        ]
+        ],
+        "x-discriminator": "kind"
       },
       "GetFeedbackCapabilitiesRequest": {
         "properties": {},
@@ -70410,7 +70411,8 @@
                         "required": [
                           "type"
                         ],
-                        "type": "object"
+                        "type": "object",
+                        "x-discriminator": "type"
                       },
                       "start": {
                         "maximum": 9007199254740991,
@@ -76722,7 +76724,8 @@
                   "required": [
                     "type"
                   ],
-                  "type": "object"
+                  "type": "object",
+                  "x-discriminator": "type"
                 },
                 "start": {
                   "maximum": 9007199254740991,
@@ -86586,7 +86589,8 @@
                   "required": [
                     "type"
                   ],
-                  "type": "object"
+                  "type": "object",
+                  "x-discriminator": "type"
                 },
                 "start": {
                   "maximum": 9007199254740991,
@@ -92898,7 +92902,8 @@
             "required": [
               "type"
             ],
-            "type": "object"
+            "type": "object",
+            "x-discriminator": "type"
           },
           "start": {
             "maximum": 9007199254740991,
@@ -93413,7 +93418,8 @@
             ],
             "type": "object"
           }
-        ]
+        ],
+        "x-discriminator": "kind"
       },
       "GetItemFileInfoGroupsRequest": {
         "properties": {},
@@ -93850,7 +93856,8 @@
             ],
             "type": "object"
           }
-        ]
+        ],
+        "x-discriminator": "kind"
       },
       "GetItemFileInfoHeadTracksRequest": {
         "properties": {},
@@ -94183,7 +94190,8 @@
             ],
             "type": "object"
           }
-        ]
+        ],
+        "x-discriminator": "kind"
       },
       "GetItemFileInfoMembersRequest": {
         "properties": {},
@@ -94583,7 +94591,8 @@
             ],
             "type": "object"
           }
-        ]
+        ],
+        "x-discriminator": "kind"
       },
       "GetItemFileInfoSourcesRequest": {
         "properties": {},
@@ -94875,7 +94884,8 @@
             ],
             "type": "object"
           }
-        ]
+        ],
+        "x-discriminator": "kind"
       },
       "GetItemFileInfoTracksRequest": {
         "properties": {},
@@ -95200,7 +95210,8 @@
             ],
             "type": "object"
           }
-        ]
+        ],
+        "x-discriminator": "kind"
       },
       "GetItemsIdAnalysisArtifactsArtifactRequest": {
         "properties": {},
@@ -101168,7 +101179,8 @@
             ],
             "type": "object"
           }
-        ]
+        ],
+        "x-discriminator": "kind"
       },
       "GetItemsIdListeningRequest": {
         "properties": {},
@@ -110865,7 +110877,8 @@
                         "required": [
                           "type"
                         ],
-                        "type": "object"
+                        "type": "object",
+                        "x-discriminator": "type"
                       },
                       "start": {
                         "maximum": 9007199254740991,
@@ -117177,7 +117190,8 @@
                   "required": [
                     "type"
                   ],
-                  "type": "object"
+                  "type": "object",
+                  "x-discriminator": "type"
                 },
                 "start": {
                   "maximum": 9007199254740991,
@@ -123530,7 +123544,8 @@
                   "required": [
                     "type"
                   ],
-                  "type": "object"
+                  "type": "object",
+                  "x-discriminator": "type"
                 },
                 "start": {
                   "maximum": 9007199254740991,
@@ -129842,7 +129857,8 @@
             "required": [
               "type"
             ],
-            "type": "object"
+            "type": "object",
+            "x-discriminator": "type"
           },
           "start": {
             "maximum": 9007199254740991,
@@ -154465,7 +154481,8 @@
                       ],
                       "type": "object"
                     }
-                  ]
+                  ],
+                  "x-discriminator": "state"
                 },
                 "type": "object"
               },
@@ -155678,7 +155695,8 @@
                           ],
                           "type": "object"
                         }
-                      ]
+                      ],
+                      "x-discriminator": "kind"
                     },
                     "songCount": {
                       "maximum": 200,
@@ -184725,7 +184743,8 @@
             ],
             "type": "object"
           }
-        ]
+        ],
+        "x-discriminator": "kind"
       },
       "GetSelectionActionRequest": {
         "properties": {},
@@ -192377,7 +192396,8 @@
                         "required": [
                           "type"
                         ],
-                        "type": "object"
+                        "type": "object",
+                        "x-discriminator": "type"
                       },
                       "start": {
                         "maximum": 9007199254740991,
@@ -198689,7 +198709,8 @@
                   "required": [
                     "type"
                   ],
-                  "type": "object"
+                  "type": "object",
+                  "x-discriminator": "type"
                 },
                 "start": {
                   "maximum": 9007199254740991,
@@ -205045,7 +205066,8 @@
                   "required": [
                     "type"
                   ],
-                  "type": "object"
+                  "type": "object",
+                  "x-discriminator": "type"
                 },
                 "start": {
                   "maximum": 9007199254740991,
@@ -211357,7 +211379,8 @@
             "required": [
               "type"
             ],
-            "type": "object"
+            "type": "object",
+            "x-discriminator": "type"
           },
           "start": {
             "maximum": 9007199254740991,
@@ -224887,7 +224910,8 @@
                         "required": [
                           "type"
                         ],
-                        "type": "object"
+                        "type": "object",
+                        "x-discriminator": "type"
                       },
                       "start": {
                         "maximum": 9007199254740991,
@@ -231199,7 +231223,8 @@
                   "required": [
                     "type"
                   ],
-                  "type": "object"
+                  "type": "object",
+                  "x-discriminator": "type"
                 },
                 "start": {
                   "maximum": 9007199254740991,
@@ -264496,7 +264521,8 @@
                       ],
                       "type": "object"
                     }
-                  ]
+                  ],
+                  "x-discriminator": "state"
                 },
                 "type": "object"
               },
@@ -270114,7 +270140,8 @@
                                   ],
                                   "type": "object"
                                 }
-                              ]
+                              ],
+                              "x-discriminator": "format"
                             },
                             "observedAt": {
                               "maximum": 9007199254740991,
@@ -270208,7 +270235,8 @@
                   ],
                   "type": "object"
                 }
-              ]
+              ],
+              "x-discriminator": "outcome"
             },
             "maxItems": 50,
             "type": "array"
@@ -270848,7 +270876,8 @@
                         ],
                         "type": "object"
                       }
-                    ]
+                    ],
+                    "x-discriminator": "format"
                   },
                   "observedAt": {
                     "maximum": 9007199254740991,
@@ -538792,7 +538821,8 @@
                                   "required": [
                                     "type"
                                   ],
-                                  "type": "object"
+                                  "type": "object",
+                                  "x-discriminator": "type"
                                 },
                                 "start": {
                                   "maximum": 9007199254740991,
@@ -545104,7 +545134,8 @@
                             "required": [
                               "type"
                             ],
-                            "type": "object"
+                            "type": "object",
+                            "x-discriminator": "type"
                           },
                           "start": {
                             "maximum": 9007199254740991,
@@ -559432,7 +559463,8 @@
                             "required": [
                               "type"
                             ],
-                            "type": "object"
+                            "type": "object",
+                            "x-discriminator": "type"
                           },
                           "start": {
                             "maximum": 9007199254740991,
@@ -565744,7 +565776,8 @@
                       "required": [
                         "type"
                       ],
-                      "type": "object"
+                      "type": "object",
+                      "x-discriminator": "type"
                     },
                     "start": {
                       "maximum": 9007199254740991,
@@ -586270,7 +586303,8 @@
                       ],
                       "type": "object"
                     }
-                  ]
+                  ],
+                  "x-discriminator": "kind"
                 }
               }
             },
@@ -586990,7 +587024,8 @@
                       ],
                       "type": "object"
                     }
-                  ]
+                  ],
+                  "x-discriminator": "kind"
                 }
               }
             },
@@ -588018,7 +588053,8 @@
                       ],
                       "type": "object"
                     }
-                  ]
+                  ],
+                  "x-discriminator": "kind"
                 }
               }
             },
@@ -588846,7 +588882,8 @@
                       ],
                       "type": "object"
                     }
-                  ]
+                  ],
+                  "x-discriminator": "kind"
                 }
               }
             },
@@ -589800,7 +589837,8 @@
                       ],
                       "type": "object"
                     }
-                  ]
+                  ],
+                  "x-discriminator": "kind"
                 }
               }
             },
@@ -590530,7 +590568,8 @@
                       ],
                       "type": "object"
                     }
-                  ]
+                  ],
+                  "x-discriminator": "kind"
                 }
               }
             },
@@ -591342,7 +591381,8 @@
                       ],
                       "type": "object"
                     }
-                  ]
+                  ],
+                  "x-discriminator": "kind"
                 }
               }
             },
@@ -605809,7 +605849,8 @@
                                   "required": [
                                     "type"
                                   ],
-                                  "type": "object"
+                                  "type": "object",
+                                  "x-discriminator": "type"
                                 },
                                 "start": {
                                   "maximum": 9007199254740991,
@@ -612121,7 +612162,8 @@
                             "required": [
                               "type"
                             ],
-                            "type": "object"
+                            "type": "object",
+                            "x-discriminator": "type"
                           },
                           "start": {
                             "maximum": 9007199254740991,
@@ -618578,7 +618620,8 @@
                             "required": [
                               "type"
                             ],
-                            "type": "object"
+                            "type": "object",
+                            "x-discriminator": "type"
                           },
                           "start": {
                             "maximum": 9007199254740991,
@@ -624890,7 +624933,8 @@
                       "required": [
                         "type"
                       ],
-                      "type": "object"
+                      "type": "object",
+                      "x-discriminator": "type"
                     },
                     "start": {
                       "maximum": 9007199254740991,
@@ -672419,7 +672463,8 @@
                                     ],
                                     "type": "object"
                                   }
-                                ]
+                                ],
+                                "x-discriminator": "kind"
                               },
                               "songCount": {
                                 "maximum": 200,
@@ -725522,7 +725567,8 @@
                                   ],
                                   "type": "object"
                                 }
-                              ]
+                              ],
+                              "x-discriminator": "format"
                             },
                             "observedAt": {
                               "maximum": 9007199254740991,
@@ -725977,7 +726023,8 @@
                                             ],
                                             "type": "object"
                                           }
-                                        ]
+                                        ],
+                                        "x-discriminator": "format"
                                       },
                                       "observedAt": {
                                         "maximum": 9007199254740991,
@@ -726071,7 +726118,8 @@
                             ],
                             "type": "object"
                           }
-                        ]
+                        ],
+                        "x-discriminator": "outcome"
                       },
                       "maxItems": 50,
                       "type": "array"
@@ -755663,7 +755711,8 @@
                                   "required": [
                                     "type"
                                   ],
-                                  "type": "object"
+                                  "type": "object",
+                                  "x-discriminator": "type"
                                 },
                                 "start": {
                                   "maximum": 9007199254740991,
@@ -761975,7 +762024,8 @@
                             "required": [
                               "type"
                             ],
-                            "type": "object"
+                            "type": "object",
+                            "x-discriminator": "type"
                           },
                           "start": {
                             "maximum": 9007199254740991,
@@ -768435,7 +768485,8 @@
                             "required": [
                               "type"
                             ],
-                            "type": "object"
+                            "type": "object",
+                            "x-discriminator": "type"
                           },
                           "start": {
                             "maximum": 9007199254740991,
@@ -774747,7 +774798,8 @@
                       "required": [
                         "type"
                       ],
-                      "type": "object"
+                      "type": "object",
+                      "x-discriminator": "type"
                     },
                     "start": {
                       "maximum": 9007199254740991,

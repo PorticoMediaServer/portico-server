@@ -271,6 +271,9 @@ type Options struct {
 	Errors []apierror.Definition
 	// WireSchemas adds bounds published by the service owning a wire type.
 	WireSchemas map[reflect.Type]map[string]any
+	// PendingTaggedUnions lists routes whose response unions still lack a
+	// required const discriminator (O-159 R-09b migration; ends empty).
+	PendingTaggedUnions map[string]bool
 	// Components gives reusable wire types descriptive names in OpenAPI.
 	Components map[string]reflect.Type
 	// ServiceAccessRules lists access labels this service authenticates itself,
@@ -339,6 +342,9 @@ func GenerateWith(definitions []Definition, options Options) (Artifacts, error) 
 		fmt.Fprintf(&decoders, "export function decode%sResponse(input: unknown): types.%sResponse { return decode(%q, input) as types.%sResponse; }\n", name, name, name+"Response", name)
 		fmt.Fprintf(&contractTypes, "%q: { request: %sRequest; response: %sResponse };\n", d.ID, name, name)
 		schemas[name+"Request"] = request
+		if err := discriminateResponse(d.ID, response, options.PendingTaggedUnions); err != nil {
+			return Artifacts{}, err
+		}
 		schemas[name+"Response"] = response
 		ts.WriteString("export type " + name + "Request = " + tsType(request) + ";\n")
 		ts.WriteString("export type " + name + "Response = " + tsType(response) + ";\n")
@@ -689,6 +695,11 @@ func tsType(s map[string]any) string {
 			}
 			if len(types) == 0 {
 				return "never"
+			}
+			// O-159 R-09b: a response tag this client does not know reads as an
+			// unknown variant, so every consumer has to say what it does with one.
+			if tag, ok := s["x-discriminator"].(string); ok {
+				types = append(types, fmt.Sprintf("{ readonly unknownVariant: true; readonly %q: string }", tag))
 			}
 			return strings.Join(types, " | ")
 		}
