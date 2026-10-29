@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 
 	"portico.local/server/internal/catalog"
@@ -79,4 +80,38 @@ func (d Dependencies) writeFileInfoOpening(w http.ResponseWriter, r *http.Reques
 	} else {
 		d.itemReadHandler(w, r)
 	}
+}
+
+// polledFileInfoDocument tags the Get/Detail body of a get_file_info_query poll
+// with its union `variant`. The same composers answer the plain item and detail
+// routes, whose bodies carry no tag.
+func polledFileInfoDocument(r *http.Request, variant string, body any) any {
+	if _, polled := r.Context().Value(fileInfoPreparedContextKey{}).(fileInfoPreparedDocument); polled {
+		return fileInfoPolledBody{variant: variant, body: body}
+	}
+	return body
+}
+
+// fileInfoPolledBody is a polled document. An item whose duration the wire
+// cannot express (durationState) is its own alternative of the union.
+type fileInfoPolledBody struct {
+	variant string
+	body    any
+}
+
+func (v fileInfoPolledBody) MarshalJSON() ([]byte, error) {
+	raw, err := json.Marshal(v.body)
+	if err != nil {
+		return nil, err
+	}
+	variant := v.variant
+	if variant == "item" {
+		var head struct {
+			State string `json:"durationState"`
+		}
+		if json.Unmarshal(raw, &head) == nil && head.State != "" {
+			variant = "item-unrepresentable"
+		}
+	}
+	return spliceTag(raw, "variant", variant)
 }

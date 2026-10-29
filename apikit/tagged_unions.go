@@ -19,7 +19,7 @@ import (
 // (an event's type, a reading location's format) before R-09b.
 const unionTagName = "variant"
 
-func discriminateResponse(route string, s any, pending map[string]bool, grandfathered map[string]string) error {
+func discriminateResponse(route string, s any, pending map[string]bool, grandfathered map[string]string, used map[string]bool) error {
 	return walkUnions(s, "$", func(node map[string]any, at string, alternatives []any) error {
 		objects := 0
 		for _, alternative := range alternatives {
@@ -31,6 +31,9 @@ func discriminateResponse(route string, s any, pending map[string]bool, grandfat
 			return nil // A nullable member (X | null) or a scalar union needs no tag.
 		}
 		if tag := unionTag(alternatives); tag == unionTagName || tag != "" && grandfathered[route+" "+at] == tag {
+			if tag != unionTagName {
+				used[route+" "+at] = true
+			}
 			node["x-discriminator"] = tag
 			return nil
 		} else if tag != "" {

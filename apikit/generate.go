@@ -318,6 +318,7 @@ func GenerateWith(definitions []Definition, options Options) (Artifacts, error) 
 	contractTypes.WriteString("export type RouteContracts = {\n")
 	anyJSON := false
 	nullable := false
+	grandfatherUsed := map[string]bool{}
 	for _, d := range definitions {
 		// Generation must refuse incomplete metadata even when a caller supplies
 		// definitions directly rather than going through Registry registration.
@@ -345,7 +346,7 @@ func GenerateWith(definitions []Definition, options Options) (Artifacts, error) 
 		fmt.Fprintf(&decoders, "export function decode%sResponse(input: unknown): types.%sResponse { return decode(%q, input) as types.%sResponse; }\n", name, name, name+"Response", name)
 		fmt.Fprintf(&contractTypes, "%q: { request: %sRequest; response: %sResponse };\n", d.ID, name, name)
 		schemas[name+"Request"] = request
-		if err := discriminateResponse(d.ID, response, options.PendingTaggedUnions, options.GrandfatheredUnionTags); err != nil {
+		if err := discriminateResponse(d.ID, response, options.PendingTaggedUnions, options.GrandfatheredUnionTags, grandfatherUsed); err != nil {
 			return Artifacts{}, err
 		}
 		schemas[name+"Response"] = response
@@ -439,6 +440,11 @@ func GenerateWith(definitions []Definition, options Options) (Artifacts, error) 
 		}
 		paths[d.Path].(map[string]any)[strings.ToLower(d.Method)] = operation
 		routes = append(routes, d.Metadata)
+	}
+	for key := range options.GrandfatheredUnionTags {
+		if !grandfatherUsed[key] {
+			return Artifacts{}, fmt.Errorf("grandfathered union tag %q matches no response union; remove it", key)
+		}
 	}
 	components := map[string]any{}
 	for name, schema := range schemas {

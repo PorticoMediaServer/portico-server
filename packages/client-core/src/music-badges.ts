@@ -6,19 +6,20 @@ export type MusicFormatBadge =
  | Readonly<{kind: 'dsd' | 'atmos'}>
  | Readonly<{kind: 'surround'; layout: '5.1' | '7.1'}>;
 
-/** Optional display-only data: unreadable/unknown descriptors stay absent. */
+/** Optional display-only data: unreadable/unknown descriptors stay absent. The wire tags each badge
+ * by `variant` (R-09b); a badge a newer server adds is left out. */
 export function parseMusicBadges(value: unknown): readonly MusicFormatBadge[] | undefined {
  if (!Array.isArray(value) || value.length > 2) return undefined;
  const out: MusicFormatBadge[] = [];
  for (const item of value) {
   if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
   const raw = item as Record<string, unknown>;
-  if (raw.kind === 'atmos' || raw.kind === 'dsd') out.push(Object.freeze({kind: raw.kind}));
-  else if (raw.kind === 'surround' && (raw.layout === '5.1' || raw.layout === '7.1')) out.push(Object.freeze({kind: raw.kind, layout: raw.layout}));
-  else if (raw.kind === 'lossless' && typeof raw.codec === 'string' && /^[A-Za-z0-9_.+-]{1,64}$/.test(raw.codec)
+  if (raw.variant === 'atmos' || raw.variant === 'dsd') out.push(Object.freeze({kind: raw.variant}));
+  else if (raw.variant === 'surround' && (raw.layout === '5.1' || raw.layout === '7.1')) out.push(Object.freeze({kind: raw.variant, layout: raw.layout}));
+  else if (raw.variant === 'lossless' && typeof raw.codec === 'string' && /^[A-Za-z0-9_.+-]{1,64}$/.test(raw.codec)
    && typeof raw.bitDepth === 'number' && Number.isSafeInteger(raw.bitDepth) && raw.bitDepth > 16
    && typeof raw.sampleRate === 'number' && Number.isSafeInteger(raw.sampleRate) && raw.sampleRate > 0)
-   out.push(Object.freeze({kind: raw.kind, codec: raw.codec, bitDepth: raw.bitDepth, sampleRate: raw.sampleRate}));
+   out.push(Object.freeze({kind: raw.variant, codec: raw.codec, bitDepth: raw.bitDepth, sampleRate: raw.sampleRate}));
  }
  return Object.freeze(out.filter((badge, index) => out.findIndex(other => JSON.stringify(badge) === JSON.stringify(other)) === index));
 }

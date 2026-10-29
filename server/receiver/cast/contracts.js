@@ -4255,48 +4255,57 @@ var PorticoCastContracts = (function(exports) {
 							"available": { "type": "boolean" },
 							"backdropUrl": { "type": "string" },
 							"badges": {
-								"items": { "oneOf": [
-									{
-										"additionalProperties": false,
-										"properties": {
-											"bitDepth": {
-												"minimum": 17,
-												"type": "integer"
+								"items": {
+									"oneOf": [
+										{
+											"additionalProperties": false,
+											"properties": {
+												"bitDepth": {
+													"minimum": 17,
+													"type": "integer"
+												},
+												"codec": {
+													"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+													"type": "string"
+												},
+												"sampleRate": {
+													"minimum": 1,
+													"type": "integer"
+												},
+												"variant": { "const": "lossless" }
 											},
-											"codec": {
-												"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-												"type": "string"
+											"required": [
+												"variant",
+												"codec",
+												"bitDepth",
+												"sampleRate"
+											],
+											"type": "object"
+										},
+										{
+											"additionalProperties": false,
+											"properties": { "variant": { "const": "atmos" } },
+											"required": ["variant"],
+											"type": "object"
+										},
+										{
+											"additionalProperties": false,
+											"properties": { "variant": { "const": "dsd" } },
+											"required": ["variant"],
+											"type": "object"
+										},
+										{
+											"additionalProperties": false,
+											"properties": {
+												"layout": { "enum": ["5.1", "7.1"] },
+												"variant": { "const": "surround" }
 											},
-											"kind": { "const": "lossless" },
-											"sampleRate": {
-												"minimum": 1,
-												"type": "integer"
-											}
-										},
-										"required": [
-											"kind",
-											"codec",
-											"bitDepth",
-											"sampleRate"
-										],
-										"type": "object"
-									},
-									{
-										"additionalProperties": false,
-										"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-										"required": ["kind"],
-										"type": "object"
-									},
-									{
-										"additionalProperties": false,
-										"properties": {
-											"kind": { "const": "surround" },
-											"layout": { "enum": ["5.1", "7.1"] }
-										},
-										"required": ["kind", "layout"],
-										"type": "object"
-									}
-								] },
+											"required": ["variant", "layout"],
+											"type": "object"
+										}
+									],
+									"x-discriminator": "variant"
+								},
 								"maxItems": 2,
 								"type": "array"
 							},
@@ -4623,48 +4632,57 @@ var PorticoCastContracts = (function(exports) {
 									"available": { "type": "boolean" },
 									"backdropUrl": { "type": "string" },
 									"badges": {
-										"items": { "oneOf": [
-											{
-												"additionalProperties": false,
-												"properties": {
-													"bitDepth": {
-														"minimum": 17,
-														"type": "integer"
+										"items": {
+											"oneOf": [
+												{
+													"additionalProperties": false,
+													"properties": {
+														"bitDepth": {
+															"minimum": 17,
+															"type": "integer"
+														},
+														"codec": {
+															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+															"type": "string"
+														},
+														"sampleRate": {
+															"minimum": 1,
+															"type": "integer"
+														},
+														"variant": { "const": "lossless" }
 													},
-													"codec": {
-														"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-														"type": "string"
+													"required": [
+														"variant",
+														"codec",
+														"bitDepth",
+														"sampleRate"
+													],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "atmos" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "dsd" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": {
+														"layout": { "enum": ["5.1", "7.1"] },
+														"variant": { "const": "surround" }
 													},
-													"kind": { "const": "lossless" },
-													"sampleRate": {
-														"minimum": 1,
-														"type": "integer"
-													}
-												},
-												"required": [
-													"kind",
-													"codec",
-													"bitDepth",
-													"sampleRate"
-												],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-												"required": ["kind"],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": {
-													"kind": { "const": "surround" },
-													"layout": { "enum": ["5.1", "7.1"] }
-												},
-												"required": ["kind", "layout"],
-												"type": "object"
-											}
-										] },
+													"required": ["variant", "layout"],
+													"type": "object"
+												}
+											],
+											"x-discriminator": "variant"
+										},
 										"maxItems": 2,
 										"type": "array"
 									},
@@ -6016,48 +6034,57 @@ var PorticoCastContracts = (function(exports) {
 							"available": { "type": "boolean" },
 							"backdropUrl": { "type": "string" },
 							"badges": {
-								"items": { "oneOf": [
-									{
-										"additionalProperties": false,
-										"properties": {
-											"bitDepth": {
-												"minimum": 17,
-												"type": "integer"
+								"items": {
+									"oneOf": [
+										{
+											"additionalProperties": false,
+											"properties": {
+												"bitDepth": {
+													"minimum": 17,
+													"type": "integer"
+												},
+												"codec": {
+													"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+													"type": "string"
+												},
+												"sampleRate": {
+													"minimum": 1,
+													"type": "integer"
+												},
+												"variant": { "const": "lossless" }
 											},
-											"codec": {
-												"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-												"type": "string"
+											"required": [
+												"variant",
+												"codec",
+												"bitDepth",
+												"sampleRate"
+											],
+											"type": "object"
+										},
+										{
+											"additionalProperties": false,
+											"properties": { "variant": { "const": "atmos" } },
+											"required": ["variant"],
+											"type": "object"
+										},
+										{
+											"additionalProperties": false,
+											"properties": { "variant": { "const": "dsd" } },
+											"required": ["variant"],
+											"type": "object"
+										},
+										{
+											"additionalProperties": false,
+											"properties": {
+												"layout": { "enum": ["5.1", "7.1"] },
+												"variant": { "const": "surround" }
 											},
-											"kind": { "const": "lossless" },
-											"sampleRate": {
-												"minimum": 1,
-												"type": "integer"
-											}
-										},
-										"required": [
-											"kind",
-											"codec",
-											"bitDepth",
-											"sampleRate"
-										],
-										"type": "object"
-									},
-									{
-										"additionalProperties": false,
-										"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-										"required": ["kind"],
-										"type": "object"
-									},
-									{
-										"additionalProperties": false,
-										"properties": {
-											"kind": { "const": "surround" },
-											"layout": { "enum": ["5.1", "7.1"] }
-										},
-										"required": ["kind", "layout"],
-										"type": "object"
-									}
-								] },
+											"required": ["variant", "layout"],
+											"type": "object"
+										}
+									],
+									"x-discriminator": "variant"
+								},
 								"maxItems": 2,
 								"type": "array"
 							},
@@ -6384,48 +6411,57 @@ var PorticoCastContracts = (function(exports) {
 									"available": { "type": "boolean" },
 									"backdropUrl": { "type": "string" },
 									"badges": {
-										"items": { "oneOf": [
-											{
-												"additionalProperties": false,
-												"properties": {
-													"bitDepth": {
-														"minimum": 17,
-														"type": "integer"
+										"items": {
+											"oneOf": [
+												{
+													"additionalProperties": false,
+													"properties": {
+														"bitDepth": {
+															"minimum": 17,
+															"type": "integer"
+														},
+														"codec": {
+															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+															"type": "string"
+														},
+														"sampleRate": {
+															"minimum": 1,
+															"type": "integer"
+														},
+														"variant": { "const": "lossless" }
 													},
-													"codec": {
-														"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-														"type": "string"
+													"required": [
+														"variant",
+														"codec",
+														"bitDepth",
+														"sampleRate"
+													],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "atmos" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "dsd" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": {
+														"layout": { "enum": ["5.1", "7.1"] },
+														"variant": { "const": "surround" }
 													},
-													"kind": { "const": "lossless" },
-													"sampleRate": {
-														"minimum": 1,
-														"type": "integer"
-													}
-												},
-												"required": [
-													"kind",
-													"codec",
-													"bitDepth",
-													"sampleRate"
-												],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-												"required": ["kind"],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": {
-													"kind": { "const": "surround" },
-													"layout": { "enum": ["5.1", "7.1"] }
-												},
-												"required": ["kind", "layout"],
-												"type": "object"
-											}
-										] },
+													"required": ["variant", "layout"],
+													"type": "object"
+												}
+											],
+											"x-discriminator": "variant"
+										},
 										"maxItems": 2,
 										"type": "array"
 									},
@@ -38159,574 +38195,208 @@ var PorticoCastContracts = (function(exports) {
 			"required": [],
 			"type": "object"
 		},
-		"GetFileInfoQueryResponse": { "anyOf": [
-			{
-				"properties": {
-					"actions": {
-						"items": {
-							"properties": {
-								"enabled": { "type": "boolean" },
-								"id": { "type": "string" },
-								"labelKey": { "type": "string" },
-								"max": { "type": "number" },
-								"min": { "type": "number" },
-								"playback": {
-									"properties": {
-										"itemId": { "type": "string" },
-										"startMs": {
-											"maximum": 9007199254740991,
-											"minimum": 0,
-											"type": "integer"
-										}
-									},
-									"required": ["itemId"],
-									"type": "object"
-								},
-								"step": { "type": "number" }
-							},
-							"required": [
-								"id",
-								"labelKey",
-								"enabled"
-							],
-							"type": "object"
-						},
-						"type": "array"
-					},
-					"collections": {
-						"items": {
-							"properties": {
-								"id": { "type": "string" },
-								"memberCount": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
-								},
-								"name": { "type": "string" },
-								"position": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
-								},
-								"posterUrls": {
-									"items": { "type": "string" },
-									"type": "array"
-								},
-								"yearFrom": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
-								},
-								"yearTo": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
-								}
-							},
-							"required": [
-								"id",
-								"name",
-								"memberCount",
-								"position",
-								"posterUrls"
-							],
-							"type": "object"
-						},
-						"type": "array"
-					},
-					"episodeDetails": {
-						"properties": {
-							"contentRating": { "type": "string" },
-							"next": {
+		"GetFileInfoQueryResponse": {
+			"anyOf": [
+				{
+					"properties": {
+						"actions": {
+							"items": {
 								"properties": {
+									"enabled": { "type": "boolean" },
 									"id": { "type": "string" },
-									"number": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									},
-									"title": { "type": "string" }
-								},
-								"required": [
-									"id",
-									"number",
-									"title"
-								],
-								"type": "object"
-							},
-							"previous": {
-								"properties": {
-									"id": { "type": "string" },
-									"number": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									},
-									"title": { "type": "string" }
-								},
-								"required": [
-									"id",
-									"number",
-									"title"
-								],
-								"type": "object"
-							}
-						},
-						"required": [],
-						"type": "object"
-					},
-					"extras": {
-						"items": {
-							"properties": {
-								"items": {
-									"items": {
-										"additionalProperties": false,
+									"labelKey": { "type": "string" },
+									"max": { "type": "number" },
+									"min": { "type": "number" },
+									"playback": {
 										"properties": {
-											"absoluteNumber": {
-												"maximum": 9007199254740991,
-												"minimum": -9007199254740991,
-												"type": "integer"
-											},
-											"activeBeginYear": {
-												"maximum": 9007199254740991,
-												"minimum": -9007199254740991,
-												"type": "integer"
-											},
-											"activeEndYear": {
-												"maximum": 9007199254740991,
-												"minimum": -9007199254740991,
-												"type": "integer"
-											},
-											"addedAt": {
-												"nullable": true,
-												"type": "string"
-											},
-											"airDate": { "type": "string" },
-											"album": {
-												"properties": {
-													"id": { "type": "string" },
-													"name": { "type": "string" }
-												},
-												"required": ["id", "name"],
-												"type": "object"
-											},
-											"albumCount": {
-												"maximum": 9007199254740991,
-												"minimum": -9007199254740991,
-												"type": "integer"
-											},
-											"albumType": { "type": "string" },
-											"artist": {
-												"properties": {
-													"id": { "type": "string" },
-													"name": { "type": "string" }
-												},
-												"required": ["id", "name"],
-												"type": "object"
-											},
-											"artistType": { "type": "string" },
-											"artworkPaths": {
-												"items": { "type": "string" },
-												"type": "array"
-											},
-											"audioFacts": {
-												"properties": {
-													"atmos": { "type": "boolean" },
-													"bitDepth": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"channels": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"codec": { "type": "string" },
-													"layout": { "type": "string" },
-													"lossless": { "type": "boolean" },
-													"sampleRate": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													}
-												},
-												"required": ["codec"],
-												"type": "object"
-											},
-											"author": { "type": "string" },
-											"available": { "type": "boolean" },
-											"backdropUrl": { "type": "string" },
-											"badges": {
-												"items": { "oneOf": [
-													{
-														"additionalProperties": false,
-														"properties": {
-															"bitDepth": {
-																"minimum": 17,
-																"type": "integer"
-															},
-															"codec": {
-																"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																"type": "string"
-															},
-															"kind": { "const": "lossless" },
-															"sampleRate": {
-																"minimum": 1,
-																"type": "integer"
-															}
-														},
-														"required": [
-															"kind",
-															"codec",
-															"bitDepth",
-															"sampleRate"
-														],
-														"type": "object"
-													},
-													{
-														"additionalProperties": false,
-														"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-														"required": ["kind"],
-														"type": "object"
-													},
-													{
-														"additionalProperties": false,
-														"properties": {
-															"kind": { "const": "surround" },
-															"layout": { "enum": ["5.1", "7.1"] }
-														},
-														"required": ["kind", "layout"],
-														"type": "object"
-													}
-												] },
-												"maxItems": 2,
-												"type": "array"
-											},
-											"bookProgress": {
-												"properties": {
-													"bookId": { "type": "string" },
-													"chapter": {
-														"properties": {
-															"endMs": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"index": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"startMs": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"title": { "type": "string" }
-														},
-														"required": [
-															"index",
-															"title",
-															"startMs",
-															"endMs"
-														],
-														"type": "object"
-													},
-													"durationMs": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"itemId": { "type": "string" },
-													"partPositionMs": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"positionMs": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"remainingMs": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													}
-												},
-												"required": [
-													"bookId",
-													"itemId",
-													"partPositionMs"
-												],
-												"type": "object"
-											},
-											"contentRating": { "type": "string" },
-											"count": {
-												"maximum": 9007199254740991,
-												"minimum": -9007199254740991,
-												"type": "integer"
-											},
-											"country": { "type": "string" },
-											"dateBased": { "type": "boolean" },
-											"discNumber": {
-												"maximum": 9007199254740991,
-												"minimum": -9007199254740991,
-												"type": "integer"
-											},
-											"displayTitle": { "type": "string" },
-											"durationMs": {
+											"itemId": { "type": "string" },
+											"startMs": {
 												"maximum": 9007199254740991,
 												"minimum": 0,
 												"type": "integer"
-											},
-											"edition": { "type": "string" },
-											"episodeNumber": {
-												"maximum": 9007199254740991,
-												"minimum": -9007199254740991,
-												"type": "integer"
-											},
-											"favorite": { "type": "boolean" },
-											"genres": {
-												"items": { "type": "string" },
-												"type": "array"
-											},
-											"hidden": {
-												"nullable": true,
-												"type": "boolean"
-											},
-											"homeActions": {
-												"properties": {
-													"collection": { "type": "boolean" },
-													"delete": { "type": "boolean" },
-													"details": { "type": "boolean" },
-													"download": { "type": "boolean" },
-													"editMetadata": { "type": "boolean" },
-													"favorite": { "type": "boolean" },
-													"myList": { "type": "boolean" },
-													"notInterested": { "type": "boolean" },
-													"play": { "type": "boolean" },
-													"played": { "type": "boolean" },
-													"playlist": { "type": "boolean" },
-													"queue": { "type": "boolean" },
-													"rating": { "type": "boolean" },
-													"refreshMetadata": { "type": "boolean" },
-													"removeFromContinue": { "type": "boolean" },
-													"selection": {
-														"properties": {
-															"collection": { "type": "boolean" },
-															"delete": { "type": "boolean" },
-															"download": { "type": "boolean" },
-															"edit": { "type": "boolean" },
-															"favorite": { "type": "boolean" },
-															"myList": { "type": "boolean" },
-															"play": { "type": "boolean" },
-															"playlist": { "type": "boolean" },
-															"queue": { "type": "boolean" },
-															"refresh": { "type": "boolean" },
-															"watched": { "type": "boolean" }
-														},
-														"required": [
-															"play",
-															"queue",
-															"playlist",
-															"collection",
-															"myList",
-															"favorite",
-															"watched",
-															"download",
-															"edit",
-															"refresh",
-															"delete"
-														],
-														"type": "object"
-													},
-													"state": {
-														"properties": {
-															"containerRevision": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"favorite": { "type": "boolean" },
-															"personalRevision": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"rating": {
-																"nullable": true,
-																"type": "number"
-															},
-															"watched": { "type": "boolean" },
-															"watchlisted": { "type": "boolean" }
-														},
-														"required": [
-															"watchlisted",
-															"favorite",
-															"watched",
-															"rating",
-															"personalRevision",
-															"containerRevision"
-														],
-														"type": "object"
-													},
-													"watched": { "type": "boolean" }
+											}
+										},
+										"required": ["itemId"],
+										"type": "object"
+									},
+									"step": { "type": "number" }
+								},
+								"required": [
+									"id",
+									"labelKey",
+									"enabled"
+								],
+								"type": "object"
+							},
+							"type": "array"
+						},
+						"collections": {
+							"items": {
+								"properties": {
+									"id": { "type": "string" },
+									"memberCount": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"name": { "type": "string" },
+									"position": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"posterUrls": {
+										"items": { "type": "string" },
+										"type": "array"
+									},
+									"yearFrom": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"yearTo": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									}
+								},
+								"required": [
+									"id",
+									"name",
+									"memberCount",
+									"position",
+									"posterUrls"
+								],
+								"type": "object"
+							},
+							"type": "array"
+						},
+						"episodeDetails": {
+							"properties": {
+								"contentRating": { "type": "string" },
+								"next": {
+									"properties": {
+										"id": { "type": "string" },
+										"number": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"title": { "type": "string" }
+									},
+									"required": [
+										"id",
+										"number",
+										"title"
+									],
+									"type": "object"
+								},
+								"previous": {
+									"properties": {
+										"id": { "type": "string" },
+										"number": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"title": { "type": "string" }
+									},
+									"required": [
+										"id",
+										"number",
+										"title"
+									],
+									"type": "object"
+								}
+							},
+							"required": [],
+							"type": "object"
+						},
+						"extras": {
+							"items": {
+								"properties": {
+									"items": {
+										"items": {
+											"additionalProperties": false,
+											"properties": {
+												"absoluteNumber": {
+													"maximum": 9007199254740991,
+													"minimum": -9007199254740991,
+													"type": "integer"
 												},
-												"required": [
-													"play",
-													"queue",
-													"playlist",
-													"collection",
-													"myList",
-													"favorite",
-													"watched",
-													"played",
-													"rating",
-													"editMetadata",
-													"refreshMetadata",
-													"delete",
-													"download",
-													"details",
-													"state",
-													"selection"
-												],
-												"type": "object"
-											},
-											"homeTitleContext": {
-												"properties": {
-													"genres": {
-														"items": { "type": "string" },
-														"type": "array"
-													},
-													"kind": { "type": "string" },
-													"seasonCount": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"year": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													}
+												"activeBeginYear": {
+													"maximum": 9007199254740991,
+													"minimum": -9007199254740991,
+													"type": "integer"
 												},
-												"required": ["kind", "genres"],
-												"type": "object"
-											},
-											"id": { "type": "string" },
-											"kind": { "type": "string" },
-											"label": { "type": "string" },
-											"language": { "type": "string" },
-											"lastChanged": { "type": "string" },
-											"latestEpisode": {
-												"properties": {
-													"airDate": { "type": "string" },
-													"count": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"episodeNumber": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"seasonNumber": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"title": { "type": "string" }
+												"activeEndYear": {
+													"maximum": 9007199254740991,
+													"minimum": -9007199254740991,
+													"type": "integer"
 												},
-												"required": [
-													"airDate",
-													"episodeNumber",
-													"count"
-												],
-												"type": "object"
-											},
-											"libraryId": { "type": "string" },
-											"media": {
-												"properties": {
-													"absoluteNumber": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
+												"addedAt": {
+													"nullable": true,
+													"type": "string"
+												},
+												"airDate": { "type": "string" },
+												"album": {
+													"properties": {
+														"id": { "type": "string" },
+														"name": { "type": "string" }
 													},
-													"activeBeginYear": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
+													"required": ["id", "name"],
+													"type": "object"
+												},
+												"albumCount": {
+													"maximum": 9007199254740991,
+													"minimum": -9007199254740991,
+													"type": "integer"
+												},
+												"albumType": { "type": "string" },
+												"artist": {
+													"properties": {
+														"id": { "type": "string" },
+														"name": { "type": "string" }
 													},
-													"activeEndYear": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"addedAt": {
-														"nullable": true,
-														"type": "string"
-													},
-													"airDate": { "type": "string" },
-													"album": {
-														"properties": {
-															"id": { "type": "string" },
-															"name": { "type": "string" }
+													"required": ["id", "name"],
+													"type": "object"
+												},
+												"artistType": { "type": "string" },
+												"artworkPaths": {
+													"items": { "type": "string" },
+													"type": "array"
+												},
+												"audioFacts": {
+													"properties": {
+														"atmos": { "type": "boolean" },
+														"bitDepth": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
 														},
-														"required": ["id", "name"],
-														"type": "object"
-													},
-													"albumCount": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"albumType": { "type": "string" },
-													"artist": {
-														"properties": {
-															"id": { "type": "string" },
-															"name": { "type": "string" }
+														"channels": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
 														},
-														"required": ["id", "name"],
-														"type": "object"
+														"codec": { "type": "string" },
+														"layout": { "type": "string" },
+														"lossless": { "type": "boolean" },
+														"sampleRate": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														}
 													},
-													"artistType": { "type": "string" },
-													"artworkPaths": {
-														"items": { "type": "string" },
-														"type": "array"
-													},
-													"audioFacts": {
-														"properties": {
-															"atmos": { "type": "boolean" },
-															"bitDepth": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"channels": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"codec": { "type": "string" },
-															"layout": { "type": "string" },
-															"lossless": { "type": "boolean" },
-															"sampleRate": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															}
-														},
-														"required": ["codec"],
-														"type": "object"
-													},
-													"author": { "type": "string" },
-													"available": { "type": "boolean" },
-													"backdropUrl": { "type": "string" },
-													"badges": {
-														"items": { "oneOf": [
+													"required": ["codec"],
+													"type": "object"
+												},
+												"author": { "type": "string" },
+												"available": { "type": "boolean" },
+												"backdropUrl": { "type": "string" },
+												"badges": {
+													"items": {
+														"oneOf": [
 															{
 																"additionalProperties": false,
 																"properties": {
@@ -38738,14 +38408,14 @@ var PorticoCastContracts = (function(exports) {
 																		"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
 																		"type": "string"
 																	},
-																	"kind": { "const": "lossless" },
 																	"sampleRate": {
 																		"minimum": 1,
 																		"type": "integer"
-																	}
+																	},
+																	"variant": { "const": "lossless" }
 																},
 																"required": [
-																	"kind",
+																	"variant",
 																	"codec",
 																	"bitDepth",
 																	"sampleRate"
@@ -38754,1945 +38424,356 @@ var PorticoCastContracts = (function(exports) {
 															},
 															{
 																"additionalProperties": false,
-																"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-																"required": ["kind"],
+																"properties": { "variant": { "const": "atmos" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "dsd" } },
+																"required": ["variant"],
 																"type": "object"
 															},
 															{
 																"additionalProperties": false,
 																"properties": {
-																	"kind": { "const": "surround" },
-																	"layout": { "enum": ["5.1", "7.1"] }
+																	"layout": { "enum": ["5.1", "7.1"] },
+																	"variant": { "const": "surround" }
 																},
-																"required": ["kind", "layout"],
+																"required": ["variant", "layout"],
 																"type": "object"
 															}
-														] },
-														"maxItems": 2,
-														"type": "array"
-													},
-													"bookProgress": {
-														"properties": {
-															"bookId": { "type": "string" },
-															"chapter": {
-																"properties": {
-																	"endMs": {
-																		"maximum": 9007199254740991,
-																		"minimum": -9007199254740991,
-																		"type": "integer"
-																	},
-																	"index": {
-																		"maximum": 9007199254740991,
-																		"minimum": -9007199254740991,
-																		"type": "integer"
-																	},
-																	"startMs": {
-																		"maximum": 9007199254740991,
-																		"minimum": -9007199254740991,
-																		"type": "integer"
-																	},
-																	"title": { "type": "string" }
-																},
-																"required": [
-																	"index",
-																	"title",
-																	"startMs",
-																	"endMs"
-																],
-																"type": "object"
-															},
-															"durationMs": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"itemId": { "type": "string" },
-															"partPositionMs": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"positionMs": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"remainingMs": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															}
-														},
-														"required": [
-															"bookId",
-															"itemId",
-															"partPositionMs"
 														],
-														"type": "object"
+														"x-discriminator": "variant"
 													},
-													"contentRating": { "type": "string" },
-													"count": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"country": { "type": "string" },
-													"dateBased": { "type": "boolean" },
-													"discNumber": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"displayTitle": { "type": "string" },
-													"durationMs": {
-														"maximum": 9007199254740991,
-														"minimum": 0,
-														"type": "integer"
-													},
-													"edition": { "type": "string" },
-													"episodeNumber": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"favorite": { "type": "boolean" },
-													"genres": {
-														"items": { "type": "string" },
-														"type": "array"
-													},
-													"homeActions": {
-														"properties": {
-															"collection": { "type": "boolean" },
-															"delete": { "type": "boolean" },
-															"details": { "type": "boolean" },
-															"download": { "type": "boolean" },
-															"editMetadata": { "type": "boolean" },
-															"favorite": { "type": "boolean" },
-															"myList": { "type": "boolean" },
-															"notInterested": { "type": "boolean" },
-															"play": { "type": "boolean" },
-															"played": { "type": "boolean" },
-															"playlist": { "type": "boolean" },
-															"queue": { "type": "boolean" },
-															"rating": { "type": "boolean" },
-															"refreshMetadata": { "type": "boolean" },
-															"removeFromContinue": { "type": "boolean" },
-															"selection": {
-																"properties": {
-																	"collection": { "type": "boolean" },
-																	"delete": { "type": "boolean" },
-																	"download": { "type": "boolean" },
-																	"edit": { "type": "boolean" },
-																	"favorite": { "type": "boolean" },
-																	"myList": { "type": "boolean" },
-																	"play": { "type": "boolean" },
-																	"playlist": { "type": "boolean" },
-																	"queue": { "type": "boolean" },
-																	"refresh": { "type": "boolean" },
-																	"watched": { "type": "boolean" }
-																},
-																"required": [
-																	"play",
-																	"queue",
-																	"playlist",
-																	"collection",
-																	"myList",
-																	"favorite",
-																	"watched",
-																	"download",
-																	"edit",
-																	"refresh",
-																	"delete"
-																],
-																"type": "object"
-															},
-															"state": {
-																"properties": {
-																	"containerRevision": {
-																		"maximum": 9007199254740991,
-																		"minimum": -9007199254740991,
-																		"type": "integer"
-																	},
-																	"favorite": { "type": "boolean" },
-																	"personalRevision": {
-																		"maximum": 9007199254740991,
-																		"minimum": -9007199254740991,
-																		"type": "integer"
-																	},
-																	"rating": {
-																		"nullable": true,
-																		"type": "number"
-																	},
-																	"watched": { "type": "boolean" },
-																	"watchlisted": { "type": "boolean" }
-																},
-																"required": [
-																	"watchlisted",
-																	"favorite",
-																	"watched",
-																	"rating",
-																	"personalRevision",
-																	"containerRevision"
-																],
-																"type": "object"
-															},
-															"watched": { "type": "boolean" }
-														},
-														"required": [
-															"play",
-															"queue",
-															"playlist",
-															"collection",
-															"myList",
-															"favorite",
-															"watched",
-															"played",
-															"rating",
-															"editMetadata",
-															"refreshMetadata",
-															"delete",
-															"download",
-															"details",
-															"state",
-															"selection"
-														],
-														"type": "object"
-													},
-													"homeTitleContext": {
-														"properties": {
-															"genres": {
-																"items": { "type": "string" },
-																"type": "array"
-															},
-															"kind": { "type": "string" },
-															"seasonCount": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"year": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															}
-														},
-														"required": ["kind", "genres"],
-														"type": "object"
-													},
-													"id": { "type": "string" },
-													"kind": { "type": "string" },
-													"label": { "type": "string" },
-													"language": { "type": "string" },
-													"lastChanged": { "type": "string" },
-													"latestEpisode": {
-														"properties": {
-															"airDate": { "type": "string" },
-															"count": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"episodeNumber": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"seasonNumber": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"title": { "type": "string" }
-														},
-														"required": [
-															"airDate",
-															"episodeNumber",
-															"count"
-														],
-														"type": "object"
-													},
-													"libraryId": { "type": "string" },
-													"missing": { "type": "boolean" },
-													"narrators": {
-														"items": { "type": "string" },
-														"type": "array"
-													},
-													"navigation": {
-														"properties": {
-															"browse": {
-																"properties": {
-																	"pivot": {
-																		"maxLength": 256,
-																		"minLength": 1,
-																		"type": "string"
-																	},
-																	"query": {
-																		"additionalProperties": {},
-																		"type": "object"
-																	},
-																	"sort": {
-																		"items": {
-																			"properties": {
-																				"direction": {
-																					"enum": ["asc", "desc"],
-																					"type": "string"
-																				},
-																				"field": { "type": "string" }
-																			},
-																			"required": ["field", "direction"],
-																			"type": "object"
-																		},
-																		"maxItems": 1,
-																		"type": "array"
-																	}
-																},
-																"required": ["pivot", "sort"],
-																"type": "object"
-															},
-															"category": { "type": "string" },
-															"channelId": { "type": "string" },
-															"entityId": { "type": "string" },
-															"provenance": { "type": "string" },
-															"sourceId": { "type": "string" },
-															"view": { "type": "string" }
-														},
-														"required": ["view"],
-														"type": "object"
-													},
-													"new": { "type": "boolean" },
-													"origin": { "type": "string" },
-													"overview": { "type": "string" },
-													"overviewSource": { "type": "string" },
-													"overviewSourceUrl": { "type": "string" },
-													"pageCount": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"pinned": { "type": "boolean" },
-													"playback": {
-														"properties": {
-															"itemId": { "type": "string" },
-															"startMs": {
-																"maximum": 9007199254740991,
-																"minimum": 0,
-																"type": "integer"
-															}
-														},
-														"required": ["itemId"],
-														"type": "object"
-													},
-													"plays": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"posterUrl": { "type": "string" },
-													"progressMs": {
-														"maximum": 9007199254740991,
-														"minimum": 0,
-														"type": "integer"
-													},
-													"publicationType": {
-														"enum": [
-															"book",
-															"magazine",
-															"newspaper"
-														],
-														"type": "string"
-													},
-													"publishedYear": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"publisher": { "type": "string" },
-													"radioSeed": {
-														"properties": {
-															"id": { "type": "string" },
-															"kind": { "type": "string" }
-														},
-														"required": ["id", "kind"],
-														"type": "object"
-													},
-													"rating": { "type": "number" },
-													"readingMark": {
-														"properties": {
-															"itemId": { "type": "string" },
-															"read": { "type": "boolean" },
-															"revision": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															}
-														},
-														"required": [
-															"itemId",
-															"read",
-															"revision"
-														],
-														"type": "object"
-													},
-													"releaseDate": { "type": "string" },
-													"removed": { "type": "boolean" },
-													"resolution": { "type": "string" },
-													"role": { "type": "string" },
-													"seasonCount": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"seasonNumber": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"series": {
-														"items": {
+													"maxItems": 2,
+													"type": "array"
+												},
+												"bookProgress": {
+													"properties": {
+														"bookId": { "type": "string" },
+														"chapter": {
 															"properties": {
-																"name": { "type": "string" },
-																"position": { "type": "string" }
+																"endMs": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"index": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"startMs": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"title": { "type": "string" }
 															},
-															"required": ["name"],
+															"required": [
+																"index",
+																"title",
+																"startMs",
+																"endMs"
+															],
 															"type": "object"
 														},
-														"type": "array"
-													},
-													"show": {
-														"properties": {
-															"id": { "type": "string" },
-															"name": { "type": "string" }
+														"durationMs": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
 														},
-														"required": ["id", "name"],
-														"type": "object"
-													},
-													"sortLetter": { "type": "string" },
-													"special": { "type": "boolean" },
-													"stillUrl": { "type": "string" },
-													"subtitle": { "type": "string" },
-													"title": { "type": "string" },
-													"totalAtLeast": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"trackNumber": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"unwatchedCount": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"userRating": {
-														"maximum": 10,
-														"minimum": 0,
-														"nullable": true,
-														"type": "integer"
-													},
-													"watched": { "type": "boolean" },
-													"watchedCount": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"watchlisted": { "type": "boolean" },
-													"year": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"yearMax": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"yearMin": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													}
-												},
-												"required": [
-													"missing",
-													"id",
-													"kind",
-													"title",
-													"addedAt"
-												],
-												"type": "object"
-											},
-											"missing": { "type": "boolean" },
-											"narrators": {
-												"items": { "type": "string" },
-												"type": "array"
-											},
-											"navigation": {
-												"properties": {
-													"browse": {
-														"properties": {
-															"pivot": {
-																"maxLength": 256,
-																"minLength": 1,
-																"type": "string"
-															},
-															"query": {
-																"additionalProperties": {},
-																"type": "object"
-															},
-															"sort": {
-																"items": {
-																	"properties": {
-																		"direction": {
-																			"enum": ["asc", "desc"],
-																			"type": "string"
-																		},
-																		"field": { "type": "string" }
-																	},
-																	"required": ["field", "direction"],
-																	"type": "object"
-																},
-																"maxItems": 1,
-																"type": "array"
-															}
+														"itemId": { "type": "string" },
+														"partPositionMs": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
 														},
-														"required": ["pivot", "sort"],
-														"type": "object"
+														"positionMs": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"remainingMs": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														}
 													},
-													"category": { "type": "string" },
-													"channelId": { "type": "string" },
-													"entityId": { "type": "string" },
-													"provenance": { "type": "string" },
-													"sourceId": { "type": "string" },
-													"view": { "type": "string" }
-												},
-												"required": ["view"],
-												"type": "object"
-											},
-											"new": { "type": "boolean" },
-											"origin": { "type": "string" },
-											"overview": { "type": "string" },
-											"overviewSource": { "type": "string" },
-											"overviewSourceUrl": { "type": "string" },
-											"pageCount": {
-												"maximum": 9007199254740991,
-												"minimum": -9007199254740991,
-												"type": "integer"
-											},
-											"pinned": { "type": "boolean" },
-											"playback": {
-												"properties": {
-													"itemId": { "type": "string" },
-													"startMs": {
-														"maximum": 9007199254740991,
-														"minimum": 0,
-														"type": "integer"
-													}
-												},
-												"required": ["itemId"],
-												"type": "object"
-											},
-											"plays": {
-												"maximum": 9007199254740991,
-												"minimum": -9007199254740991,
-												"type": "integer"
-											},
-											"posterUrl": { "type": "string" },
-											"progressMs": {
-												"maximum": 9007199254740991,
-												"minimum": 0,
-												"type": "integer"
-											},
-											"publicationType": {
-												"enum": [
-													"book",
-													"magazine",
-													"newspaper"
-												],
-												"type": "string"
-											},
-											"publishedYear": {
-												"maximum": 9007199254740991,
-												"minimum": -9007199254740991,
-												"type": "integer"
-											},
-											"publisher": { "type": "string" },
-											"radioSeed": {
-												"properties": {
-													"id": { "type": "string" },
-													"kind": { "type": "string" }
-												},
-												"required": ["id", "kind"],
-												"type": "object"
-											},
-											"rating": { "type": "number" },
-											"readingMark": {
-												"properties": {
-													"itemId": { "type": "string" },
-													"read": { "type": "boolean" },
-													"revision": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													}
-												},
-												"required": [
-													"itemId",
-													"read",
-													"revision"
-												],
-												"type": "object"
-											},
-											"releaseDate": { "type": "string" },
-											"removed": { "type": "boolean" },
-											"resolution": { "type": "string" },
-											"role": { "type": "string" },
-											"seasonCount": {
-												"maximum": 9007199254740991,
-												"minimum": -9007199254740991,
-												"type": "integer"
-											},
-											"seasonNumber": {
-												"maximum": 9007199254740991,
-												"minimum": -9007199254740991,
-												"type": "integer"
-											},
-											"series": {
-												"items": {
-													"properties": {
-														"name": { "type": "string" },
-														"position": { "type": "string" }
-													},
-													"required": ["name"],
+													"required": [
+														"bookId",
+														"itemId",
+														"partPositionMs"
+													],
 													"type": "object"
 												},
-												"type": "array"
-											},
-											"show": {
-												"properties": {
-													"id": { "type": "string" },
-													"name": { "type": "string" }
+												"contentRating": { "type": "string" },
+												"count": {
+													"maximum": 9007199254740991,
+													"minimum": -9007199254740991,
+													"type": "integer"
 												},
-												"required": ["id", "name"],
-												"type": "object"
-											},
-											"sortLetter": { "type": "string" },
-											"special": { "type": "boolean" },
-											"stillUrl": { "type": "string" },
-											"subtitle": { "type": "string" },
-											"title": { "type": "string" },
-											"totalAtLeast": {
-												"maximum": 9007199254740991,
-												"minimum": -9007199254740991,
-												"type": "integer"
-											},
-											"trackNumber": {
-												"maximum": 9007199254740991,
-												"minimum": -9007199254740991,
-												"type": "integer"
-											},
-											"unwatchedCount": {
-												"maximum": 9007199254740991,
-												"minimum": -9007199254740991,
-												"type": "integer"
-											},
-											"userRating": {
-												"maximum": 10,
-												"minimum": 0,
-												"nullable": true,
-												"type": "integer"
-											},
-											"watched": { "type": "boolean" },
-											"watchedCount": {
-												"maximum": 9007199254740991,
-												"minimum": -9007199254740991,
-												"type": "integer"
-											},
-											"watchlisted": { "type": "boolean" },
-											"year": {
-												"maximum": 9007199254740991,
-												"minimum": -9007199254740991,
-												"type": "integer"
-											},
-											"yearMax": {
-												"maximum": 9007199254740991,
-												"minimum": -9007199254740991,
-												"type": "integer"
-											},
-											"yearMin": {
-												"maximum": 9007199254740991,
-												"minimum": -9007199254740991,
-												"type": "integer"
-											}
-										},
-										"required": ["id", "kind"],
-										"type": "object"
-									},
-									"type": "array"
-								},
-								"label": { "type": "string" },
-								"type": { "type": "string" }
-							},
-							"required": [
-								"type",
-								"label",
-								"items"
-							],
-							"type": "object"
-						},
-						"type": "array"
-					},
-					"facts": {
-						"properties": {
-							"contentRating": { "type": "string" },
-							"country": { "type": "string" },
-							"edition": { "type": "string" },
-							"network": { "type": "string" },
-							"originalLanguage": { "type": "string" },
-							"originalTitle": { "type": "string" },
-							"releaseDate": { "type": "string" },
-							"studio": { "type": "string" },
-							"tagline": { "type": "string" }
-						},
-						"required": [],
-						"type": "object"
-					},
-					"fileInfoOpening": { "type": "string" },
-					"item": { "anyOf": [{
-						"properties": {
-							"addedAt": {
-								"nullable": true,
-								"type": "string"
-							},
-							"audioFacts": {
-								"properties": {
-									"atmos": { "type": "boolean" },
-									"bitDepth": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									},
-									"channels": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									},
-									"codec": { "type": "string" },
-									"layout": { "type": "string" },
-									"lossless": { "type": "boolean" },
-									"sampleRate": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									}
-								},
-								"required": ["codec"],
-								"type": "object"
-							},
-							"available": { "type": "boolean" },
-							"backdropUrl": { "type": "string" },
-							"bookFile": {
-								"properties": {
-									"bookId": { "type": "string" },
-									"bookTitle": { "type": "string" },
-									"discNumber": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									},
-									"localMetadata": {
-										"properties": {
-											"authors": {
-												"items": { "type": "string" },
-												"type": "array"
-											},
-											"description": { "type": "string" },
-											"edition": { "type": "string" },
-											"identifiers": {
-												"items": {
+												"country": { "type": "string" },
+												"dateBased": { "type": "boolean" },
+												"discNumber": {
+													"maximum": 9007199254740991,
+													"minimum": -9007199254740991,
+													"type": "integer"
+												},
+												"displayTitle": { "type": "string" },
+												"durationMs": {
+													"maximum": 9007199254740991,
+													"minimum": 0,
+													"type": "integer"
+												},
+												"edition": { "type": "string" },
+												"episodeNumber": {
+													"maximum": 9007199254740991,
+													"minimum": -9007199254740991,
+													"type": "integer"
+												},
+												"favorite": { "type": "boolean" },
+												"genres": {
+													"items": { "type": "string" },
+													"type": "array"
+												},
+												"hidden": {
+													"nullable": true,
+													"type": "boolean"
+												},
+												"homeActions": {
 													"properties": {
-														"scheme": { "type": "string" },
-														"value": { "type": "string" }
+														"collection": { "type": "boolean" },
+														"delete": { "type": "boolean" },
+														"details": { "type": "boolean" },
+														"download": { "type": "boolean" },
+														"editMetadata": { "type": "boolean" },
+														"favorite": { "type": "boolean" },
+														"myList": { "type": "boolean" },
+														"notInterested": { "type": "boolean" },
+														"play": { "type": "boolean" },
+														"played": { "type": "boolean" },
+														"playlist": { "type": "boolean" },
+														"queue": { "type": "boolean" },
+														"rating": { "type": "boolean" },
+														"refreshMetadata": { "type": "boolean" },
+														"removeFromContinue": { "type": "boolean" },
+														"selection": {
+															"properties": {
+																"collection": { "type": "boolean" },
+																"delete": { "type": "boolean" },
+																"download": { "type": "boolean" },
+																"edit": { "type": "boolean" },
+																"favorite": { "type": "boolean" },
+																"myList": { "type": "boolean" },
+																"play": { "type": "boolean" },
+																"playlist": { "type": "boolean" },
+																"queue": { "type": "boolean" },
+																"refresh": { "type": "boolean" },
+																"watched": { "type": "boolean" }
+															},
+															"required": [
+																"play",
+																"queue",
+																"playlist",
+																"collection",
+																"myList",
+																"favorite",
+																"watched",
+																"download",
+																"edit",
+																"refresh",
+																"delete"
+															],
+															"type": "object"
+														},
+														"state": {
+															"properties": {
+																"containerRevision": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"favorite": { "type": "boolean" },
+																"personalRevision": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"rating": {
+																	"nullable": true,
+																	"type": "number"
+																},
+																"watched": { "type": "boolean" },
+																"watchlisted": { "type": "boolean" }
+															},
+															"required": [
+																"watchlisted",
+																"favorite",
+																"watched",
+																"rating",
+																"personalRevision",
+																"containerRevision"
+															],
+															"type": "object"
+														},
+														"watched": { "type": "boolean" }
 													},
-													"required": ["scheme", "value"],
+													"required": [
+														"play",
+														"queue",
+														"playlist",
+														"collection",
+														"myList",
+														"favorite",
+														"watched",
+														"played",
+														"rating",
+														"editMetadata",
+														"refreshMetadata",
+														"delete",
+														"download",
+														"details",
+														"state",
+														"selection"
+													],
 													"type": "object"
 												},
-												"type": "array"
-											},
-											"language": { "type": "string" },
-											"narrators": {
-												"items": { "type": "string" },
-												"type": "array"
-											},
-											"publishedYear": {
-												"maximum": 9007199254740991,
-												"minimum": -9007199254740991,
-												"type": "integer"
-											},
-											"publisher": { "type": "string" },
-											"series": {
-												"items": {
+												"homeTitleContext": {
 													"properties": {
-														"name": { "type": "string" },
-														"position": { "type": "string" }
+														"genres": {
+															"items": { "type": "string" },
+															"type": "array"
+														},
+														"kind": { "type": "string" },
+														"seasonCount": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"year": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														}
 													},
-													"required": ["name"],
+													"required": ["kind", "genres"],
 													"type": "object"
 												},
-												"type": "array"
-											},
-											"sources": {
-												"additionalProperties": { "type": "string" },
-												"type": "object"
-											}
-										},
-										"required": [
-											"authors",
-											"narrators",
-											"series",
-											"identifiers",
-											"sources"
-										],
-										"type": "object"
-									},
-									"localMetadataIssue": { "type": "string" },
-									"localPolicy": {
-										"properties": {
-											"localMode": { "type": "string" },
-											"revision": {
-												"maximum": 9007199254740991,
-												"minimum": -9007199254740991,
-												"type": "integer"
-											}
-										},
-										"required": ["revision", "localMode"],
-										"type": "object"
-									},
-									"partNumber": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									},
-									"sourceBoundary": { "type": "string" }
-								},
-								"required": [
-									"bookId",
-									"bookTitle",
-									"sourceBoundary"
-								],
-								"type": "object"
-							},
-							"durationMs": {
-								"maximum": 9007199254740991,
-								"minimum": 0,
-								"type": "integer"
-							},
-							"episode": {
-								"properties": {
-									"airDate": { "type": "string" },
-									"localIdentityStatus": { "type": "string" },
-									"number": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									},
-									"numbering": { "type": "string" },
-									"orderingBasis": { "type": "string" },
-									"providerMatchStatus": { "type": "string" },
-									"seasonId": { "type": "string" },
-									"seasonNumber": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									},
-									"showId": { "type": "string" },
-									"showTitle": { "type": "string" },
-									"sourceBoundary": { "type": "string" }
-								},
-								"required": [
-									"showId",
-									"showTitle",
-									"numbering",
-									"number",
-									"localIdentityStatus",
-									"providerMatchStatus",
-									"orderingBasis",
-									"sourceBoundary"
-								],
-								"type": "object"
-							},
-							"fileInfoOpening": { "type": "string" },
-							"id": { "type": "string" },
-							"kind": { "type": "string" },
-							"libraryId": { "type": "string" },
-							"missing": { "type": "boolean" },
-							"overview": { "type": "string" },
-							"posterUrl": { "type": "string" },
-							"progressMs": {
-								"maximum": 9007199254740991,
-								"minimum": 0,
-								"type": "integer"
-							},
-							"song": {
-								"properties": {
-									"albumArtist": { "type": "string" },
-									"albumId": { "type": "string" },
-									"albumTitle": { "type": "string" },
-									"artist": { "type": "string" },
-									"discNumber": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									},
-									"localMetadataIssue": { "type": "string" },
-									"providerArtist": { "type": "string" },
-									"providerMatchStatus": { "type": "string" },
-									"providerObservedAt": { "type": "string" },
-									"providerRecordingId": { "type": "string" },
-									"providerReleaseGroupId": { "type": "string" },
-									"providerReleaseId": { "type": "string" },
-									"providerReleaseStatus": { "type": "string" },
-									"providerSourceUrl": { "type": "string" },
-									"providerTitle": { "type": "string" },
-									"providerTrackId": { "type": "string" },
-									"trackNumber": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									}
-								},
-								"required": [
-									"providerReleaseStatus",
-									"albumId",
-									"albumTitle",
-									"albumArtist",
-									"artist",
-									"providerMatchStatus"
-								],
-								"type": "object"
-							},
-							"sources": {
-								"items": {
-									"properties": {
-										"audioCodec": { "type": "string" },
-										"container": { "type": "string" },
-										"durationMs": {
-											"maximum": 9007199254740991,
-											"minimum": 0,
-											"type": "integer"
-										},
-										"height": {
-											"maximum": 9007199254740991,
-											"minimum": -9007199254740991,
-											"type": "integer"
-										},
-										"id": { "type": "string" },
-										"videoCodec": { "type": "string" },
-										"width": {
-											"maximum": 9007199254740991,
-											"minimum": -9007199254740991,
-											"type": "integer"
-										}
-									},
-									"required": [
-										"id",
-										"container",
-										"videoCodec",
-										"audioCodec",
-										"width",
-										"height",
-										"durationMs"
-									],
-									"type": "object"
-								},
-								"type": "array"
-							},
-							"stillUrl": { "type": "string" },
-							"title": { "type": "string" },
-							"watched": { "type": "boolean" },
-							"year": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							}
-						},
-						"required": [
-							"missing",
-							"addedAt",
-							"id",
-							"libraryId",
-							"title",
-							"kind",
-							"durationMs",
-							"progressMs",
-							"available"
-						],
-						"type": "object"
-					}, {
-						"properties": {
-							"addedAt": {
-								"nullable": true,
-								"type": "string"
-							},
-							"audioFacts": {
-								"properties": {
-									"atmos": { "type": "boolean" },
-									"bitDepth": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									},
-									"channels": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									},
-									"codec": { "type": "string" },
-									"layout": { "type": "string" },
-									"lossless": { "type": "boolean" },
-									"sampleRate": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									}
-								},
-								"required": ["codec"],
-								"type": "object"
-							},
-							"available": { "type": "boolean" },
-							"backdropUrl": { "type": "string" },
-							"bookFile": {
-								"properties": {
-									"bookId": { "type": "string" },
-									"bookTitle": { "type": "string" },
-									"discNumber": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									},
-									"localMetadata": {
-										"properties": {
-											"authors": {
-												"items": { "type": "string" },
-												"type": "array"
-											},
-											"description": { "type": "string" },
-											"edition": { "type": "string" },
-											"identifiers": {
-												"items": {
+												"id": { "type": "string" },
+												"kind": { "type": "string" },
+												"label": { "type": "string" },
+												"language": { "type": "string" },
+												"lastChanged": { "type": "string" },
+												"latestEpisode": {
 													"properties": {
-														"scheme": { "type": "string" },
-														"value": { "type": "string" }
+														"airDate": { "type": "string" },
+														"count": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"episodeNumber": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"seasonNumber": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"title": { "type": "string" }
 													},
-													"required": ["scheme", "value"],
+													"required": [
+														"airDate",
+														"episodeNumber",
+														"count"
+													],
 													"type": "object"
 												},
-												"type": "array"
-											},
-											"language": { "type": "string" },
-											"narrators": {
-												"items": { "type": "string" },
-												"type": "array"
-											},
-											"publishedYear": {
-												"maximum": 9007199254740991,
-												"minimum": -9007199254740991,
-												"type": "integer"
-											},
-											"publisher": { "type": "string" },
-											"series": {
-												"items": {
+												"libraryId": { "type": "string" },
+												"media": {
 													"properties": {
-														"name": { "type": "string" },
-														"position": { "type": "string" }
-													},
-													"required": ["name"],
-													"type": "object"
-												},
-												"type": "array"
-											},
-											"sources": {
-												"additionalProperties": { "type": "string" },
-												"type": "object"
-											}
-										},
-										"required": [
-											"authors",
-											"narrators",
-											"series",
-											"identifiers",
-											"sources"
-										],
-										"type": "object"
-									},
-									"localMetadataIssue": { "type": "string" },
-									"localPolicy": {
-										"properties": {
-											"localMode": { "type": "string" },
-											"revision": {
-												"maximum": 9007199254740991,
-												"minimum": -9007199254740991,
-												"type": "integer"
-											}
-										},
-										"required": ["revision", "localMode"],
-										"type": "object"
-									},
-									"partNumber": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									},
-									"sourceBoundary": { "type": "string" }
-								},
-								"required": [
-									"bookId",
-									"bookTitle",
-									"sourceBoundary"
-								],
-								"type": "object"
-							},
-							"durationState": {
-								"enum": ["unrepresentable"],
-								"type": "string"
-							},
-							"episode": {
-								"properties": {
-									"airDate": { "type": "string" },
-									"localIdentityStatus": { "type": "string" },
-									"number": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									},
-									"numbering": { "type": "string" },
-									"orderingBasis": { "type": "string" },
-									"providerMatchStatus": { "type": "string" },
-									"seasonId": { "type": "string" },
-									"seasonNumber": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									},
-									"showId": { "type": "string" },
-									"showTitle": { "type": "string" },
-									"sourceBoundary": { "type": "string" }
-								},
-								"required": [
-									"showId",
-									"showTitle",
-									"numbering",
-									"number",
-									"localIdentityStatus",
-									"providerMatchStatus",
-									"orderingBasis",
-									"sourceBoundary"
-								],
-								"type": "object"
-							},
-							"fileInfoOpening": { "type": "string" },
-							"id": { "type": "string" },
-							"kind": { "type": "string" },
-							"libraryId": { "type": "string" },
-							"missing": { "type": "boolean" },
-							"overview": { "type": "string" },
-							"posterUrl": { "type": "string" },
-							"progressMs": {
-								"maximum": 9007199254740991,
-								"minimum": 0,
-								"type": "integer"
-							},
-							"song": {
-								"properties": {
-									"albumArtist": { "type": "string" },
-									"albumId": { "type": "string" },
-									"albumTitle": { "type": "string" },
-									"artist": { "type": "string" },
-									"discNumber": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									},
-									"localMetadataIssue": { "type": "string" },
-									"providerArtist": { "type": "string" },
-									"providerMatchStatus": { "type": "string" },
-									"providerObservedAt": { "type": "string" },
-									"providerRecordingId": { "type": "string" },
-									"providerReleaseGroupId": { "type": "string" },
-									"providerReleaseId": { "type": "string" },
-									"providerReleaseStatus": { "type": "string" },
-									"providerSourceUrl": { "type": "string" },
-									"providerTitle": { "type": "string" },
-									"providerTrackId": { "type": "string" },
-									"trackNumber": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									}
-								},
-								"required": [
-									"providerReleaseStatus",
-									"albumId",
-									"albumTitle",
-									"albumArtist",
-									"artist",
-									"providerMatchStatus"
-								],
-								"type": "object"
-							},
-							"sources": {
-								"items": {
-									"properties": {
-										"audioCodec": { "type": "string" },
-										"container": { "type": "string" },
-										"durationMs": {
-											"maximum": 9007199254740991,
-											"minimum": 0,
-											"type": "integer"
-										},
-										"height": {
-											"maximum": 9007199254740991,
-											"minimum": -9007199254740991,
-											"type": "integer"
-										},
-										"id": { "type": "string" },
-										"videoCodec": { "type": "string" },
-										"width": {
-											"maximum": 9007199254740991,
-											"minimum": -9007199254740991,
-											"type": "integer"
-										}
-									},
-									"required": [
-										"id",
-										"container",
-										"videoCodec",
-										"audioCodec",
-										"width",
-										"height",
-										"durationMs"
-									],
-									"type": "object"
-								},
-								"type": "array"
-							},
-							"stillUrl": { "type": "string" },
-							"title": { "type": "string" },
-							"watched": { "type": "boolean" },
-							"year": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							}
-						},
-						"required": [
-							"missing",
-							"addedAt",
-							"id",
-							"libraryId",
-							"title",
-							"kind",
-							"progressMs",
-							"available",
-							"durationState"
-						],
-						"type": "object"
-					}] },
-					"languages": {
-						"properties": {
-							"audio": {
-								"items": { "type": "string" },
-								"type": "array"
-							},
-							"subtitles": {
-								"items": { "type": "string" },
-								"type": "array"
-							}
-						},
-						"required": ["audio", "subtitles"],
-						"type": "object"
-					},
-					"markers": {
-						"items": {
-							"properties": {
-								"automaticSafe": { "type": "boolean" },
-								"endMs": {
-									"maximum": 9007199254740991,
-									"minimum": 0,
-									"type": "integer"
-								},
-								"id": { "type": "string" },
-								"kind": { "type": "string" },
-								"startMs": {
-									"maximum": 9007199254740991,
-									"minimum": 0,
-									"type": "integer"
-								}
-							},
-							"required": [
-								"id",
-								"kind",
-								"startMs",
-								"endMs",
-								"automaticSafe"
-							],
-							"type": "object"
-						},
-						"type": "array"
-					},
-					"metadata": {
-						"properties": {
-							"attributions": {
-								"items": { "type": "string" },
-								"type": "array"
-							},
-							"creditTotals": {
-								"properties": {
-									"cast": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									},
-									"crew": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									}
-								},
-								"required": ["cast", "crew"],
-								"type": "object"
-							},
-							"credits": {
-								"items": {
-									"properties": {
-										"department": { "type": "string" },
-										"id": { "type": "string" },
-										"name": { "type": "string" },
-										"personId": { "type": "string" },
-										"portraitUrl": { "type": "string" },
-										"provider": { "type": "string" },
-										"role": { "type": "string" }
-									},
-									"required": [
-										"id",
-										"name",
-										"role",
-										"department",
-										"provider"
-									],
-									"type": "object"
-								},
-								"type": "array"
-							},
-							"genres": {
-								"items": {
-									"properties": {
-										"id": { "type": "string" },
-										"name": { "type": "string" },
-										"provider": { "type": "string" }
-									},
-									"required": [
-										"id",
-										"name",
-										"provider"
-									],
-									"type": "object"
-								},
-								"type": "array"
-							},
-							"ratings": {
-								"items": {
-									"properties": {
-										"max": { "type": "number" },
-										"observedAt": { "type": "string" },
-										"provider": { "type": "string" },
-										"sourceUrl": { "type": "string" },
-										"value": { "type": "number" },
-										"votes": {
-											"maximum": 9007199254740991,
-											"minimum": -9007199254740991,
-											"type": "integer"
-										}
-									},
-									"required": [
-										"provider",
-										"value",
-										"max",
-										"votes",
-										"sourceUrl",
-										"observedAt"
-									],
-									"type": "object"
-								},
-								"type": "array"
-							},
-							"sources": {
-								"items": {
-									"properties": {
-										"observedAt": { "type": "string" },
-										"provider": { "type": "string" },
-										"sourceUrl": { "type": "string" }
-									},
-									"required": [
-										"provider",
-										"sourceUrl",
-										"observedAt"
-									],
-									"type": "object"
-								},
-								"type": "array"
-							},
-							"status": { "type": "string" }
-						},
-						"required": [
-							"sources",
-							"status",
-							"ratings",
-							"genres",
-							"credits",
-							"creditTotals"
-						],
-						"type": "object"
-					},
-					"missingSince": { "type": "string" },
-					"personal": {
-						"properties": {
-							"conflicts": {
-								"items": {
-									"properties": {
-										"baseRevision": {
-											"maximum": 9007199254740991,
-											"minimum": -9007199254740991,
-											"type": "integer"
-										},
-										"baseValue": {},
-										"choices": {
-											"items": {
-												"properties": {
-													"authoredAt": { "type": "string" },
-													"deviceId": { "type": "string" },
-													"operationId": { "type": "string" },
-													"value": {}
-												},
-												"required": [
-													"operationId",
-													"deviceId",
-													"authoredAt",
-													"value"
-												],
-												"type": "object"
-											},
-											"type": "array"
-										},
-										"field": { "type": "string" },
-										"id": { "type": "string" }
-									},
-									"required": [
-										"id",
-										"field",
-										"baseRevision",
-										"baseValue",
-										"choices"
-									],
-									"type": "object"
-								},
-								"type": "array"
-							},
-							"continueDismissed": { "type": "boolean" },
-							"favorite": { "type": "boolean" },
-							"lastPlayedAt": { "type": "string" },
-							"notInterested": { "type": "boolean" },
-							"progressMs": {
-								"maximum": 9007199254740991,
-								"minimum": 0,
-								"type": "integer"
-							},
-							"rating": {
-								"maximum": 10,
-								"minimum": 0,
-								"nullable": true,
-								"type": "integer"
-							},
-							"revision": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							},
-							"status": { "type": "string" },
-							"watched": { "type": "boolean" },
-							"watchlisted": { "type": "boolean" }
-						},
-						"required": [
-							"watched",
-							"progressMs",
-							"lastPlayedAt",
-							"status",
-							"conflicts",
-							"watchlisted",
-							"favorite",
-							"rating",
-							"revision"
-						],
-						"type": "object"
-					},
-					"related": {
-						"properties": {
-							"libraryId": { "type": "string" },
-							"libraryName": { "type": "string" },
-							"rows": {
-								"items": {
-									"properties": {
-										"entries": {
-											"items": {
-												"additionalProperties": false,
-												"properties": {
-													"absoluteNumber": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"activeBeginYear": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"activeEndYear": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"addedAt": {
-														"nullable": true,
-														"type": "string"
-													},
-													"airDate": { "type": "string" },
-													"album": {
-														"properties": {
-															"id": { "type": "string" },
-															"name": { "type": "string" }
+														"absoluteNumber": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
 														},
-														"required": ["id", "name"],
-														"type": "object"
-													},
-													"albumCount": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"albumType": { "type": "string" },
-													"artist": {
-														"properties": {
-															"id": { "type": "string" },
-															"name": { "type": "string" }
+														"activeBeginYear": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
 														},
-														"required": ["id", "name"],
-														"type": "object"
-													},
-													"artistType": { "type": "string" },
-													"artworkPaths": {
-														"items": { "type": "string" },
-														"type": "array"
-													},
-													"audioFacts": {
-														"properties": {
-															"atmos": { "type": "boolean" },
-															"bitDepth": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"channels": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"codec": { "type": "string" },
-															"layout": { "type": "string" },
-															"lossless": { "type": "boolean" },
-															"sampleRate": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															}
+														"activeEndYear": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
 														},
-														"required": ["codec"],
-														"type": "object"
-													},
-													"author": { "type": "string" },
-													"available": { "type": "boolean" },
-													"backdropUrl": { "type": "string" },
-													"badges": {
-														"items": { "oneOf": [
-															{
-																"additionalProperties": false,
-																"properties": {
-																	"bitDepth": {
-																		"minimum": 17,
-																		"type": "integer"
-																	},
-																	"codec": {
-																		"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																		"type": "string"
-																	},
-																	"kind": { "const": "lossless" },
-																	"sampleRate": {
-																		"minimum": 1,
-																		"type": "integer"
-																	}
-																},
-																"required": [
-																	"kind",
-																	"codec",
-																	"bitDepth",
-																	"sampleRate"
-																],
-																"type": "object"
-															},
-															{
-																"additionalProperties": false,
-																"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-																"required": ["kind"],
-																"type": "object"
-															},
-															{
-																"additionalProperties": false,
-																"properties": {
-																	"kind": { "const": "surround" },
-																	"layout": { "enum": ["5.1", "7.1"] }
-																},
-																"required": ["kind", "layout"],
-																"type": "object"
-															}
-														] },
-														"maxItems": 2,
-														"type": "array"
-													},
-													"bookProgress": {
-														"properties": {
-															"bookId": { "type": "string" },
-															"chapter": {
-																"properties": {
-																	"endMs": {
-																		"maximum": 9007199254740991,
-																		"minimum": -9007199254740991,
-																		"type": "integer"
-																	},
-																	"index": {
-																		"maximum": 9007199254740991,
-																		"minimum": -9007199254740991,
-																		"type": "integer"
-																	},
-																	"startMs": {
-																		"maximum": 9007199254740991,
-																		"minimum": -9007199254740991,
-																		"type": "integer"
-																	},
-																	"title": { "type": "string" }
-																},
-																"required": [
-																	"index",
-																	"title",
-																	"startMs",
-																	"endMs"
-																],
-																"type": "object"
-															},
-															"durationMs": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"itemId": { "type": "string" },
-															"partPositionMs": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"positionMs": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"remainingMs": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															}
+														"addedAt": {
+															"nullable": true,
+															"type": "string"
 														},
-														"required": [
-															"bookId",
-															"itemId",
-															"partPositionMs"
-														],
-														"type": "object"
-													},
-													"contentRating": { "type": "string" },
-													"count": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"country": { "type": "string" },
-													"dateBased": { "type": "boolean" },
-													"discNumber": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"displayTitle": { "type": "string" },
-													"durationMs": {
-														"maximum": 9007199254740991,
-														"minimum": 0,
-														"type": "integer"
-													},
-													"edition": { "type": "string" },
-													"episodeNumber": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"favorite": { "type": "boolean" },
-													"genres": {
-														"items": { "type": "string" },
-														"type": "array"
-													},
-													"hidden": {
-														"nullable": true,
-														"type": "boolean"
-													},
-													"homeActions": {
-														"properties": {
-															"collection": { "type": "boolean" },
-															"delete": { "type": "boolean" },
-															"details": { "type": "boolean" },
-															"download": { "type": "boolean" },
-															"editMetadata": { "type": "boolean" },
-															"favorite": { "type": "boolean" },
-															"myList": { "type": "boolean" },
-															"notInterested": { "type": "boolean" },
-															"play": { "type": "boolean" },
-															"played": { "type": "boolean" },
-															"playlist": { "type": "boolean" },
-															"queue": { "type": "boolean" },
-															"rating": { "type": "boolean" },
-															"refreshMetadata": { "type": "boolean" },
-															"removeFromContinue": { "type": "boolean" },
-															"selection": {
-																"properties": {
-																	"collection": { "type": "boolean" },
-																	"delete": { "type": "boolean" },
-																	"download": { "type": "boolean" },
-																	"edit": { "type": "boolean" },
-																	"favorite": { "type": "boolean" },
-																	"myList": { "type": "boolean" },
-																	"play": { "type": "boolean" },
-																	"playlist": { "type": "boolean" },
-																	"queue": { "type": "boolean" },
-																	"refresh": { "type": "boolean" },
-																	"watched": { "type": "boolean" }
-																},
-																"required": [
-																	"play",
-																	"queue",
-																	"playlist",
-																	"collection",
-																	"myList",
-																	"favorite",
-																	"watched",
-																	"download",
-																	"edit",
-																	"refresh",
-																	"delete"
-																],
-																"type": "object"
+														"airDate": { "type": "string" },
+														"album": {
+															"properties": {
+																"id": { "type": "string" },
+																"name": { "type": "string" }
 															},
-															"state": {
-																"properties": {
-																	"containerRevision": {
-																		"maximum": 9007199254740991,
-																		"minimum": -9007199254740991,
-																		"type": "integer"
-																	},
-																	"favorite": { "type": "boolean" },
-																	"personalRevision": {
-																		"maximum": 9007199254740991,
-																		"minimum": -9007199254740991,
-																		"type": "integer"
-																	},
-																	"rating": {
-																		"nullable": true,
-																		"type": "number"
-																	},
-																	"watched": { "type": "boolean" },
-																	"watchlisted": { "type": "boolean" }
-																},
-																"required": [
-																	"watchlisted",
-																	"favorite",
-																	"watched",
-																	"rating",
-																	"personalRevision",
-																	"containerRevision"
-																],
-																"type": "object"
-															},
-															"watched": { "type": "boolean" }
+															"required": ["id", "name"],
+															"type": "object"
 														},
-														"required": [
-															"play",
-															"queue",
-															"playlist",
-															"collection",
-															"myList",
-															"favorite",
-															"watched",
-															"played",
-															"rating",
-															"editMetadata",
-															"refreshMetadata",
-															"delete",
-															"download",
-															"details",
-															"state",
-															"selection"
-														],
-														"type": "object"
-													},
-													"homeTitleContext": {
-														"properties": {
-															"genres": {
-																"items": { "type": "string" },
-																"type": "array"
-															},
-															"kind": { "type": "string" },
-															"seasonCount": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"year": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															}
+														"albumCount": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
 														},
-														"required": ["kind", "genres"],
-														"type": "object"
-													},
-													"id": { "type": "string" },
-													"kind": { "type": "string" },
-													"label": { "type": "string" },
-													"language": { "type": "string" },
-													"lastChanged": { "type": "string" },
-													"latestEpisode": {
-														"properties": {
-															"airDate": { "type": "string" },
-															"count": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
+														"albumType": { "type": "string" },
+														"artist": {
+															"properties": {
+																"id": { "type": "string" },
+																"name": { "type": "string" }
 															},
-															"episodeNumber": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"seasonNumber": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"title": { "type": "string" }
+															"required": ["id", "name"],
+															"type": "object"
 														},
-														"required": [
-															"airDate",
-															"episodeNumber",
-															"count"
-														],
-														"type": "object"
-													},
-													"libraryId": { "type": "string" },
-													"media": {
-														"properties": {
-															"absoluteNumber": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"activeBeginYear": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"activeEndYear": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"addedAt": {
-																"nullable": true,
-																"type": "string"
-															},
-															"airDate": { "type": "string" },
-															"album": {
-																"properties": {
-																	"id": { "type": "string" },
-																	"name": { "type": "string" }
+														"artistType": { "type": "string" },
+														"artworkPaths": {
+															"items": { "type": "string" },
+															"type": "array"
+														},
+														"audioFacts": {
+															"properties": {
+																"atmos": { "type": "boolean" },
+																"bitDepth": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
 																},
-																"required": ["id", "name"],
-																"type": "object"
-															},
-															"albumCount": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"albumType": { "type": "string" },
-															"artist": {
-																"properties": {
-																	"id": { "type": "string" },
-																	"name": { "type": "string" }
+																"channels": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
 																},
-																"required": ["id", "name"],
-																"type": "object"
+																"codec": { "type": "string" },
+																"layout": { "type": "string" },
+																"lossless": { "type": "boolean" },
+																"sampleRate": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																}
 															},
-															"artistType": { "type": "string" },
-															"artworkPaths": {
-																"items": { "type": "string" },
-																"type": "array"
-															},
-															"audioFacts": {
-																"properties": {
-																	"atmos": { "type": "boolean" },
-																	"bitDepth": {
-																		"maximum": 9007199254740991,
-																		"minimum": -9007199254740991,
-																		"type": "integer"
-																	},
-																	"channels": {
-																		"maximum": 9007199254740991,
-																		"minimum": -9007199254740991,
-																		"type": "integer"
-																	},
-																	"codec": { "type": "string" },
-																	"layout": { "type": "string" },
-																	"lossless": { "type": "boolean" },
-																	"sampleRate": {
-																		"maximum": 9007199254740991,
-																		"minimum": -9007199254740991,
-																		"type": "integer"
-																	}
-																},
-																"required": ["codec"],
-																"type": "object"
-															},
-															"author": { "type": "string" },
-															"available": { "type": "boolean" },
-															"backdropUrl": { "type": "string" },
-															"badges": {
-																"items": { "oneOf": [
+															"required": ["codec"],
+															"type": "object"
+														},
+														"author": { "type": "string" },
+														"available": { "type": "boolean" },
+														"backdropUrl": { "type": "string" },
+														"badges": {
+															"items": {
+																"oneOf": [
 																	{
 																		"additionalProperties": false,
 																		"properties": {
@@ -40704,14 +38785,14 @@ var PorticoCastContracts = (function(exports) {
 																				"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
 																				"type": "string"
 																			},
-																			"kind": { "const": "lossless" },
 																			"sampleRate": {
 																				"minimum": 1,
 																				"type": "integer"
-																			}
+																			},
+																			"variant": { "const": "lossless" }
 																		},
 																		"required": [
-																			"kind",
+																			"variant",
 																			"codec",
 																			"bitDepth",
 																			"sampleRate"
@@ -40720,2980 +38801,5030 @@ var PorticoCastContracts = (function(exports) {
 																	},
 																	{
 																		"additionalProperties": false,
-																		"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-																		"required": ["kind"],
+																		"properties": { "variant": { "const": "atmos" } },
+																		"required": ["variant"],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": { "variant": { "const": "dsd" } },
+																		"required": ["variant"],
 																		"type": "object"
 																	},
 																	{
 																		"additionalProperties": false,
 																		"properties": {
-																			"kind": { "const": "surround" },
-																			"layout": { "enum": ["5.1", "7.1"] }
+																			"layout": { "enum": ["5.1", "7.1"] },
+																			"variant": { "const": "surround" }
 																		},
-																		"required": ["kind", "layout"],
+																		"required": ["variant", "layout"],
 																		"type": "object"
 																	}
-																] },
-																"maxItems": 2,
-																"type": "array"
-															},
-															"bookProgress": {
-																"properties": {
-																	"bookId": { "type": "string" },
-																	"chapter": {
-																		"properties": {
-																			"endMs": {
-																				"maximum": 9007199254740991,
-																				"minimum": -9007199254740991,
-																				"type": "integer"
-																			},
-																			"index": {
-																				"maximum": 9007199254740991,
-																				"minimum": -9007199254740991,
-																				"type": "integer"
-																			},
-																			"startMs": {
-																				"maximum": 9007199254740991,
-																				"minimum": -9007199254740991,
-																				"type": "integer"
-																			},
-																			"title": { "type": "string" }
-																		},
-																		"required": [
-																			"index",
-																			"title",
-																			"startMs",
-																			"endMs"
-																		],
-																		"type": "object"
-																	},
-																	"durationMs": {
-																		"maximum": 9007199254740991,
-																		"minimum": -9007199254740991,
-																		"type": "integer"
-																	},
-																	"itemId": { "type": "string" },
-																	"partPositionMs": {
-																		"maximum": 9007199254740991,
-																		"minimum": -9007199254740991,
-																		"type": "integer"
-																	},
-																	"positionMs": {
-																		"maximum": 9007199254740991,
-																		"minimum": -9007199254740991,
-																		"type": "integer"
-																	},
-																	"remainingMs": {
-																		"maximum": 9007199254740991,
-																		"minimum": -9007199254740991,
-																		"type": "integer"
-																	}
-																},
-																"required": [
-																	"bookId",
-																	"itemId",
-																	"partPositionMs"
 																],
-																"type": "object"
+																"x-discriminator": "variant"
 															},
-															"contentRating": { "type": "string" },
-															"count": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"country": { "type": "string" },
-															"dateBased": { "type": "boolean" },
-															"discNumber": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"displayTitle": { "type": "string" },
-															"durationMs": {
-																"maximum": 9007199254740991,
-																"minimum": 0,
-																"type": "integer"
-															},
-															"edition": { "type": "string" },
-															"episodeNumber": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"favorite": { "type": "boolean" },
-															"genres": {
-																"items": { "type": "string" },
-																"type": "array"
-															},
-															"homeActions": {
-																"properties": {
-																	"collection": { "type": "boolean" },
-																	"delete": { "type": "boolean" },
-																	"details": { "type": "boolean" },
-																	"download": { "type": "boolean" },
-																	"editMetadata": { "type": "boolean" },
-																	"favorite": { "type": "boolean" },
-																	"myList": { "type": "boolean" },
-																	"notInterested": { "type": "boolean" },
-																	"play": { "type": "boolean" },
-																	"played": { "type": "boolean" },
-																	"playlist": { "type": "boolean" },
-																	"queue": { "type": "boolean" },
-																	"rating": { "type": "boolean" },
-																	"refreshMetadata": { "type": "boolean" },
-																	"removeFromContinue": { "type": "boolean" },
-																	"selection": {
-																		"properties": {
-																			"collection": { "type": "boolean" },
-																			"delete": { "type": "boolean" },
-																			"download": { "type": "boolean" },
-																			"edit": { "type": "boolean" },
-																			"favorite": { "type": "boolean" },
-																			"myList": { "type": "boolean" },
-																			"play": { "type": "boolean" },
-																			"playlist": { "type": "boolean" },
-																			"queue": { "type": "boolean" },
-																			"refresh": { "type": "boolean" },
-																			"watched": { "type": "boolean" }
-																		},
-																		"required": [
-																			"play",
-																			"queue",
-																			"playlist",
-																			"collection",
-																			"myList",
-																			"favorite",
-																			"watched",
-																			"download",
-																			"edit",
-																			"refresh",
-																			"delete"
-																		],
-																		"type": "object"
-																	},
-																	"state": {
-																		"properties": {
-																			"containerRevision": {
-																				"maximum": 9007199254740991,
-																				"minimum": -9007199254740991,
-																				"type": "integer"
-																			},
-																			"favorite": { "type": "boolean" },
-																			"personalRevision": {
-																				"maximum": 9007199254740991,
-																				"minimum": -9007199254740991,
-																				"type": "integer"
-																			},
-																			"rating": {
-																				"nullable": true,
-																				"type": "number"
-																			},
-																			"watched": { "type": "boolean" },
-																			"watchlisted": { "type": "boolean" }
-																		},
-																		"required": [
-																			"watchlisted",
-																			"favorite",
-																			"watched",
-																			"rating",
-																			"personalRevision",
-																			"containerRevision"
-																		],
-																		"type": "object"
-																	},
-																	"watched": { "type": "boolean" }
-																},
-																"required": [
-																	"play",
-																	"queue",
-																	"playlist",
-																	"collection",
-																	"myList",
-																	"favorite",
-																	"watched",
-																	"played",
-																	"rating",
-																	"editMetadata",
-																	"refreshMetadata",
-																	"delete",
-																	"download",
-																	"details",
-																	"state",
-																	"selection"
-																],
-																"type": "object"
-															},
-															"homeTitleContext": {
-																"properties": {
-																	"genres": {
-																		"items": { "type": "string" },
-																		"type": "array"
-																	},
-																	"kind": { "type": "string" },
-																	"seasonCount": {
-																		"maximum": 9007199254740991,
-																		"minimum": -9007199254740991,
-																		"type": "integer"
-																	},
-																	"year": {
-																		"maximum": 9007199254740991,
-																		"minimum": -9007199254740991,
-																		"type": "integer"
-																	}
-																},
-																"required": ["kind", "genres"],
-																"type": "object"
-															},
-															"id": { "type": "string" },
-															"kind": { "type": "string" },
-															"label": { "type": "string" },
-															"language": { "type": "string" },
-															"lastChanged": { "type": "string" },
-															"latestEpisode": {
-																"properties": {
-																	"airDate": { "type": "string" },
-																	"count": {
-																		"maximum": 9007199254740991,
-																		"minimum": -9007199254740991,
-																		"type": "integer"
-																	},
-																	"episodeNumber": {
-																		"maximum": 9007199254740991,
-																		"minimum": -9007199254740991,
-																		"type": "integer"
-																	},
-																	"seasonNumber": {
-																		"maximum": 9007199254740991,
-																		"minimum": -9007199254740991,
-																		"type": "integer"
-																	},
-																	"title": { "type": "string" }
-																},
-																"required": [
-																	"airDate",
-																	"episodeNumber",
-																	"count"
-																],
-																"type": "object"
-															},
-															"libraryId": { "type": "string" },
-															"missing": { "type": "boolean" },
-															"narrators": {
-																"items": { "type": "string" },
-																"type": "array"
-															},
-															"navigation": {
-																"properties": {
-																	"browse": {
-																		"properties": {
-																			"pivot": {
-																				"maxLength": 256,
-																				"minLength": 1,
-																				"type": "string"
-																			},
-																			"query": {
-																				"additionalProperties": {},
-																				"type": "object"
-																			},
-																			"sort": {
-																				"items": {
-																					"properties": {
-																						"direction": {
-																							"enum": ["asc", "desc"],
-																							"type": "string"
-																						},
-																						"field": { "type": "string" }
-																					},
-																					"required": ["field", "direction"],
-																					"type": "object"
-																				},
-																				"maxItems": 1,
-																				"type": "array"
-																			}
-																		},
-																		"required": ["pivot", "sort"],
-																		"type": "object"
-																	},
-																	"category": { "type": "string" },
-																	"channelId": { "type": "string" },
-																	"entityId": { "type": "string" },
-																	"provenance": { "type": "string" },
-																	"sourceId": { "type": "string" },
-																	"view": { "type": "string" }
-																},
-																"required": ["view"],
-																"type": "object"
-															},
-															"new": { "type": "boolean" },
-															"origin": { "type": "string" },
-															"overview": { "type": "string" },
-															"overviewSource": { "type": "string" },
-															"overviewSourceUrl": { "type": "string" },
-															"pageCount": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"pinned": { "type": "boolean" },
-															"playback": {
-																"properties": {
-																	"itemId": { "type": "string" },
-																	"startMs": {
-																		"maximum": 9007199254740991,
-																		"minimum": 0,
-																		"type": "integer"
-																	}
-																},
-																"required": ["itemId"],
-																"type": "object"
-															},
-															"plays": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"posterUrl": { "type": "string" },
-															"progressMs": {
-																"maximum": 9007199254740991,
-																"minimum": 0,
-																"type": "integer"
-															},
-															"publicationType": {
-																"enum": [
-																	"book",
-																	"magazine",
-																	"newspaper"
-																],
-																"type": "string"
-															},
-															"publishedYear": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"publisher": { "type": "string" },
-															"radioSeed": {
-																"properties": {
-																	"id": { "type": "string" },
-																	"kind": { "type": "string" }
-																},
-																"required": ["id", "kind"],
-																"type": "object"
-															},
-															"rating": { "type": "number" },
-															"readingMark": {
-																"properties": {
-																	"itemId": { "type": "string" },
-																	"read": { "type": "boolean" },
-																	"revision": {
-																		"maximum": 9007199254740991,
-																		"minimum": -9007199254740991,
-																		"type": "integer"
-																	}
-																},
-																"required": [
-																	"itemId",
-																	"read",
-																	"revision"
-																],
-																"type": "object"
-															},
-															"releaseDate": { "type": "string" },
-															"removed": { "type": "boolean" },
-															"resolution": { "type": "string" },
-															"role": { "type": "string" },
-															"seasonCount": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"seasonNumber": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"series": {
-																"items": {
+															"maxItems": 2,
+															"type": "array"
+														},
+														"bookProgress": {
+															"properties": {
+																"bookId": { "type": "string" },
+																"chapter": {
 																	"properties": {
-																		"name": { "type": "string" },
-																		"position": { "type": "string" }
+																		"endMs": {
+																			"maximum": 9007199254740991,
+																			"minimum": -9007199254740991,
+																			"type": "integer"
+																		},
+																		"index": {
+																			"maximum": 9007199254740991,
+																			"minimum": -9007199254740991,
+																			"type": "integer"
+																		},
+																		"startMs": {
+																			"maximum": 9007199254740991,
+																			"minimum": -9007199254740991,
+																			"type": "integer"
+																		},
+																		"title": { "type": "string" }
 																	},
-																	"required": ["name"],
+																	"required": [
+																		"index",
+																		"title",
+																		"startMs",
+																		"endMs"
+																	],
 																	"type": "object"
 																},
-																"type": "array"
-															},
-															"show": {
-																"properties": {
-																	"id": { "type": "string" },
-																	"name": { "type": "string" }
+																"durationMs": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
 																},
-																"required": ["id", "name"],
-																"type": "object"
-															},
-															"sortLetter": { "type": "string" },
-															"special": { "type": "boolean" },
-															"stillUrl": { "type": "string" },
-															"subtitle": { "type": "string" },
-															"title": { "type": "string" },
-															"totalAtLeast": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"trackNumber": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"unwatchedCount": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"userRating": {
-																"maximum": 10,
-																"minimum": 0,
-																"nullable": true,
-																"type": "integer"
-															},
-															"watched": { "type": "boolean" },
-															"watchedCount": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"watchlisted": { "type": "boolean" },
-															"year": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"yearMax": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															},
-															"yearMin": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															}
-														},
-														"required": [
-															"missing",
-															"id",
-															"kind",
-															"title",
-															"addedAt"
-														],
-														"type": "object"
-													},
-													"missing": { "type": "boolean" },
-													"narrators": {
-														"items": { "type": "string" },
-														"type": "array"
-													},
-													"navigation": {
-														"properties": {
-															"browse": {
-																"properties": {
-																	"pivot": {
-																		"maxLength": 256,
-																		"minLength": 1,
-																		"type": "string"
-																	},
-																	"query": {
-																		"additionalProperties": {},
-																		"type": "object"
-																	},
-																	"sort": {
-																		"items": {
-																			"properties": {
-																				"direction": {
-																					"enum": ["asc", "desc"],
-																					"type": "string"
-																				},
-																				"field": { "type": "string" }
-																			},
-																			"required": ["field", "direction"],
-																			"type": "object"
-																		},
-																		"maxItems": 1,
-																		"type": "array"
-																	}
+																"itemId": { "type": "string" },
+																"partPositionMs": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
 																},
-																"required": ["pivot", "sort"],
-																"type": "object"
+																"positionMs": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"remainingMs": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																}
 															},
-															"category": { "type": "string" },
-															"channelId": { "type": "string" },
-															"entityId": { "type": "string" },
-															"provenance": { "type": "string" },
-															"sourceId": { "type": "string" },
-															"view": { "type": "string" }
-														},
-														"required": ["view"],
-														"type": "object"
-													},
-													"new": { "type": "boolean" },
-													"origin": { "type": "string" },
-													"overview": { "type": "string" },
-													"overviewSource": { "type": "string" },
-													"overviewSourceUrl": { "type": "string" },
-													"pageCount": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"pinned": { "type": "boolean" },
-													"playback": {
-														"properties": {
-															"itemId": { "type": "string" },
-															"startMs": {
-																"maximum": 9007199254740991,
-																"minimum": 0,
-																"type": "integer"
-															}
-														},
-														"required": ["itemId"],
-														"type": "object"
-													},
-													"plays": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"posterUrl": { "type": "string" },
-													"progressMs": {
-														"maximum": 9007199254740991,
-														"minimum": 0,
-														"type": "integer"
-													},
-													"publicationType": {
-														"enum": [
-															"book",
-															"magazine",
-															"newspaper"
-														],
-														"type": "string"
-													},
-													"publishedYear": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"publisher": { "type": "string" },
-													"radioSeed": {
-														"properties": {
-															"id": { "type": "string" },
-															"kind": { "type": "string" }
-														},
-														"required": ["id", "kind"],
-														"type": "object"
-													},
-													"rating": { "type": "number" },
-													"readingMark": {
-														"properties": {
-															"itemId": { "type": "string" },
-															"read": { "type": "boolean" },
-															"revision": {
-																"maximum": 9007199254740991,
-																"minimum": -9007199254740991,
-																"type": "integer"
-															}
-														},
-														"required": [
-															"itemId",
-															"read",
-															"revision"
-														],
-														"type": "object"
-													},
-													"releaseDate": { "type": "string" },
-													"removed": { "type": "boolean" },
-													"resolution": { "type": "string" },
-													"role": { "type": "string" },
-													"seasonCount": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"seasonNumber": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"series": {
-														"items": {
-															"properties": {
-																"name": { "type": "string" },
-																"position": { "type": "string" }
-															},
-															"required": ["name"],
+															"required": [
+																"bookId",
+																"itemId",
+																"partPositionMs"
+															],
 															"type": "object"
 														},
-														"type": "array"
-													},
-													"show": {
-														"properties": {
-															"id": { "type": "string" },
-															"name": { "type": "string" }
+														"contentRating": { "type": "string" },
+														"count": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
 														},
-														"required": ["id", "name"],
+														"country": { "type": "string" },
+														"dateBased": { "type": "boolean" },
+														"discNumber": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"displayTitle": { "type": "string" },
+														"durationMs": {
+															"maximum": 9007199254740991,
+															"minimum": 0,
+															"type": "integer"
+														},
+														"edition": { "type": "string" },
+														"episodeNumber": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"favorite": { "type": "boolean" },
+														"genres": {
+															"items": { "type": "string" },
+															"type": "array"
+														},
+														"homeActions": {
+															"properties": {
+																"collection": { "type": "boolean" },
+																"delete": { "type": "boolean" },
+																"details": { "type": "boolean" },
+																"download": { "type": "boolean" },
+																"editMetadata": { "type": "boolean" },
+																"favorite": { "type": "boolean" },
+																"myList": { "type": "boolean" },
+																"notInterested": { "type": "boolean" },
+																"play": { "type": "boolean" },
+																"played": { "type": "boolean" },
+																"playlist": { "type": "boolean" },
+																"queue": { "type": "boolean" },
+																"rating": { "type": "boolean" },
+																"refreshMetadata": { "type": "boolean" },
+																"removeFromContinue": { "type": "boolean" },
+																"selection": {
+																	"properties": {
+																		"collection": { "type": "boolean" },
+																		"delete": { "type": "boolean" },
+																		"download": { "type": "boolean" },
+																		"edit": { "type": "boolean" },
+																		"favorite": { "type": "boolean" },
+																		"myList": { "type": "boolean" },
+																		"play": { "type": "boolean" },
+																		"playlist": { "type": "boolean" },
+																		"queue": { "type": "boolean" },
+																		"refresh": { "type": "boolean" },
+																		"watched": { "type": "boolean" }
+																	},
+																	"required": [
+																		"play",
+																		"queue",
+																		"playlist",
+																		"collection",
+																		"myList",
+																		"favorite",
+																		"watched",
+																		"download",
+																		"edit",
+																		"refresh",
+																		"delete"
+																	],
+																	"type": "object"
+																},
+																"state": {
+																	"properties": {
+																		"containerRevision": {
+																			"maximum": 9007199254740991,
+																			"minimum": -9007199254740991,
+																			"type": "integer"
+																		},
+																		"favorite": { "type": "boolean" },
+																		"personalRevision": {
+																			"maximum": 9007199254740991,
+																			"minimum": -9007199254740991,
+																			"type": "integer"
+																		},
+																		"rating": {
+																			"nullable": true,
+																			"type": "number"
+																		},
+																		"watched": { "type": "boolean" },
+																		"watchlisted": { "type": "boolean" }
+																	},
+																	"required": [
+																		"watchlisted",
+																		"favorite",
+																		"watched",
+																		"rating",
+																		"personalRevision",
+																		"containerRevision"
+																	],
+																	"type": "object"
+																},
+																"watched": { "type": "boolean" }
+															},
+															"required": [
+																"play",
+																"queue",
+																"playlist",
+																"collection",
+																"myList",
+																"favorite",
+																"watched",
+																"played",
+																"rating",
+																"editMetadata",
+																"refreshMetadata",
+																"delete",
+																"download",
+																"details",
+																"state",
+																"selection"
+															],
+															"type": "object"
+														},
+														"homeTitleContext": {
+															"properties": {
+																"genres": {
+																	"items": { "type": "string" },
+																	"type": "array"
+																},
+																"kind": { "type": "string" },
+																"seasonCount": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"year": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																}
+															},
+															"required": ["kind", "genres"],
+															"type": "object"
+														},
+														"id": { "type": "string" },
+														"kind": { "type": "string" },
+														"label": { "type": "string" },
+														"language": { "type": "string" },
+														"lastChanged": { "type": "string" },
+														"latestEpisode": {
+															"properties": {
+																"airDate": { "type": "string" },
+																"count": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"episodeNumber": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"seasonNumber": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"title": { "type": "string" }
+															},
+															"required": [
+																"airDate",
+																"episodeNumber",
+																"count"
+															],
+															"type": "object"
+														},
+														"libraryId": { "type": "string" },
+														"missing": { "type": "boolean" },
+														"narrators": {
+															"items": { "type": "string" },
+															"type": "array"
+														},
+														"navigation": {
+															"properties": {
+																"browse": {
+																	"properties": {
+																		"pivot": {
+																			"maxLength": 256,
+																			"minLength": 1,
+																			"type": "string"
+																		},
+																		"query": {
+																			"additionalProperties": {},
+																			"type": "object"
+																		},
+																		"sort": {
+																			"items": {
+																				"properties": {
+																					"direction": {
+																						"enum": ["asc", "desc"],
+																						"type": "string"
+																					},
+																					"field": { "type": "string" }
+																				},
+																				"required": ["field", "direction"],
+																				"type": "object"
+																			},
+																			"maxItems": 1,
+																			"type": "array"
+																		}
+																	},
+																	"required": ["pivot", "sort"],
+																	"type": "object"
+																},
+																"category": { "type": "string" },
+																"channelId": { "type": "string" },
+																"entityId": { "type": "string" },
+																"provenance": { "type": "string" },
+																"sourceId": { "type": "string" },
+																"view": { "type": "string" }
+															},
+															"required": ["view"],
+															"type": "object"
+														},
+														"new": { "type": "boolean" },
+														"origin": { "type": "string" },
+														"overview": { "type": "string" },
+														"overviewSource": { "type": "string" },
+														"overviewSourceUrl": { "type": "string" },
+														"pageCount": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"pinned": { "type": "boolean" },
+														"playback": {
+															"properties": {
+																"itemId": { "type": "string" },
+																"startMs": {
+																	"maximum": 9007199254740991,
+																	"minimum": 0,
+																	"type": "integer"
+																}
+															},
+															"required": ["itemId"],
+															"type": "object"
+														},
+														"plays": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"posterUrl": { "type": "string" },
+														"progressMs": {
+															"maximum": 9007199254740991,
+															"minimum": 0,
+															"type": "integer"
+														},
+														"publicationType": {
+															"enum": [
+																"book",
+																"magazine",
+																"newspaper"
+															],
+															"type": "string"
+														},
+														"publishedYear": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"publisher": { "type": "string" },
+														"radioSeed": {
+															"properties": {
+																"id": { "type": "string" },
+																"kind": { "type": "string" }
+															},
+															"required": ["id", "kind"],
+															"type": "object"
+														},
+														"rating": { "type": "number" },
+														"readingMark": {
+															"properties": {
+																"itemId": { "type": "string" },
+																"read": { "type": "boolean" },
+																"revision": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																}
+															},
+															"required": [
+																"itemId",
+																"read",
+																"revision"
+															],
+															"type": "object"
+														},
+														"releaseDate": { "type": "string" },
+														"removed": { "type": "boolean" },
+														"resolution": { "type": "string" },
+														"role": { "type": "string" },
+														"seasonCount": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"seasonNumber": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"series": {
+															"items": {
+																"properties": {
+																	"name": { "type": "string" },
+																	"position": { "type": "string" }
+																},
+																"required": ["name"],
+																"type": "object"
+															},
+															"type": "array"
+														},
+														"show": {
+															"properties": {
+																"id": { "type": "string" },
+																"name": { "type": "string" }
+															},
+															"required": ["id", "name"],
+															"type": "object"
+														},
+														"sortLetter": { "type": "string" },
+														"special": { "type": "boolean" },
+														"stillUrl": { "type": "string" },
+														"subtitle": { "type": "string" },
+														"title": { "type": "string" },
+														"totalAtLeast": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"trackNumber": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"unwatchedCount": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"userRating": {
+															"maximum": 10,
+															"minimum": 0,
+															"nullable": true,
+															"type": "integer"
+														},
+														"watched": { "type": "boolean" },
+														"watchedCount": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"watchlisted": { "type": "boolean" },
+														"year": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"yearMax": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"yearMin": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														}
+													},
+													"required": [
+														"missing",
+														"id",
+														"kind",
+														"title",
+														"addedAt"
+													],
+													"type": "object"
+												},
+												"missing": { "type": "boolean" },
+												"narrators": {
+													"items": { "type": "string" },
+													"type": "array"
+												},
+												"navigation": {
+													"properties": {
+														"browse": {
+															"properties": {
+																"pivot": {
+																	"maxLength": 256,
+																	"minLength": 1,
+																	"type": "string"
+																},
+																"query": {
+																	"additionalProperties": {},
+																	"type": "object"
+																},
+																"sort": {
+																	"items": {
+																		"properties": {
+																			"direction": {
+																				"enum": ["asc", "desc"],
+																				"type": "string"
+																			},
+																			"field": { "type": "string" }
+																		},
+																		"required": ["field", "direction"],
+																		"type": "object"
+																	},
+																	"maxItems": 1,
+																	"type": "array"
+																}
+															},
+															"required": ["pivot", "sort"],
+															"type": "object"
+														},
+														"category": { "type": "string" },
+														"channelId": { "type": "string" },
+														"entityId": { "type": "string" },
+														"provenance": { "type": "string" },
+														"sourceId": { "type": "string" },
+														"view": { "type": "string" }
+													},
+													"required": ["view"],
+													"type": "object"
+												},
+												"new": { "type": "boolean" },
+												"origin": { "type": "string" },
+												"overview": { "type": "string" },
+												"overviewSource": { "type": "string" },
+												"overviewSourceUrl": { "type": "string" },
+												"pageCount": {
+													"maximum": 9007199254740991,
+													"minimum": -9007199254740991,
+													"type": "integer"
+												},
+												"pinned": { "type": "boolean" },
+												"playback": {
+													"properties": {
+														"itemId": { "type": "string" },
+														"startMs": {
+															"maximum": 9007199254740991,
+															"minimum": 0,
+															"type": "integer"
+														}
+													},
+													"required": ["itemId"],
+													"type": "object"
+												},
+												"plays": {
+													"maximum": 9007199254740991,
+													"minimum": -9007199254740991,
+													"type": "integer"
+												},
+												"posterUrl": { "type": "string" },
+												"progressMs": {
+													"maximum": 9007199254740991,
+													"minimum": 0,
+													"type": "integer"
+												},
+												"publicationType": {
+													"enum": [
+														"book",
+														"magazine",
+														"newspaper"
+													],
+													"type": "string"
+												},
+												"publishedYear": {
+													"maximum": 9007199254740991,
+													"minimum": -9007199254740991,
+													"type": "integer"
+												},
+												"publisher": { "type": "string" },
+												"radioSeed": {
+													"properties": {
+														"id": { "type": "string" },
+														"kind": { "type": "string" }
+													},
+													"required": ["id", "kind"],
+													"type": "object"
+												},
+												"rating": { "type": "number" },
+												"readingMark": {
+													"properties": {
+														"itemId": { "type": "string" },
+														"read": { "type": "boolean" },
+														"revision": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														}
+													},
+													"required": [
+														"itemId",
+														"read",
+														"revision"
+													],
+													"type": "object"
+												},
+												"releaseDate": { "type": "string" },
+												"removed": { "type": "boolean" },
+												"resolution": { "type": "string" },
+												"role": { "type": "string" },
+												"seasonCount": {
+													"maximum": 9007199254740991,
+													"minimum": -9007199254740991,
+													"type": "integer"
+												},
+												"seasonNumber": {
+													"maximum": 9007199254740991,
+													"minimum": -9007199254740991,
+													"type": "integer"
+												},
+												"series": {
+													"items": {
+														"properties": {
+															"name": { "type": "string" },
+															"position": { "type": "string" }
+														},
+														"required": ["name"],
 														"type": "object"
 													},
-													"sortLetter": { "type": "string" },
-													"special": { "type": "boolean" },
-													"stillUrl": { "type": "string" },
-													"subtitle": { "type": "string" },
-													"title": { "type": "string" },
-													"totalAtLeast": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"trackNumber": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"unwatchedCount": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"userRating": {
-														"maximum": 10,
-														"minimum": 0,
-														"nullable": true,
-														"type": "integer"
-													},
-													"watched": { "type": "boolean" },
-													"watchedCount": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"watchlisted": { "type": "boolean" },
-													"year": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"yearMax": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													},
-													"yearMin": {
-														"maximum": 9007199254740991,
-														"minimum": -9007199254740991,
-														"type": "integer"
-													}
+													"type": "array"
 												},
-												"required": ["id", "kind"],
-												"type": "object"
+												"show": {
+													"properties": {
+														"id": { "type": "string" },
+														"name": { "type": "string" }
+													},
+													"required": ["id", "name"],
+													"type": "object"
+												},
+												"sortLetter": { "type": "string" },
+												"special": { "type": "boolean" },
+												"stillUrl": { "type": "string" },
+												"subtitle": { "type": "string" },
+												"title": { "type": "string" },
+												"totalAtLeast": {
+													"maximum": 9007199254740991,
+													"minimum": -9007199254740991,
+													"type": "integer"
+												},
+												"trackNumber": {
+													"maximum": 9007199254740991,
+													"minimum": -9007199254740991,
+													"type": "integer"
+												},
+												"unwatchedCount": {
+													"maximum": 9007199254740991,
+													"minimum": -9007199254740991,
+													"type": "integer"
+												},
+												"userRating": {
+													"maximum": 10,
+													"minimum": 0,
+													"nullable": true,
+													"type": "integer"
+												},
+												"watched": { "type": "boolean" },
+												"watchedCount": {
+													"maximum": 9007199254740991,
+													"minimum": -9007199254740991,
+													"type": "integer"
+												},
+												"watchlisted": { "type": "boolean" },
+												"year": {
+													"maximum": 9007199254740991,
+													"minimum": -9007199254740991,
+													"type": "integer"
+												},
+												"yearMax": {
+													"maximum": 9007199254740991,
+													"minimum": -9007199254740991,
+													"type": "integer"
+												},
+												"yearMin": {
+													"maximum": 9007199254740991,
+													"minimum": -9007199254740991,
+													"type": "integer"
+												}
 											},
-											"type": "array"
+											"required": ["id", "kind"],
+											"type": "object"
 										},
-										"evidenceId": { "type": "string" },
-										"hasMore": { "type": "boolean" },
-										"heading": { "type": "string" },
-										"headingText": {
+										"type": "array"
+									},
+									"label": { "type": "string" },
+									"type": { "type": "string" }
+								},
+								"required": [
+									"type",
+									"label",
+									"items"
+								],
+								"type": "object"
+							},
+							"type": "array"
+						},
+						"facts": {
+							"properties": {
+								"contentRating": { "type": "string" },
+								"country": { "type": "string" },
+								"edition": { "type": "string" },
+								"network": { "type": "string" },
+								"originalLanguage": { "type": "string" },
+								"originalTitle": { "type": "string" },
+								"releaseDate": { "type": "string" },
+								"studio": { "type": "string" },
+								"tagline": { "type": "string" }
+							},
+							"required": [],
+							"type": "object"
+						},
+						"fileInfoOpening": { "type": "string" },
+						"item": { "anyOf": [{
+							"properties": {
+								"addedAt": {
+									"nullable": true,
+									"type": "string"
+								},
+								"audioFacts": {
+									"properties": {
+										"atmos": { "type": "boolean" },
+										"bitDepth": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"channels": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"codec": { "type": "string" },
+										"layout": { "type": "string" },
+										"lossless": { "type": "boolean" },
+										"sampleRate": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										}
+									},
+									"required": ["codec"],
+									"type": "object"
+								},
+								"available": { "type": "boolean" },
+								"backdropUrl": { "type": "string" },
+								"bookFile": {
+									"properties": {
+										"bookId": { "type": "string" },
+										"bookTitle": { "type": "string" },
+										"discNumber": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"localMetadata": {
 											"properties": {
-												"code": { "type": "string" },
-												"fallback": { "type": "string" },
-												"params": {
+												"authors": {
+													"items": { "type": "string" },
+													"type": "array"
+												},
+												"description": { "type": "string" },
+												"edition": { "type": "string" },
+												"identifiers": {
+													"items": {
+														"properties": {
+															"scheme": { "type": "string" },
+															"value": { "type": "string" }
+														},
+														"required": ["scheme", "value"],
+														"type": "object"
+													},
+													"type": "array"
+												},
+												"language": { "type": "string" },
+												"narrators": {
+													"items": { "type": "string" },
+													"type": "array"
+												},
+												"publishedYear": {
+													"maximum": 9007199254740991,
+													"minimum": -9007199254740991,
+													"type": "integer"
+												},
+												"publisher": { "type": "string" },
+												"series": {
+													"items": {
+														"properties": {
+															"name": { "type": "string" },
+															"position": { "type": "string" }
+														},
+														"required": ["name"],
+														"type": "object"
+													},
+													"type": "array"
+												},
+												"sources": {
 													"additionalProperties": { "type": "string" },
 													"type": "object"
 												}
 											},
-											"required": ["code", "fallback"],
+											"required": [
+												"authors",
+												"narrators",
+												"series",
+												"identifiers",
+												"sources"
+											],
 											"type": "object"
 										},
-										"id": { "type": "string" },
-										"nextCursor": { "type": "string" },
-										"provider": { "type": "string" },
-										"relation": { "type": "string" }
+										"localMetadataIssue": { "type": "string" },
+										"localPolicy": {
+											"properties": {
+												"localMode": { "type": "string" },
+												"revision": {
+													"maximum": 9007199254740991,
+													"minimum": -9007199254740991,
+													"type": "integer"
+												}
+											},
+											"required": ["revision", "localMode"],
+											"type": "object"
+										},
+										"partNumber": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"sourceBoundary": { "type": "string" }
 									},
 									"required": [
-										"id",
-										"relation",
-										"provider",
-										"evidenceId",
-										"heading",
-										"headingText",
-										"entries"
+										"bookId",
+										"bookTitle",
+										"sourceBoundary"
 									],
 									"type": "object"
 								},
-								"type": "array"
-							},
-							"version": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							}
-						},
-						"required": [
-							"version",
-							"libraryId",
-							"libraryName",
-							"rows"
-						],
-						"type": "object"
-					},
-					"revision": {
-						"properties": {
-							"catalog": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							},
-							"viewer": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							}
-						},
-						"required": ["catalog", "viewer"],
-						"type": "object"
-					},
-					"scope": {
-						"properties": {
-							"itemId": { "type": "string" },
-							"libraryId": { "type": "string" },
-							"serverId": { "type": "string" },
-							"viewerFence": { "type": "string" }
-						},
-						"required": [
-							"serverId",
-							"libraryId",
-							"itemId",
-							"viewerFence"
-						],
-						"type": "object"
-					}
-				},
-				"required": [
-					"collections",
-					"languages",
-					"scope",
-					"revision",
-					"item",
-					"personal",
-					"actions",
-					"metadata",
-					"markers"
-				],
-				"type": "object"
-			},
-			{ "anyOf": [{
-				"properties": {
-					"addedAt": {
-						"nullable": true,
-						"type": "string"
-					},
-					"audioFacts": {
-						"properties": {
-							"atmos": { "type": "boolean" },
-							"bitDepth": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							},
-							"channels": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							},
-							"codec": { "type": "string" },
-							"layout": { "type": "string" },
-							"lossless": { "type": "boolean" },
-							"sampleRate": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							}
-						},
-						"required": ["codec"],
-						"type": "object"
-					},
-					"available": { "type": "boolean" },
-					"backdropUrl": { "type": "string" },
-					"bookFile": {
-						"properties": {
-							"bookId": { "type": "string" },
-							"bookTitle": { "type": "string" },
-							"discNumber": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							},
-							"localMetadata": {
-								"properties": {
-									"authors": {
-										"items": { "type": "string" },
-										"type": "array"
-									},
-									"description": { "type": "string" },
-									"edition": { "type": "string" },
-									"identifiers": {
-										"items": {
-											"properties": {
-												"scheme": { "type": "string" },
-												"value": { "type": "string" }
-											},
-											"required": ["scheme", "value"],
-											"type": "object"
-										},
-										"type": "array"
-									},
-									"language": { "type": "string" },
-									"narrators": {
-										"items": { "type": "string" },
-										"type": "array"
-									},
-									"publishedYear": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									},
-									"publisher": { "type": "string" },
-									"series": {
-										"items": {
-											"properties": {
-												"name": { "type": "string" },
-												"position": { "type": "string" }
-											},
-											"required": ["name"],
-											"type": "object"
-										},
-										"type": "array"
-									},
-									"sources": {
-										"additionalProperties": { "type": "string" },
-										"type": "object"
-									}
-								},
-								"required": [
-									"authors",
-									"narrators",
-									"series",
-									"identifiers",
-									"sources"
-								],
-								"type": "object"
-							},
-							"localMetadataIssue": { "type": "string" },
-							"localPolicy": {
-								"properties": {
-									"localMode": { "type": "string" },
-									"revision": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									}
-								},
-								"required": ["revision", "localMode"],
-								"type": "object"
-							},
-							"partNumber": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							},
-							"sourceBoundary": { "type": "string" }
-						},
-						"required": [
-							"bookId",
-							"bookTitle",
-							"sourceBoundary"
-						],
-						"type": "object"
-					},
-					"durationMs": {
-						"maximum": 9007199254740991,
-						"minimum": 0,
-						"type": "integer"
-					},
-					"episode": {
-						"properties": {
-							"airDate": { "type": "string" },
-							"localIdentityStatus": { "type": "string" },
-							"number": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							},
-							"numbering": { "type": "string" },
-							"orderingBasis": { "type": "string" },
-							"providerMatchStatus": { "type": "string" },
-							"seasonId": { "type": "string" },
-							"seasonNumber": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							},
-							"showId": { "type": "string" },
-							"showTitle": { "type": "string" },
-							"sourceBoundary": { "type": "string" }
-						},
-						"required": [
-							"showId",
-							"showTitle",
-							"numbering",
-							"number",
-							"localIdentityStatus",
-							"providerMatchStatus",
-							"orderingBasis",
-							"sourceBoundary"
-						],
-						"type": "object"
-					},
-					"fileInfoOpening": { "type": "string" },
-					"id": { "type": "string" },
-					"kind": { "type": "string" },
-					"libraryId": { "type": "string" },
-					"missing": { "type": "boolean" },
-					"overview": { "type": "string" },
-					"posterUrl": { "type": "string" },
-					"progressMs": {
-						"maximum": 9007199254740991,
-						"minimum": 0,
-						"type": "integer"
-					},
-					"song": {
-						"properties": {
-							"albumArtist": { "type": "string" },
-							"albumId": { "type": "string" },
-							"albumTitle": { "type": "string" },
-							"artist": { "type": "string" },
-							"discNumber": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							},
-							"localMetadataIssue": { "type": "string" },
-							"providerArtist": { "type": "string" },
-							"providerMatchStatus": { "type": "string" },
-							"providerObservedAt": { "type": "string" },
-							"providerRecordingId": { "type": "string" },
-							"providerReleaseGroupId": { "type": "string" },
-							"providerReleaseId": { "type": "string" },
-							"providerReleaseStatus": { "type": "string" },
-							"providerSourceUrl": { "type": "string" },
-							"providerTitle": { "type": "string" },
-							"providerTrackId": { "type": "string" },
-							"trackNumber": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							}
-						},
-						"required": [
-							"providerReleaseStatus",
-							"albumId",
-							"albumTitle",
-							"albumArtist",
-							"artist",
-							"providerMatchStatus"
-						],
-						"type": "object"
-					},
-					"sources": {
-						"items": {
-							"properties": {
-								"audioCodec": { "type": "string" },
-								"container": { "type": "string" },
 								"durationMs": {
 									"maximum": 9007199254740991,
 									"minimum": 0,
 									"type": "integer"
 								},
-								"height": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
+								"episode": {
+									"properties": {
+										"airDate": { "type": "string" },
+										"localIdentityStatus": { "type": "string" },
+										"number": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"numbering": { "type": "string" },
+										"orderingBasis": { "type": "string" },
+										"providerMatchStatus": { "type": "string" },
+										"seasonId": { "type": "string" },
+										"seasonNumber": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"showId": { "type": "string" },
+										"showTitle": { "type": "string" },
+										"sourceBoundary": { "type": "string" }
+									},
+									"required": [
+										"showId",
+										"showTitle",
+										"numbering",
+										"number",
+										"localIdentityStatus",
+										"providerMatchStatus",
+										"orderingBasis",
+										"sourceBoundary"
+									],
+									"type": "object"
 								},
+								"fileInfoOpening": { "type": "string" },
 								"id": { "type": "string" },
-								"videoCodec": { "type": "string" },
-								"width": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
-								}
-							},
-							"required": [
-								"id",
-								"container",
-								"videoCodec",
-								"audioCodec",
-								"width",
-								"height",
-								"durationMs"
-							],
-							"type": "object"
-						},
-						"type": "array"
-					},
-					"stillUrl": { "type": "string" },
-					"title": { "type": "string" },
-					"watched": { "type": "boolean" },
-					"year": {
-						"maximum": 9007199254740991,
-						"minimum": -9007199254740991,
-						"type": "integer"
-					}
-				},
-				"required": [
-					"missing",
-					"addedAt",
-					"id",
-					"libraryId",
-					"title",
-					"kind",
-					"durationMs",
-					"progressMs",
-					"available"
-				],
-				"type": "object"
-			}, {
-				"properties": {
-					"addedAt": {
-						"nullable": true,
-						"type": "string"
-					},
-					"audioFacts": {
-						"properties": {
-							"atmos": { "type": "boolean" },
-							"bitDepth": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							},
-							"channels": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							},
-							"codec": { "type": "string" },
-							"layout": { "type": "string" },
-							"lossless": { "type": "boolean" },
-							"sampleRate": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							}
-						},
-						"required": ["codec"],
-						"type": "object"
-					},
-					"available": { "type": "boolean" },
-					"backdropUrl": { "type": "string" },
-					"bookFile": {
-						"properties": {
-							"bookId": { "type": "string" },
-							"bookTitle": { "type": "string" },
-							"discNumber": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							},
-							"localMetadata": {
-								"properties": {
-									"authors": {
-										"items": { "type": "string" },
-										"type": "array"
-									},
-									"description": { "type": "string" },
-									"edition": { "type": "string" },
-									"identifiers": {
-										"items": {
-											"properties": {
-												"scheme": { "type": "string" },
-												"value": { "type": "string" }
-											},
-											"required": ["scheme", "value"],
-											"type": "object"
-										},
-										"type": "array"
-									},
-									"language": { "type": "string" },
-									"narrators": {
-										"items": { "type": "string" },
-										"type": "array"
-									},
-									"publishedYear": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									},
-									"publisher": { "type": "string" },
-									"series": {
-										"items": {
-											"properties": {
-												"name": { "type": "string" },
-												"position": { "type": "string" }
-											},
-											"required": ["name"],
-											"type": "object"
-										},
-										"type": "array"
-									},
-									"sources": {
-										"additionalProperties": { "type": "string" },
-										"type": "object"
-									}
-								},
-								"required": [
-									"authors",
-									"narrators",
-									"series",
-									"identifiers",
-									"sources"
-								],
-								"type": "object"
-							},
-							"localMetadataIssue": { "type": "string" },
-							"localPolicy": {
-								"properties": {
-									"localMode": { "type": "string" },
-									"revision": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									}
-								},
-								"required": ["revision", "localMode"],
-								"type": "object"
-							},
-							"partNumber": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							},
-							"sourceBoundary": { "type": "string" }
-						},
-						"required": [
-							"bookId",
-							"bookTitle",
-							"sourceBoundary"
-						],
-						"type": "object"
-					},
-					"durationState": {
-						"enum": ["unrepresentable"],
-						"type": "string"
-					},
-					"episode": {
-						"properties": {
-							"airDate": { "type": "string" },
-							"localIdentityStatus": { "type": "string" },
-							"number": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							},
-							"numbering": { "type": "string" },
-							"orderingBasis": { "type": "string" },
-							"providerMatchStatus": { "type": "string" },
-							"seasonId": { "type": "string" },
-							"seasonNumber": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							},
-							"showId": { "type": "string" },
-							"showTitle": { "type": "string" },
-							"sourceBoundary": { "type": "string" }
-						},
-						"required": [
-							"showId",
-							"showTitle",
-							"numbering",
-							"number",
-							"localIdentityStatus",
-							"providerMatchStatus",
-							"orderingBasis",
-							"sourceBoundary"
-						],
-						"type": "object"
-					},
-					"fileInfoOpening": { "type": "string" },
-					"id": { "type": "string" },
-					"kind": { "type": "string" },
-					"libraryId": { "type": "string" },
-					"missing": { "type": "boolean" },
-					"overview": { "type": "string" },
-					"posterUrl": { "type": "string" },
-					"progressMs": {
-						"maximum": 9007199254740991,
-						"minimum": 0,
-						"type": "integer"
-					},
-					"song": {
-						"properties": {
-							"albumArtist": { "type": "string" },
-							"albumId": { "type": "string" },
-							"albumTitle": { "type": "string" },
-							"artist": { "type": "string" },
-							"discNumber": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							},
-							"localMetadataIssue": { "type": "string" },
-							"providerArtist": { "type": "string" },
-							"providerMatchStatus": { "type": "string" },
-							"providerObservedAt": { "type": "string" },
-							"providerRecordingId": { "type": "string" },
-							"providerReleaseGroupId": { "type": "string" },
-							"providerReleaseId": { "type": "string" },
-							"providerReleaseStatus": { "type": "string" },
-							"providerSourceUrl": { "type": "string" },
-							"providerTitle": { "type": "string" },
-							"providerTrackId": { "type": "string" },
-							"trackNumber": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							}
-						},
-						"required": [
-							"providerReleaseStatus",
-							"albumId",
-							"albumTitle",
-							"albumArtist",
-							"artist",
-							"providerMatchStatus"
-						],
-						"type": "object"
-					},
-					"sources": {
-						"items": {
-							"properties": {
-								"audioCodec": { "type": "string" },
-								"container": { "type": "string" },
-								"durationMs": {
+								"kind": { "type": "string" },
+								"libraryId": { "type": "string" },
+								"missing": { "type": "boolean" },
+								"overview": { "type": "string" },
+								"posterUrl": { "type": "string" },
+								"progressMs": {
 									"maximum": 9007199254740991,
 									"minimum": 0,
 									"type": "integer"
 								},
-								"height": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
+								"song": {
+									"properties": {
+										"albumArtist": { "type": "string" },
+										"albumId": { "type": "string" },
+										"albumTitle": { "type": "string" },
+										"artist": { "type": "string" },
+										"discNumber": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"localMetadataIssue": { "type": "string" },
+										"providerArtist": { "type": "string" },
+										"providerMatchStatus": { "type": "string" },
+										"providerObservedAt": { "type": "string" },
+										"providerRecordingId": { "type": "string" },
+										"providerReleaseGroupId": { "type": "string" },
+										"providerReleaseId": { "type": "string" },
+										"providerReleaseStatus": { "type": "string" },
+										"providerSourceUrl": { "type": "string" },
+										"providerTitle": { "type": "string" },
+										"providerTrackId": { "type": "string" },
+										"trackNumber": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										}
+									},
+									"required": [
+										"providerReleaseStatus",
+										"albumId",
+										"albumTitle",
+										"albumArtist",
+										"artist",
+										"providerMatchStatus"
+									],
+									"type": "object"
 								},
-								"id": { "type": "string" },
-								"videoCodec": { "type": "string" },
-								"width": {
+								"sources": {
+									"items": {
+										"properties": {
+											"audioCodec": { "type": "string" },
+											"container": { "type": "string" },
+											"durationMs": {
+												"maximum": 9007199254740991,
+												"minimum": 0,
+												"type": "integer"
+											},
+											"height": {
+												"maximum": 9007199254740991,
+												"minimum": -9007199254740991,
+												"type": "integer"
+											},
+											"id": { "type": "string" },
+											"videoCodec": { "type": "string" },
+											"width": {
+												"maximum": 9007199254740991,
+												"minimum": -9007199254740991,
+												"type": "integer"
+											}
+										},
+										"required": [
+											"id",
+											"container",
+											"videoCodec",
+											"audioCodec",
+											"width",
+											"height",
+											"durationMs"
+										],
+										"type": "object"
+									},
+									"type": "array"
+								},
+								"stillUrl": { "type": "string" },
+								"title": { "type": "string" },
+								"watched": { "type": "boolean" },
+								"year": {
 									"maximum": 9007199254740991,
 									"minimum": -9007199254740991,
 									"type": "integer"
 								}
 							},
 							"required": [
+								"missing",
+								"addedAt",
 								"id",
-								"container",
-								"videoCodec",
-								"audioCodec",
-								"width",
-								"height",
-								"durationMs"
+								"libraryId",
+								"title",
+								"kind",
+								"durationMs",
+								"progressMs",
+								"available"
 							],
 							"type": "object"
-						},
-						"type": "array"
-					},
-					"stillUrl": { "type": "string" },
-					"title": { "type": "string" },
-					"watched": { "type": "boolean" },
-					"year": {
-						"maximum": 9007199254740991,
-						"minimum": -9007199254740991,
-						"type": "integer"
-					}
-				},
-				"required": [
-					"missing",
-					"addedAt",
-					"id",
-					"libraryId",
-					"title",
-					"kind",
-					"progressMs",
-					"available",
-					"durationState"
-				],
-				"type": "object"
-			}] },
-			{
-				"properties": {
-					"basis": {
-						"maxLength": 43,
-						"minLength": 43,
-						"pattern": "^[A-Za-z0-9_-]{43}$",
-						"type": "string"
-					},
-					"detail": {
-						"properties": {
-							"revision": {
-								"properties": {
-									"catalog": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									},
-									"viewer": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									}
-								},
-								"required": ["catalog", "viewer"],
-								"type": "object"
-							},
-							"scope": {
-								"properties": {
-									"itemId": { "type": "string" },
-									"libraryId": { "type": "string" },
-									"serverId": { "type": "string" },
-									"viewerFence": { "type": "string" }
-								},
-								"required": [
-									"serverId",
-									"libraryId",
-									"itemId",
-									"viewerFence"
-								],
-								"type": "object"
-							}
-						},
-						"required": ["scope", "revision"],
-						"type": "object"
-					},
-					"files": {
-						"items": {
+						}, {
 							"properties": {
-								"audioCount": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
+								"addedAt": {
+									"nullable": true,
+									"type": "string"
+								},
+								"audioFacts": {
+									"properties": {
+										"atmos": { "type": "boolean" },
+										"bitDepth": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"channels": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"codec": { "type": "string" },
+										"layout": { "type": "string" },
+										"lossless": { "type": "boolean" },
+										"sampleRate": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										}
+									},
+									"required": ["codec"],
+									"type": "object"
 								},
 								"available": { "type": "boolean" },
-								"bitRate": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
-								},
-								"container": {
-									"pattern": "^[^\0]*$",
-									"type": "string"
-								},
-								"disc": {
+								"backdropUrl": { "type": "string" },
+								"bookFile": {
 									"properties": {
-										"chapterCount": {
+										"bookId": { "type": "string" },
+										"bookTitle": { "type": "string" },
+										"discNumber": {
 											"maximum": 9007199254740991,
 											"minimum": -9007199254740991,
 											"type": "integer"
 										},
-										"kind": {
-											"enum": ["bluray", "dvd"],
-											"type": "string"
+										"localMetadata": {
+											"properties": {
+												"authors": {
+													"items": { "type": "string" },
+													"type": "array"
+												},
+												"description": { "type": "string" },
+												"edition": { "type": "string" },
+												"identifiers": {
+													"items": {
+														"properties": {
+															"scheme": { "type": "string" },
+															"value": { "type": "string" }
+														},
+														"required": ["scheme", "value"],
+														"type": "object"
+													},
+													"type": "array"
+												},
+												"language": { "type": "string" },
+												"narrators": {
+													"items": { "type": "string" },
+													"type": "array"
+												},
+												"publishedYear": {
+													"maximum": 9007199254740991,
+													"minimum": -9007199254740991,
+													"type": "integer"
+												},
+												"publisher": { "type": "string" },
+												"series": {
+													"items": {
+														"properties": {
+															"name": { "type": "string" },
+															"position": { "type": "string" }
+														},
+														"required": ["name"],
+														"type": "object"
+													},
+													"type": "array"
+												},
+												"sources": {
+													"additionalProperties": { "type": "string" },
+													"type": "object"
+												}
+											},
+											"required": [
+												"authors",
+												"narrators",
+												"series",
+												"identifiers",
+												"sources"
+											],
+											"type": "object"
 										},
-										"packaging": {
-											"enum": ["iso", "folder"],
-											"type": "string"
+										"localMetadataIssue": { "type": "string" },
+										"localPolicy": {
+											"properties": {
+												"localMode": { "type": "string" },
+												"revision": {
+													"maximum": 9007199254740991,
+													"minimum": -9007199254740991,
+													"type": "integer"
+												}
+											},
+											"required": ["revision", "localMode"],
+											"type": "object"
 										},
-										"titleNumber": {
+										"partNumber": {
 											"maximum": 9007199254740991,
 											"minimum": -9007199254740991,
 											"type": "integer"
-										}
+										},
+										"sourceBoundary": { "type": "string" }
 									},
 									"required": [
-										"kind",
-										"packaging",
-										"titleNumber",
-										"chapterCount"
+										"bookId",
+										"bookTitle",
+										"sourceBoundary"
 									],
 									"type": "object"
 								},
-								"duration": { "type": "number" },
-								"durationState": { "type": "string" },
-								"edition": {
-									"pattern": "^[^\0]*$",
+								"durationState": {
+									"enum": ["unrepresentable"],
 									"type": "string"
 								},
+								"episode": {
+									"properties": {
+										"airDate": { "type": "string" },
+										"localIdentityStatus": { "type": "string" },
+										"number": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"numbering": { "type": "string" },
+										"orderingBasis": { "type": "string" },
+										"providerMatchStatus": { "type": "string" },
+										"seasonId": { "type": "string" },
+										"seasonNumber": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"showId": { "type": "string" },
+										"showTitle": { "type": "string" },
+										"sourceBoundary": { "type": "string" }
+									},
+									"required": [
+										"showId",
+										"showTitle",
+										"numbering",
+										"number",
+										"localIdentityStatus",
+										"providerMatchStatus",
+										"orderingBasis",
+										"sourceBoundary"
+									],
+									"type": "object"
+								},
+								"fileInfoOpening": { "type": "string" },
 								"id": { "type": "string" },
-								"itemId": { "type": "string" },
-								"occurrence": { "type": "string" },
-								"partIndex": {
+								"kind": { "type": "string" },
+								"libraryId": { "type": "string" },
+								"missing": { "type": "boolean" },
+								"overview": { "type": "string" },
+								"posterUrl": { "type": "string" },
+								"progressMs": {
 									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
+									"minimum": 0,
 									"type": "integer"
 								},
-								"path": {
-									"pattern": "^[^\0]*$",
-									"type": "string"
-								},
-								"size": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
-								},
-								"sizeExact": { "type": "string" },
-								"subtitleCount": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
-								},
-								"video": {
+								"song": {
 									"properties": {
-										"bitDepth": {
+										"albumArtist": { "type": "string" },
+										"albumId": { "type": "string" },
+										"albumTitle": { "type": "string" },
+										"artist": { "type": "string" },
+										"discNumber": {
 											"maximum": 9007199254740991,
 											"minimum": -9007199254740991,
 											"type": "integer"
 										},
-										"bitRate": {
-											"maximum": 9007199254740991,
-											"minimum": -9007199254740991,
-											"type": "integer"
-										},
-										"codec": {
-											"pattern": "^[^\0]*$",
-											"type": "string"
-										},
-										"dynamicRange": {
-											"pattern": "^[^\0]*$",
-											"type": "string"
-										},
-										"frameRate": { "type": "number" },
-										"hdr10Plus": { "type": "boolean" },
-										"height": {
-											"maximum": 9007199254740991,
-											"minimum": -9007199254740991,
-											"type": "integer"
-										},
-										"profile": {
-											"pattern": "^[^\0]*$",
-											"type": "string"
-										},
-										"width": {
+										"localMetadataIssue": { "type": "string" },
+										"providerArtist": { "type": "string" },
+										"providerMatchStatus": { "type": "string" },
+										"providerObservedAt": { "type": "string" },
+										"providerRecordingId": { "type": "string" },
+										"providerReleaseGroupId": { "type": "string" },
+										"providerReleaseId": { "type": "string" },
+										"providerReleaseStatus": { "type": "string" },
+										"providerSourceUrl": { "type": "string" },
+										"providerTitle": { "type": "string" },
+										"providerTrackId": { "type": "string" },
+										"trackNumber": {
 											"maximum": 9007199254740991,
 											"minimum": -9007199254740991,
 											"type": "integer"
 										}
 									},
 									"required": [
-										"codec",
-										"width",
-										"height"
+										"providerReleaseStatus",
+										"albumId",
+										"albumTitle",
+										"albumArtist",
+										"artist",
+										"providerMatchStatus"
 									],
 									"type": "object"
+								},
+								"sources": {
+									"items": {
+										"properties": {
+											"audioCodec": { "type": "string" },
+											"container": { "type": "string" },
+											"durationMs": {
+												"maximum": 9007199254740991,
+												"minimum": 0,
+												"type": "integer"
+											},
+											"height": {
+												"maximum": 9007199254740991,
+												"minimum": -9007199254740991,
+												"type": "integer"
+											},
+											"id": { "type": "string" },
+											"videoCodec": { "type": "string" },
+											"width": {
+												"maximum": 9007199254740991,
+												"minimum": -9007199254740991,
+												"type": "integer"
+											}
+										},
+										"required": [
+											"id",
+											"container",
+											"videoCodec",
+											"audioCodec",
+											"width",
+											"height",
+											"durationMs"
+										],
+										"type": "object"
+									},
+									"type": "array"
+								},
+								"stillUrl": { "type": "string" },
+								"title": { "type": "string" },
+								"watched": { "type": "boolean" },
+								"year": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
 								}
 							},
 							"required": [
-								"occurrence",
-								"itemId",
+								"missing",
+								"addedAt",
 								"id",
-								"container",
+								"libraryId",
+								"title",
+								"kind",
+								"progressMs",
 								"available",
-								"partIndex",
-								"audioCount",
-								"subtitleCount"
+								"durationState"
 							],
 							"type": "object"
-						},
-						"maxItems": 100,
-						"type": "array"
-					},
-					"itemKind": { "type": "string" },
-					"kind": {
-						"const": "file-info-files",
-						"type": "string"
-					},
-					"scope": {
-						"properties": {
-							"itemId": { "type": "string" },
-							"libraryId": { "type": "string" },
-							"serverId": { "type": "string" },
-							"viewerFence": { "type": "string" }
-						},
-						"required": [
-							"serverId",
-							"libraryId",
-							"itemId",
-							"viewerFence"
-						],
-						"type": "object"
-					},
-					"surface": {
-						"properties": {
-							"canSplit": { "type": "boolean" },
-							"eligibleFileCount": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							},
-							"fileCount": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							},
-							"groupCount": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							},
-							"hasDiscColumns": { "type": "boolean" },
-							"manage": {
-								"properties": {
-									"delete": { "type": "boolean" },
-									"merge": { "type": "boolean" },
-									"split": { "type": "boolean" }
+						}] },
+						"languages": {
+							"properties": {
+								"audio": {
+									"items": { "type": "string" },
+									"type": "array"
 								},
-								"required": [
-									"delete",
-									"split",
-									"merge"
-								],
-								"type": "object"
+								"subtitles": {
+									"items": { "type": "string" },
+									"type": "array"
+								}
 							},
-							"ownerDiscOccurrence": { "type": "string" }
+							"required": ["audio", "subtitles"],
+							"type": "object"
 						},
-						"required": [
-							"fileCount",
-							"eligibleFileCount",
-							"groupCount",
-							"canSplit",
-							"hasDiscColumns"
-						],
-						"type": "object"
-					},
-					"window": {
-						"properties": {
-							"limit": {
-								"maximum": 100,
-								"minimum": 1,
-								"type": "integer"
-							},
-							"nextCursor": {
-								"maxLength": 154,
-								"minLength": 154,
-								"pattern": "^[A-Za-z0-9_-]{154}$",
-								"type": "string"
-							},
-							"previousCursor": {
-								"maxLength": 154,
-								"minLength": 154,
-								"pattern": "^[A-Za-z0-9_-]{154}$",
-								"type": "string"
-							},
-							"queryId": {
-								"maxLength": 338,
-								"minLength": 338,
-								"pattern": "^[A-Za-z0-9_-]{183}\\.[A-Za-z0-9_-]{154}$",
-								"type": "string"
-							},
-							"reloadCursor": {
-								"maxLength": 154,
-								"minLength": 154,
-								"pattern": "^[A-Za-z0-9_-]{154}$",
-								"type": "string"
-							},
-							"returned": {
-								"maximum": 100,
-								"minimum": 0,
-								"type": "integer"
-							}
-						},
-						"required": [
-							"queryId",
-							"limit",
-							"returned"
-						],
-						"type": "object"
-					}
-				},
-				"required": [
-					"scope",
-					"detail",
-					"basis",
-					"window",
-					"kind",
-					"itemKind",
-					"surface",
-					"files"
-				],
-				"type": "object"
-			},
-			{
-				"properties": {
-					"basis": {
-						"maxLength": 43,
-						"minLength": 43,
-						"pattern": "^[A-Za-z0-9_-]{43}$",
-						"type": "string"
-					},
-					"detail": {
-						"properties": {
-							"revision": {
+						"markers": {
+							"items": {
 								"properties": {
-									"catalog": {
+									"automaticSafe": { "type": "boolean" },
+									"endMs": {
 										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
+										"minimum": 0,
 										"type": "integer"
 									},
-									"viewer": {
+									"id": { "type": "string" },
+									"kind": { "type": "string" },
+									"startMs": {
 										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
+										"minimum": 0,
 										"type": "integer"
 									}
 								},
-								"required": ["catalog", "viewer"],
-								"type": "object"
-							},
-							"scope": {
-								"properties": {
-									"itemId": { "type": "string" },
-									"libraryId": { "type": "string" },
-									"serverId": { "type": "string" },
-									"viewerFence": { "type": "string" }
-								},
 								"required": [
-									"serverId",
-									"libraryId",
-									"itemId",
-									"viewerFence"
+									"id",
+									"kind",
+									"startMs",
+									"endMs",
+									"automaticSafe"
 								],
 								"type": "object"
-							}
+							},
+							"type": "array"
 						},
-						"required": ["scope", "revision"],
-						"type": "object"
-					},
-					"groups": {
-						"items": {
+						"metadata": {
 							"properties": {
-								"audioCount": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
+								"attributions": {
+									"items": { "type": "string" },
+									"type": "array"
 								},
-								"container": {
-									"pattern": "^[^\0]*$",
-									"type": "string"
-								},
-								"disc": {
+								"creditTotals": {
 									"properties": {
-										"chapterCount": {
+										"cast": {
 											"maximum": 9007199254740991,
 											"minimum": -9007199254740991,
 											"type": "integer"
 										},
-										"kind": {
-											"enum": ["bluray", "dvd"],
-											"type": "string"
-										},
-										"packaging": {
-											"enum": ["iso", "folder"],
-											"type": "string"
-										},
-										"titleNumber": {
+										"crew": {
 											"maximum": 9007199254740991,
 											"minimum": -9007199254740991,
 											"type": "integer"
 										}
 									},
-									"required": [
-										"kind",
-										"packaging",
-										"titleNumber",
-										"chapterCount"
-									],
+									"required": ["cast", "crew"],
 									"type": "object"
 								},
-								"durationMs": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
-								},
-								"durationState": { "type": "string" },
-								"edition": {
-									"pattern": "^[^\0]*$",
-									"type": "string"
-								},
-								"headOccurrence": { "type": "string" },
-								"id": { "type": "string" },
-								"memberCount": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
-								},
-								"ordinal": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
-								},
-								"sizeBytes": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
-								},
-								"sizeBytesExact": { "type": "string" },
-								"subtitleCount": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
-								},
-								"video": {
-									"properties": {
-										"bitDepth": {
-											"maximum": 9007199254740991,
-											"minimum": -9007199254740991,
-											"type": "integer"
+								"credits": {
+									"items": {
+										"properties": {
+											"department": { "type": "string" },
+											"id": { "type": "string" },
+											"name": { "type": "string" },
+											"personId": { "type": "string" },
+											"portraitUrl": { "type": "string" },
+											"provider": { "type": "string" },
+											"role": { "type": "string" }
 										},
-										"bitRate": {
-											"maximum": 9007199254740991,
-											"minimum": -9007199254740991,
-											"type": "integer"
-										},
-										"codec": {
-											"pattern": "^[^\0]*$",
-											"type": "string"
-										},
-										"dynamicRange": {
-											"pattern": "^[^\0]*$",
-											"type": "string"
-										},
-										"frameRate": { "type": "number" },
-										"hdr10Plus": { "type": "boolean" },
-										"height": {
-											"maximum": 9007199254740991,
-											"minimum": -9007199254740991,
-											"type": "integer"
-										},
-										"profile": {
-											"pattern": "^[^\0]*$",
-											"type": "string"
-										},
-										"width": {
-											"maximum": 9007199254740991,
-											"minimum": -9007199254740991,
-											"type": "integer"
-										}
+										"required": [
+											"id",
+											"name",
+											"role",
+											"department",
+											"provider"
+										],
+										"type": "object"
 									},
-									"required": [
-										"codec",
-										"width",
-										"height"
-									],
-									"type": "object"
+									"type": "array"
+								},
+								"genres": {
+									"items": {
+										"properties": {
+											"id": { "type": "string" },
+											"name": { "type": "string" },
+											"provider": { "type": "string" }
+										},
+										"required": [
+											"id",
+											"name",
+											"provider"
+										],
+										"type": "object"
+									},
+									"type": "array"
+								},
+								"ratings": {
+									"items": {
+										"properties": {
+											"max": { "type": "number" },
+											"observedAt": { "type": "string" },
+											"provider": { "type": "string" },
+											"sourceUrl": { "type": "string" },
+											"value": { "type": "number" },
+											"votes": {
+												"maximum": 9007199254740991,
+												"minimum": -9007199254740991,
+												"type": "integer"
+											}
+										},
+										"required": [
+											"provider",
+											"value",
+											"max",
+											"votes",
+											"sourceUrl",
+											"observedAt"
+										],
+										"type": "object"
+									},
+									"type": "array"
+								},
+								"sources": {
+									"items": {
+										"properties": {
+											"observedAt": { "type": "string" },
+											"provider": { "type": "string" },
+											"sourceUrl": { "type": "string" }
+										},
+										"required": [
+											"provider",
+											"sourceUrl",
+											"observedAt"
+										],
+										"type": "object"
+									},
+									"type": "array"
+								},
+								"status": { "type": "string" }
+							},
+							"required": [
+								"sources",
+								"status",
+								"ratings",
+								"genres",
+								"credits",
+								"creditTotals"
+							],
+							"type": "object"
+						},
+						"missingSince": { "type": "string" },
+						"personal": {
+							"properties": {
+								"conflicts": {
+									"items": {
+										"properties": {
+											"baseRevision": {
+												"maximum": 9007199254740991,
+												"minimum": -9007199254740991,
+												"type": "integer"
+											},
+											"baseValue": {},
+											"choices": {
+												"items": {
+													"properties": {
+														"authoredAt": { "type": "string" },
+														"deviceId": { "type": "string" },
+														"operationId": { "type": "string" },
+														"value": {}
+													},
+													"required": [
+														"operationId",
+														"deviceId",
+														"authoredAt",
+														"value"
+													],
+													"type": "object"
+												},
+												"type": "array"
+											},
+											"field": { "type": "string" },
+											"id": { "type": "string" }
+										},
+										"required": [
+											"id",
+											"field",
+											"baseRevision",
+											"baseValue",
+											"choices"
+										],
+										"type": "object"
+									},
+									"type": "array"
+								},
+								"continueDismissed": { "type": "boolean" },
+								"favorite": { "type": "boolean" },
+								"lastPlayedAt": { "type": "string" },
+								"notInterested": { "type": "boolean" },
+								"progressMs": {
+									"maximum": 9007199254740991,
+									"minimum": 0,
+									"type": "integer"
+								},
+								"rating": {
+									"maximum": 10,
+									"minimum": 0,
+									"nullable": true,
+									"type": "integer"
+								},
+								"revision": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"status": { "type": "string" },
+								"watched": { "type": "boolean" },
+								"watchlisted": { "type": "boolean" }
+							},
+							"required": [
+								"watched",
+								"progressMs",
+								"lastPlayedAt",
+								"status",
+								"conflicts",
+								"watchlisted",
+								"favorite",
+								"rating",
+								"revision"
+							],
+							"type": "object"
+						},
+						"related": {
+							"properties": {
+								"libraryId": { "type": "string" },
+								"libraryName": { "type": "string" },
+								"rows": {
+									"items": {
+										"properties": {
+											"entries": {
+												"items": {
+													"additionalProperties": false,
+													"properties": {
+														"absoluteNumber": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"activeBeginYear": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"activeEndYear": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"addedAt": {
+															"nullable": true,
+															"type": "string"
+														},
+														"airDate": { "type": "string" },
+														"album": {
+															"properties": {
+																"id": { "type": "string" },
+																"name": { "type": "string" }
+															},
+															"required": ["id", "name"],
+															"type": "object"
+														},
+														"albumCount": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"albumType": { "type": "string" },
+														"artist": {
+															"properties": {
+																"id": { "type": "string" },
+																"name": { "type": "string" }
+															},
+															"required": ["id", "name"],
+															"type": "object"
+														},
+														"artistType": { "type": "string" },
+														"artworkPaths": {
+															"items": { "type": "string" },
+															"type": "array"
+														},
+														"audioFacts": {
+															"properties": {
+																"atmos": { "type": "boolean" },
+																"bitDepth": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"channels": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"codec": { "type": "string" },
+																"layout": { "type": "string" },
+																"lossless": { "type": "boolean" },
+																"sampleRate": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																}
+															},
+															"required": ["codec"],
+															"type": "object"
+														},
+														"author": { "type": "string" },
+														"available": { "type": "boolean" },
+														"backdropUrl": { "type": "string" },
+														"badges": {
+															"items": {
+																"oneOf": [
+																	{
+																		"additionalProperties": false,
+																		"properties": {
+																			"bitDepth": {
+																				"minimum": 17,
+																				"type": "integer"
+																			},
+																			"codec": {
+																				"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																				"type": "string"
+																			},
+																			"sampleRate": {
+																				"minimum": 1,
+																				"type": "integer"
+																			},
+																			"variant": { "const": "lossless" }
+																		},
+																		"required": [
+																			"variant",
+																			"codec",
+																			"bitDepth",
+																			"sampleRate"
+																		],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": { "variant": { "const": "atmos" } },
+																		"required": ["variant"],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": { "variant": { "const": "dsd" } },
+																		"required": ["variant"],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": {
+																			"layout": { "enum": ["5.1", "7.1"] },
+																			"variant": { "const": "surround" }
+																		},
+																		"required": ["variant", "layout"],
+																		"type": "object"
+																	}
+																],
+																"x-discriminator": "variant"
+															},
+															"maxItems": 2,
+															"type": "array"
+														},
+														"bookProgress": {
+															"properties": {
+																"bookId": { "type": "string" },
+																"chapter": {
+																	"properties": {
+																		"endMs": {
+																			"maximum": 9007199254740991,
+																			"minimum": -9007199254740991,
+																			"type": "integer"
+																		},
+																		"index": {
+																			"maximum": 9007199254740991,
+																			"minimum": -9007199254740991,
+																			"type": "integer"
+																		},
+																		"startMs": {
+																			"maximum": 9007199254740991,
+																			"minimum": -9007199254740991,
+																			"type": "integer"
+																		},
+																		"title": { "type": "string" }
+																	},
+																	"required": [
+																		"index",
+																		"title",
+																		"startMs",
+																		"endMs"
+																	],
+																	"type": "object"
+																},
+																"durationMs": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"itemId": { "type": "string" },
+																"partPositionMs": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"positionMs": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"remainingMs": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																}
+															},
+															"required": [
+																"bookId",
+																"itemId",
+																"partPositionMs"
+															],
+															"type": "object"
+														},
+														"contentRating": { "type": "string" },
+														"count": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"country": { "type": "string" },
+														"dateBased": { "type": "boolean" },
+														"discNumber": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"displayTitle": { "type": "string" },
+														"durationMs": {
+															"maximum": 9007199254740991,
+															"minimum": 0,
+															"type": "integer"
+														},
+														"edition": { "type": "string" },
+														"episodeNumber": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"favorite": { "type": "boolean" },
+														"genres": {
+															"items": { "type": "string" },
+															"type": "array"
+														},
+														"hidden": {
+															"nullable": true,
+															"type": "boolean"
+														},
+														"homeActions": {
+															"properties": {
+																"collection": { "type": "boolean" },
+																"delete": { "type": "boolean" },
+																"details": { "type": "boolean" },
+																"download": { "type": "boolean" },
+																"editMetadata": { "type": "boolean" },
+																"favorite": { "type": "boolean" },
+																"myList": { "type": "boolean" },
+																"notInterested": { "type": "boolean" },
+																"play": { "type": "boolean" },
+																"played": { "type": "boolean" },
+																"playlist": { "type": "boolean" },
+																"queue": { "type": "boolean" },
+																"rating": { "type": "boolean" },
+																"refreshMetadata": { "type": "boolean" },
+																"removeFromContinue": { "type": "boolean" },
+																"selection": {
+																	"properties": {
+																		"collection": { "type": "boolean" },
+																		"delete": { "type": "boolean" },
+																		"download": { "type": "boolean" },
+																		"edit": { "type": "boolean" },
+																		"favorite": { "type": "boolean" },
+																		"myList": { "type": "boolean" },
+																		"play": { "type": "boolean" },
+																		"playlist": { "type": "boolean" },
+																		"queue": { "type": "boolean" },
+																		"refresh": { "type": "boolean" },
+																		"watched": { "type": "boolean" }
+																	},
+																	"required": [
+																		"play",
+																		"queue",
+																		"playlist",
+																		"collection",
+																		"myList",
+																		"favorite",
+																		"watched",
+																		"download",
+																		"edit",
+																		"refresh",
+																		"delete"
+																	],
+																	"type": "object"
+																},
+																"state": {
+																	"properties": {
+																		"containerRevision": {
+																			"maximum": 9007199254740991,
+																			"minimum": -9007199254740991,
+																			"type": "integer"
+																		},
+																		"favorite": { "type": "boolean" },
+																		"personalRevision": {
+																			"maximum": 9007199254740991,
+																			"minimum": -9007199254740991,
+																			"type": "integer"
+																		},
+																		"rating": {
+																			"nullable": true,
+																			"type": "number"
+																		},
+																		"watched": { "type": "boolean" },
+																		"watchlisted": { "type": "boolean" }
+																	},
+																	"required": [
+																		"watchlisted",
+																		"favorite",
+																		"watched",
+																		"rating",
+																		"personalRevision",
+																		"containerRevision"
+																	],
+																	"type": "object"
+																},
+																"watched": { "type": "boolean" }
+															},
+															"required": [
+																"play",
+																"queue",
+																"playlist",
+																"collection",
+																"myList",
+																"favorite",
+																"watched",
+																"played",
+																"rating",
+																"editMetadata",
+																"refreshMetadata",
+																"delete",
+																"download",
+																"details",
+																"state",
+																"selection"
+															],
+															"type": "object"
+														},
+														"homeTitleContext": {
+															"properties": {
+																"genres": {
+																	"items": { "type": "string" },
+																	"type": "array"
+																},
+																"kind": { "type": "string" },
+																"seasonCount": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"year": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																}
+															},
+															"required": ["kind", "genres"],
+															"type": "object"
+														},
+														"id": { "type": "string" },
+														"kind": { "type": "string" },
+														"label": { "type": "string" },
+														"language": { "type": "string" },
+														"lastChanged": { "type": "string" },
+														"latestEpisode": {
+															"properties": {
+																"airDate": { "type": "string" },
+																"count": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"episodeNumber": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"seasonNumber": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"title": { "type": "string" }
+															},
+															"required": [
+																"airDate",
+																"episodeNumber",
+																"count"
+															],
+															"type": "object"
+														},
+														"libraryId": { "type": "string" },
+														"media": {
+															"properties": {
+																"absoluteNumber": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"activeBeginYear": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"activeEndYear": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"addedAt": {
+																	"nullable": true,
+																	"type": "string"
+																},
+																"airDate": { "type": "string" },
+																"album": {
+																	"properties": {
+																		"id": { "type": "string" },
+																		"name": { "type": "string" }
+																	},
+																	"required": ["id", "name"],
+																	"type": "object"
+																},
+																"albumCount": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"albumType": { "type": "string" },
+																"artist": {
+																	"properties": {
+																		"id": { "type": "string" },
+																		"name": { "type": "string" }
+																	},
+																	"required": ["id", "name"],
+																	"type": "object"
+																},
+																"artistType": { "type": "string" },
+																"artworkPaths": {
+																	"items": { "type": "string" },
+																	"type": "array"
+																},
+																"audioFacts": {
+																	"properties": {
+																		"atmos": { "type": "boolean" },
+																		"bitDepth": {
+																			"maximum": 9007199254740991,
+																			"minimum": -9007199254740991,
+																			"type": "integer"
+																		},
+																		"channels": {
+																			"maximum": 9007199254740991,
+																			"minimum": -9007199254740991,
+																			"type": "integer"
+																		},
+																		"codec": { "type": "string" },
+																		"layout": { "type": "string" },
+																		"lossless": { "type": "boolean" },
+																		"sampleRate": {
+																			"maximum": 9007199254740991,
+																			"minimum": -9007199254740991,
+																			"type": "integer"
+																		}
+																	},
+																	"required": ["codec"],
+																	"type": "object"
+																},
+																"author": { "type": "string" },
+																"available": { "type": "boolean" },
+																"backdropUrl": { "type": "string" },
+																"badges": {
+																	"items": {
+																		"oneOf": [
+																			{
+																				"additionalProperties": false,
+																				"properties": {
+																					"bitDepth": {
+																						"minimum": 17,
+																						"type": "integer"
+																					},
+																					"codec": {
+																						"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																						"type": "string"
+																					},
+																					"sampleRate": {
+																						"minimum": 1,
+																						"type": "integer"
+																					},
+																					"variant": { "const": "lossless" }
+																				},
+																				"required": [
+																					"variant",
+																					"codec",
+																					"bitDepth",
+																					"sampleRate"
+																				],
+																				"type": "object"
+																			},
+																			{
+																				"additionalProperties": false,
+																				"properties": { "variant": { "const": "atmos" } },
+																				"required": ["variant"],
+																				"type": "object"
+																			},
+																			{
+																				"additionalProperties": false,
+																				"properties": { "variant": { "const": "dsd" } },
+																				"required": ["variant"],
+																				"type": "object"
+																			},
+																			{
+																				"additionalProperties": false,
+																				"properties": {
+																					"layout": { "enum": ["5.1", "7.1"] },
+																					"variant": { "const": "surround" }
+																				},
+																				"required": ["variant", "layout"],
+																				"type": "object"
+																			}
+																		],
+																		"x-discriminator": "variant"
+																	},
+																	"maxItems": 2,
+																	"type": "array"
+																},
+																"bookProgress": {
+																	"properties": {
+																		"bookId": { "type": "string" },
+																		"chapter": {
+																			"properties": {
+																				"endMs": {
+																					"maximum": 9007199254740991,
+																					"minimum": -9007199254740991,
+																					"type": "integer"
+																				},
+																				"index": {
+																					"maximum": 9007199254740991,
+																					"minimum": -9007199254740991,
+																					"type": "integer"
+																				},
+																				"startMs": {
+																					"maximum": 9007199254740991,
+																					"minimum": -9007199254740991,
+																					"type": "integer"
+																				},
+																				"title": { "type": "string" }
+																			},
+																			"required": [
+																				"index",
+																				"title",
+																				"startMs",
+																				"endMs"
+																			],
+																			"type": "object"
+																		},
+																		"durationMs": {
+																			"maximum": 9007199254740991,
+																			"minimum": -9007199254740991,
+																			"type": "integer"
+																		},
+																		"itemId": { "type": "string" },
+																		"partPositionMs": {
+																			"maximum": 9007199254740991,
+																			"minimum": -9007199254740991,
+																			"type": "integer"
+																		},
+																		"positionMs": {
+																			"maximum": 9007199254740991,
+																			"minimum": -9007199254740991,
+																			"type": "integer"
+																		},
+																		"remainingMs": {
+																			"maximum": 9007199254740991,
+																			"minimum": -9007199254740991,
+																			"type": "integer"
+																		}
+																	},
+																	"required": [
+																		"bookId",
+																		"itemId",
+																		"partPositionMs"
+																	],
+																	"type": "object"
+																},
+																"contentRating": { "type": "string" },
+																"count": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"country": { "type": "string" },
+																"dateBased": { "type": "boolean" },
+																"discNumber": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"displayTitle": { "type": "string" },
+																"durationMs": {
+																	"maximum": 9007199254740991,
+																	"minimum": 0,
+																	"type": "integer"
+																},
+																"edition": { "type": "string" },
+																"episodeNumber": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"favorite": { "type": "boolean" },
+																"genres": {
+																	"items": { "type": "string" },
+																	"type": "array"
+																},
+																"homeActions": {
+																	"properties": {
+																		"collection": { "type": "boolean" },
+																		"delete": { "type": "boolean" },
+																		"details": { "type": "boolean" },
+																		"download": { "type": "boolean" },
+																		"editMetadata": { "type": "boolean" },
+																		"favorite": { "type": "boolean" },
+																		"myList": { "type": "boolean" },
+																		"notInterested": { "type": "boolean" },
+																		"play": { "type": "boolean" },
+																		"played": { "type": "boolean" },
+																		"playlist": { "type": "boolean" },
+																		"queue": { "type": "boolean" },
+																		"rating": { "type": "boolean" },
+																		"refreshMetadata": { "type": "boolean" },
+																		"removeFromContinue": { "type": "boolean" },
+																		"selection": {
+																			"properties": {
+																				"collection": { "type": "boolean" },
+																				"delete": { "type": "boolean" },
+																				"download": { "type": "boolean" },
+																				"edit": { "type": "boolean" },
+																				"favorite": { "type": "boolean" },
+																				"myList": { "type": "boolean" },
+																				"play": { "type": "boolean" },
+																				"playlist": { "type": "boolean" },
+																				"queue": { "type": "boolean" },
+																				"refresh": { "type": "boolean" },
+																				"watched": { "type": "boolean" }
+																			},
+																			"required": [
+																				"play",
+																				"queue",
+																				"playlist",
+																				"collection",
+																				"myList",
+																				"favorite",
+																				"watched",
+																				"download",
+																				"edit",
+																				"refresh",
+																				"delete"
+																			],
+																			"type": "object"
+																		},
+																		"state": {
+																			"properties": {
+																				"containerRevision": {
+																					"maximum": 9007199254740991,
+																					"minimum": -9007199254740991,
+																					"type": "integer"
+																				},
+																				"favorite": { "type": "boolean" },
+																				"personalRevision": {
+																					"maximum": 9007199254740991,
+																					"minimum": -9007199254740991,
+																					"type": "integer"
+																				},
+																				"rating": {
+																					"nullable": true,
+																					"type": "number"
+																				},
+																				"watched": { "type": "boolean" },
+																				"watchlisted": { "type": "boolean" }
+																			},
+																			"required": [
+																				"watchlisted",
+																				"favorite",
+																				"watched",
+																				"rating",
+																				"personalRevision",
+																				"containerRevision"
+																			],
+																			"type": "object"
+																		},
+																		"watched": { "type": "boolean" }
+																	},
+																	"required": [
+																		"play",
+																		"queue",
+																		"playlist",
+																		"collection",
+																		"myList",
+																		"favorite",
+																		"watched",
+																		"played",
+																		"rating",
+																		"editMetadata",
+																		"refreshMetadata",
+																		"delete",
+																		"download",
+																		"details",
+																		"state",
+																		"selection"
+																	],
+																	"type": "object"
+																},
+																"homeTitleContext": {
+																	"properties": {
+																		"genres": {
+																			"items": { "type": "string" },
+																			"type": "array"
+																		},
+																		"kind": { "type": "string" },
+																		"seasonCount": {
+																			"maximum": 9007199254740991,
+																			"minimum": -9007199254740991,
+																			"type": "integer"
+																		},
+																		"year": {
+																			"maximum": 9007199254740991,
+																			"minimum": -9007199254740991,
+																			"type": "integer"
+																		}
+																	},
+																	"required": ["kind", "genres"],
+																	"type": "object"
+																},
+																"id": { "type": "string" },
+																"kind": { "type": "string" },
+																"label": { "type": "string" },
+																"language": { "type": "string" },
+																"lastChanged": { "type": "string" },
+																"latestEpisode": {
+																	"properties": {
+																		"airDate": { "type": "string" },
+																		"count": {
+																			"maximum": 9007199254740991,
+																			"minimum": -9007199254740991,
+																			"type": "integer"
+																		},
+																		"episodeNumber": {
+																			"maximum": 9007199254740991,
+																			"minimum": -9007199254740991,
+																			"type": "integer"
+																		},
+																		"seasonNumber": {
+																			"maximum": 9007199254740991,
+																			"minimum": -9007199254740991,
+																			"type": "integer"
+																		},
+																		"title": { "type": "string" }
+																	},
+																	"required": [
+																		"airDate",
+																		"episodeNumber",
+																		"count"
+																	],
+																	"type": "object"
+																},
+																"libraryId": { "type": "string" },
+																"missing": { "type": "boolean" },
+																"narrators": {
+																	"items": { "type": "string" },
+																	"type": "array"
+																},
+																"navigation": {
+																	"properties": {
+																		"browse": {
+																			"properties": {
+																				"pivot": {
+																					"maxLength": 256,
+																					"minLength": 1,
+																					"type": "string"
+																				},
+																				"query": {
+																					"additionalProperties": {},
+																					"type": "object"
+																				},
+																				"sort": {
+																					"items": {
+																						"properties": {
+																							"direction": {
+																								"enum": ["asc", "desc"],
+																								"type": "string"
+																							},
+																							"field": { "type": "string" }
+																						},
+																						"required": ["field", "direction"],
+																						"type": "object"
+																					},
+																					"maxItems": 1,
+																					"type": "array"
+																				}
+																			},
+																			"required": ["pivot", "sort"],
+																			"type": "object"
+																		},
+																		"category": { "type": "string" },
+																		"channelId": { "type": "string" },
+																		"entityId": { "type": "string" },
+																		"provenance": { "type": "string" },
+																		"sourceId": { "type": "string" },
+																		"view": { "type": "string" }
+																	},
+																	"required": ["view"],
+																	"type": "object"
+																},
+																"new": { "type": "boolean" },
+																"origin": { "type": "string" },
+																"overview": { "type": "string" },
+																"overviewSource": { "type": "string" },
+																"overviewSourceUrl": { "type": "string" },
+																"pageCount": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"pinned": { "type": "boolean" },
+																"playback": {
+																	"properties": {
+																		"itemId": { "type": "string" },
+																		"startMs": {
+																			"maximum": 9007199254740991,
+																			"minimum": 0,
+																			"type": "integer"
+																		}
+																	},
+																	"required": ["itemId"],
+																	"type": "object"
+																},
+																"plays": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"posterUrl": { "type": "string" },
+																"progressMs": {
+																	"maximum": 9007199254740991,
+																	"minimum": 0,
+																	"type": "integer"
+																},
+																"publicationType": {
+																	"enum": [
+																		"book",
+																		"magazine",
+																		"newspaper"
+																	],
+																	"type": "string"
+																},
+																"publishedYear": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"publisher": { "type": "string" },
+																"radioSeed": {
+																	"properties": {
+																		"id": { "type": "string" },
+																		"kind": { "type": "string" }
+																	},
+																	"required": ["id", "kind"],
+																	"type": "object"
+																},
+																"rating": { "type": "number" },
+																"readingMark": {
+																	"properties": {
+																		"itemId": { "type": "string" },
+																		"read": { "type": "boolean" },
+																		"revision": {
+																			"maximum": 9007199254740991,
+																			"minimum": -9007199254740991,
+																			"type": "integer"
+																		}
+																	},
+																	"required": [
+																		"itemId",
+																		"read",
+																		"revision"
+																	],
+																	"type": "object"
+																},
+																"releaseDate": { "type": "string" },
+																"removed": { "type": "boolean" },
+																"resolution": { "type": "string" },
+																"role": { "type": "string" },
+																"seasonCount": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"seasonNumber": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"series": {
+																	"items": {
+																		"properties": {
+																			"name": { "type": "string" },
+																			"position": { "type": "string" }
+																		},
+																		"required": ["name"],
+																		"type": "object"
+																	},
+																	"type": "array"
+																},
+																"show": {
+																	"properties": {
+																		"id": { "type": "string" },
+																		"name": { "type": "string" }
+																	},
+																	"required": ["id", "name"],
+																	"type": "object"
+																},
+																"sortLetter": { "type": "string" },
+																"special": { "type": "boolean" },
+																"stillUrl": { "type": "string" },
+																"subtitle": { "type": "string" },
+																"title": { "type": "string" },
+																"totalAtLeast": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"trackNumber": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"unwatchedCount": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"userRating": {
+																	"maximum": 10,
+																	"minimum": 0,
+																	"nullable": true,
+																	"type": "integer"
+																},
+																"watched": { "type": "boolean" },
+																"watchedCount": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"watchlisted": { "type": "boolean" },
+																"year": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"yearMax": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																},
+																"yearMin": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																}
+															},
+															"required": [
+																"missing",
+																"id",
+																"kind",
+																"title",
+																"addedAt"
+															],
+															"type": "object"
+														},
+														"missing": { "type": "boolean" },
+														"narrators": {
+															"items": { "type": "string" },
+															"type": "array"
+														},
+														"navigation": {
+															"properties": {
+																"browse": {
+																	"properties": {
+																		"pivot": {
+																			"maxLength": 256,
+																			"minLength": 1,
+																			"type": "string"
+																		},
+																		"query": {
+																			"additionalProperties": {},
+																			"type": "object"
+																		},
+																		"sort": {
+																			"items": {
+																				"properties": {
+																					"direction": {
+																						"enum": ["asc", "desc"],
+																						"type": "string"
+																					},
+																					"field": { "type": "string" }
+																				},
+																				"required": ["field", "direction"],
+																				"type": "object"
+																			},
+																			"maxItems": 1,
+																			"type": "array"
+																		}
+																	},
+																	"required": ["pivot", "sort"],
+																	"type": "object"
+																},
+																"category": { "type": "string" },
+																"channelId": { "type": "string" },
+																"entityId": { "type": "string" },
+																"provenance": { "type": "string" },
+																"sourceId": { "type": "string" },
+																"view": { "type": "string" }
+															},
+															"required": ["view"],
+															"type": "object"
+														},
+														"new": { "type": "boolean" },
+														"origin": { "type": "string" },
+														"overview": { "type": "string" },
+														"overviewSource": { "type": "string" },
+														"overviewSourceUrl": { "type": "string" },
+														"pageCount": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"pinned": { "type": "boolean" },
+														"playback": {
+															"properties": {
+																"itemId": { "type": "string" },
+																"startMs": {
+																	"maximum": 9007199254740991,
+																	"minimum": 0,
+																	"type": "integer"
+																}
+															},
+															"required": ["itemId"],
+															"type": "object"
+														},
+														"plays": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"posterUrl": { "type": "string" },
+														"progressMs": {
+															"maximum": 9007199254740991,
+															"minimum": 0,
+															"type": "integer"
+														},
+														"publicationType": {
+															"enum": [
+																"book",
+																"magazine",
+																"newspaper"
+															],
+															"type": "string"
+														},
+														"publishedYear": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"publisher": { "type": "string" },
+														"radioSeed": {
+															"properties": {
+																"id": { "type": "string" },
+																"kind": { "type": "string" }
+															},
+															"required": ["id", "kind"],
+															"type": "object"
+														},
+														"rating": { "type": "number" },
+														"readingMark": {
+															"properties": {
+																"itemId": { "type": "string" },
+																"read": { "type": "boolean" },
+																"revision": {
+																	"maximum": 9007199254740991,
+																	"minimum": -9007199254740991,
+																	"type": "integer"
+																}
+															},
+															"required": [
+																"itemId",
+																"read",
+																"revision"
+															],
+															"type": "object"
+														},
+														"releaseDate": { "type": "string" },
+														"removed": { "type": "boolean" },
+														"resolution": { "type": "string" },
+														"role": { "type": "string" },
+														"seasonCount": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"seasonNumber": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"series": {
+															"items": {
+																"properties": {
+																	"name": { "type": "string" },
+																	"position": { "type": "string" }
+																},
+																"required": ["name"],
+																"type": "object"
+															},
+															"type": "array"
+														},
+														"show": {
+															"properties": {
+																"id": { "type": "string" },
+																"name": { "type": "string" }
+															},
+															"required": ["id", "name"],
+															"type": "object"
+														},
+														"sortLetter": { "type": "string" },
+														"special": { "type": "boolean" },
+														"stillUrl": { "type": "string" },
+														"subtitle": { "type": "string" },
+														"title": { "type": "string" },
+														"totalAtLeast": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"trackNumber": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"unwatchedCount": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"userRating": {
+															"maximum": 10,
+															"minimum": 0,
+															"nullable": true,
+															"type": "integer"
+														},
+														"watched": { "type": "boolean" },
+														"watchedCount": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"watchlisted": { "type": "boolean" },
+														"year": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"yearMax": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														},
+														"yearMin": {
+															"maximum": 9007199254740991,
+															"minimum": -9007199254740991,
+															"type": "integer"
+														}
+													},
+													"required": ["id", "kind"],
+													"type": "object"
+												},
+												"type": "array"
+											},
+											"evidenceId": { "type": "string" },
+											"hasMore": { "type": "boolean" },
+											"heading": { "type": "string" },
+											"headingText": {
+												"properties": {
+													"code": { "type": "string" },
+													"fallback": { "type": "string" },
+													"params": {
+														"additionalProperties": { "type": "string" },
+														"type": "object"
+													}
+												},
+												"required": ["code", "fallback"],
+												"type": "object"
+											},
+											"id": { "type": "string" },
+											"nextCursor": { "type": "string" },
+											"provider": { "type": "string" },
+											"relation": { "type": "string" }
+										},
+										"required": [
+											"id",
+											"relation",
+											"provider",
+											"evidenceId",
+											"heading",
+											"headingText",
+											"entries"
+										],
+										"type": "object"
+									},
+									"type": "array"
+								},
+								"version": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
 								}
 							},
 							"required": [
-								"id",
-								"headOccurrence",
-								"ordinal",
-								"memberCount",
-								"container",
-								"audioCount",
-								"subtitleCount"
+								"version",
+								"libraryId",
+								"libraryName",
+								"rows"
 							],
 							"type": "object"
 						},
-						"maxItems": 100,
-						"type": "array"
-					},
-					"kind": {
-						"const": "file-info-groups",
-						"type": "string"
-					},
-					"scope": {
-						"properties": {
-							"itemId": { "type": "string" },
-							"libraryId": { "type": "string" },
-							"serverId": { "type": "string" },
-							"viewerFence": { "type": "string" }
-						},
-						"required": [
-							"serverId",
-							"libraryId",
-							"itemId",
-							"viewerFence"
-						],
-						"type": "object"
-					},
-					"surface": {
-						"properties": {
-							"canSplit": { "type": "boolean" },
-							"eligibleFileCount": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							},
-							"fileCount": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							},
-							"groupCount": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							},
-							"hasDiscColumns": { "type": "boolean" },
-							"manage": {
-								"properties": {
-									"delete": { "type": "boolean" },
-									"merge": { "type": "boolean" },
-									"split": { "type": "boolean" }
-								},
-								"required": [
-									"delete",
-									"split",
-									"merge"
-								],
-								"type": "object"
-							},
-							"ownerDiscOccurrence": { "type": "string" }
-						},
-						"required": [
-							"fileCount",
-							"eligibleFileCount",
-							"groupCount",
-							"canSplit",
-							"hasDiscColumns"
-						],
-						"type": "object"
-					},
-					"window": {
-						"properties": {
-							"limit": {
-								"maximum": 100,
-								"minimum": 1,
-								"type": "integer"
-							},
-							"nextCursor": {
-								"maxLength": 154,
-								"minLength": 154,
-								"pattern": "^[A-Za-z0-9_-]{154}$",
-								"type": "string"
-							},
-							"previousCursor": {
-								"maxLength": 154,
-								"minLength": 154,
-								"pattern": "^[A-Za-z0-9_-]{154}$",
-								"type": "string"
-							},
-							"queryId": {
-								"maxLength": 338,
-								"minLength": 338,
-								"pattern": "^[A-Za-z0-9_-]{183}\\.[A-Za-z0-9_-]{154}$",
-								"type": "string"
-							},
-							"reloadCursor": {
-								"maxLength": 154,
-								"minLength": 154,
-								"pattern": "^[A-Za-z0-9_-]{154}$",
-								"type": "string"
-							},
-							"returned": {
-								"maximum": 100,
-								"minimum": 0,
-								"type": "integer"
-							}
-						},
-						"required": [
-							"queryId",
-							"limit",
-							"returned"
-						],
-						"type": "object"
-					}
-				},
-				"required": [
-					"scope",
-					"detail",
-					"basis",
-					"window",
-					"kind",
-					"surface",
-					"groups"
-				],
-				"type": "object"
-			},
-			{
-				"properties": {
-					"basis": {
-						"maxLength": 43,
-						"minLength": 43,
-						"pattern": "^[A-Za-z0-9_-]{43}$",
-						"type": "string"
-					},
-					"detail": {
-						"properties": {
-							"revision": {
-								"properties": {
-									"catalog": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									},
-									"viewer": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									}
-								},
-								"required": ["catalog", "viewer"],
-								"type": "object"
-							},
-							"scope": {
-								"properties": {
-									"itemId": { "type": "string" },
-									"libraryId": { "type": "string" },
-									"serverId": { "type": "string" },
-									"viewerFence": { "type": "string" }
-								},
-								"required": [
-									"serverId",
-									"libraryId",
-									"itemId",
-									"viewerFence"
-								],
-								"type": "object"
-							}
-						},
-						"required": ["scope", "revision"],
-						"type": "object"
-					},
-					"groupId": { "type": "string" },
-					"kind": {
-						"const": "file-info-members",
-						"type": "string"
-					},
-					"members": {
-						"items": {
+						"revision": {
 							"properties": {
-								"audioCount": {
+								"catalog": {
 									"maximum": 9007199254740991,
 									"minimum": -9007199254740991,
 									"type": "integer"
 								},
-								"available": { "type": "boolean" },
-								"bitRate": {
+								"viewer": {
 									"maximum": 9007199254740991,
 									"minimum": -9007199254740991,
 									"type": "integer"
-								},
-								"container": {
-									"pattern": "^[^\0]*$",
-									"type": "string"
-								},
-								"disc": {
-									"properties": {
-										"chapterCount": {
-											"maximum": 9007199254740991,
-											"minimum": -9007199254740991,
-											"type": "integer"
-										},
-										"kind": {
-											"enum": ["bluray", "dvd"],
-											"type": "string"
-										},
-										"packaging": {
-											"enum": ["iso", "folder"],
-											"type": "string"
-										},
-										"titleNumber": {
-											"maximum": 9007199254740991,
-											"minimum": -9007199254740991,
-											"type": "integer"
-										}
-									},
-									"required": [
-										"kind",
-										"packaging",
-										"titleNumber",
-										"chapterCount"
-									],
-									"type": "object"
-								},
-								"duration": { "type": "number" },
-								"durationState": { "type": "string" },
-								"edition": {
-									"pattern": "^[^\0]*$",
-									"type": "string"
-								},
-								"id": { "type": "string" },
+								}
+							},
+							"required": ["catalog", "viewer"],
+							"type": "object"
+						},
+						"scope": {
+							"properties": {
 								"itemId": { "type": "string" },
-								"occurrence": { "type": "string" },
-								"partIndex": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
-								},
-								"path": {
-									"pattern": "^[^\0]*$",
-									"type": "string"
-								},
-								"size": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
-								},
-								"sizeExact": { "type": "string" },
-								"subtitleCount": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
-								},
-								"video": {
-									"properties": {
-										"bitDepth": {
-											"maximum": 9007199254740991,
-											"minimum": -9007199254740991,
-											"type": "integer"
-										},
-										"bitRate": {
-											"maximum": 9007199254740991,
-											"minimum": -9007199254740991,
-											"type": "integer"
-										},
-										"codec": {
-											"pattern": "^[^\0]*$",
-											"type": "string"
-										},
-										"dynamicRange": {
-											"pattern": "^[^\0]*$",
-											"type": "string"
-										},
-										"frameRate": { "type": "number" },
-										"hdr10Plus": { "type": "boolean" },
-										"height": {
-											"maximum": 9007199254740991,
-											"minimum": -9007199254740991,
-											"type": "integer"
-										},
-										"profile": {
-											"pattern": "^[^\0]*$",
-											"type": "string"
-										},
-										"width": {
-											"maximum": 9007199254740991,
-											"minimum": -9007199254740991,
-											"type": "integer"
-										}
-									},
-									"required": [
-										"codec",
-										"width",
-										"height"
-									],
-									"type": "object"
-								}
+								"libraryId": { "type": "string" },
+								"serverId": { "type": "string" },
+								"viewerFence": { "type": "string" }
 							},
 							"required": [
-								"occurrence",
+								"serverId",
+								"libraryId",
 								"itemId",
-								"id",
-								"container",
-								"available",
-								"partIndex",
-								"audioCount",
-								"subtitleCount"
+								"viewerFence"
 							],
 							"type": "object"
 						},
-						"maxItems": 100,
-						"type": "array"
+						"variant": {
+							"const": "detail",
+							"type": "string"
+						}
 					},
-					"scope": {
-						"properties": {
-							"itemId": { "type": "string" },
-							"libraryId": { "type": "string" },
-							"serverId": { "type": "string" },
-							"viewerFence": { "type": "string" }
-						},
-						"required": [
-							"serverId",
-							"libraryId",
-							"itemId",
-							"viewerFence"
-						],
-						"type": "object"
-					},
-					"total": {
-						"maximum": 9007199254740991,
-						"minimum": -9007199254740991,
-						"type": "integer"
-					},
-					"window": {
-						"properties": {
-							"limit": {
-								"maximum": 100,
-								"minimum": 1,
-								"type": "integer"
-							},
-							"nextCursor": {
-								"maxLength": 154,
-								"minLength": 154,
-								"pattern": "^[A-Za-z0-9_-]{154}$",
-								"type": "string"
-							},
-							"previousCursor": {
-								"maxLength": 154,
-								"minLength": 154,
-								"pattern": "^[A-Za-z0-9_-]{154}$",
-								"type": "string"
-							},
-							"queryId": {
-								"maxLength": 338,
-								"minLength": 338,
-								"pattern": "^[A-Za-z0-9_-]{183}\\.[A-Za-z0-9_-]{154}$",
-								"type": "string"
-							},
-							"reloadCursor": {
-								"maxLength": 154,
-								"minLength": 154,
-								"pattern": "^[A-Za-z0-9_-]{154}$",
-								"type": "string"
-							},
-							"returned": {
-								"maximum": 100,
-								"minimum": 0,
-								"type": "integer"
-							}
-						},
-						"required": [
-							"queryId",
-							"limit",
-							"returned"
-						],
-						"type": "object"
-					}
+					"required": [
+						"collections",
+						"languages",
+						"scope",
+						"revision",
+						"item",
+						"personal",
+						"actions",
+						"metadata",
+						"markers",
+						"variant"
+					],
+					"type": "object"
 				},
-				"required": [
-					"scope",
-					"detail",
-					"basis",
-					"window",
-					"kind",
-					"groupId",
-					"total",
-					"members"
-				],
-				"type": "object"
-			},
-			{
-				"properties": {
-					"basis": {
-						"maxLength": 43,
-						"minLength": 43,
-						"pattern": "^[A-Za-z0-9_-]{43}$",
-						"type": "string"
-					},
-					"detail": {
-						"properties": {
-							"revision": {
-								"properties": {
-									"catalog": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									},
-									"viewer": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									}
-								},
-								"required": ["catalog", "viewer"],
-								"type": "object"
-							},
-							"scope": {
-								"properties": {
-									"itemId": { "type": "string" },
-									"libraryId": { "type": "string" },
-									"serverId": { "type": "string" },
-									"viewerFence": { "type": "string" }
-								},
-								"required": [
-									"serverId",
-									"libraryId",
-									"itemId",
-									"viewerFence"
-								],
-								"type": "object"
-							}
+				{
+					"properties": {
+						"addedAt": {
+							"nullable": true,
+							"type": "string"
 						},
-						"required": ["scope", "revision"],
-						"type": "object"
-					},
-					"kind": {
-						"const": "file-info-tracks",
-						"type": "string"
-					},
-					"lane": {
-						"enum": ["audio", "subtitles"],
-						"type": "string"
-					},
-					"occurrence": { "type": "string" },
-					"scope": {
-						"properties": {
-							"itemId": { "type": "string" },
-							"libraryId": { "type": "string" },
-							"serverId": { "type": "string" },
-							"viewerFence": { "type": "string" }
-						},
-						"required": [
-							"serverId",
-							"libraryId",
-							"itemId",
-							"viewerFence"
-						],
-						"type": "object"
-					},
-					"total": {
-						"maximum": 9007199254740991,
-						"minimum": -9007199254740991,
-						"type": "integer"
-					},
-					"tracks": {
-						"items": {
+						"audioFacts": {
 							"properties": {
+								"atmos": { "type": "boolean" },
 								"bitDepth": {
 									"maximum": 9007199254740991,
 									"minimum": -9007199254740991,
 									"type": "integer"
-								},
-								"bitRate": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
-								},
-								"channelLayout": {
-									"pattern": "^[^\0]*$",
-									"type": "string"
 								},
 								"channels": {
 									"maximum": 9007199254740991,
 									"minimum": -9007199254740991,
 									"type": "integer"
 								},
-								"codec": {
-									"pattern": "^[^\0]*$",
-									"type": "string"
-								},
-								"commentary": { "type": "boolean" },
-								"default": { "type": "boolean" },
-								"external": { "type": "boolean" },
-								"forced": { "type": "boolean" },
-								"hearingImpaired": { "type": "boolean" },
-								"language": {
-									"pattern": "^[^\0]*$",
-									"type": "string"
-								},
-								"objectAudio": {
-									"pattern": "^[^\0]*$",
-									"type": "string"
-								},
-								"ordinal": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
-								},
-								"profile": {
-									"pattern": "^[^\0]*$",
-									"type": "string"
-								},
+								"codec": { "type": "string" },
+								"layout": { "type": "string" },
+								"lossless": { "type": "boolean" },
 								"sampleRate": {
 									"maximum": 9007199254740991,
 									"minimum": -9007199254740991,
 									"type": "integer"
-								},
-								"title": {
-									"pattern": "^[^\0]*$",
-									"type": "string"
 								}
 							},
-							"required": ["ordinal", "codec"],
+							"required": ["codec"],
 							"type": "object"
 						},
-						"maxItems": 100,
-						"type": "array"
-					},
-					"window": {
-						"properties": {
-							"limit": {
-								"maximum": 100,
-								"minimum": 1,
-								"type": "integer"
-							},
-							"nextCursor": {
-								"maxLength": 154,
-								"minLength": 154,
-								"pattern": "^[A-Za-z0-9_-]{154}$",
-								"type": "string"
-							},
-							"previousCursor": {
-								"maxLength": 154,
-								"minLength": 154,
-								"pattern": "^[A-Za-z0-9_-]{154}$",
-								"type": "string"
-							},
-							"queryId": {
-								"maxLength": 338,
-								"minLength": 338,
-								"pattern": "^[A-Za-z0-9_-]{183}\\.[A-Za-z0-9_-]{154}$",
-								"type": "string"
-							},
-							"reloadCursor": {
-								"maxLength": 154,
-								"minLength": 154,
-								"pattern": "^[A-Za-z0-9_-]{154}$",
-								"type": "string"
-							},
-							"returned": {
-								"maximum": 100,
-								"minimum": 0,
-								"type": "integer"
-							}
-						},
-						"required": [
-							"queryId",
-							"limit",
-							"returned"
-						],
-						"type": "object"
-					}
-				},
-				"required": [
-					"scope",
-					"detail",
-					"basis",
-					"window",
-					"kind",
-					"lane",
-					"occurrence",
-					"total",
-					"tracks"
-				],
-				"type": "object"
-			},
-			{
-				"properties": {
-					"basis": {
-						"maxLength": 43,
-						"minLength": 43,
-						"pattern": "^[A-Za-z0-9_-]{43}$",
-						"type": "string"
-					},
-					"detail": {
-						"properties": {
-							"revision": {
-								"properties": {
-									"catalog": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									},
-									"viewer": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									}
-								},
-								"required": ["catalog", "viewer"],
-								"type": "object"
-							},
-							"scope": {
-								"properties": {
-									"itemId": { "type": "string" },
-									"libraryId": { "type": "string" },
-									"serverId": { "type": "string" },
-									"viewerFence": { "type": "string" }
-								},
-								"required": [
-									"serverId",
-									"libraryId",
-									"itemId",
-									"viewerFence"
-								],
-								"type": "object"
-							}
-						},
-						"required": ["scope", "revision"],
-						"type": "object"
-					},
-					"groupId": { "type": "string" },
-					"kind": {
-						"const": "file-info-head-tracks",
-						"type": "string"
-					},
-					"lane": {
-						"enum": ["audio", "subtitles"],
-						"type": "string"
-					},
-					"occurrence": { "type": "string" },
-					"scope": {
-						"properties": {
-							"itemId": { "type": "string" },
-							"libraryId": { "type": "string" },
-							"serverId": { "type": "string" },
-							"viewerFence": { "type": "string" }
-						},
-						"required": [
-							"serverId",
-							"libraryId",
-							"itemId",
-							"viewerFence"
-						],
-						"type": "object"
-					},
-					"total": {
-						"maximum": 9007199254740991,
-						"minimum": -9007199254740991,
-						"type": "integer"
-					},
-					"tracks": {
-						"items": {
+						"available": { "type": "boolean" },
+						"backdropUrl": { "type": "string" },
+						"bookFile": {
 							"properties": {
-								"bitDepth": {
+								"bookId": { "type": "string" },
+								"bookTitle": { "type": "string" },
+								"discNumber": {
 									"maximum": 9007199254740991,
 									"minimum": -9007199254740991,
 									"type": "integer"
 								},
-								"bitRate": {
+								"localMetadata": {
+									"properties": {
+										"authors": {
+											"items": { "type": "string" },
+											"type": "array"
+										},
+										"description": { "type": "string" },
+										"edition": { "type": "string" },
+										"identifiers": {
+											"items": {
+												"properties": {
+													"scheme": { "type": "string" },
+													"value": { "type": "string" }
+												},
+												"required": ["scheme", "value"],
+												"type": "object"
+											},
+											"type": "array"
+										},
+										"language": { "type": "string" },
+										"narrators": {
+											"items": { "type": "string" },
+											"type": "array"
+										},
+										"publishedYear": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"publisher": { "type": "string" },
+										"series": {
+											"items": {
+												"properties": {
+													"name": { "type": "string" },
+													"position": { "type": "string" }
+												},
+												"required": ["name"],
+												"type": "object"
+											},
+											"type": "array"
+										},
+										"sources": {
+											"additionalProperties": { "type": "string" },
+											"type": "object"
+										}
+									},
+									"required": [
+										"authors",
+										"narrators",
+										"series",
+										"identifiers",
+										"sources"
+									],
+									"type": "object"
+								},
+								"localMetadataIssue": { "type": "string" },
+								"localPolicy": {
+									"properties": {
+										"localMode": { "type": "string" },
+										"revision": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										}
+									},
+									"required": ["revision", "localMode"],
+									"type": "object"
+								},
+								"partNumber": {
 									"maximum": 9007199254740991,
 									"minimum": -9007199254740991,
 									"type": "integer"
 								},
-								"channelLayout": {
-									"pattern": "^[^\0]*$",
-									"type": "string"
-								},
-								"channels": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
-								},
-								"codec": {
-									"pattern": "^[^\0]*$",
-									"type": "string"
-								},
-								"commentary": { "type": "boolean" },
-								"default": { "type": "boolean" },
-								"external": { "type": "boolean" },
-								"forced": { "type": "boolean" },
-								"hearingImpaired": { "type": "boolean" },
-								"id": { "type": "string" },
-								"language": {
-									"pattern": "^[^\0]*$",
-									"type": "string"
-								},
-								"objectAudio": {
-									"pattern": "^[^\0]*$",
-									"type": "string"
-								},
-								"ordinal": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
-								},
-								"profile": {
-									"pattern": "^[^\0]*$",
-									"type": "string"
-								},
-								"sampleRate": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
-								},
-								"title": {
-									"pattern": "^[^\0]*$",
-									"type": "string"
-								}
+								"sourceBoundary": { "type": "string" }
 							},
 							"required": [
-								"ordinal",
-								"codec",
-								"id"
+								"bookId",
+								"bookTitle",
+								"sourceBoundary"
 							],
 							"type": "object"
 						},
-						"maxItems": 100,
-						"type": "array"
-					},
-					"window": {
-						"properties": {
-							"limit": {
-								"maximum": 100,
-								"minimum": 1,
-								"type": "integer"
-							},
-							"nextCursor": {
-								"maxLength": 154,
-								"minLength": 154,
-								"pattern": "^[A-Za-z0-9_-]{154}$",
-								"type": "string"
-							},
-							"previousCursor": {
-								"maxLength": 154,
-								"minLength": 154,
-								"pattern": "^[A-Za-z0-9_-]{154}$",
-								"type": "string"
-							},
-							"queryId": {
-								"maxLength": 338,
-								"minLength": 338,
-								"pattern": "^[A-Za-z0-9_-]{183}\\.[A-Za-z0-9_-]{154}$",
-								"type": "string"
-							},
-							"reloadCursor": {
-								"maxLength": 154,
-								"minLength": 154,
-								"pattern": "^[A-Za-z0-9_-]{154}$",
-								"type": "string"
-							},
-							"returned": {
-								"maximum": 100,
-								"minimum": 0,
-								"type": "integer"
-							}
+						"durationMs": {
+							"maximum": 9007199254740991,
+							"minimum": 0,
+							"type": "integer"
 						},
-						"required": [
-							"queryId",
-							"limit",
-							"returned"
-						],
-						"type": "object"
-					}
-				},
-				"required": [
-					"scope",
-					"detail",
-					"basis",
-					"window",
-					"kind",
-					"lane",
-					"groupId",
-					"occurrence",
-					"total",
-					"tracks"
-				],
-				"type": "object"
-			},
-			{
-				"properties": {
-					"basis": {
-						"maxLength": 43,
-						"minLength": 43,
-						"pattern": "^[A-Za-z0-9_-]{43}$",
-						"type": "string"
-					},
-					"detail": {
-						"properties": {
-							"revision": {
-								"properties": {
-									"catalog": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									},
-									"viewer": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									}
-								},
-								"required": ["catalog", "viewer"],
-								"type": "object"
-							},
-							"scope": {
-								"properties": {
-									"itemId": { "type": "string" },
-									"libraryId": { "type": "string" },
-									"serverId": { "type": "string" },
-									"viewerFence": { "type": "string" }
-								},
-								"required": [
-									"serverId",
-									"libraryId",
-									"itemId",
-									"viewerFence"
-								],
-								"type": "object"
-							}
-						},
-						"required": ["scope", "revision"],
-						"type": "object"
-					},
-					"kind": {
-						"const": "file-info-sources",
-						"type": "string"
-					},
-					"scope": {
-						"properties": {
-							"itemId": { "type": "string" },
-							"libraryId": { "type": "string" },
-							"serverId": { "type": "string" },
-							"viewerFence": { "type": "string" }
-						},
-						"required": [
-							"serverId",
-							"libraryId",
-							"itemId",
-							"viewerFence"
-						],
-						"type": "object"
-					},
-					"sources": {
-						"items": {
+						"episode": {
 							"properties": {
-								"audioCodec": {
-									"pattern": "^[^\0]*$",
-									"type": "string"
-								},
-								"container": {
-									"pattern": "^[^\0]*$",
-									"type": "string"
-								},
-								"duration": { "type": "number" },
-								"durationState": { "type": "string" },
-								"height": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
-								},
-								"id": { "type": "string" },
-								"itemId": { "type": "string" },
-								"occurrence": { "type": "string" },
-								"videoCodec": {
-									"pattern": "^[^\0]*$",
-									"type": "string"
-								},
-								"width": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
-								}
-							},
-							"required": [
-								"occurrence",
-								"itemId",
-								"id",
-								"container",
-								"videoCodec",
-								"audioCodec",
-								"width",
-								"height"
-							],
-							"type": "object"
-						},
-						"maxItems": 100,
-						"type": "array"
-					},
-					"total": {
-						"maximum": 9007199254740991,
-						"minimum": -9007199254740991,
-						"type": "integer"
-					},
-					"window": {
-						"properties": {
-							"limit": {
-								"maximum": 100,
-								"minimum": 1,
-								"type": "integer"
-							},
-							"nextCursor": {
-								"maxLength": 154,
-								"minLength": 154,
-								"pattern": "^[A-Za-z0-9_-]{154}$",
-								"type": "string"
-							},
-							"previousCursor": {
-								"maxLength": 154,
-								"minLength": 154,
-								"pattern": "^[A-Za-z0-9_-]{154}$",
-								"type": "string"
-							},
-							"queryId": {
-								"maxLength": 338,
-								"minLength": 338,
-								"pattern": "^[A-Za-z0-9_-]{183}\\.[A-Za-z0-9_-]{154}$",
-								"type": "string"
-							},
-							"reloadCursor": {
-								"maxLength": 154,
-								"minLength": 154,
-								"pattern": "^[A-Za-z0-9_-]{154}$",
-								"type": "string"
-							},
-							"returned": {
-								"maximum": 100,
-								"minimum": 0,
-								"type": "integer"
-							}
-						},
-						"required": [
-							"queryId",
-							"limit",
-							"returned"
-						],
-						"type": "object"
-					}
-				},
-				"required": [
-					"scope",
-					"detail",
-					"basis",
-					"window",
-					"kind",
-					"total",
-					"sources"
-				],
-				"type": "object"
-			},
-			{
-				"properties": {
-					"basis": {
-						"maxLength": 43,
-						"minLength": 43,
-						"pattern": "^[A-Za-z0-9_-]{43}$",
-						"type": "string"
-					},
-					"detail": {
-						"properties": {
-							"revision": {
-								"properties": {
-									"catalog": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									},
-									"viewer": {
-										"maximum": 9007199254740991,
-										"minimum": -9007199254740991,
-										"type": "integer"
-									}
-								},
-								"required": ["catalog", "viewer"],
-								"type": "object"
-							},
-							"scope": {
-								"properties": {
-									"itemId": { "type": "string" },
-									"libraryId": { "type": "string" },
-									"serverId": { "type": "string" },
-									"viewerFence": { "type": "string" }
-								},
-								"required": [
-									"serverId",
-									"libraryId",
-									"itemId",
-									"viewerFence"
-								],
-								"type": "object"
-							}
-						},
-						"required": ["scope", "revision"],
-						"type": "object"
-					},
-					"discKind": {
-						"enum": ["bluray", "dvd"],
-						"type": "string"
-					},
-					"kind": {
-						"const": "file-info-disc-titles",
-						"type": "string"
-					},
-					"occurrence": { "type": "string" },
-					"scope": {
-						"properties": {
-							"itemId": { "type": "string" },
-							"libraryId": { "type": "string" },
-							"serverId": { "type": "string" },
-							"viewerFence": { "type": "string" }
-						},
-						"required": [
-							"serverId",
-							"libraryId",
-							"itemId",
-							"viewerFence"
-						],
-						"type": "object"
-					},
-					"titles": {
-						"items": {
-							"properties": {
-								"angles": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
-								},
-								"chapters": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
-								},
-								"durationMs": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
-								},
+								"airDate": { "type": "string" },
+								"localIdentityStatus": { "type": "string" },
 								"number": {
 									"maximum": 9007199254740991,
 									"minimum": -9007199254740991,
 									"type": "integer"
-								}
+								},
+								"numbering": { "type": "string" },
+								"orderingBasis": { "type": "string" },
+								"providerMatchStatus": { "type": "string" },
+								"seasonId": { "type": "string" },
+								"seasonNumber": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"showId": { "type": "string" },
+								"showTitle": { "type": "string" },
+								"sourceBoundary": { "type": "string" }
 							},
 							"required": [
+								"showId",
+								"showTitle",
+								"numbering",
 								"number",
-								"durationMs",
-								"chapters",
-								"angles"
+								"localIdentityStatus",
+								"providerMatchStatus",
+								"orderingBasis",
+								"sourceBoundary"
 							],
 							"type": "object"
 						},
-						"maxItems": 100,
-						"type": "array"
-					},
-					"total": {
-						"maximum": 9007199254740991,
-						"minimum": -9007199254740991,
-						"type": "integer"
-					},
-					"window": {
-						"properties": {
-							"limit": {
-								"maximum": 100,
-								"minimum": 1,
-								"type": "integer"
-							},
-							"nextCursor": {
-								"maxLength": 154,
-								"minLength": 154,
-								"pattern": "^[A-Za-z0-9_-]{154}$",
-								"type": "string"
-							},
-							"previousCursor": {
-								"maxLength": 154,
-								"minLength": 154,
-								"pattern": "^[A-Za-z0-9_-]{154}$",
-								"type": "string"
-							},
-							"queryId": {
-								"maxLength": 338,
-								"minLength": 338,
-								"pattern": "^[A-Za-z0-9_-]{183}\\.[A-Za-z0-9_-]{154}$",
-								"type": "string"
-							},
-							"reloadCursor": {
-								"maxLength": 154,
-								"minLength": 154,
-								"pattern": "^[A-Za-z0-9_-]{154}$",
-								"type": "string"
-							},
-							"returned": {
-								"maximum": 100,
-								"minimum": 0,
-								"type": "integer"
-							}
+						"fileInfoOpening": { "type": "string" },
+						"id": { "type": "string" },
+						"kind": { "type": "string" },
+						"libraryId": { "type": "string" },
+						"missing": { "type": "boolean" },
+						"overview": { "type": "string" },
+						"posterUrl": { "type": "string" },
+						"progressMs": {
+							"maximum": 9007199254740991,
+							"minimum": 0,
+							"type": "integer"
 						},
-						"required": [
-							"queryId",
-							"limit",
-							"returned"
-						],
-						"type": "object"
-					}
-				},
-				"required": [
-					"scope",
-					"detail",
-					"basis",
-					"window",
-					"kind",
-					"occurrence",
-					"discKind",
-					"total",
-					"titles"
-				],
-				"type": "object"
-			},
-			{
-				"properties": {
-					"detail": {
-						"properties": {
-							"revision": {
+						"song": {
+							"properties": {
+								"albumArtist": { "type": "string" },
+								"albumId": { "type": "string" },
+								"albumTitle": { "type": "string" },
+								"artist": { "type": "string" },
+								"discNumber": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"localMetadataIssue": { "type": "string" },
+								"providerArtist": { "type": "string" },
+								"providerMatchStatus": { "type": "string" },
+								"providerObservedAt": { "type": "string" },
+								"providerRecordingId": { "type": "string" },
+								"providerReleaseGroupId": { "type": "string" },
+								"providerReleaseId": { "type": "string" },
+								"providerReleaseStatus": { "type": "string" },
+								"providerSourceUrl": { "type": "string" },
+								"providerTitle": { "type": "string" },
+								"providerTrackId": { "type": "string" },
+								"trackNumber": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								}
+							},
+							"required": [
+								"providerReleaseStatus",
+								"albumId",
+								"albumTitle",
+								"albumArtist",
+								"artist",
+								"providerMatchStatus"
+							],
+							"type": "object"
+						},
+						"sources": {
+							"items": {
 								"properties": {
-									"catalog": {
+									"audioCodec": { "type": "string" },
+									"container": { "type": "string" },
+									"durationMs": {
+										"maximum": 9007199254740991,
+										"minimum": 0,
+										"type": "integer"
+									},
+									"height": {
 										"maximum": 9007199254740991,
 										"minimum": -9007199254740991,
 										"type": "integer"
 									},
-									"viewer": {
+									"id": { "type": "string" },
+									"videoCodec": { "type": "string" },
+									"width": {
 										"maximum": 9007199254740991,
 										"minimum": -9007199254740991,
 										"type": "integer"
 									}
 								},
-								"required": ["catalog", "viewer"],
-								"type": "object"
-							},
-							"scope": {
-								"properties": {
-									"itemId": { "type": "string" },
-									"libraryId": { "type": "string" },
-									"serverId": { "type": "string" },
-									"viewerFence": { "type": "string" }
-								},
 								"required": [
-									"serverId",
-									"libraryId",
-									"itemId",
-									"viewerFence"
+									"id",
+									"container",
+									"videoCodec",
+									"audioCodec",
+									"width",
+									"height",
+									"durationMs"
 								],
 								"type": "object"
-							}
+							},
+							"type": "array"
 						},
-						"required": ["scope", "revision"],
-						"type": "object"
+						"stillUrl": { "type": "string" },
+						"title": { "type": "string" },
+						"variant": {
+							"const": "item",
+							"type": "string"
+						},
+						"watched": { "type": "boolean" },
+						"year": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						}
 					},
-					"kind": {
-						"const": "file-info-preparing",
-						"type": "string"
-					},
-					"queryId": {
-						"maxLength": 512,
-						"minLength": 1,
-						"pattern": "^[A-Za-z0-9_.-]+$",
-						"type": "string"
-					},
-					"retryAfterMs": {
-						"minimum": 1,
-						"type": "integer"
-					},
-					"state": {
-						"const": "preparing",
-						"type": "string"
-					}
+					"required": [
+						"missing",
+						"addedAt",
+						"id",
+						"libraryId",
+						"title",
+						"kind",
+						"durationMs",
+						"progressMs",
+						"available",
+						"variant"
+					],
+					"type": "object"
 				},
-				"required": [
-					"kind",
-					"state",
-					"queryId",
-					"retryAfterMs"
-				],
-				"type": "object"
-			}
-		] },
+				{
+					"properties": {
+						"addedAt": {
+							"nullable": true,
+							"type": "string"
+						},
+						"audioFacts": {
+							"properties": {
+								"atmos": { "type": "boolean" },
+								"bitDepth": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"channels": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"codec": { "type": "string" },
+								"layout": { "type": "string" },
+								"lossless": { "type": "boolean" },
+								"sampleRate": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								}
+							},
+							"required": ["codec"],
+							"type": "object"
+						},
+						"available": { "type": "boolean" },
+						"backdropUrl": { "type": "string" },
+						"bookFile": {
+							"properties": {
+								"bookId": { "type": "string" },
+								"bookTitle": { "type": "string" },
+								"discNumber": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"localMetadata": {
+									"properties": {
+										"authors": {
+											"items": { "type": "string" },
+											"type": "array"
+										},
+										"description": { "type": "string" },
+										"edition": { "type": "string" },
+										"identifiers": {
+											"items": {
+												"properties": {
+													"scheme": { "type": "string" },
+													"value": { "type": "string" }
+												},
+												"required": ["scheme", "value"],
+												"type": "object"
+											},
+											"type": "array"
+										},
+										"language": { "type": "string" },
+										"narrators": {
+											"items": { "type": "string" },
+											"type": "array"
+										},
+										"publishedYear": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"publisher": { "type": "string" },
+										"series": {
+											"items": {
+												"properties": {
+													"name": { "type": "string" },
+													"position": { "type": "string" }
+												},
+												"required": ["name"],
+												"type": "object"
+											},
+											"type": "array"
+										},
+										"sources": {
+											"additionalProperties": { "type": "string" },
+											"type": "object"
+										}
+									},
+									"required": [
+										"authors",
+										"narrators",
+										"series",
+										"identifiers",
+										"sources"
+									],
+									"type": "object"
+								},
+								"localMetadataIssue": { "type": "string" },
+								"localPolicy": {
+									"properties": {
+										"localMode": { "type": "string" },
+										"revision": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										}
+									},
+									"required": ["revision", "localMode"],
+									"type": "object"
+								},
+								"partNumber": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"sourceBoundary": { "type": "string" }
+							},
+							"required": [
+								"bookId",
+								"bookTitle",
+								"sourceBoundary"
+							],
+							"type": "object"
+						},
+						"durationState": {
+							"enum": ["unrepresentable"],
+							"type": "string"
+						},
+						"episode": {
+							"properties": {
+								"airDate": { "type": "string" },
+								"localIdentityStatus": { "type": "string" },
+								"number": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"numbering": { "type": "string" },
+								"orderingBasis": { "type": "string" },
+								"providerMatchStatus": { "type": "string" },
+								"seasonId": { "type": "string" },
+								"seasonNumber": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"showId": { "type": "string" },
+								"showTitle": { "type": "string" },
+								"sourceBoundary": { "type": "string" }
+							},
+							"required": [
+								"showId",
+								"showTitle",
+								"numbering",
+								"number",
+								"localIdentityStatus",
+								"providerMatchStatus",
+								"orderingBasis",
+								"sourceBoundary"
+							],
+							"type": "object"
+						},
+						"fileInfoOpening": { "type": "string" },
+						"id": { "type": "string" },
+						"kind": { "type": "string" },
+						"libraryId": { "type": "string" },
+						"missing": { "type": "boolean" },
+						"overview": { "type": "string" },
+						"posterUrl": { "type": "string" },
+						"progressMs": {
+							"maximum": 9007199254740991,
+							"minimum": 0,
+							"type": "integer"
+						},
+						"song": {
+							"properties": {
+								"albumArtist": { "type": "string" },
+								"albumId": { "type": "string" },
+								"albumTitle": { "type": "string" },
+								"artist": { "type": "string" },
+								"discNumber": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"localMetadataIssue": { "type": "string" },
+								"providerArtist": { "type": "string" },
+								"providerMatchStatus": { "type": "string" },
+								"providerObservedAt": { "type": "string" },
+								"providerRecordingId": { "type": "string" },
+								"providerReleaseGroupId": { "type": "string" },
+								"providerReleaseId": { "type": "string" },
+								"providerReleaseStatus": { "type": "string" },
+								"providerSourceUrl": { "type": "string" },
+								"providerTitle": { "type": "string" },
+								"providerTrackId": { "type": "string" },
+								"trackNumber": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								}
+							},
+							"required": [
+								"providerReleaseStatus",
+								"albumId",
+								"albumTitle",
+								"albumArtist",
+								"artist",
+								"providerMatchStatus"
+							],
+							"type": "object"
+						},
+						"sources": {
+							"items": {
+								"properties": {
+									"audioCodec": { "type": "string" },
+									"container": { "type": "string" },
+									"durationMs": {
+										"maximum": 9007199254740991,
+										"minimum": 0,
+										"type": "integer"
+									},
+									"height": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"id": { "type": "string" },
+									"videoCodec": { "type": "string" },
+									"width": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									}
+								},
+								"required": [
+									"id",
+									"container",
+									"videoCodec",
+									"audioCodec",
+									"width",
+									"height",
+									"durationMs"
+								],
+								"type": "object"
+							},
+							"type": "array"
+						},
+						"stillUrl": { "type": "string" },
+						"title": { "type": "string" },
+						"variant": {
+							"const": "item-unrepresentable",
+							"type": "string"
+						},
+						"watched": { "type": "boolean" },
+						"year": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						}
+					},
+					"required": [
+						"missing",
+						"addedAt",
+						"id",
+						"libraryId",
+						"title",
+						"kind",
+						"progressMs",
+						"available",
+						"durationState",
+						"variant"
+					],
+					"type": "object"
+				},
+				{
+					"properties": {
+						"basis": {
+							"maxLength": 43,
+							"minLength": 43,
+							"pattern": "^[A-Za-z0-9_-]{43}$",
+							"type": "string"
+						},
+						"detail": {
+							"properties": {
+								"revision": {
+									"properties": {
+										"catalog": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"viewer": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										}
+									},
+									"required": ["catalog", "viewer"],
+									"type": "object"
+								},
+								"scope": {
+									"properties": {
+										"itemId": { "type": "string" },
+										"libraryId": { "type": "string" },
+										"serverId": { "type": "string" },
+										"viewerFence": { "type": "string" }
+									},
+									"required": [
+										"serverId",
+										"libraryId",
+										"itemId",
+										"viewerFence"
+									],
+									"type": "object"
+								}
+							},
+							"required": ["scope", "revision"],
+							"type": "object"
+						},
+						"files": {
+							"items": {
+								"properties": {
+									"audioCount": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"available": { "type": "boolean" },
+									"bitRate": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"container": {
+										"pattern": "^[^\0]*$",
+										"type": "string"
+									},
+									"disc": {
+										"properties": {
+											"chapterCount": {
+												"maximum": 9007199254740991,
+												"minimum": -9007199254740991,
+												"type": "integer"
+											},
+											"kind": {
+												"enum": ["bluray", "dvd"],
+												"type": "string"
+											},
+											"packaging": {
+												"enum": ["iso", "folder"],
+												"type": "string"
+											},
+											"titleNumber": {
+												"maximum": 9007199254740991,
+												"minimum": -9007199254740991,
+												"type": "integer"
+											}
+										},
+										"required": [
+											"kind",
+											"packaging",
+											"titleNumber",
+											"chapterCount"
+										],
+										"type": "object"
+									},
+									"duration": { "type": "number" },
+									"durationState": { "type": "string" },
+									"edition": {
+										"pattern": "^[^\0]*$",
+										"type": "string"
+									},
+									"id": { "type": "string" },
+									"itemId": { "type": "string" },
+									"occurrence": { "type": "string" },
+									"partIndex": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"path": {
+										"pattern": "^[^\0]*$",
+										"type": "string"
+									},
+									"size": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"sizeExact": { "type": "string" },
+									"subtitleCount": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"video": {
+										"properties": {
+											"bitDepth": {
+												"maximum": 9007199254740991,
+												"minimum": -9007199254740991,
+												"type": "integer"
+											},
+											"bitRate": {
+												"maximum": 9007199254740991,
+												"minimum": -9007199254740991,
+												"type": "integer"
+											},
+											"codec": {
+												"pattern": "^[^\0]*$",
+												"type": "string"
+											},
+											"dynamicRange": {
+												"pattern": "^[^\0]*$",
+												"type": "string"
+											},
+											"frameRate": { "type": "number" },
+											"hdr10Plus": { "type": "boolean" },
+											"height": {
+												"maximum": 9007199254740991,
+												"minimum": -9007199254740991,
+												"type": "integer"
+											},
+											"profile": {
+												"pattern": "^[^\0]*$",
+												"type": "string"
+											},
+											"width": {
+												"maximum": 9007199254740991,
+												"minimum": -9007199254740991,
+												"type": "integer"
+											}
+										},
+										"required": [
+											"codec",
+											"width",
+											"height"
+										],
+										"type": "object"
+									}
+								},
+								"required": [
+									"occurrence",
+									"itemId",
+									"id",
+									"container",
+									"available",
+									"partIndex",
+									"audioCount",
+									"subtitleCount"
+								],
+								"type": "object"
+							},
+							"maxItems": 100,
+							"type": "array"
+						},
+						"itemKind": { "type": "string" },
+						"kind": {
+							"const": "file-info-files",
+							"type": "string"
+						},
+						"scope": {
+							"properties": {
+								"itemId": { "type": "string" },
+								"libraryId": { "type": "string" },
+								"serverId": { "type": "string" },
+								"viewerFence": { "type": "string" }
+							},
+							"required": [
+								"serverId",
+								"libraryId",
+								"itemId",
+								"viewerFence"
+							],
+							"type": "object"
+						},
+						"surface": {
+							"properties": {
+								"canSplit": { "type": "boolean" },
+								"eligibleFileCount": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"fileCount": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"groupCount": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"hasDiscColumns": { "type": "boolean" },
+								"manage": {
+									"properties": {
+										"delete": { "type": "boolean" },
+										"merge": { "type": "boolean" },
+										"split": { "type": "boolean" }
+									},
+									"required": [
+										"delete",
+										"split",
+										"merge"
+									],
+									"type": "object"
+								},
+								"ownerDiscOccurrence": { "type": "string" }
+							},
+							"required": [
+								"fileCount",
+								"eligibleFileCount",
+								"groupCount",
+								"canSplit",
+								"hasDiscColumns"
+							],
+							"type": "object"
+						},
+						"variant": {
+							"const": "files",
+							"type": "string"
+						},
+						"window": {
+							"properties": {
+								"limit": {
+									"maximum": 100,
+									"minimum": 1,
+									"type": "integer"
+								},
+								"nextCursor": {
+									"maxLength": 154,
+									"minLength": 154,
+									"pattern": "^[A-Za-z0-9_-]{154}$",
+									"type": "string"
+								},
+								"previousCursor": {
+									"maxLength": 154,
+									"minLength": 154,
+									"pattern": "^[A-Za-z0-9_-]{154}$",
+									"type": "string"
+								},
+								"queryId": {
+									"maxLength": 338,
+									"minLength": 338,
+									"pattern": "^[A-Za-z0-9_-]{183}\\.[A-Za-z0-9_-]{154}$",
+									"type": "string"
+								},
+								"reloadCursor": {
+									"maxLength": 154,
+									"minLength": 154,
+									"pattern": "^[A-Za-z0-9_-]{154}$",
+									"type": "string"
+								},
+								"returned": {
+									"maximum": 100,
+									"minimum": 0,
+									"type": "integer"
+								}
+							},
+							"required": [
+								"queryId",
+								"limit",
+								"returned"
+							],
+							"type": "object"
+						}
+					},
+					"required": [
+						"scope",
+						"detail",
+						"basis",
+						"window",
+						"kind",
+						"itemKind",
+						"surface",
+						"files",
+						"variant"
+					],
+					"type": "object"
+				},
+				{
+					"properties": {
+						"basis": {
+							"maxLength": 43,
+							"minLength": 43,
+							"pattern": "^[A-Za-z0-9_-]{43}$",
+							"type": "string"
+						},
+						"detail": {
+							"properties": {
+								"revision": {
+									"properties": {
+										"catalog": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"viewer": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										}
+									},
+									"required": ["catalog", "viewer"],
+									"type": "object"
+								},
+								"scope": {
+									"properties": {
+										"itemId": { "type": "string" },
+										"libraryId": { "type": "string" },
+										"serverId": { "type": "string" },
+										"viewerFence": { "type": "string" }
+									},
+									"required": [
+										"serverId",
+										"libraryId",
+										"itemId",
+										"viewerFence"
+									],
+									"type": "object"
+								}
+							},
+							"required": ["scope", "revision"],
+							"type": "object"
+						},
+						"groups": {
+							"items": {
+								"properties": {
+									"audioCount": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"container": {
+										"pattern": "^[^\0]*$",
+										"type": "string"
+									},
+									"disc": {
+										"properties": {
+											"chapterCount": {
+												"maximum": 9007199254740991,
+												"minimum": -9007199254740991,
+												"type": "integer"
+											},
+											"kind": {
+												"enum": ["bluray", "dvd"],
+												"type": "string"
+											},
+											"packaging": {
+												"enum": ["iso", "folder"],
+												"type": "string"
+											},
+											"titleNumber": {
+												"maximum": 9007199254740991,
+												"minimum": -9007199254740991,
+												"type": "integer"
+											}
+										},
+										"required": [
+											"kind",
+											"packaging",
+											"titleNumber",
+											"chapterCount"
+										],
+										"type": "object"
+									},
+									"durationMs": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"durationState": { "type": "string" },
+									"edition": {
+										"pattern": "^[^\0]*$",
+										"type": "string"
+									},
+									"headOccurrence": { "type": "string" },
+									"id": { "type": "string" },
+									"memberCount": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"ordinal": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"sizeBytes": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"sizeBytesExact": { "type": "string" },
+									"subtitleCount": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"video": {
+										"properties": {
+											"bitDepth": {
+												"maximum": 9007199254740991,
+												"minimum": -9007199254740991,
+												"type": "integer"
+											},
+											"bitRate": {
+												"maximum": 9007199254740991,
+												"minimum": -9007199254740991,
+												"type": "integer"
+											},
+											"codec": {
+												"pattern": "^[^\0]*$",
+												"type": "string"
+											},
+											"dynamicRange": {
+												"pattern": "^[^\0]*$",
+												"type": "string"
+											},
+											"frameRate": { "type": "number" },
+											"hdr10Plus": { "type": "boolean" },
+											"height": {
+												"maximum": 9007199254740991,
+												"minimum": -9007199254740991,
+												"type": "integer"
+											},
+											"profile": {
+												"pattern": "^[^\0]*$",
+												"type": "string"
+											},
+											"width": {
+												"maximum": 9007199254740991,
+												"minimum": -9007199254740991,
+												"type": "integer"
+											}
+										},
+										"required": [
+											"codec",
+											"width",
+											"height"
+										],
+										"type": "object"
+									}
+								},
+								"required": [
+									"id",
+									"headOccurrence",
+									"ordinal",
+									"memberCount",
+									"container",
+									"audioCount",
+									"subtitleCount"
+								],
+								"type": "object"
+							},
+							"maxItems": 100,
+							"type": "array"
+						},
+						"kind": {
+							"const": "file-info-groups",
+							"type": "string"
+						},
+						"scope": {
+							"properties": {
+								"itemId": { "type": "string" },
+								"libraryId": { "type": "string" },
+								"serverId": { "type": "string" },
+								"viewerFence": { "type": "string" }
+							},
+							"required": [
+								"serverId",
+								"libraryId",
+								"itemId",
+								"viewerFence"
+							],
+							"type": "object"
+						},
+						"surface": {
+							"properties": {
+								"canSplit": { "type": "boolean" },
+								"eligibleFileCount": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"fileCount": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"groupCount": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"hasDiscColumns": { "type": "boolean" },
+								"manage": {
+									"properties": {
+										"delete": { "type": "boolean" },
+										"merge": { "type": "boolean" },
+										"split": { "type": "boolean" }
+									},
+									"required": [
+										"delete",
+										"split",
+										"merge"
+									],
+									"type": "object"
+								},
+								"ownerDiscOccurrence": { "type": "string" }
+							},
+							"required": [
+								"fileCount",
+								"eligibleFileCount",
+								"groupCount",
+								"canSplit",
+								"hasDiscColumns"
+							],
+							"type": "object"
+						},
+						"variant": {
+							"const": "groups",
+							"type": "string"
+						},
+						"window": {
+							"properties": {
+								"limit": {
+									"maximum": 100,
+									"minimum": 1,
+									"type": "integer"
+								},
+								"nextCursor": {
+									"maxLength": 154,
+									"minLength": 154,
+									"pattern": "^[A-Za-z0-9_-]{154}$",
+									"type": "string"
+								},
+								"previousCursor": {
+									"maxLength": 154,
+									"minLength": 154,
+									"pattern": "^[A-Za-z0-9_-]{154}$",
+									"type": "string"
+								},
+								"queryId": {
+									"maxLength": 338,
+									"minLength": 338,
+									"pattern": "^[A-Za-z0-9_-]{183}\\.[A-Za-z0-9_-]{154}$",
+									"type": "string"
+								},
+								"reloadCursor": {
+									"maxLength": 154,
+									"minLength": 154,
+									"pattern": "^[A-Za-z0-9_-]{154}$",
+									"type": "string"
+								},
+								"returned": {
+									"maximum": 100,
+									"minimum": 0,
+									"type": "integer"
+								}
+							},
+							"required": [
+								"queryId",
+								"limit",
+								"returned"
+							],
+							"type": "object"
+						}
+					},
+					"required": [
+						"scope",
+						"detail",
+						"basis",
+						"window",
+						"kind",
+						"surface",
+						"groups",
+						"variant"
+					],
+					"type": "object"
+				},
+				{
+					"properties": {
+						"basis": {
+							"maxLength": 43,
+							"minLength": 43,
+							"pattern": "^[A-Za-z0-9_-]{43}$",
+							"type": "string"
+						},
+						"detail": {
+							"properties": {
+								"revision": {
+									"properties": {
+										"catalog": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"viewer": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										}
+									},
+									"required": ["catalog", "viewer"],
+									"type": "object"
+								},
+								"scope": {
+									"properties": {
+										"itemId": { "type": "string" },
+										"libraryId": { "type": "string" },
+										"serverId": { "type": "string" },
+										"viewerFence": { "type": "string" }
+									},
+									"required": [
+										"serverId",
+										"libraryId",
+										"itemId",
+										"viewerFence"
+									],
+									"type": "object"
+								}
+							},
+							"required": ["scope", "revision"],
+							"type": "object"
+						},
+						"groupId": { "type": "string" },
+						"kind": {
+							"const": "file-info-members",
+							"type": "string"
+						},
+						"members": {
+							"items": {
+								"properties": {
+									"audioCount": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"available": { "type": "boolean" },
+									"bitRate": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"container": {
+										"pattern": "^[^\0]*$",
+										"type": "string"
+									},
+									"disc": {
+										"properties": {
+											"chapterCount": {
+												"maximum": 9007199254740991,
+												"minimum": -9007199254740991,
+												"type": "integer"
+											},
+											"kind": {
+												"enum": ["bluray", "dvd"],
+												"type": "string"
+											},
+											"packaging": {
+												"enum": ["iso", "folder"],
+												"type": "string"
+											},
+											"titleNumber": {
+												"maximum": 9007199254740991,
+												"minimum": -9007199254740991,
+												"type": "integer"
+											}
+										},
+										"required": [
+											"kind",
+											"packaging",
+											"titleNumber",
+											"chapterCount"
+										],
+										"type": "object"
+									},
+									"duration": { "type": "number" },
+									"durationState": { "type": "string" },
+									"edition": {
+										"pattern": "^[^\0]*$",
+										"type": "string"
+									},
+									"id": { "type": "string" },
+									"itemId": { "type": "string" },
+									"occurrence": { "type": "string" },
+									"partIndex": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"path": {
+										"pattern": "^[^\0]*$",
+										"type": "string"
+									},
+									"size": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"sizeExact": { "type": "string" },
+									"subtitleCount": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"video": {
+										"properties": {
+											"bitDepth": {
+												"maximum": 9007199254740991,
+												"minimum": -9007199254740991,
+												"type": "integer"
+											},
+											"bitRate": {
+												"maximum": 9007199254740991,
+												"minimum": -9007199254740991,
+												"type": "integer"
+											},
+											"codec": {
+												"pattern": "^[^\0]*$",
+												"type": "string"
+											},
+											"dynamicRange": {
+												"pattern": "^[^\0]*$",
+												"type": "string"
+											},
+											"frameRate": { "type": "number" },
+											"hdr10Plus": { "type": "boolean" },
+											"height": {
+												"maximum": 9007199254740991,
+												"minimum": -9007199254740991,
+												"type": "integer"
+											},
+											"profile": {
+												"pattern": "^[^\0]*$",
+												"type": "string"
+											},
+											"width": {
+												"maximum": 9007199254740991,
+												"minimum": -9007199254740991,
+												"type": "integer"
+											}
+										},
+										"required": [
+											"codec",
+											"width",
+											"height"
+										],
+										"type": "object"
+									}
+								},
+								"required": [
+									"occurrence",
+									"itemId",
+									"id",
+									"container",
+									"available",
+									"partIndex",
+									"audioCount",
+									"subtitleCount"
+								],
+								"type": "object"
+							},
+							"maxItems": 100,
+							"type": "array"
+						},
+						"scope": {
+							"properties": {
+								"itemId": { "type": "string" },
+								"libraryId": { "type": "string" },
+								"serverId": { "type": "string" },
+								"viewerFence": { "type": "string" }
+							},
+							"required": [
+								"serverId",
+								"libraryId",
+								"itemId",
+								"viewerFence"
+							],
+							"type": "object"
+						},
+						"total": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						},
+						"variant": {
+							"const": "members",
+							"type": "string"
+						},
+						"window": {
+							"properties": {
+								"limit": {
+									"maximum": 100,
+									"minimum": 1,
+									"type": "integer"
+								},
+								"nextCursor": {
+									"maxLength": 154,
+									"minLength": 154,
+									"pattern": "^[A-Za-z0-9_-]{154}$",
+									"type": "string"
+								},
+								"previousCursor": {
+									"maxLength": 154,
+									"minLength": 154,
+									"pattern": "^[A-Za-z0-9_-]{154}$",
+									"type": "string"
+								},
+								"queryId": {
+									"maxLength": 338,
+									"minLength": 338,
+									"pattern": "^[A-Za-z0-9_-]{183}\\.[A-Za-z0-9_-]{154}$",
+									"type": "string"
+								},
+								"reloadCursor": {
+									"maxLength": 154,
+									"minLength": 154,
+									"pattern": "^[A-Za-z0-9_-]{154}$",
+									"type": "string"
+								},
+								"returned": {
+									"maximum": 100,
+									"minimum": 0,
+									"type": "integer"
+								}
+							},
+							"required": [
+								"queryId",
+								"limit",
+								"returned"
+							],
+							"type": "object"
+						}
+					},
+					"required": [
+						"scope",
+						"detail",
+						"basis",
+						"window",
+						"kind",
+						"groupId",
+						"total",
+						"members",
+						"variant"
+					],
+					"type": "object"
+				},
+				{
+					"properties": {
+						"basis": {
+							"maxLength": 43,
+							"minLength": 43,
+							"pattern": "^[A-Za-z0-9_-]{43}$",
+							"type": "string"
+						},
+						"detail": {
+							"properties": {
+								"revision": {
+									"properties": {
+										"catalog": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"viewer": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										}
+									},
+									"required": ["catalog", "viewer"],
+									"type": "object"
+								},
+								"scope": {
+									"properties": {
+										"itemId": { "type": "string" },
+										"libraryId": { "type": "string" },
+										"serverId": { "type": "string" },
+										"viewerFence": { "type": "string" }
+									},
+									"required": [
+										"serverId",
+										"libraryId",
+										"itemId",
+										"viewerFence"
+									],
+									"type": "object"
+								}
+							},
+							"required": ["scope", "revision"],
+							"type": "object"
+						},
+						"kind": {
+							"const": "file-info-tracks",
+							"type": "string"
+						},
+						"lane": {
+							"enum": ["audio", "subtitles"],
+							"type": "string"
+						},
+						"occurrence": { "type": "string" },
+						"scope": {
+							"properties": {
+								"itemId": { "type": "string" },
+								"libraryId": { "type": "string" },
+								"serverId": { "type": "string" },
+								"viewerFence": { "type": "string" }
+							},
+							"required": [
+								"serverId",
+								"libraryId",
+								"itemId",
+								"viewerFence"
+							],
+							"type": "object"
+						},
+						"total": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						},
+						"tracks": {
+							"items": {
+								"properties": {
+									"bitDepth": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"bitRate": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"channelLayout": {
+										"pattern": "^[^\0]*$",
+										"type": "string"
+									},
+									"channels": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"codec": {
+										"pattern": "^[^\0]*$",
+										"type": "string"
+									},
+									"commentary": { "type": "boolean" },
+									"default": { "type": "boolean" },
+									"external": { "type": "boolean" },
+									"forced": { "type": "boolean" },
+									"hearingImpaired": { "type": "boolean" },
+									"language": {
+										"pattern": "^[^\0]*$",
+										"type": "string"
+									},
+									"objectAudio": {
+										"pattern": "^[^\0]*$",
+										"type": "string"
+									},
+									"ordinal": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"profile": {
+										"pattern": "^[^\0]*$",
+										"type": "string"
+									},
+									"sampleRate": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"title": {
+										"pattern": "^[^\0]*$",
+										"type": "string"
+									}
+								},
+								"required": ["ordinal", "codec"],
+								"type": "object"
+							},
+							"maxItems": 100,
+							"type": "array"
+						},
+						"variant": {
+							"const": "tracks",
+							"type": "string"
+						},
+						"window": {
+							"properties": {
+								"limit": {
+									"maximum": 100,
+									"minimum": 1,
+									"type": "integer"
+								},
+								"nextCursor": {
+									"maxLength": 154,
+									"minLength": 154,
+									"pattern": "^[A-Za-z0-9_-]{154}$",
+									"type": "string"
+								},
+								"previousCursor": {
+									"maxLength": 154,
+									"minLength": 154,
+									"pattern": "^[A-Za-z0-9_-]{154}$",
+									"type": "string"
+								},
+								"queryId": {
+									"maxLength": 338,
+									"minLength": 338,
+									"pattern": "^[A-Za-z0-9_-]{183}\\.[A-Za-z0-9_-]{154}$",
+									"type": "string"
+								},
+								"reloadCursor": {
+									"maxLength": 154,
+									"minLength": 154,
+									"pattern": "^[A-Za-z0-9_-]{154}$",
+									"type": "string"
+								},
+								"returned": {
+									"maximum": 100,
+									"minimum": 0,
+									"type": "integer"
+								}
+							},
+							"required": [
+								"queryId",
+								"limit",
+								"returned"
+							],
+							"type": "object"
+						}
+					},
+					"required": [
+						"scope",
+						"detail",
+						"basis",
+						"window",
+						"kind",
+						"lane",
+						"occurrence",
+						"total",
+						"tracks",
+						"variant"
+					],
+					"type": "object"
+				},
+				{
+					"properties": {
+						"basis": {
+							"maxLength": 43,
+							"minLength": 43,
+							"pattern": "^[A-Za-z0-9_-]{43}$",
+							"type": "string"
+						},
+						"detail": {
+							"properties": {
+								"revision": {
+									"properties": {
+										"catalog": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"viewer": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										}
+									},
+									"required": ["catalog", "viewer"],
+									"type": "object"
+								},
+								"scope": {
+									"properties": {
+										"itemId": { "type": "string" },
+										"libraryId": { "type": "string" },
+										"serverId": { "type": "string" },
+										"viewerFence": { "type": "string" }
+									},
+									"required": [
+										"serverId",
+										"libraryId",
+										"itemId",
+										"viewerFence"
+									],
+									"type": "object"
+								}
+							},
+							"required": ["scope", "revision"],
+							"type": "object"
+						},
+						"groupId": { "type": "string" },
+						"kind": {
+							"const": "file-info-head-tracks",
+							"type": "string"
+						},
+						"lane": {
+							"enum": ["audio", "subtitles"],
+							"type": "string"
+						},
+						"occurrence": { "type": "string" },
+						"scope": {
+							"properties": {
+								"itemId": { "type": "string" },
+								"libraryId": { "type": "string" },
+								"serverId": { "type": "string" },
+								"viewerFence": { "type": "string" }
+							},
+							"required": [
+								"serverId",
+								"libraryId",
+								"itemId",
+								"viewerFence"
+							],
+							"type": "object"
+						},
+						"total": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						},
+						"tracks": {
+							"items": {
+								"properties": {
+									"bitDepth": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"bitRate": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"channelLayout": {
+										"pattern": "^[^\0]*$",
+										"type": "string"
+									},
+									"channels": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"codec": {
+										"pattern": "^[^\0]*$",
+										"type": "string"
+									},
+									"commentary": { "type": "boolean" },
+									"default": { "type": "boolean" },
+									"external": { "type": "boolean" },
+									"forced": { "type": "boolean" },
+									"hearingImpaired": { "type": "boolean" },
+									"id": { "type": "string" },
+									"language": {
+										"pattern": "^[^\0]*$",
+										"type": "string"
+									},
+									"objectAudio": {
+										"pattern": "^[^\0]*$",
+										"type": "string"
+									},
+									"ordinal": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"profile": {
+										"pattern": "^[^\0]*$",
+										"type": "string"
+									},
+									"sampleRate": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"title": {
+										"pattern": "^[^\0]*$",
+										"type": "string"
+									}
+								},
+								"required": [
+									"ordinal",
+									"codec",
+									"id"
+								],
+								"type": "object"
+							},
+							"maxItems": 100,
+							"type": "array"
+						},
+						"variant": {
+							"const": "head-tracks",
+							"type": "string"
+						},
+						"window": {
+							"properties": {
+								"limit": {
+									"maximum": 100,
+									"minimum": 1,
+									"type": "integer"
+								},
+								"nextCursor": {
+									"maxLength": 154,
+									"minLength": 154,
+									"pattern": "^[A-Za-z0-9_-]{154}$",
+									"type": "string"
+								},
+								"previousCursor": {
+									"maxLength": 154,
+									"minLength": 154,
+									"pattern": "^[A-Za-z0-9_-]{154}$",
+									"type": "string"
+								},
+								"queryId": {
+									"maxLength": 338,
+									"minLength": 338,
+									"pattern": "^[A-Za-z0-9_-]{183}\\.[A-Za-z0-9_-]{154}$",
+									"type": "string"
+								},
+								"reloadCursor": {
+									"maxLength": 154,
+									"minLength": 154,
+									"pattern": "^[A-Za-z0-9_-]{154}$",
+									"type": "string"
+								},
+								"returned": {
+									"maximum": 100,
+									"minimum": 0,
+									"type": "integer"
+								}
+							},
+							"required": [
+								"queryId",
+								"limit",
+								"returned"
+							],
+							"type": "object"
+						}
+					},
+					"required": [
+						"scope",
+						"detail",
+						"basis",
+						"window",
+						"kind",
+						"lane",
+						"groupId",
+						"occurrence",
+						"total",
+						"tracks",
+						"variant"
+					],
+					"type": "object"
+				},
+				{
+					"properties": {
+						"basis": {
+							"maxLength": 43,
+							"minLength": 43,
+							"pattern": "^[A-Za-z0-9_-]{43}$",
+							"type": "string"
+						},
+						"detail": {
+							"properties": {
+								"revision": {
+									"properties": {
+										"catalog": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"viewer": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										}
+									},
+									"required": ["catalog", "viewer"],
+									"type": "object"
+								},
+								"scope": {
+									"properties": {
+										"itemId": { "type": "string" },
+										"libraryId": { "type": "string" },
+										"serverId": { "type": "string" },
+										"viewerFence": { "type": "string" }
+									},
+									"required": [
+										"serverId",
+										"libraryId",
+										"itemId",
+										"viewerFence"
+									],
+									"type": "object"
+								}
+							},
+							"required": ["scope", "revision"],
+							"type": "object"
+						},
+						"kind": {
+							"const": "file-info-sources",
+							"type": "string"
+						},
+						"scope": {
+							"properties": {
+								"itemId": { "type": "string" },
+								"libraryId": { "type": "string" },
+								"serverId": { "type": "string" },
+								"viewerFence": { "type": "string" }
+							},
+							"required": [
+								"serverId",
+								"libraryId",
+								"itemId",
+								"viewerFence"
+							],
+							"type": "object"
+						},
+						"sources": {
+							"items": {
+								"properties": {
+									"audioCodec": {
+										"pattern": "^[^\0]*$",
+										"type": "string"
+									},
+									"container": {
+										"pattern": "^[^\0]*$",
+										"type": "string"
+									},
+									"duration": { "type": "number" },
+									"durationState": { "type": "string" },
+									"height": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"id": { "type": "string" },
+									"itemId": { "type": "string" },
+									"occurrence": { "type": "string" },
+									"videoCodec": {
+										"pattern": "^[^\0]*$",
+										"type": "string"
+									},
+									"width": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									}
+								},
+								"required": [
+									"occurrence",
+									"itemId",
+									"id",
+									"container",
+									"videoCodec",
+									"audioCodec",
+									"width",
+									"height"
+								],
+								"type": "object"
+							},
+							"maxItems": 100,
+							"type": "array"
+						},
+						"total": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						},
+						"variant": {
+							"const": "sources",
+							"type": "string"
+						},
+						"window": {
+							"properties": {
+								"limit": {
+									"maximum": 100,
+									"minimum": 1,
+									"type": "integer"
+								},
+								"nextCursor": {
+									"maxLength": 154,
+									"minLength": 154,
+									"pattern": "^[A-Za-z0-9_-]{154}$",
+									"type": "string"
+								},
+								"previousCursor": {
+									"maxLength": 154,
+									"minLength": 154,
+									"pattern": "^[A-Za-z0-9_-]{154}$",
+									"type": "string"
+								},
+								"queryId": {
+									"maxLength": 338,
+									"minLength": 338,
+									"pattern": "^[A-Za-z0-9_-]{183}\\.[A-Za-z0-9_-]{154}$",
+									"type": "string"
+								},
+								"reloadCursor": {
+									"maxLength": 154,
+									"minLength": 154,
+									"pattern": "^[A-Za-z0-9_-]{154}$",
+									"type": "string"
+								},
+								"returned": {
+									"maximum": 100,
+									"minimum": 0,
+									"type": "integer"
+								}
+							},
+							"required": [
+								"queryId",
+								"limit",
+								"returned"
+							],
+							"type": "object"
+						}
+					},
+					"required": [
+						"scope",
+						"detail",
+						"basis",
+						"window",
+						"kind",
+						"total",
+						"sources",
+						"variant"
+					],
+					"type": "object"
+				},
+				{
+					"properties": {
+						"basis": {
+							"maxLength": 43,
+							"minLength": 43,
+							"pattern": "^[A-Za-z0-9_-]{43}$",
+							"type": "string"
+						},
+						"detail": {
+							"properties": {
+								"revision": {
+									"properties": {
+										"catalog": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"viewer": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										}
+									},
+									"required": ["catalog", "viewer"],
+									"type": "object"
+								},
+								"scope": {
+									"properties": {
+										"itemId": { "type": "string" },
+										"libraryId": { "type": "string" },
+										"serverId": { "type": "string" },
+										"viewerFence": { "type": "string" }
+									},
+									"required": [
+										"serverId",
+										"libraryId",
+										"itemId",
+										"viewerFence"
+									],
+									"type": "object"
+								}
+							},
+							"required": ["scope", "revision"],
+							"type": "object"
+						},
+						"discKind": {
+							"enum": ["bluray", "dvd"],
+							"type": "string"
+						},
+						"kind": {
+							"const": "file-info-disc-titles",
+							"type": "string"
+						},
+						"occurrence": { "type": "string" },
+						"scope": {
+							"properties": {
+								"itemId": { "type": "string" },
+								"libraryId": { "type": "string" },
+								"serverId": { "type": "string" },
+								"viewerFence": { "type": "string" }
+							},
+							"required": [
+								"serverId",
+								"libraryId",
+								"itemId",
+								"viewerFence"
+							],
+							"type": "object"
+						},
+						"titles": {
+							"items": {
+								"properties": {
+									"angles": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"chapters": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"durationMs": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"number": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									}
+								},
+								"required": [
+									"number",
+									"durationMs",
+									"chapters",
+									"angles"
+								],
+								"type": "object"
+							},
+							"maxItems": 100,
+							"type": "array"
+						},
+						"total": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						},
+						"variant": {
+							"const": "disc-titles",
+							"type": "string"
+						},
+						"window": {
+							"properties": {
+								"limit": {
+									"maximum": 100,
+									"minimum": 1,
+									"type": "integer"
+								},
+								"nextCursor": {
+									"maxLength": 154,
+									"minLength": 154,
+									"pattern": "^[A-Za-z0-9_-]{154}$",
+									"type": "string"
+								},
+								"previousCursor": {
+									"maxLength": 154,
+									"minLength": 154,
+									"pattern": "^[A-Za-z0-9_-]{154}$",
+									"type": "string"
+								},
+								"queryId": {
+									"maxLength": 338,
+									"minLength": 338,
+									"pattern": "^[A-Za-z0-9_-]{183}\\.[A-Za-z0-9_-]{154}$",
+									"type": "string"
+								},
+								"reloadCursor": {
+									"maxLength": 154,
+									"minLength": 154,
+									"pattern": "^[A-Za-z0-9_-]{154}$",
+									"type": "string"
+								},
+								"returned": {
+									"maximum": 100,
+									"minimum": 0,
+									"type": "integer"
+								}
+							},
+							"required": [
+								"queryId",
+								"limit",
+								"returned"
+							],
+							"type": "object"
+						}
+					},
+					"required": [
+						"scope",
+						"detail",
+						"basis",
+						"window",
+						"kind",
+						"occurrence",
+						"discKind",
+						"total",
+						"titles",
+						"variant"
+					],
+					"type": "object"
+				},
+				{
+					"properties": {
+						"detail": {
+							"properties": {
+								"revision": {
+									"properties": {
+										"catalog": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										},
+										"viewer": {
+											"maximum": 9007199254740991,
+											"minimum": -9007199254740991,
+											"type": "integer"
+										}
+									},
+									"required": ["catalog", "viewer"],
+									"type": "object"
+								},
+								"scope": {
+									"properties": {
+										"itemId": { "type": "string" },
+										"libraryId": { "type": "string" },
+										"serverId": { "type": "string" },
+										"viewerFence": { "type": "string" }
+									},
+									"required": [
+										"serverId",
+										"libraryId",
+										"itemId",
+										"viewerFence"
+									],
+									"type": "object"
+								}
+							},
+							"required": ["scope", "revision"],
+							"type": "object"
+						},
+						"kind": {
+							"const": "file-info-preparing",
+							"type": "string"
+						},
+						"queryId": {
+							"maxLength": 512,
+							"minLength": 1,
+							"pattern": "^[A-Za-z0-9_.-]+$",
+							"type": "string"
+						},
+						"retryAfterMs": {
+							"minimum": 1,
+							"type": "integer"
+						},
+						"state": {
+							"const": "preparing",
+							"type": "string"
+						},
+						"variant": {
+							"const": "preparing",
+							"type": "string"
+						}
+					},
+					"required": [
+						"kind",
+						"state",
+						"queryId",
+						"retryAfterMs",
+						"variant"
+					],
+					"type": "object"
+				}
+			],
+			"x-discriminator": "variant"
+		},
 		"GetGenreQueryRequest": {
 			"properties": {},
 			"required": [],
@@ -45929,48 +46060,57 @@ var PorticoCastContracts = (function(exports) {
 															"available": { "type": "boolean" },
 															"backdropUrl": { "type": "string" },
 															"badges": {
-																"items": { "oneOf": [
-																	{
-																		"additionalProperties": false,
-																		"properties": {
-																			"bitDepth": {
-																				"minimum": 17,
-																				"type": "integer"
+																"items": {
+																	"oneOf": [
+																		{
+																			"additionalProperties": false,
+																			"properties": {
+																				"bitDepth": {
+																					"minimum": 17,
+																					"type": "integer"
+																				},
+																				"codec": {
+																					"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																					"type": "string"
+																				},
+																				"sampleRate": {
+																					"minimum": 1,
+																					"type": "integer"
+																				},
+																				"variant": { "const": "lossless" }
 																			},
-																			"codec": {
-																				"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																				"type": "string"
+																			"required": [
+																				"variant",
+																				"codec",
+																				"bitDepth",
+																				"sampleRate"
+																			],
+																			"type": "object"
+																		},
+																		{
+																			"additionalProperties": false,
+																			"properties": { "variant": { "const": "atmos" } },
+																			"required": ["variant"],
+																			"type": "object"
+																		},
+																		{
+																			"additionalProperties": false,
+																			"properties": { "variant": { "const": "dsd" } },
+																			"required": ["variant"],
+																			"type": "object"
+																		},
+																		{
+																			"additionalProperties": false,
+																			"properties": {
+																				"layout": { "enum": ["5.1", "7.1"] },
+																				"variant": { "const": "surround" }
 																			},
-																			"kind": { "const": "lossless" },
-																			"sampleRate": {
-																				"minimum": 1,
-																				"type": "integer"
-																			}
-																		},
-																		"required": [
-																			"kind",
-																			"codec",
-																			"bitDepth",
-																			"sampleRate"
-																		],
-																		"type": "object"
-																	},
-																	{
-																		"additionalProperties": false,
-																		"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-																		"required": ["kind"],
-																		"type": "object"
-																	},
-																	{
-																		"additionalProperties": false,
-																		"properties": {
-																			"kind": { "const": "surround" },
-																			"layout": { "enum": ["5.1", "7.1"] }
-																		},
-																		"required": ["kind", "layout"],
-																		"type": "object"
-																	}
-																] },
+																			"required": ["variant", "layout"],
+																			"type": "object"
+																		}
+																	],
+																	"x-discriminator": "variant"
+																},
 																"maxItems": 2,
 																"type": "array"
 															},
@@ -46297,48 +46437,57 @@ var PorticoCastContracts = (function(exports) {
 																	"available": { "type": "boolean" },
 																	"backdropUrl": { "type": "string" },
 																	"badges": {
-																		"items": { "oneOf": [
-																			{
-																				"additionalProperties": false,
-																				"properties": {
-																					"bitDepth": {
-																						"minimum": 17,
-																						"type": "integer"
+																		"items": {
+																			"oneOf": [
+																				{
+																					"additionalProperties": false,
+																					"properties": {
+																						"bitDepth": {
+																							"minimum": 17,
+																							"type": "integer"
+																						},
+																						"codec": {
+																							"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																							"type": "string"
+																						},
+																						"sampleRate": {
+																							"minimum": 1,
+																							"type": "integer"
+																						},
+																						"variant": { "const": "lossless" }
 																					},
-																					"codec": {
-																						"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																						"type": "string"
+																					"required": [
+																						"variant",
+																						"codec",
+																						"bitDepth",
+																						"sampleRate"
+																					],
+																					"type": "object"
+																				},
+																				{
+																					"additionalProperties": false,
+																					"properties": { "variant": { "const": "atmos" } },
+																					"required": ["variant"],
+																					"type": "object"
+																				},
+																				{
+																					"additionalProperties": false,
+																					"properties": { "variant": { "const": "dsd" } },
+																					"required": ["variant"],
+																					"type": "object"
+																				},
+																				{
+																					"additionalProperties": false,
+																					"properties": {
+																						"layout": { "enum": ["5.1", "7.1"] },
+																						"variant": { "const": "surround" }
 																					},
-																					"kind": { "const": "lossless" },
-																					"sampleRate": {
-																						"minimum": 1,
-																						"type": "integer"
-																					}
-																				},
-																				"required": [
-																					"kind",
-																					"codec",
-																					"bitDepth",
-																					"sampleRate"
-																				],
-																				"type": "object"
-																			},
-																			{
-																				"additionalProperties": false,
-																				"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-																				"required": ["kind"],
-																				"type": "object"
-																			},
-																			{
-																				"additionalProperties": false,
-																				"properties": {
-																					"kind": { "const": "surround" },
-																					"layout": { "enum": ["5.1", "7.1"] }
-																				},
-																				"required": ["kind", "layout"],
-																				"type": "object"
-																			}
-																		] },
+																					"required": ["variant", "layout"],
+																					"type": "object"
+																				}
+																			],
+																			"x-discriminator": "variant"
+																		},
 																		"maxItems": 2,
 																		"type": "array"
 																	},
@@ -47111,48 +47260,57 @@ var PorticoCastContracts = (function(exports) {
 													"available": { "type": "boolean" },
 													"backdropUrl": { "type": "string" },
 													"badges": {
-														"items": { "oneOf": [
-															{
-																"additionalProperties": false,
-																"properties": {
-																	"bitDepth": {
-																		"minimum": 17,
-																		"type": "integer"
+														"items": {
+															"oneOf": [
+																{
+																	"additionalProperties": false,
+																	"properties": {
+																		"bitDepth": {
+																			"minimum": 17,
+																			"type": "integer"
+																		},
+																		"codec": {
+																			"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																			"type": "string"
+																		},
+																		"sampleRate": {
+																			"minimum": 1,
+																			"type": "integer"
+																		},
+																		"variant": { "const": "lossless" }
 																	},
-																	"codec": {
-																		"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																		"type": "string"
+																	"required": [
+																		"variant",
+																		"codec",
+																		"bitDepth",
+																		"sampleRate"
+																	],
+																	"type": "object"
+																},
+																{
+																	"additionalProperties": false,
+																	"properties": { "variant": { "const": "atmos" } },
+																	"required": ["variant"],
+																	"type": "object"
+																},
+																{
+																	"additionalProperties": false,
+																	"properties": { "variant": { "const": "dsd" } },
+																	"required": ["variant"],
+																	"type": "object"
+																},
+																{
+																	"additionalProperties": false,
+																	"properties": {
+																		"layout": { "enum": ["5.1", "7.1"] },
+																		"variant": { "const": "surround" }
 																	},
-																	"kind": { "const": "lossless" },
-																	"sampleRate": {
-																		"minimum": 1,
-																		"type": "integer"
-																	}
-																},
-																"required": [
-																	"kind",
-																	"codec",
-																	"bitDepth",
-																	"sampleRate"
-																],
-																"type": "object"
-															},
-															{
-																"additionalProperties": false,
-																"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-																"required": ["kind"],
-																"type": "object"
-															},
-															{
-																"additionalProperties": false,
-																"properties": {
-																	"kind": { "const": "surround" },
-																	"layout": { "enum": ["5.1", "7.1"] }
-																},
-																"required": ["kind", "layout"],
-																"type": "object"
-															}
-														] },
+																	"required": ["variant", "layout"],
+																	"type": "object"
+																}
+															],
+															"x-discriminator": "variant"
+														},
 														"maxItems": 2,
 														"type": "array"
 													},
@@ -47479,48 +47637,57 @@ var PorticoCastContracts = (function(exports) {
 															"available": { "type": "boolean" },
 															"backdropUrl": { "type": "string" },
 															"badges": {
-																"items": { "oneOf": [
-																	{
-																		"additionalProperties": false,
-																		"properties": {
-																			"bitDepth": {
-																				"minimum": 17,
-																				"type": "integer"
+																"items": {
+																	"oneOf": [
+																		{
+																			"additionalProperties": false,
+																			"properties": {
+																				"bitDepth": {
+																					"minimum": 17,
+																					"type": "integer"
+																				},
+																				"codec": {
+																					"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																					"type": "string"
+																				},
+																				"sampleRate": {
+																					"minimum": 1,
+																					"type": "integer"
+																				},
+																				"variant": { "const": "lossless" }
 																			},
-																			"codec": {
-																				"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																				"type": "string"
+																			"required": [
+																				"variant",
+																				"codec",
+																				"bitDepth",
+																				"sampleRate"
+																			],
+																			"type": "object"
+																		},
+																		{
+																			"additionalProperties": false,
+																			"properties": { "variant": { "const": "atmos" } },
+																			"required": ["variant"],
+																			"type": "object"
+																		},
+																		{
+																			"additionalProperties": false,
+																			"properties": { "variant": { "const": "dsd" } },
+																			"required": ["variant"],
+																			"type": "object"
+																		},
+																		{
+																			"additionalProperties": false,
+																			"properties": {
+																				"layout": { "enum": ["5.1", "7.1"] },
+																				"variant": { "const": "surround" }
 																			},
-																			"kind": { "const": "lossless" },
-																			"sampleRate": {
-																				"minimum": 1,
-																				"type": "integer"
-																			}
-																		},
-																		"required": [
-																			"kind",
-																			"codec",
-																			"bitDepth",
-																			"sampleRate"
-																		],
-																		"type": "object"
-																	},
-																	{
-																		"additionalProperties": false,
-																		"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-																		"required": ["kind"],
-																		"type": "object"
-																	},
-																	{
-																		"additionalProperties": false,
-																		"properties": {
-																			"kind": { "const": "surround" },
-																			"layout": { "enum": ["5.1", "7.1"] }
-																		},
-																		"required": ["kind", "layout"],
-																		"type": "object"
-																	}
-																] },
+																			"required": ["variant", "layout"],
+																			"type": "object"
+																		}
+																	],
+																	"x-discriminator": "variant"
+																},
 																"maxItems": 2,
 																"type": "array"
 															},
@@ -48574,48 +48741,57 @@ var PorticoCastContracts = (function(exports) {
 															"available": { "type": "boolean" },
 															"backdropUrl": { "type": "string" },
 															"badges": {
-																"items": { "oneOf": [
-																	{
-																		"additionalProperties": false,
-																		"properties": {
-																			"bitDepth": {
-																				"minimum": 17,
-																				"type": "integer"
+																"items": {
+																	"oneOf": [
+																		{
+																			"additionalProperties": false,
+																			"properties": {
+																				"bitDepth": {
+																					"minimum": 17,
+																					"type": "integer"
+																				},
+																				"codec": {
+																					"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																					"type": "string"
+																				},
+																				"sampleRate": {
+																					"minimum": 1,
+																					"type": "integer"
+																				},
+																				"variant": { "const": "lossless" }
 																			},
-																			"codec": {
-																				"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																				"type": "string"
+																			"required": [
+																				"variant",
+																				"codec",
+																				"bitDepth",
+																				"sampleRate"
+																			],
+																			"type": "object"
+																		},
+																		{
+																			"additionalProperties": false,
+																			"properties": { "variant": { "const": "atmos" } },
+																			"required": ["variant"],
+																			"type": "object"
+																		},
+																		{
+																			"additionalProperties": false,
+																			"properties": { "variant": { "const": "dsd" } },
+																			"required": ["variant"],
+																			"type": "object"
+																		},
+																		{
+																			"additionalProperties": false,
+																			"properties": {
+																				"layout": { "enum": ["5.1", "7.1"] },
+																				"variant": { "const": "surround" }
 																			},
-																			"kind": { "const": "lossless" },
-																			"sampleRate": {
-																				"minimum": 1,
-																				"type": "integer"
-																			}
-																		},
-																		"required": [
-																			"kind",
-																			"codec",
-																			"bitDepth",
-																			"sampleRate"
-																		],
-																		"type": "object"
-																	},
-																	{
-																		"additionalProperties": false,
-																		"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-																		"required": ["kind"],
-																		"type": "object"
-																	},
-																	{
-																		"additionalProperties": false,
-																		"properties": {
-																			"kind": { "const": "surround" },
-																			"layout": { "enum": ["5.1", "7.1"] }
-																		},
-																		"required": ["kind", "layout"],
-																		"type": "object"
-																	}
-																] },
+																			"required": ["variant", "layout"],
+																			"type": "object"
+																		}
+																	],
+																	"x-discriminator": "variant"
+																},
 																"maxItems": 2,
 																"type": "array"
 															},
@@ -48942,48 +49118,57 @@ var PorticoCastContracts = (function(exports) {
 																	"available": { "type": "boolean" },
 																	"backdropUrl": { "type": "string" },
 																	"badges": {
-																		"items": { "oneOf": [
-																			{
-																				"additionalProperties": false,
-																				"properties": {
-																					"bitDepth": {
-																						"minimum": 17,
-																						"type": "integer"
+																		"items": {
+																			"oneOf": [
+																				{
+																					"additionalProperties": false,
+																					"properties": {
+																						"bitDepth": {
+																							"minimum": 17,
+																							"type": "integer"
+																						},
+																						"codec": {
+																							"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																							"type": "string"
+																						},
+																						"sampleRate": {
+																							"minimum": 1,
+																							"type": "integer"
+																						},
+																						"variant": { "const": "lossless" }
 																					},
-																					"codec": {
-																						"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																						"type": "string"
+																					"required": [
+																						"variant",
+																						"codec",
+																						"bitDepth",
+																						"sampleRate"
+																					],
+																					"type": "object"
+																				},
+																				{
+																					"additionalProperties": false,
+																					"properties": { "variant": { "const": "atmos" } },
+																					"required": ["variant"],
+																					"type": "object"
+																				},
+																				{
+																					"additionalProperties": false,
+																					"properties": { "variant": { "const": "dsd" } },
+																					"required": ["variant"],
+																					"type": "object"
+																				},
+																				{
+																					"additionalProperties": false,
+																					"properties": {
+																						"layout": { "enum": ["5.1", "7.1"] },
+																						"variant": { "const": "surround" }
 																					},
-																					"kind": { "const": "lossless" },
-																					"sampleRate": {
-																						"minimum": 1,
-																						"type": "integer"
-																					}
-																				},
-																				"required": [
-																					"kind",
-																					"codec",
-																					"bitDepth",
-																					"sampleRate"
-																				],
-																				"type": "object"
-																			},
-																			{
-																				"additionalProperties": false,
-																				"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-																				"required": ["kind"],
-																				"type": "object"
-																			},
-																			{
-																				"additionalProperties": false,
-																				"properties": {
-																					"kind": { "const": "surround" },
-																					"layout": { "enum": ["5.1", "7.1"] }
-																				},
-																				"required": ["kind", "layout"],
-																				"type": "object"
-																			}
-																		] },
+																					"required": ["variant", "layout"],
+																					"type": "object"
+																				}
+																			],
+																			"x-discriminator": "variant"
+																		},
 																		"maxItems": 2,
 																		"type": "array"
 																	},
@@ -50178,48 +50363,57 @@ var PorticoCastContracts = (function(exports) {
 												"available": { "type": "boolean" },
 												"backdropUrl": { "type": "string" },
 												"badges": {
-													"items": { "oneOf": [
-														{
-															"additionalProperties": false,
-															"properties": {
-																"bitDepth": {
-																	"minimum": 17,
-																	"type": "integer"
+													"items": {
+														"oneOf": [
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"bitDepth": {
+																		"minimum": 17,
+																		"type": "integer"
+																	},
+																	"codec": {
+																		"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																		"type": "string"
+																	},
+																	"sampleRate": {
+																		"minimum": 1,
+																		"type": "integer"
+																	},
+																	"variant": { "const": "lossless" }
 																},
-																"codec": {
-																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																	"type": "string"
+																"required": [
+																	"variant",
+																	"codec",
+																	"bitDepth",
+																	"sampleRate"
+																],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "atmos" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "dsd" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"layout": { "enum": ["5.1", "7.1"] },
+																	"variant": { "const": "surround" }
 																},
-																"kind": { "const": "lossless" },
-																"sampleRate": {
-																	"minimum": 1,
-																	"type": "integer"
-																}
-															},
-															"required": [
-																"kind",
-																"codec",
-																"bitDepth",
-																"sampleRate"
-															],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-															"required": ["kind"],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": {
-																"kind": { "const": "surround" },
-																"layout": { "enum": ["5.1", "7.1"] }
-															},
-															"required": ["kind", "layout"],
-															"type": "object"
-														}
-													] },
+																"required": ["variant", "layout"],
+																"type": "object"
+															}
+														],
+														"x-discriminator": "variant"
+													},
 													"maxItems": 2,
 													"type": "array"
 												},
@@ -50546,48 +50740,57 @@ var PorticoCastContracts = (function(exports) {
 														"available": { "type": "boolean" },
 														"backdropUrl": { "type": "string" },
 														"badges": {
-															"items": { "oneOf": [
-																{
-																	"additionalProperties": false,
-																	"properties": {
-																		"bitDepth": {
-																			"minimum": 17,
-																			"type": "integer"
+															"items": {
+																"oneOf": [
+																	{
+																		"additionalProperties": false,
+																		"properties": {
+																			"bitDepth": {
+																				"minimum": 17,
+																				"type": "integer"
+																			},
+																			"codec": {
+																				"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																				"type": "string"
+																			},
+																			"sampleRate": {
+																				"minimum": 1,
+																				"type": "integer"
+																			},
+																			"variant": { "const": "lossless" }
 																		},
-																		"codec": {
-																			"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																			"type": "string"
+																		"required": [
+																			"variant",
+																			"codec",
+																			"bitDepth",
+																			"sampleRate"
+																		],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": { "variant": { "const": "atmos" } },
+																		"required": ["variant"],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": { "variant": { "const": "dsd" } },
+																		"required": ["variant"],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": {
+																			"layout": { "enum": ["5.1", "7.1"] },
+																			"variant": { "const": "surround" }
 																		},
-																		"kind": { "const": "lossless" },
-																		"sampleRate": {
-																			"minimum": 1,
-																			"type": "integer"
-																		}
-																	},
-																	"required": [
-																		"kind",
-																		"codec",
-																		"bitDepth",
-																		"sampleRate"
-																	],
-																	"type": "object"
-																},
-																{
-																	"additionalProperties": false,
-																	"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-																	"required": ["kind"],
-																	"type": "object"
-																},
-																{
-																	"additionalProperties": false,
-																	"properties": {
-																		"kind": { "const": "surround" },
-																		"layout": { "enum": ["5.1", "7.1"] }
-																	},
-																	"required": ["kind", "layout"],
-																	"type": "object"
-																}
-															] },
+																		"required": ["variant", "layout"],
+																		"type": "object"
+																	}
+																],
+																"x-discriminator": "variant"
+															},
 															"maxItems": 2,
 															"type": "array"
 														},
@@ -51357,48 +51560,57 @@ var PorticoCastContracts = (function(exports) {
 										"available": { "type": "boolean" },
 										"backdropUrl": { "type": "string" },
 										"badges": {
-											"items": { "oneOf": [
-												{
-													"additionalProperties": false,
-													"properties": {
-														"bitDepth": {
-															"minimum": 17,
-															"type": "integer"
+											"items": {
+												"oneOf": [
+													{
+														"additionalProperties": false,
+														"properties": {
+															"bitDepth": {
+																"minimum": 17,
+																"type": "integer"
+															},
+															"codec": {
+																"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																"type": "string"
+															},
+															"sampleRate": {
+																"minimum": 1,
+																"type": "integer"
+															},
+															"variant": { "const": "lossless" }
 														},
-														"codec": {
-															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-															"type": "string"
+														"required": [
+															"variant",
+															"codec",
+															"bitDepth",
+															"sampleRate"
+														],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": { "variant": { "const": "atmos" } },
+														"required": ["variant"],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": { "variant": { "const": "dsd" } },
+														"required": ["variant"],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": {
+															"layout": { "enum": ["5.1", "7.1"] },
+															"variant": { "const": "surround" }
 														},
-														"kind": { "const": "lossless" },
-														"sampleRate": {
-															"minimum": 1,
-															"type": "integer"
-														}
-													},
-													"required": [
-														"kind",
-														"codec",
-														"bitDepth",
-														"sampleRate"
-													],
-													"type": "object"
-												},
-												{
-													"additionalProperties": false,
-													"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-													"required": ["kind"],
-													"type": "object"
-												},
-												{
-													"additionalProperties": false,
-													"properties": {
-														"kind": { "const": "surround" },
-														"layout": { "enum": ["5.1", "7.1"] }
-													},
-													"required": ["kind", "layout"],
-													"type": "object"
-												}
-											] },
+														"required": ["variant", "layout"],
+														"type": "object"
+													}
+												],
+												"x-discriminator": "variant"
+											},
 											"maxItems": 2,
 											"type": "array"
 										},
@@ -51725,48 +51937,57 @@ var PorticoCastContracts = (function(exports) {
 												"available": { "type": "boolean" },
 												"backdropUrl": { "type": "string" },
 												"badges": {
-													"items": { "oneOf": [
-														{
-															"additionalProperties": false,
-															"properties": {
-																"bitDepth": {
-																	"minimum": 17,
-																	"type": "integer"
+													"items": {
+														"oneOf": [
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"bitDepth": {
+																		"minimum": 17,
+																		"type": "integer"
+																	},
+																	"codec": {
+																		"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																		"type": "string"
+																	},
+																	"sampleRate": {
+																		"minimum": 1,
+																		"type": "integer"
+																	},
+																	"variant": { "const": "lossless" }
 																},
-																"codec": {
-																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																	"type": "string"
+																"required": [
+																	"variant",
+																	"codec",
+																	"bitDepth",
+																	"sampleRate"
+																],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "atmos" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "dsd" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"layout": { "enum": ["5.1", "7.1"] },
+																	"variant": { "const": "surround" }
 																},
-																"kind": { "const": "lossless" },
-																"sampleRate": {
-																	"minimum": 1,
-																	"type": "integer"
-																}
-															},
-															"required": [
-																"kind",
-																"codec",
-																"bitDepth",
-																"sampleRate"
-															],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-															"required": ["kind"],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": {
-																"kind": { "const": "surround" },
-																"layout": { "enum": ["5.1", "7.1"] }
-															},
-															"required": ["kind", "layout"],
-															"type": "object"
-														}
-													] },
+																"required": ["variant", "layout"],
+																"type": "object"
+															}
+														],
+														"x-discriminator": "variant"
+													},
 													"maxItems": 2,
 													"type": "array"
 												},
@@ -52820,48 +53041,57 @@ var PorticoCastContracts = (function(exports) {
 												"available": { "type": "boolean" },
 												"backdropUrl": { "type": "string" },
 												"badges": {
-													"items": { "oneOf": [
-														{
-															"additionalProperties": false,
-															"properties": {
-																"bitDepth": {
-																	"minimum": 17,
-																	"type": "integer"
+													"items": {
+														"oneOf": [
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"bitDepth": {
+																		"minimum": 17,
+																		"type": "integer"
+																	},
+																	"codec": {
+																		"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																		"type": "string"
+																	},
+																	"sampleRate": {
+																		"minimum": 1,
+																		"type": "integer"
+																	},
+																	"variant": { "const": "lossless" }
 																},
-																"codec": {
-																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																	"type": "string"
+																"required": [
+																	"variant",
+																	"codec",
+																	"bitDepth",
+																	"sampleRate"
+																],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "atmos" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "dsd" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"layout": { "enum": ["5.1", "7.1"] },
+																	"variant": { "const": "surround" }
 																},
-																"kind": { "const": "lossless" },
-																"sampleRate": {
-																	"minimum": 1,
-																	"type": "integer"
-																}
-															},
-															"required": [
-																"kind",
-																"codec",
-																"bitDepth",
-																"sampleRate"
-															],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-															"required": ["kind"],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": {
-																"kind": { "const": "surround" },
-																"layout": { "enum": ["5.1", "7.1"] }
-															},
-															"required": ["kind", "layout"],
-															"type": "object"
-														}
-													] },
+																"required": ["variant", "layout"],
+																"type": "object"
+															}
+														],
+														"x-discriminator": "variant"
+													},
 													"maxItems": 2,
 													"type": "array"
 												},
@@ -53188,48 +53418,57 @@ var PorticoCastContracts = (function(exports) {
 														"available": { "type": "boolean" },
 														"backdropUrl": { "type": "string" },
 														"badges": {
-															"items": { "oneOf": [
-																{
-																	"additionalProperties": false,
-																	"properties": {
-																		"bitDepth": {
-																			"minimum": 17,
-																			"type": "integer"
+															"items": {
+																"oneOf": [
+																	{
+																		"additionalProperties": false,
+																		"properties": {
+																			"bitDepth": {
+																				"minimum": 17,
+																				"type": "integer"
+																			},
+																			"codec": {
+																				"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																				"type": "string"
+																			},
+																			"sampleRate": {
+																				"minimum": 1,
+																				"type": "integer"
+																			},
+																			"variant": { "const": "lossless" }
 																		},
-																		"codec": {
-																			"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																			"type": "string"
+																		"required": [
+																			"variant",
+																			"codec",
+																			"bitDepth",
+																			"sampleRate"
+																		],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": { "variant": { "const": "atmos" } },
+																		"required": ["variant"],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": { "variant": { "const": "dsd" } },
+																		"required": ["variant"],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": {
+																			"layout": { "enum": ["5.1", "7.1"] },
+																			"variant": { "const": "surround" }
 																		},
-																		"kind": { "const": "lossless" },
-																		"sampleRate": {
-																			"minimum": 1,
-																			"type": "integer"
-																		}
-																	},
-																	"required": [
-																		"kind",
-																		"codec",
-																		"bitDepth",
-																		"sampleRate"
-																	],
-																	"type": "object"
-																},
-																{
-																	"additionalProperties": false,
-																	"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-																	"required": ["kind"],
-																	"type": "object"
-																},
-																{
-																	"additionalProperties": false,
-																	"properties": {
-																		"kind": { "const": "surround" },
-																		"layout": { "enum": ["5.1", "7.1"] }
-																	},
-																	"required": ["kind", "layout"],
-																	"type": "object"
-																}
-															] },
+																		"required": ["variant", "layout"],
+																		"type": "object"
+																	}
+																],
+																"x-discriminator": "variant"
+															},
 															"maxItems": 2,
 															"type": "array"
 														},
@@ -54292,48 +54531,57 @@ var PorticoCastContracts = (function(exports) {
 									"available": { "type": "boolean" },
 									"backdropUrl": { "type": "string" },
 									"badges": {
-										"items": { "oneOf": [
-											{
-												"additionalProperties": false,
-												"properties": {
-													"bitDepth": {
-														"minimum": 17,
-														"type": "integer"
+										"items": {
+											"oneOf": [
+												{
+													"additionalProperties": false,
+													"properties": {
+														"bitDepth": {
+															"minimum": 17,
+															"type": "integer"
+														},
+														"codec": {
+															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+															"type": "string"
+														},
+														"sampleRate": {
+															"minimum": 1,
+															"type": "integer"
+														},
+														"variant": { "const": "lossless" }
 													},
-													"codec": {
-														"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-														"type": "string"
+													"required": [
+														"variant",
+														"codec",
+														"bitDepth",
+														"sampleRate"
+													],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "atmos" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "dsd" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": {
+														"layout": { "enum": ["5.1", "7.1"] },
+														"variant": { "const": "surround" }
 													},
-													"kind": { "const": "lossless" },
-													"sampleRate": {
-														"minimum": 1,
-														"type": "integer"
-													}
-												},
-												"required": [
-													"kind",
-													"codec",
-													"bitDepth",
-													"sampleRate"
-												],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-												"required": ["kind"],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": {
-													"kind": { "const": "surround" },
-													"layout": { "enum": ["5.1", "7.1"] }
-												},
-												"required": ["kind", "layout"],
-												"type": "object"
-											}
-										] },
+													"required": ["variant", "layout"],
+													"type": "object"
+												}
+											],
+											"x-discriminator": "variant"
+										},
 										"maxItems": 2,
 										"type": "array"
 									},
@@ -54660,48 +54908,57 @@ var PorticoCastContracts = (function(exports) {
 											"available": { "type": "boolean" },
 											"backdropUrl": { "type": "string" },
 											"badges": {
-												"items": { "oneOf": [
-													{
-														"additionalProperties": false,
-														"properties": {
-															"bitDepth": {
-																"minimum": 17,
-																"type": "integer"
+												"items": {
+													"oneOf": [
+														{
+															"additionalProperties": false,
+															"properties": {
+																"bitDepth": {
+																	"minimum": 17,
+																	"type": "integer"
+																},
+																"codec": {
+																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																	"type": "string"
+																},
+																"sampleRate": {
+																	"minimum": 1,
+																	"type": "integer"
+																},
+																"variant": { "const": "lossless" }
 															},
-															"codec": {
-																"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																"type": "string"
+															"required": [
+																"variant",
+																"codec",
+																"bitDepth",
+																"sampleRate"
+															],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": { "variant": { "const": "atmos" } },
+															"required": ["variant"],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": { "variant": { "const": "dsd" } },
+															"required": ["variant"],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": {
+																"layout": { "enum": ["5.1", "7.1"] },
+																"variant": { "const": "surround" }
 															},
-															"kind": { "const": "lossless" },
-															"sampleRate": {
-																"minimum": 1,
-																"type": "integer"
-															}
-														},
-														"required": [
-															"kind",
-															"codec",
-															"bitDepth",
-															"sampleRate"
-														],
-														"type": "object"
-													},
-													{
-														"additionalProperties": false,
-														"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-														"required": ["kind"],
-														"type": "object"
-													},
-													{
-														"additionalProperties": false,
-														"properties": {
-															"kind": { "const": "surround" },
-															"layout": { "enum": ["5.1", "7.1"] }
-														},
-														"required": ["kind", "layout"],
-														"type": "object"
-													}
-												] },
+															"required": ["variant", "layout"],
+															"type": "object"
+														}
+													],
+													"x-discriminator": "variant"
+												},
 												"maxItems": 2,
 												"type": "array"
 											},
@@ -55471,48 +55728,57 @@ var PorticoCastContracts = (function(exports) {
 									"available": { "type": "boolean" },
 									"backdropUrl": { "type": "string" },
 									"badges": {
-										"items": { "oneOf": [
-											{
-												"additionalProperties": false,
-												"properties": {
-													"bitDepth": {
-														"minimum": 17,
-														"type": "integer"
+										"items": {
+											"oneOf": [
+												{
+													"additionalProperties": false,
+													"properties": {
+														"bitDepth": {
+															"minimum": 17,
+															"type": "integer"
+														},
+														"codec": {
+															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+															"type": "string"
+														},
+														"sampleRate": {
+															"minimum": 1,
+															"type": "integer"
+														},
+														"variant": { "const": "lossless" }
 													},
-													"codec": {
-														"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-														"type": "string"
+													"required": [
+														"variant",
+														"codec",
+														"bitDepth",
+														"sampleRate"
+													],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "atmos" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "dsd" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": {
+														"layout": { "enum": ["5.1", "7.1"] },
+														"variant": { "const": "surround" }
 													},
-													"kind": { "const": "lossless" },
-													"sampleRate": {
-														"minimum": 1,
-														"type": "integer"
-													}
-												},
-												"required": [
-													"kind",
-													"codec",
-													"bitDepth",
-													"sampleRate"
-												],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-												"required": ["kind"],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": {
-													"kind": { "const": "surround" },
-													"layout": { "enum": ["5.1", "7.1"] }
-												},
-												"required": ["kind", "layout"],
-												"type": "object"
-											}
-										] },
+													"required": ["variant", "layout"],
+													"type": "object"
+												}
+											],
+											"x-discriminator": "variant"
+										},
 										"maxItems": 2,
 										"type": "array"
 									},
@@ -55839,48 +56105,57 @@ var PorticoCastContracts = (function(exports) {
 											"available": { "type": "boolean" },
 											"backdropUrl": { "type": "string" },
 											"badges": {
-												"items": { "oneOf": [
-													{
-														"additionalProperties": false,
-														"properties": {
-															"bitDepth": {
-																"minimum": 17,
-																"type": "integer"
+												"items": {
+													"oneOf": [
+														{
+															"additionalProperties": false,
+															"properties": {
+																"bitDepth": {
+																	"minimum": 17,
+																	"type": "integer"
+																},
+																"codec": {
+																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																	"type": "string"
+																},
+																"sampleRate": {
+																	"minimum": 1,
+																	"type": "integer"
+																},
+																"variant": { "const": "lossless" }
 															},
-															"codec": {
-																"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																"type": "string"
+															"required": [
+																"variant",
+																"codec",
+																"bitDepth",
+																"sampleRate"
+															],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": { "variant": { "const": "atmos" } },
+															"required": ["variant"],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": { "variant": { "const": "dsd" } },
+															"required": ["variant"],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": {
+																"layout": { "enum": ["5.1", "7.1"] },
+																"variant": { "const": "surround" }
 															},
-															"kind": { "const": "lossless" },
-															"sampleRate": {
-																"minimum": 1,
-																"type": "integer"
-															}
-														},
-														"required": [
-															"kind",
-															"codec",
-															"bitDepth",
-															"sampleRate"
-														],
-														"type": "object"
-													},
-													{
-														"additionalProperties": false,
-														"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-														"required": ["kind"],
-														"type": "object"
-													},
-													{
-														"additionalProperties": false,
-														"properties": {
-															"kind": { "const": "surround" },
-															"layout": { "enum": ["5.1", "7.1"] }
-														},
-														"required": ["kind", "layout"],
-														"type": "object"
-													}
-												] },
+															"required": ["variant", "layout"],
+															"type": "object"
+														}
+													],
+													"x-discriminator": "variant"
+												},
 												"maxItems": 2,
 												"type": "array"
 											},
@@ -56802,48 +57077,57 @@ var PorticoCastContracts = (function(exports) {
 												"available": { "type": "boolean" },
 												"backdropUrl": { "type": "string" },
 												"badges": {
-													"items": { "oneOf": [
-														{
-															"additionalProperties": false,
-															"properties": {
-																"bitDepth": {
-																	"minimum": 17,
-																	"type": "integer"
+													"items": {
+														"oneOf": [
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"bitDepth": {
+																		"minimum": 17,
+																		"type": "integer"
+																	},
+																	"codec": {
+																		"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																		"type": "string"
+																	},
+																	"sampleRate": {
+																		"minimum": 1,
+																		"type": "integer"
+																	},
+																	"variant": { "const": "lossless" }
 																},
-																"codec": {
-																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																	"type": "string"
+																"required": [
+																	"variant",
+																	"codec",
+																	"bitDepth",
+																	"sampleRate"
+																],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "atmos" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "dsd" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"layout": { "enum": ["5.1", "7.1"] },
+																	"variant": { "const": "surround" }
 																},
-																"kind": { "const": "lossless" },
-																"sampleRate": {
-																	"minimum": 1,
-																	"type": "integer"
-																}
-															},
-															"required": [
-																"kind",
-																"codec",
-																"bitDepth",
-																"sampleRate"
-															],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-															"required": ["kind"],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": {
-																"kind": { "const": "surround" },
-																"layout": { "enum": ["5.1", "7.1"] }
-															},
-															"required": ["kind", "layout"],
-															"type": "object"
-														}
-													] },
+																"required": ["variant", "layout"],
+																"type": "object"
+															}
+														],
+														"x-discriminator": "variant"
+													},
 													"maxItems": 2,
 													"type": "array"
 												},
@@ -57170,48 +57454,57 @@ var PorticoCastContracts = (function(exports) {
 														"available": { "type": "boolean" },
 														"backdropUrl": { "type": "string" },
 														"badges": {
-															"items": { "oneOf": [
-																{
-																	"additionalProperties": false,
-																	"properties": {
-																		"bitDepth": {
-																			"minimum": 17,
-																			"type": "integer"
+															"items": {
+																"oneOf": [
+																	{
+																		"additionalProperties": false,
+																		"properties": {
+																			"bitDepth": {
+																				"minimum": 17,
+																				"type": "integer"
+																			},
+																			"codec": {
+																				"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																				"type": "string"
+																			},
+																			"sampleRate": {
+																				"minimum": 1,
+																				"type": "integer"
+																			},
+																			"variant": { "const": "lossless" }
 																		},
-																		"codec": {
-																			"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																			"type": "string"
+																		"required": [
+																			"variant",
+																			"codec",
+																			"bitDepth",
+																			"sampleRate"
+																		],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": { "variant": { "const": "atmos" } },
+																		"required": ["variant"],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": { "variant": { "const": "dsd" } },
+																		"required": ["variant"],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": {
+																			"layout": { "enum": ["5.1", "7.1"] },
+																			"variant": { "const": "surround" }
 																		},
-																		"kind": { "const": "lossless" },
-																		"sampleRate": {
-																			"minimum": 1,
-																			"type": "integer"
-																		}
-																	},
-																	"required": [
-																		"kind",
-																		"codec",
-																		"bitDepth",
-																		"sampleRate"
-																	],
-																	"type": "object"
-																},
-																{
-																	"additionalProperties": false,
-																	"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-																	"required": ["kind"],
-																	"type": "object"
-																},
-																{
-																	"additionalProperties": false,
-																	"properties": {
-																		"kind": { "const": "surround" },
-																		"layout": { "enum": ["5.1", "7.1"] }
-																	},
-																	"required": ["kind", "layout"],
-																	"type": "object"
-																}
-															] },
+																		"required": ["variant", "layout"],
+																		"type": "object"
+																	}
+																],
+																"x-discriminator": "variant"
+															},
 															"maxItems": 2,
 															"type": "array"
 														},
@@ -57984,48 +58277,57 @@ var PorticoCastContracts = (function(exports) {
 										"available": { "type": "boolean" },
 										"backdropUrl": { "type": "string" },
 										"badges": {
-											"items": { "oneOf": [
-												{
-													"additionalProperties": false,
-													"properties": {
-														"bitDepth": {
-															"minimum": 17,
-															"type": "integer"
+											"items": {
+												"oneOf": [
+													{
+														"additionalProperties": false,
+														"properties": {
+															"bitDepth": {
+																"minimum": 17,
+																"type": "integer"
+															},
+															"codec": {
+																"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																"type": "string"
+															},
+															"sampleRate": {
+																"minimum": 1,
+																"type": "integer"
+															},
+															"variant": { "const": "lossless" }
 														},
-														"codec": {
-															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-															"type": "string"
+														"required": [
+															"variant",
+															"codec",
+															"bitDepth",
+															"sampleRate"
+														],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": { "variant": { "const": "atmos" } },
+														"required": ["variant"],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": { "variant": { "const": "dsd" } },
+														"required": ["variant"],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": {
+															"layout": { "enum": ["5.1", "7.1"] },
+															"variant": { "const": "surround" }
 														},
-														"kind": { "const": "lossless" },
-														"sampleRate": {
-															"minimum": 1,
-															"type": "integer"
-														}
-													},
-													"required": [
-														"kind",
-														"codec",
-														"bitDepth",
-														"sampleRate"
-													],
-													"type": "object"
-												},
-												{
-													"additionalProperties": false,
-													"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-													"required": ["kind"],
-													"type": "object"
-												},
-												{
-													"additionalProperties": false,
-													"properties": {
-														"kind": { "const": "surround" },
-														"layout": { "enum": ["5.1", "7.1"] }
-													},
-													"required": ["kind", "layout"],
-													"type": "object"
-												}
-											] },
+														"required": ["variant", "layout"],
+														"type": "object"
+													}
+												],
+												"x-discriminator": "variant"
+											},
 											"maxItems": 2,
 											"type": "array"
 										},
@@ -58352,48 +58654,57 @@ var PorticoCastContracts = (function(exports) {
 												"available": { "type": "boolean" },
 												"backdropUrl": { "type": "string" },
 												"badges": {
-													"items": { "oneOf": [
-														{
-															"additionalProperties": false,
-															"properties": {
-																"bitDepth": {
-																	"minimum": 17,
-																	"type": "integer"
+													"items": {
+														"oneOf": [
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"bitDepth": {
+																		"minimum": 17,
+																		"type": "integer"
+																	},
+																	"codec": {
+																		"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																		"type": "string"
+																	},
+																	"sampleRate": {
+																		"minimum": 1,
+																		"type": "integer"
+																	},
+																	"variant": { "const": "lossless" }
 																},
-																"codec": {
-																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																	"type": "string"
+																"required": [
+																	"variant",
+																	"codec",
+																	"bitDepth",
+																	"sampleRate"
+																],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "atmos" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "dsd" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"layout": { "enum": ["5.1", "7.1"] },
+																	"variant": { "const": "surround" }
 																},
-																"kind": { "const": "lossless" },
-																"sampleRate": {
-																	"minimum": 1,
-																	"type": "integer"
-																}
-															},
-															"required": [
-																"kind",
-																"codec",
-																"bitDepth",
-																"sampleRate"
-															],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-															"required": ["kind"],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": {
-																"kind": { "const": "surround" },
-																"layout": { "enum": ["5.1", "7.1"] }
-															},
-															"required": ["kind", "layout"],
-															"type": "object"
-														}
-													] },
+																"required": ["variant", "layout"],
+																"type": "object"
+															}
+														],
+														"x-discriminator": "variant"
+													},
 													"maxItems": 2,
 													"type": "array"
 												},
@@ -59447,48 +59758,57 @@ var PorticoCastContracts = (function(exports) {
 												"available": { "type": "boolean" },
 												"backdropUrl": { "type": "string" },
 												"badges": {
-													"items": { "oneOf": [
-														{
-															"additionalProperties": false,
-															"properties": {
-																"bitDepth": {
-																	"minimum": 17,
-																	"type": "integer"
+													"items": {
+														"oneOf": [
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"bitDepth": {
+																		"minimum": 17,
+																		"type": "integer"
+																	},
+																	"codec": {
+																		"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																		"type": "string"
+																	},
+																	"sampleRate": {
+																		"minimum": 1,
+																		"type": "integer"
+																	},
+																	"variant": { "const": "lossless" }
 																},
-																"codec": {
-																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																	"type": "string"
+																"required": [
+																	"variant",
+																	"codec",
+																	"bitDepth",
+																	"sampleRate"
+																],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "atmos" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "dsd" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"layout": { "enum": ["5.1", "7.1"] },
+																	"variant": { "const": "surround" }
 																},
-																"kind": { "const": "lossless" },
-																"sampleRate": {
-																	"minimum": 1,
-																	"type": "integer"
-																}
-															},
-															"required": [
-																"kind",
-																"codec",
-																"bitDepth",
-																"sampleRate"
-															],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-															"required": ["kind"],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": {
-																"kind": { "const": "surround" },
-																"layout": { "enum": ["5.1", "7.1"] }
-															},
-															"required": ["kind", "layout"],
-															"type": "object"
-														}
-													] },
+																"required": ["variant", "layout"],
+																"type": "object"
+															}
+														],
+														"x-discriminator": "variant"
+													},
 													"maxItems": 2,
 													"type": "array"
 												},
@@ -59815,48 +60135,57 @@ var PorticoCastContracts = (function(exports) {
 														"available": { "type": "boolean" },
 														"backdropUrl": { "type": "string" },
 														"badges": {
-															"items": { "oneOf": [
-																{
-																	"additionalProperties": false,
-																	"properties": {
-																		"bitDepth": {
-																			"minimum": 17,
-																			"type": "integer"
+															"items": {
+																"oneOf": [
+																	{
+																		"additionalProperties": false,
+																		"properties": {
+																			"bitDepth": {
+																				"minimum": 17,
+																				"type": "integer"
+																			},
+																			"codec": {
+																				"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																				"type": "string"
+																			},
+																			"sampleRate": {
+																				"minimum": 1,
+																				"type": "integer"
+																			},
+																			"variant": { "const": "lossless" }
 																		},
-																		"codec": {
-																			"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																			"type": "string"
+																		"required": [
+																			"variant",
+																			"codec",
+																			"bitDepth",
+																			"sampleRate"
+																		],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": { "variant": { "const": "atmos" } },
+																		"required": ["variant"],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": { "variant": { "const": "dsd" } },
+																		"required": ["variant"],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": {
+																			"layout": { "enum": ["5.1", "7.1"] },
+																			"variant": { "const": "surround" }
 																		},
-																		"kind": { "const": "lossless" },
-																		"sampleRate": {
-																			"minimum": 1,
-																			"type": "integer"
-																		}
-																	},
-																	"required": [
-																		"kind",
-																		"codec",
-																		"bitDepth",
-																		"sampleRate"
-																	],
-																	"type": "object"
-																},
-																{
-																	"additionalProperties": false,
-																	"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-																	"required": ["kind"],
-																	"type": "object"
-																},
-																{
-																	"additionalProperties": false,
-																	"properties": {
-																		"kind": { "const": "surround" },
-																		"layout": { "enum": ["5.1", "7.1"] }
-																	},
-																	"required": ["kind", "layout"],
-																	"type": "object"
-																}
-															] },
+																		"required": ["variant", "layout"],
+																		"type": "object"
+																	}
+																],
+																"x-discriminator": "variant"
+															},
 															"maxItems": 2,
 															"type": "array"
 														},
@@ -61051,48 +61380,57 @@ var PorticoCastContracts = (function(exports) {
 									"available": { "type": "boolean" },
 									"backdropUrl": { "type": "string" },
 									"badges": {
-										"items": { "oneOf": [
-											{
-												"additionalProperties": false,
-												"properties": {
-													"bitDepth": {
-														"minimum": 17,
-														"type": "integer"
+										"items": {
+											"oneOf": [
+												{
+													"additionalProperties": false,
+													"properties": {
+														"bitDepth": {
+															"minimum": 17,
+															"type": "integer"
+														},
+														"codec": {
+															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+															"type": "string"
+														},
+														"sampleRate": {
+															"minimum": 1,
+															"type": "integer"
+														},
+														"variant": { "const": "lossless" }
 													},
-													"codec": {
-														"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-														"type": "string"
+													"required": [
+														"variant",
+														"codec",
+														"bitDepth",
+														"sampleRate"
+													],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "atmos" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "dsd" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": {
+														"layout": { "enum": ["5.1", "7.1"] },
+														"variant": { "const": "surround" }
 													},
-													"kind": { "const": "lossless" },
-													"sampleRate": {
-														"minimum": 1,
-														"type": "integer"
-													}
-												},
-												"required": [
-													"kind",
-													"codec",
-													"bitDepth",
-													"sampleRate"
-												],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-												"required": ["kind"],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": {
-													"kind": { "const": "surround" },
-													"layout": { "enum": ["5.1", "7.1"] }
-												},
-												"required": ["kind", "layout"],
-												"type": "object"
-											}
-										] },
+													"required": ["variant", "layout"],
+													"type": "object"
+												}
+											],
+											"x-discriminator": "variant"
+										},
 										"maxItems": 2,
 										"type": "array"
 									},
@@ -61419,48 +61757,57 @@ var PorticoCastContracts = (function(exports) {
 											"available": { "type": "boolean" },
 											"backdropUrl": { "type": "string" },
 											"badges": {
-												"items": { "oneOf": [
-													{
-														"additionalProperties": false,
-														"properties": {
-															"bitDepth": {
-																"minimum": 17,
-																"type": "integer"
+												"items": {
+													"oneOf": [
+														{
+															"additionalProperties": false,
+															"properties": {
+																"bitDepth": {
+																	"minimum": 17,
+																	"type": "integer"
+																},
+																"codec": {
+																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																	"type": "string"
+																},
+																"sampleRate": {
+																	"minimum": 1,
+																	"type": "integer"
+																},
+																"variant": { "const": "lossless" }
 															},
-															"codec": {
-																"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																"type": "string"
+															"required": [
+																"variant",
+																"codec",
+																"bitDepth",
+																"sampleRate"
+															],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": { "variant": { "const": "atmos" } },
+															"required": ["variant"],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": { "variant": { "const": "dsd" } },
+															"required": ["variant"],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": {
+																"layout": { "enum": ["5.1", "7.1"] },
+																"variant": { "const": "surround" }
 															},
-															"kind": { "const": "lossless" },
-															"sampleRate": {
-																"minimum": 1,
-																"type": "integer"
-															}
-														},
-														"required": [
-															"kind",
-															"codec",
-															"bitDepth",
-															"sampleRate"
-														],
-														"type": "object"
-													},
-													{
-														"additionalProperties": false,
-														"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-														"required": ["kind"],
-														"type": "object"
-													},
-													{
-														"additionalProperties": false,
-														"properties": {
-															"kind": { "const": "surround" },
-															"layout": { "enum": ["5.1", "7.1"] }
-														},
-														"required": ["kind", "layout"],
-														"type": "object"
-													}
-												] },
+															"required": ["variant", "layout"],
+															"type": "object"
+														}
+													],
+													"x-discriminator": "variant"
+												},
 												"maxItems": 2,
 												"type": "array"
 											},
@@ -62230,48 +62577,57 @@ var PorticoCastContracts = (function(exports) {
 							"available": { "type": "boolean" },
 							"backdropUrl": { "type": "string" },
 							"badges": {
-								"items": { "oneOf": [
-									{
-										"additionalProperties": false,
-										"properties": {
-											"bitDepth": {
-												"minimum": 17,
-												"type": "integer"
+								"items": {
+									"oneOf": [
+										{
+											"additionalProperties": false,
+											"properties": {
+												"bitDepth": {
+													"minimum": 17,
+													"type": "integer"
+												},
+												"codec": {
+													"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+													"type": "string"
+												},
+												"sampleRate": {
+													"minimum": 1,
+													"type": "integer"
+												},
+												"variant": { "const": "lossless" }
 											},
-											"codec": {
-												"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-												"type": "string"
+											"required": [
+												"variant",
+												"codec",
+												"bitDepth",
+												"sampleRate"
+											],
+											"type": "object"
+										},
+										{
+											"additionalProperties": false,
+											"properties": { "variant": { "const": "atmos" } },
+											"required": ["variant"],
+											"type": "object"
+										},
+										{
+											"additionalProperties": false,
+											"properties": { "variant": { "const": "dsd" } },
+											"required": ["variant"],
+											"type": "object"
+										},
+										{
+											"additionalProperties": false,
+											"properties": {
+												"layout": { "enum": ["5.1", "7.1"] },
+												"variant": { "const": "surround" }
 											},
-											"kind": { "const": "lossless" },
-											"sampleRate": {
-												"minimum": 1,
-												"type": "integer"
-											}
-										},
-										"required": [
-											"kind",
-											"codec",
-											"bitDepth",
-											"sampleRate"
-										],
-										"type": "object"
-									},
-									{
-										"additionalProperties": false,
-										"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-										"required": ["kind"],
-										"type": "object"
-									},
-									{
-										"additionalProperties": false,
-										"properties": {
-											"kind": { "const": "surround" },
-											"layout": { "enum": ["5.1", "7.1"] }
-										},
-										"required": ["kind", "layout"],
-										"type": "object"
-									}
-								] },
+											"required": ["variant", "layout"],
+											"type": "object"
+										}
+									],
+									"x-discriminator": "variant"
+								},
 								"maxItems": 2,
 								"type": "array"
 							},
@@ -62598,48 +62954,57 @@ var PorticoCastContracts = (function(exports) {
 									"available": { "type": "boolean" },
 									"backdropUrl": { "type": "string" },
 									"badges": {
-										"items": { "oneOf": [
-											{
-												"additionalProperties": false,
-												"properties": {
-													"bitDepth": {
-														"minimum": 17,
-														"type": "integer"
+										"items": {
+											"oneOf": [
+												{
+													"additionalProperties": false,
+													"properties": {
+														"bitDepth": {
+															"minimum": 17,
+															"type": "integer"
+														},
+														"codec": {
+															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+															"type": "string"
+														},
+														"sampleRate": {
+															"minimum": 1,
+															"type": "integer"
+														},
+														"variant": { "const": "lossless" }
 													},
-													"codec": {
-														"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-														"type": "string"
+													"required": [
+														"variant",
+														"codec",
+														"bitDepth",
+														"sampleRate"
+													],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "atmos" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "dsd" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": {
+														"layout": { "enum": ["5.1", "7.1"] },
+														"variant": { "const": "surround" }
 													},
-													"kind": { "const": "lossless" },
-													"sampleRate": {
-														"minimum": 1,
-														"type": "integer"
-													}
-												},
-												"required": [
-													"kind",
-													"codec",
-													"bitDepth",
-													"sampleRate"
-												],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-												"required": ["kind"],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": {
-													"kind": { "const": "surround" },
-													"layout": { "enum": ["5.1", "7.1"] }
-												},
-												"required": ["kind", "layout"],
-												"type": "object"
-											}
-										] },
+													"required": ["variant", "layout"],
+													"type": "object"
+												}
+											],
+											"x-discriminator": "variant"
+										},
 										"maxItems": 2,
 										"type": "array"
 									},
@@ -63693,48 +64058,57 @@ var PorticoCastContracts = (function(exports) {
 									"available": { "type": "boolean" },
 									"backdropUrl": { "type": "string" },
 									"badges": {
-										"items": { "oneOf": [
-											{
-												"additionalProperties": false,
-												"properties": {
-													"bitDepth": {
-														"minimum": 17,
-														"type": "integer"
+										"items": {
+											"oneOf": [
+												{
+													"additionalProperties": false,
+													"properties": {
+														"bitDepth": {
+															"minimum": 17,
+															"type": "integer"
+														},
+														"codec": {
+															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+															"type": "string"
+														},
+														"sampleRate": {
+															"minimum": 1,
+															"type": "integer"
+														},
+														"variant": { "const": "lossless" }
 													},
-													"codec": {
-														"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-														"type": "string"
+													"required": [
+														"variant",
+														"codec",
+														"bitDepth",
+														"sampleRate"
+													],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "atmos" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "dsd" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": {
+														"layout": { "enum": ["5.1", "7.1"] },
+														"variant": { "const": "surround" }
 													},
-													"kind": { "const": "lossless" },
-													"sampleRate": {
-														"minimum": 1,
-														"type": "integer"
-													}
-												},
-												"required": [
-													"kind",
-													"codec",
-													"bitDepth",
-													"sampleRate"
-												],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-												"required": ["kind"],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": {
-													"kind": { "const": "surround" },
-													"layout": { "enum": ["5.1", "7.1"] }
-												},
-												"required": ["kind", "layout"],
-												"type": "object"
-											}
-										] },
+													"required": ["variant", "layout"],
+													"type": "object"
+												}
+											],
+											"x-discriminator": "variant"
+										},
 										"maxItems": 2,
 										"type": "array"
 									},
@@ -64061,48 +64435,57 @@ var PorticoCastContracts = (function(exports) {
 											"available": { "type": "boolean" },
 											"backdropUrl": { "type": "string" },
 											"badges": {
-												"items": { "oneOf": [
-													{
-														"additionalProperties": false,
-														"properties": {
-															"bitDepth": {
-																"minimum": 17,
-																"type": "integer"
+												"items": {
+													"oneOf": [
+														{
+															"additionalProperties": false,
+															"properties": {
+																"bitDepth": {
+																	"minimum": 17,
+																	"type": "integer"
+																},
+																"codec": {
+																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																	"type": "string"
+																},
+																"sampleRate": {
+																	"minimum": 1,
+																	"type": "integer"
+																},
+																"variant": { "const": "lossless" }
 															},
-															"codec": {
-																"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																"type": "string"
+															"required": [
+																"variant",
+																"codec",
+																"bitDepth",
+																"sampleRate"
+															],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": { "variant": { "const": "atmos" } },
+															"required": ["variant"],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": { "variant": { "const": "dsd" } },
+															"required": ["variant"],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": {
+																"layout": { "enum": ["5.1", "7.1"] },
+																"variant": { "const": "surround" }
 															},
-															"kind": { "const": "lossless" },
-															"sampleRate": {
-																"minimum": 1,
-																"type": "integer"
-															}
-														},
-														"required": [
-															"kind",
-															"codec",
-															"bitDepth",
-															"sampleRate"
-														],
-														"type": "object"
-													},
-													{
-														"additionalProperties": false,
-														"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-														"required": ["kind"],
-														"type": "object"
-													},
-													{
-														"additionalProperties": false,
-														"properties": {
-															"kind": { "const": "surround" },
-															"layout": { "enum": ["5.1", "7.1"] }
-														},
-														"required": ["kind", "layout"],
-														"type": "object"
-													}
-												] },
+															"required": ["variant", "layout"],
+															"type": "object"
+														}
+													],
+													"x-discriminator": "variant"
+												},
 												"maxItems": 2,
 												"type": "array"
 											},
@@ -65276,6 +65659,10 @@ var PorticoCastContracts = (function(exports) {
 						"minimum": -9007199254740991,
 						"type": "integer"
 					},
+					"variant": {
+						"const": "disc-titles",
+						"type": "string"
+					},
 					"window": {
 						"properties": {
 							"limit": {
@@ -65330,7 +65717,8 @@ var PorticoCastContracts = (function(exports) {
 					"occurrence",
 					"discKind",
 					"total",
-					"titles"
+					"titles",
+					"variant"
 				],
 				"type": "object"
 			}, {
@@ -65389,6 +65777,10 @@ var PorticoCastContracts = (function(exports) {
 					"state": {
 						"const": "preparing",
 						"type": "string"
+					},
+					"variant": {
+						"const": "preparing",
+						"type": "string"
 					}
 				},
 				"required": [
@@ -65396,11 +65788,12 @@ var PorticoCastContracts = (function(exports) {
 					"state",
 					"queryId",
 					"retryAfterMs",
+					"variant",
 					"detail"
 				],
 				"type": "object"
 			}],
-			"x-discriminator": "kind"
+			"x-discriminator": "variant"
 		},
 		"GetItemFileInfoGroupsRequest": {
 			"properties": {},
@@ -65648,6 +66041,10 @@ var PorticoCastContracts = (function(exports) {
 						],
 						"type": "object"
 					},
+					"variant": {
+						"const": "groups",
+						"type": "string"
+					},
 					"window": {
 						"properties": {
 							"limit": {
@@ -65700,7 +66097,8 @@ var PorticoCastContracts = (function(exports) {
 					"window",
 					"kind",
 					"surface",
-					"groups"
+					"groups",
+					"variant"
 				],
 				"type": "object"
 			}, {
@@ -65759,6 +66157,10 @@ var PorticoCastContracts = (function(exports) {
 					"state": {
 						"const": "preparing",
 						"type": "string"
+					},
+					"variant": {
+						"const": "preparing",
+						"type": "string"
 					}
 				},
 				"required": [
@@ -65766,11 +66168,12 @@ var PorticoCastContracts = (function(exports) {
 					"state",
 					"queryId",
 					"retryAfterMs",
+					"variant",
 					"detail"
 				],
 				"type": "object"
 			}],
-			"x-discriminator": "kind"
+			"x-discriminator": "variant"
 		},
 		"GetItemFileInfoHeadTracksRequest": {
 			"properties": {},
@@ -65922,6 +66325,10 @@ var PorticoCastContracts = (function(exports) {
 						"maxItems": 100,
 						"type": "array"
 					},
+					"variant": {
+						"const": "head-tracks",
+						"type": "string"
+					},
 					"window": {
 						"properties": {
 							"limit": {
@@ -65977,7 +66384,8 @@ var PorticoCastContracts = (function(exports) {
 					"groupId",
 					"occurrence",
 					"total",
-					"tracks"
+					"tracks",
+					"variant"
 				],
 				"type": "object"
 			}, {
@@ -66036,6 +66444,10 @@ var PorticoCastContracts = (function(exports) {
 					"state": {
 						"const": "preparing",
 						"type": "string"
+					},
+					"variant": {
+						"const": "preparing",
+						"type": "string"
 					}
 				},
 				"required": [
@@ -66043,11 +66455,12 @@ var PorticoCastContracts = (function(exports) {
 					"state",
 					"queryId",
 					"retryAfterMs",
+					"variant",
 					"detail"
 				],
 				"type": "object"
 			}],
-			"x-discriminator": "kind"
+			"x-discriminator": "variant"
 		},
 		"GetItemFileInfoMembersRequest": {
 			"properties": {},
@@ -66261,6 +66674,10 @@ var PorticoCastContracts = (function(exports) {
 						"minimum": -9007199254740991,
 						"type": "integer"
 					},
+					"variant": {
+						"const": "members",
+						"type": "string"
+					},
 					"window": {
 						"properties": {
 							"limit": {
@@ -66314,7 +66731,8 @@ var PorticoCastContracts = (function(exports) {
 					"kind",
 					"groupId",
 					"total",
-					"members"
+					"members",
+					"variant"
 				],
 				"type": "object"
 			}, {
@@ -66373,6 +66791,10 @@ var PorticoCastContracts = (function(exports) {
 					"state": {
 						"const": "preparing",
 						"type": "string"
+					},
+					"variant": {
+						"const": "preparing",
+						"type": "string"
 					}
 				},
 				"required": [
@@ -66380,11 +66802,12 @@ var PorticoCastContracts = (function(exports) {
 					"state",
 					"queryId",
 					"retryAfterMs",
+					"variant",
 					"detail"
 				],
 				"type": "object"
 			}],
-			"x-discriminator": "kind"
+			"x-discriminator": "variant"
 		},
 		"GetItemFileInfoSourcesRequest": {
 			"properties": {},
@@ -66507,6 +66930,10 @@ var PorticoCastContracts = (function(exports) {
 						"minimum": -9007199254740991,
 						"type": "integer"
 					},
+					"variant": {
+						"const": "sources",
+						"type": "string"
+					},
 					"window": {
 						"properties": {
 							"limit": {
@@ -66559,7 +66986,8 @@ var PorticoCastContracts = (function(exports) {
 					"window",
 					"kind",
 					"total",
-					"sources"
+					"sources",
+					"variant"
 				],
 				"type": "object"
 			}, {
@@ -66618,6 +67046,10 @@ var PorticoCastContracts = (function(exports) {
 					"state": {
 						"const": "preparing",
 						"type": "string"
+					},
+					"variant": {
+						"const": "preparing",
+						"type": "string"
 					}
 				},
 				"required": [
@@ -66625,11 +67057,12 @@ var PorticoCastContracts = (function(exports) {
 					"state",
 					"queryId",
 					"retryAfterMs",
+					"variant",
 					"detail"
 				],
 				"type": "object"
 			}],
-			"x-discriminator": "kind"
+			"x-discriminator": "variant"
 		},
 		"GetItemFileInfoTracksRequest": {
 			"properties": {},
@@ -66775,6 +67208,10 @@ var PorticoCastContracts = (function(exports) {
 						"maxItems": 100,
 						"type": "array"
 					},
+					"variant": {
+						"const": "tracks",
+						"type": "string"
+					},
 					"window": {
 						"properties": {
 							"limit": {
@@ -66829,7 +67266,8 @@ var PorticoCastContracts = (function(exports) {
 					"lane",
 					"occurrence",
 					"total",
-					"tracks"
+					"tracks",
+					"variant"
 				],
 				"type": "object"
 			}, {
@@ -66888,6 +67326,10 @@ var PorticoCastContracts = (function(exports) {
 					"state": {
 						"const": "preparing",
 						"type": "string"
+					},
+					"variant": {
+						"const": "preparing",
+						"type": "string"
 					}
 				},
 				"required": [
@@ -66895,11 +67337,12 @@ var PorticoCastContracts = (function(exports) {
 					"state",
 					"queryId",
 					"retryAfterMs",
+					"variant",
 					"detail"
 				],
 				"type": "object"
 			}],
-			"x-discriminator": "kind"
+			"x-discriminator": "variant"
 		},
 		"GetItemsIdAnalysisArtifactsArtifactRequest": {
 			"properties": {},
@@ -67483,48 +67926,57 @@ var PorticoCastContracts = (function(exports) {
 										"available": { "type": "boolean" },
 										"backdropUrl": { "type": "string" },
 										"badges": {
-											"items": { "oneOf": [
-												{
-													"additionalProperties": false,
-													"properties": {
-														"bitDepth": {
-															"minimum": 17,
-															"type": "integer"
+											"items": {
+												"oneOf": [
+													{
+														"additionalProperties": false,
+														"properties": {
+															"bitDepth": {
+																"minimum": 17,
+																"type": "integer"
+															},
+															"codec": {
+																"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																"type": "string"
+															},
+															"sampleRate": {
+																"minimum": 1,
+																"type": "integer"
+															},
+															"variant": { "const": "lossless" }
 														},
-														"codec": {
-															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-															"type": "string"
+														"required": [
+															"variant",
+															"codec",
+															"bitDepth",
+															"sampleRate"
+														],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": { "variant": { "const": "atmos" } },
+														"required": ["variant"],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": { "variant": { "const": "dsd" } },
+														"required": ["variant"],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": {
+															"layout": { "enum": ["5.1", "7.1"] },
+															"variant": { "const": "surround" }
 														},
-														"kind": { "const": "lossless" },
-														"sampleRate": {
-															"minimum": 1,
-															"type": "integer"
-														}
-													},
-													"required": [
-														"kind",
-														"codec",
-														"bitDepth",
-														"sampleRate"
-													],
-													"type": "object"
-												},
-												{
-													"additionalProperties": false,
-													"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-													"required": ["kind"],
-													"type": "object"
-												},
-												{
-													"additionalProperties": false,
-													"properties": {
-														"kind": { "const": "surround" },
-														"layout": { "enum": ["5.1", "7.1"] }
-													},
-													"required": ["kind", "layout"],
-													"type": "object"
-												}
-											] },
+														"required": ["variant", "layout"],
+														"type": "object"
+													}
+												],
+												"x-discriminator": "variant"
+											},
 											"maxItems": 2,
 											"type": "array"
 										},
@@ -67851,48 +68303,57 @@ var PorticoCastContracts = (function(exports) {
 												"available": { "type": "boolean" },
 												"backdropUrl": { "type": "string" },
 												"badges": {
-													"items": { "oneOf": [
-														{
-															"additionalProperties": false,
-															"properties": {
-																"bitDepth": {
-																	"minimum": 17,
-																	"type": "integer"
+													"items": {
+														"oneOf": [
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"bitDepth": {
+																		"minimum": 17,
+																		"type": "integer"
+																	},
+																	"codec": {
+																		"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																		"type": "string"
+																	},
+																	"sampleRate": {
+																		"minimum": 1,
+																		"type": "integer"
+																	},
+																	"variant": { "const": "lossless" }
 																},
-																"codec": {
-																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																	"type": "string"
+																"required": [
+																	"variant",
+																	"codec",
+																	"bitDepth",
+																	"sampleRate"
+																],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "atmos" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "dsd" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"layout": { "enum": ["5.1", "7.1"] },
+																	"variant": { "const": "surround" }
 																},
-																"kind": { "const": "lossless" },
-																"sampleRate": {
-																	"minimum": 1,
-																	"type": "integer"
-																}
-															},
-															"required": [
-																"kind",
-																"codec",
-																"bitDepth",
-																"sampleRate"
-															],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-															"required": ["kind"],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": {
-																"kind": { "const": "surround" },
-																"layout": { "enum": ["5.1", "7.1"] }
-															},
-															"required": ["kind", "layout"],
-															"type": "object"
-														}
-													] },
+																"required": ["variant", "layout"],
+																"type": "object"
+															}
+														],
+														"x-discriminator": "variant"
+													},
 													"maxItems": 2,
 													"type": "array"
 												},
@@ -69449,48 +69910,57 @@ var PorticoCastContracts = (function(exports) {
 												"available": { "type": "boolean" },
 												"backdropUrl": { "type": "string" },
 												"badges": {
-													"items": { "oneOf": [
-														{
-															"additionalProperties": false,
-															"properties": {
-																"bitDepth": {
-																	"minimum": 17,
-																	"type": "integer"
+													"items": {
+														"oneOf": [
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"bitDepth": {
+																		"minimum": 17,
+																		"type": "integer"
+																	},
+																	"codec": {
+																		"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																		"type": "string"
+																	},
+																	"sampleRate": {
+																		"minimum": 1,
+																		"type": "integer"
+																	},
+																	"variant": { "const": "lossless" }
 																},
-																"codec": {
-																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																	"type": "string"
+																"required": [
+																	"variant",
+																	"codec",
+																	"bitDepth",
+																	"sampleRate"
+																],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "atmos" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "dsd" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"layout": { "enum": ["5.1", "7.1"] },
+																	"variant": { "const": "surround" }
 																},
-																"kind": { "const": "lossless" },
-																"sampleRate": {
-																	"minimum": 1,
-																	"type": "integer"
-																}
-															},
-															"required": [
-																"kind",
-																"codec",
-																"bitDepth",
-																"sampleRate"
-															],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-															"required": ["kind"],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": {
-																"kind": { "const": "surround" },
-																"layout": { "enum": ["5.1", "7.1"] }
-															},
-															"required": ["kind", "layout"],
-															"type": "object"
-														}
-													] },
+																"required": ["variant", "layout"],
+																"type": "object"
+															}
+														],
+														"x-discriminator": "variant"
+													},
 													"maxItems": 2,
 													"type": "array"
 												},
@@ -69817,48 +70287,57 @@ var PorticoCastContracts = (function(exports) {
 														"available": { "type": "boolean" },
 														"backdropUrl": { "type": "string" },
 														"badges": {
-															"items": { "oneOf": [
-																{
-																	"additionalProperties": false,
-																	"properties": {
-																		"bitDepth": {
-																			"minimum": 17,
-																			"type": "integer"
+															"items": {
+																"oneOf": [
+																	{
+																		"additionalProperties": false,
+																		"properties": {
+																			"bitDepth": {
+																				"minimum": 17,
+																				"type": "integer"
+																			},
+																			"codec": {
+																				"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																				"type": "string"
+																			},
+																			"sampleRate": {
+																				"minimum": 1,
+																				"type": "integer"
+																			},
+																			"variant": { "const": "lossless" }
 																		},
-																		"codec": {
-																			"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																			"type": "string"
+																		"required": [
+																			"variant",
+																			"codec",
+																			"bitDepth",
+																			"sampleRate"
+																		],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": { "variant": { "const": "atmos" } },
+																		"required": ["variant"],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": { "variant": { "const": "dsd" } },
+																		"required": ["variant"],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": {
+																			"layout": { "enum": ["5.1", "7.1"] },
+																			"variant": { "const": "surround" }
 																		},
-																		"kind": { "const": "lossless" },
-																		"sampleRate": {
-																			"minimum": 1,
-																			"type": "integer"
-																		}
-																	},
-																	"required": [
-																		"kind",
-																		"codec",
-																		"bitDepth",
-																		"sampleRate"
-																	],
-																	"type": "object"
-																},
-																{
-																	"additionalProperties": false,
-																	"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-																	"required": ["kind"],
-																	"type": "object"
-																},
-																{
-																	"additionalProperties": false,
-																	"properties": {
-																		"kind": { "const": "surround" },
-																		"layout": { "enum": ["5.1", "7.1"] }
-																	},
-																	"required": ["kind", "layout"],
-																	"type": "object"
-																}
-															] },
+																		"required": ["variant", "layout"],
+																		"type": "object"
+																	}
+																],
+																"x-discriminator": "variant"
+															},
 															"maxItems": 2,
 															"type": "array"
 														},
@@ -70670,13 +71149,18 @@ var PorticoCastContracts = (function(exports) {
 				"state": {
 					"const": "preparing",
 					"type": "string"
+				},
+				"variant": {
+					"const": "preparing",
+					"type": "string"
 				}
 			},
 			"required": [
 				"kind",
 				"state",
 				"queryId",
-				"retryAfterMs"
+				"retryAfterMs",
+				"variant"
 			],
 			"type": "object"
 		}] },
@@ -70930,6 +71414,10 @@ var PorticoCastContracts = (function(exports) {
 						],
 						"type": "object"
 					},
+					"variant": {
+						"const": "files",
+						"type": "string"
+					},
 					"window": {
 						"properties": {
 							"limit": {
@@ -70983,7 +71471,8 @@ var PorticoCastContracts = (function(exports) {
 					"kind",
 					"itemKind",
 					"surface",
-					"files"
+					"files",
+					"variant"
 				],
 				"type": "object"
 			}, {
@@ -71042,6 +71531,10 @@ var PorticoCastContracts = (function(exports) {
 					"state": {
 						"const": "preparing",
 						"type": "string"
+					},
+					"variant": {
+						"const": "preparing",
+						"type": "string"
 					}
 				},
 				"required": [
@@ -71049,11 +71542,12 @@ var PorticoCastContracts = (function(exports) {
 					"state",
 					"queryId",
 					"retryAfterMs",
+					"variant",
 					"detail"
 				],
 				"type": "object"
 			}],
-			"x-discriminator": "kind"
+			"x-discriminator": "variant"
 		},
 		"GetItemsIdListeningRequest": {
 			"properties": {},
@@ -73721,48 +74215,57 @@ var PorticoCastContracts = (function(exports) {
 															"available": { "type": "boolean" },
 															"backdropUrl": { "type": "string" },
 															"badges": {
-																"items": { "oneOf": [
-																	{
-																		"additionalProperties": false,
-																		"properties": {
-																			"bitDepth": {
-																				"minimum": 17,
-																				"type": "integer"
+																"items": {
+																	"oneOf": [
+																		{
+																			"additionalProperties": false,
+																			"properties": {
+																				"bitDepth": {
+																					"minimum": 17,
+																					"type": "integer"
+																				},
+																				"codec": {
+																					"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																					"type": "string"
+																				},
+																				"sampleRate": {
+																					"minimum": 1,
+																					"type": "integer"
+																				},
+																				"variant": { "const": "lossless" }
 																			},
-																			"codec": {
-																				"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																				"type": "string"
+																			"required": [
+																				"variant",
+																				"codec",
+																				"bitDepth",
+																				"sampleRate"
+																			],
+																			"type": "object"
+																		},
+																		{
+																			"additionalProperties": false,
+																			"properties": { "variant": { "const": "atmos" } },
+																			"required": ["variant"],
+																			"type": "object"
+																		},
+																		{
+																			"additionalProperties": false,
+																			"properties": { "variant": { "const": "dsd" } },
+																			"required": ["variant"],
+																			"type": "object"
+																		},
+																		{
+																			"additionalProperties": false,
+																			"properties": {
+																				"layout": { "enum": ["5.1", "7.1"] },
+																				"variant": { "const": "surround" }
 																			},
-																			"kind": { "const": "lossless" },
-																			"sampleRate": {
-																				"minimum": 1,
-																				"type": "integer"
-																			}
-																		},
-																		"required": [
-																			"kind",
-																			"codec",
-																			"bitDepth",
-																			"sampleRate"
-																		],
-																		"type": "object"
-																	},
-																	{
-																		"additionalProperties": false,
-																		"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-																		"required": ["kind"],
-																		"type": "object"
-																	},
-																	{
-																		"additionalProperties": false,
-																		"properties": {
-																			"kind": { "const": "surround" },
-																			"layout": { "enum": ["5.1", "7.1"] }
-																		},
-																		"required": ["kind", "layout"],
-																		"type": "object"
-																	}
-																] },
+																			"required": ["variant", "layout"],
+																			"type": "object"
+																		}
+																	],
+																	"x-discriminator": "variant"
+																},
 																"maxItems": 2,
 																"type": "array"
 															},
@@ -74089,48 +74592,57 @@ var PorticoCastContracts = (function(exports) {
 																	"available": { "type": "boolean" },
 																	"backdropUrl": { "type": "string" },
 																	"badges": {
-																		"items": { "oneOf": [
-																			{
-																				"additionalProperties": false,
-																				"properties": {
-																					"bitDepth": {
-																						"minimum": 17,
-																						"type": "integer"
+																		"items": {
+																			"oneOf": [
+																				{
+																					"additionalProperties": false,
+																					"properties": {
+																						"bitDepth": {
+																							"minimum": 17,
+																							"type": "integer"
+																						},
+																						"codec": {
+																							"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																							"type": "string"
+																						},
+																						"sampleRate": {
+																							"minimum": 1,
+																							"type": "integer"
+																						},
+																						"variant": { "const": "lossless" }
 																					},
-																					"codec": {
-																						"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																						"type": "string"
+																					"required": [
+																						"variant",
+																						"codec",
+																						"bitDepth",
+																						"sampleRate"
+																					],
+																					"type": "object"
+																				},
+																				{
+																					"additionalProperties": false,
+																					"properties": { "variant": { "const": "atmos" } },
+																					"required": ["variant"],
+																					"type": "object"
+																				},
+																				{
+																					"additionalProperties": false,
+																					"properties": { "variant": { "const": "dsd" } },
+																					"required": ["variant"],
+																					"type": "object"
+																				},
+																				{
+																					"additionalProperties": false,
+																					"properties": {
+																						"layout": { "enum": ["5.1", "7.1"] },
+																						"variant": { "const": "surround" }
 																					},
-																					"kind": { "const": "lossless" },
-																					"sampleRate": {
-																						"minimum": 1,
-																						"type": "integer"
-																					}
-																				},
-																				"required": [
-																					"kind",
-																					"codec",
-																					"bitDepth",
-																					"sampleRate"
-																				],
-																				"type": "object"
-																			},
-																			{
-																				"additionalProperties": false,
-																				"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-																				"required": ["kind"],
-																				"type": "object"
-																			},
-																			{
-																				"additionalProperties": false,
-																				"properties": {
-																					"kind": { "const": "surround" },
-																					"layout": { "enum": ["5.1", "7.1"] }
-																				},
-																				"required": ["kind", "layout"],
-																				"type": "object"
-																			}
-																		] },
+																					"required": ["variant", "layout"],
+																					"type": "object"
+																				}
+																			],
+																			"x-discriminator": "variant"
+																		},
 																		"maxItems": 2,
 																		"type": "array"
 																	},
@@ -74903,48 +75415,57 @@ var PorticoCastContracts = (function(exports) {
 													"available": { "type": "boolean" },
 													"backdropUrl": { "type": "string" },
 													"badges": {
-														"items": { "oneOf": [
-															{
-																"additionalProperties": false,
-																"properties": {
-																	"bitDepth": {
-																		"minimum": 17,
-																		"type": "integer"
+														"items": {
+															"oneOf": [
+																{
+																	"additionalProperties": false,
+																	"properties": {
+																		"bitDepth": {
+																			"minimum": 17,
+																			"type": "integer"
+																		},
+																		"codec": {
+																			"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																			"type": "string"
+																		},
+																		"sampleRate": {
+																			"minimum": 1,
+																			"type": "integer"
+																		},
+																		"variant": { "const": "lossless" }
 																	},
-																	"codec": {
-																		"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																		"type": "string"
+																	"required": [
+																		"variant",
+																		"codec",
+																		"bitDepth",
+																		"sampleRate"
+																	],
+																	"type": "object"
+																},
+																{
+																	"additionalProperties": false,
+																	"properties": { "variant": { "const": "atmos" } },
+																	"required": ["variant"],
+																	"type": "object"
+																},
+																{
+																	"additionalProperties": false,
+																	"properties": { "variant": { "const": "dsd" } },
+																	"required": ["variant"],
+																	"type": "object"
+																},
+																{
+																	"additionalProperties": false,
+																	"properties": {
+																		"layout": { "enum": ["5.1", "7.1"] },
+																		"variant": { "const": "surround" }
 																	},
-																	"kind": { "const": "lossless" },
-																	"sampleRate": {
-																		"minimum": 1,
-																		"type": "integer"
-																	}
-																},
-																"required": [
-																	"kind",
-																	"codec",
-																	"bitDepth",
-																	"sampleRate"
-																],
-																"type": "object"
-															},
-															{
-																"additionalProperties": false,
-																"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-																"required": ["kind"],
-																"type": "object"
-															},
-															{
-																"additionalProperties": false,
-																"properties": {
-																	"kind": { "const": "surround" },
-																	"layout": { "enum": ["5.1", "7.1"] }
-																},
-																"required": ["kind", "layout"],
-																"type": "object"
-															}
-														] },
+																	"required": ["variant", "layout"],
+																	"type": "object"
+																}
+															],
+															"x-discriminator": "variant"
+														},
 														"maxItems": 2,
 														"type": "array"
 													},
@@ -75271,48 +75792,57 @@ var PorticoCastContracts = (function(exports) {
 															"available": { "type": "boolean" },
 															"backdropUrl": { "type": "string" },
 															"badges": {
-																"items": { "oneOf": [
-																	{
-																		"additionalProperties": false,
-																		"properties": {
-																			"bitDepth": {
-																				"minimum": 17,
-																				"type": "integer"
+																"items": {
+																	"oneOf": [
+																		{
+																			"additionalProperties": false,
+																			"properties": {
+																				"bitDepth": {
+																					"minimum": 17,
+																					"type": "integer"
+																				},
+																				"codec": {
+																					"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																					"type": "string"
+																				},
+																				"sampleRate": {
+																					"minimum": 1,
+																					"type": "integer"
+																				},
+																				"variant": { "const": "lossless" }
 																			},
-																			"codec": {
-																				"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																				"type": "string"
+																			"required": [
+																				"variant",
+																				"codec",
+																				"bitDepth",
+																				"sampleRate"
+																			],
+																			"type": "object"
+																		},
+																		{
+																			"additionalProperties": false,
+																			"properties": { "variant": { "const": "atmos" } },
+																			"required": ["variant"],
+																			"type": "object"
+																		},
+																		{
+																			"additionalProperties": false,
+																			"properties": { "variant": { "const": "dsd" } },
+																			"required": ["variant"],
+																			"type": "object"
+																		},
+																		{
+																			"additionalProperties": false,
+																			"properties": {
+																				"layout": { "enum": ["5.1", "7.1"] },
+																				"variant": { "const": "surround" }
 																			},
-																			"kind": { "const": "lossless" },
-																			"sampleRate": {
-																				"minimum": 1,
-																				"type": "integer"
-																			}
-																		},
-																		"required": [
-																			"kind",
-																			"codec",
-																			"bitDepth",
-																			"sampleRate"
-																		],
-																		"type": "object"
-																	},
-																	{
-																		"additionalProperties": false,
-																		"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-																		"required": ["kind"],
-																		"type": "object"
-																	},
-																	{
-																		"additionalProperties": false,
-																		"properties": {
-																			"kind": { "const": "surround" },
-																			"layout": { "enum": ["5.1", "7.1"] }
-																		},
-																		"required": ["kind", "layout"],
-																		"type": "object"
-																	}
-																] },
+																			"required": ["variant", "layout"],
+																			"type": "object"
+																		}
+																	],
+																	"x-discriminator": "variant"
+																},
 																"maxItems": 2,
 																"type": "array"
 															},
@@ -76366,48 +76896,57 @@ var PorticoCastContracts = (function(exports) {
 															"available": { "type": "boolean" },
 															"backdropUrl": { "type": "string" },
 															"badges": {
-																"items": { "oneOf": [
-																	{
-																		"additionalProperties": false,
-																		"properties": {
-																			"bitDepth": {
-																				"minimum": 17,
-																				"type": "integer"
+																"items": {
+																	"oneOf": [
+																		{
+																			"additionalProperties": false,
+																			"properties": {
+																				"bitDepth": {
+																					"minimum": 17,
+																					"type": "integer"
+																				},
+																				"codec": {
+																					"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																					"type": "string"
+																				},
+																				"sampleRate": {
+																					"minimum": 1,
+																					"type": "integer"
+																				},
+																				"variant": { "const": "lossless" }
 																			},
-																			"codec": {
-																				"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																				"type": "string"
+																			"required": [
+																				"variant",
+																				"codec",
+																				"bitDepth",
+																				"sampleRate"
+																			],
+																			"type": "object"
+																		},
+																		{
+																			"additionalProperties": false,
+																			"properties": { "variant": { "const": "atmos" } },
+																			"required": ["variant"],
+																			"type": "object"
+																		},
+																		{
+																			"additionalProperties": false,
+																			"properties": { "variant": { "const": "dsd" } },
+																			"required": ["variant"],
+																			"type": "object"
+																		},
+																		{
+																			"additionalProperties": false,
+																			"properties": {
+																				"layout": { "enum": ["5.1", "7.1"] },
+																				"variant": { "const": "surround" }
 																			},
-																			"kind": { "const": "lossless" },
-																			"sampleRate": {
-																				"minimum": 1,
-																				"type": "integer"
-																			}
-																		},
-																		"required": [
-																			"kind",
-																			"codec",
-																			"bitDepth",
-																			"sampleRate"
-																		],
-																		"type": "object"
-																	},
-																	{
-																		"additionalProperties": false,
-																		"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-																		"required": ["kind"],
-																		"type": "object"
-																	},
-																	{
-																		"additionalProperties": false,
-																		"properties": {
-																			"kind": { "const": "surround" },
-																			"layout": { "enum": ["5.1", "7.1"] }
-																		},
-																		"required": ["kind", "layout"],
-																		"type": "object"
-																	}
-																] },
+																			"required": ["variant", "layout"],
+																			"type": "object"
+																		}
+																	],
+																	"x-discriminator": "variant"
+																},
 																"maxItems": 2,
 																"type": "array"
 															},
@@ -76734,48 +77273,57 @@ var PorticoCastContracts = (function(exports) {
 																	"available": { "type": "boolean" },
 																	"backdropUrl": { "type": "string" },
 																	"badges": {
-																		"items": { "oneOf": [
-																			{
-																				"additionalProperties": false,
-																				"properties": {
-																					"bitDepth": {
-																						"minimum": 17,
-																						"type": "integer"
+																		"items": {
+																			"oneOf": [
+																				{
+																					"additionalProperties": false,
+																					"properties": {
+																						"bitDepth": {
+																							"minimum": 17,
+																							"type": "integer"
+																						},
+																						"codec": {
+																							"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																							"type": "string"
+																						},
+																						"sampleRate": {
+																							"minimum": 1,
+																							"type": "integer"
+																						},
+																						"variant": { "const": "lossless" }
 																					},
-																					"codec": {
-																						"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																						"type": "string"
+																					"required": [
+																						"variant",
+																						"codec",
+																						"bitDepth",
+																						"sampleRate"
+																					],
+																					"type": "object"
+																				},
+																				{
+																					"additionalProperties": false,
+																					"properties": { "variant": { "const": "atmos" } },
+																					"required": ["variant"],
+																					"type": "object"
+																				},
+																				{
+																					"additionalProperties": false,
+																					"properties": { "variant": { "const": "dsd" } },
+																					"required": ["variant"],
+																					"type": "object"
+																				},
+																				{
+																					"additionalProperties": false,
+																					"properties": {
+																						"layout": { "enum": ["5.1", "7.1"] },
+																						"variant": { "const": "surround" }
 																					},
-																					"kind": { "const": "lossless" },
-																					"sampleRate": {
-																						"minimum": 1,
-																						"type": "integer"
-																					}
-																				},
-																				"required": [
-																					"kind",
-																					"codec",
-																					"bitDepth",
-																					"sampleRate"
-																				],
-																				"type": "object"
-																			},
-																			{
-																				"additionalProperties": false,
-																				"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-																				"required": ["kind"],
-																				"type": "object"
-																			},
-																			{
-																				"additionalProperties": false,
-																				"properties": {
-																					"kind": { "const": "surround" },
-																					"layout": { "enum": ["5.1", "7.1"] }
-																				},
-																				"required": ["kind", "layout"],
-																				"type": "object"
-																			}
-																		] },
+																					"required": ["variant", "layout"],
+																					"type": "object"
+																				}
+																			],
+																			"x-discriminator": "variant"
+																		},
 																		"maxItems": 2,
 																		"type": "array"
 																	},
@@ -77970,48 +78518,57 @@ var PorticoCastContracts = (function(exports) {
 												"available": { "type": "boolean" },
 												"backdropUrl": { "type": "string" },
 												"badges": {
-													"items": { "oneOf": [
-														{
-															"additionalProperties": false,
-															"properties": {
-																"bitDepth": {
-																	"minimum": 17,
-																	"type": "integer"
+													"items": {
+														"oneOf": [
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"bitDepth": {
+																		"minimum": 17,
+																		"type": "integer"
+																	},
+																	"codec": {
+																		"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																		"type": "string"
+																	},
+																	"sampleRate": {
+																		"minimum": 1,
+																		"type": "integer"
+																	},
+																	"variant": { "const": "lossless" }
 																},
-																"codec": {
-																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																	"type": "string"
+																"required": [
+																	"variant",
+																	"codec",
+																	"bitDepth",
+																	"sampleRate"
+																],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "atmos" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "dsd" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"layout": { "enum": ["5.1", "7.1"] },
+																	"variant": { "const": "surround" }
 																},
-																"kind": { "const": "lossless" },
-																"sampleRate": {
-																	"minimum": 1,
-																	"type": "integer"
-																}
-															},
-															"required": [
-																"kind",
-																"codec",
-																"bitDepth",
-																"sampleRate"
-															],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-															"required": ["kind"],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": {
-																"kind": { "const": "surround" },
-																"layout": { "enum": ["5.1", "7.1"] }
-															},
-															"required": ["kind", "layout"],
-															"type": "object"
-														}
-													] },
+																"required": ["variant", "layout"],
+																"type": "object"
+															}
+														],
+														"x-discriminator": "variant"
+													},
 													"maxItems": 2,
 													"type": "array"
 												},
@@ -78338,48 +78895,57 @@ var PorticoCastContracts = (function(exports) {
 														"available": { "type": "boolean" },
 														"backdropUrl": { "type": "string" },
 														"badges": {
-															"items": { "oneOf": [
-																{
-																	"additionalProperties": false,
-																	"properties": {
-																		"bitDepth": {
-																			"minimum": 17,
-																			"type": "integer"
+															"items": {
+																"oneOf": [
+																	{
+																		"additionalProperties": false,
+																		"properties": {
+																			"bitDepth": {
+																				"minimum": 17,
+																				"type": "integer"
+																			},
+																			"codec": {
+																				"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																				"type": "string"
+																			},
+																			"sampleRate": {
+																				"minimum": 1,
+																				"type": "integer"
+																			},
+																			"variant": { "const": "lossless" }
 																		},
-																		"codec": {
-																			"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																			"type": "string"
+																		"required": [
+																			"variant",
+																			"codec",
+																			"bitDepth",
+																			"sampleRate"
+																		],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": { "variant": { "const": "atmos" } },
+																		"required": ["variant"],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": { "variant": { "const": "dsd" } },
+																		"required": ["variant"],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": {
+																			"layout": { "enum": ["5.1", "7.1"] },
+																			"variant": { "const": "surround" }
 																		},
-																		"kind": { "const": "lossless" },
-																		"sampleRate": {
-																			"minimum": 1,
-																			"type": "integer"
-																		}
-																	},
-																	"required": [
-																		"kind",
-																		"codec",
-																		"bitDepth",
-																		"sampleRate"
-																	],
-																	"type": "object"
-																},
-																{
-																	"additionalProperties": false,
-																	"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-																	"required": ["kind"],
-																	"type": "object"
-																},
-																{
-																	"additionalProperties": false,
-																	"properties": {
-																		"kind": { "const": "surround" },
-																		"layout": { "enum": ["5.1", "7.1"] }
-																	},
-																	"required": ["kind", "layout"],
-																	"type": "object"
-																}
-															] },
+																		"required": ["variant", "layout"],
+																		"type": "object"
+																	}
+																],
+																"x-discriminator": "variant"
+															},
 															"maxItems": 2,
 															"type": "array"
 														},
@@ -79149,48 +79715,57 @@ var PorticoCastContracts = (function(exports) {
 										"available": { "type": "boolean" },
 										"backdropUrl": { "type": "string" },
 										"badges": {
-											"items": { "oneOf": [
-												{
-													"additionalProperties": false,
-													"properties": {
-														"bitDepth": {
-															"minimum": 17,
-															"type": "integer"
+											"items": {
+												"oneOf": [
+													{
+														"additionalProperties": false,
+														"properties": {
+															"bitDepth": {
+																"minimum": 17,
+																"type": "integer"
+															},
+															"codec": {
+																"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																"type": "string"
+															},
+															"sampleRate": {
+																"minimum": 1,
+																"type": "integer"
+															},
+															"variant": { "const": "lossless" }
 														},
-														"codec": {
-															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-															"type": "string"
+														"required": [
+															"variant",
+															"codec",
+															"bitDepth",
+															"sampleRate"
+														],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": { "variant": { "const": "atmos" } },
+														"required": ["variant"],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": { "variant": { "const": "dsd" } },
+														"required": ["variant"],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": {
+															"layout": { "enum": ["5.1", "7.1"] },
+															"variant": { "const": "surround" }
 														},
-														"kind": { "const": "lossless" },
-														"sampleRate": {
-															"minimum": 1,
-															"type": "integer"
-														}
-													},
-													"required": [
-														"kind",
-														"codec",
-														"bitDepth",
-														"sampleRate"
-													],
-													"type": "object"
-												},
-												{
-													"additionalProperties": false,
-													"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-													"required": ["kind"],
-													"type": "object"
-												},
-												{
-													"additionalProperties": false,
-													"properties": {
-														"kind": { "const": "surround" },
-														"layout": { "enum": ["5.1", "7.1"] }
-													},
-													"required": ["kind", "layout"],
-													"type": "object"
-												}
-											] },
+														"required": ["variant", "layout"],
+														"type": "object"
+													}
+												],
+												"x-discriminator": "variant"
+											},
 											"maxItems": 2,
 											"type": "array"
 										},
@@ -79517,48 +80092,57 @@ var PorticoCastContracts = (function(exports) {
 												"available": { "type": "boolean" },
 												"backdropUrl": { "type": "string" },
 												"badges": {
-													"items": { "oneOf": [
-														{
-															"additionalProperties": false,
-															"properties": {
-																"bitDepth": {
-																	"minimum": 17,
-																	"type": "integer"
+													"items": {
+														"oneOf": [
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"bitDepth": {
+																		"minimum": 17,
+																		"type": "integer"
+																	},
+																	"codec": {
+																		"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																		"type": "string"
+																	},
+																	"sampleRate": {
+																		"minimum": 1,
+																		"type": "integer"
+																	},
+																	"variant": { "const": "lossless" }
 																},
-																"codec": {
-																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																	"type": "string"
+																"required": [
+																	"variant",
+																	"codec",
+																	"bitDepth",
+																	"sampleRate"
+																],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "atmos" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "dsd" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"layout": { "enum": ["5.1", "7.1"] },
+																	"variant": { "const": "surround" }
 																},
-																"kind": { "const": "lossless" },
-																"sampleRate": {
-																	"minimum": 1,
-																	"type": "integer"
-																}
-															},
-															"required": [
-																"kind",
-																"codec",
-																"bitDepth",
-																"sampleRate"
-															],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-															"required": ["kind"],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": {
-																"kind": { "const": "surround" },
-																"layout": { "enum": ["5.1", "7.1"] }
-															},
-															"required": ["kind", "layout"],
-															"type": "object"
-														}
-													] },
+																"required": ["variant", "layout"],
+																"type": "object"
+															}
+														],
+														"x-discriminator": "variant"
+													},
 													"maxItems": 2,
 													"type": "array"
 												},
@@ -80612,48 +81196,57 @@ var PorticoCastContracts = (function(exports) {
 												"available": { "type": "boolean" },
 												"backdropUrl": { "type": "string" },
 												"badges": {
-													"items": { "oneOf": [
-														{
-															"additionalProperties": false,
-															"properties": {
-																"bitDepth": {
-																	"minimum": 17,
-																	"type": "integer"
+													"items": {
+														"oneOf": [
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"bitDepth": {
+																		"minimum": 17,
+																		"type": "integer"
+																	},
+																	"codec": {
+																		"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																		"type": "string"
+																	},
+																	"sampleRate": {
+																		"minimum": 1,
+																		"type": "integer"
+																	},
+																	"variant": { "const": "lossless" }
 																},
-																"codec": {
-																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																	"type": "string"
+																"required": [
+																	"variant",
+																	"codec",
+																	"bitDepth",
+																	"sampleRate"
+																],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "atmos" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "dsd" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"layout": { "enum": ["5.1", "7.1"] },
+																	"variant": { "const": "surround" }
 																},
-																"kind": { "const": "lossless" },
-																"sampleRate": {
-																	"minimum": 1,
-																	"type": "integer"
-																}
-															},
-															"required": [
-																"kind",
-																"codec",
-																"bitDepth",
-																"sampleRate"
-															],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-															"required": ["kind"],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": {
-																"kind": { "const": "surround" },
-																"layout": { "enum": ["5.1", "7.1"] }
-															},
-															"required": ["kind", "layout"],
-															"type": "object"
-														}
-													] },
+																"required": ["variant", "layout"],
+																"type": "object"
+															}
+														],
+														"x-discriminator": "variant"
+													},
 													"maxItems": 2,
 													"type": "array"
 												},
@@ -80980,48 +81573,57 @@ var PorticoCastContracts = (function(exports) {
 														"available": { "type": "boolean" },
 														"backdropUrl": { "type": "string" },
 														"badges": {
-															"items": { "oneOf": [
-																{
-																	"additionalProperties": false,
-																	"properties": {
-																		"bitDepth": {
-																			"minimum": 17,
-																			"type": "integer"
+															"items": {
+																"oneOf": [
+																	{
+																		"additionalProperties": false,
+																		"properties": {
+																			"bitDepth": {
+																				"minimum": 17,
+																				"type": "integer"
+																			},
+																			"codec": {
+																				"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																				"type": "string"
+																			},
+																			"sampleRate": {
+																				"minimum": 1,
+																				"type": "integer"
+																			},
+																			"variant": { "const": "lossless" }
 																		},
-																		"codec": {
-																			"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																			"type": "string"
+																		"required": [
+																			"variant",
+																			"codec",
+																			"bitDepth",
+																			"sampleRate"
+																		],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": { "variant": { "const": "atmos" } },
+																		"required": ["variant"],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": { "variant": { "const": "dsd" } },
+																		"required": ["variant"],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": {
+																			"layout": { "enum": ["5.1", "7.1"] },
+																			"variant": { "const": "surround" }
 																		},
-																		"kind": { "const": "lossless" },
-																		"sampleRate": {
-																			"minimum": 1,
-																			"type": "integer"
-																		}
-																	},
-																	"required": [
-																		"kind",
-																		"codec",
-																		"bitDepth",
-																		"sampleRate"
-																	],
-																	"type": "object"
-																},
-																{
-																	"additionalProperties": false,
-																	"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-																	"required": ["kind"],
-																	"type": "object"
-																},
-																{
-																	"additionalProperties": false,
-																	"properties": {
-																		"kind": { "const": "surround" },
-																		"layout": { "enum": ["5.1", "7.1"] }
-																	},
-																	"required": ["kind", "layout"],
-																	"type": "object"
-																}
-															] },
+																		"required": ["variant", "layout"],
+																		"type": "object"
+																	}
+																],
+																"x-discriminator": "variant"
+															},
 															"maxItems": 2,
 															"type": "array"
 														},
@@ -82247,48 +82849,57 @@ var PorticoCastContracts = (function(exports) {
 												"available": { "type": "boolean" },
 												"backdropUrl": { "type": "string" },
 												"badges": {
-													"items": { "oneOf": [
-														{
-															"additionalProperties": false,
-															"properties": {
-																"bitDepth": {
-																	"minimum": 17,
-																	"type": "integer"
+													"items": {
+														"oneOf": [
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"bitDepth": {
+																		"minimum": 17,
+																		"type": "integer"
+																	},
+																	"codec": {
+																		"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																		"type": "string"
+																	},
+																	"sampleRate": {
+																		"minimum": 1,
+																		"type": "integer"
+																	},
+																	"variant": { "const": "lossless" }
 																},
-																"codec": {
-																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																	"type": "string"
+																"required": [
+																	"variant",
+																	"codec",
+																	"bitDepth",
+																	"sampleRate"
+																],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "atmos" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "dsd" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"layout": { "enum": ["5.1", "7.1"] },
+																	"variant": { "const": "surround" }
 																},
-																"kind": { "const": "lossless" },
-																"sampleRate": {
-																	"minimum": 1,
-																	"type": "integer"
-																}
-															},
-															"required": [
-																"kind",
-																"codec",
-																"bitDepth",
-																"sampleRate"
-															],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-															"required": ["kind"],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": {
-																"kind": { "const": "surround" },
-																"layout": { "enum": ["5.1", "7.1"] }
-															},
-															"required": ["kind", "layout"],
-															"type": "object"
-														}
-													] },
+																"required": ["variant", "layout"],
+																"type": "object"
+															}
+														],
+														"x-discriminator": "variant"
+													},
 													"maxItems": 2,
 													"type": "array"
 												},
@@ -82615,48 +83226,57 @@ var PorticoCastContracts = (function(exports) {
 														"available": { "type": "boolean" },
 														"backdropUrl": { "type": "string" },
 														"badges": {
-															"items": { "oneOf": [
-																{
-																	"additionalProperties": false,
-																	"properties": {
-																		"bitDepth": {
-																			"minimum": 17,
-																			"type": "integer"
+															"items": {
+																"oneOf": [
+																	{
+																		"additionalProperties": false,
+																		"properties": {
+																			"bitDepth": {
+																				"minimum": 17,
+																				"type": "integer"
+																			},
+																			"codec": {
+																				"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																				"type": "string"
+																			},
+																			"sampleRate": {
+																				"minimum": 1,
+																				"type": "integer"
+																			},
+																			"variant": { "const": "lossless" }
 																		},
-																		"codec": {
-																			"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																			"type": "string"
+																		"required": [
+																			"variant",
+																			"codec",
+																			"bitDepth",
+																			"sampleRate"
+																		],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": { "variant": { "const": "atmos" } },
+																		"required": ["variant"],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": { "variant": { "const": "dsd" } },
+																		"required": ["variant"],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": {
+																			"layout": { "enum": ["5.1", "7.1"] },
+																			"variant": { "const": "surround" }
 																		},
-																		"kind": { "const": "lossless" },
-																		"sampleRate": {
-																			"minimum": 1,
-																			"type": "integer"
-																		}
-																	},
-																	"required": [
-																		"kind",
-																		"codec",
-																		"bitDepth",
-																		"sampleRate"
-																	],
-																	"type": "object"
-																},
-																{
-																	"additionalProperties": false,
-																	"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-																	"required": ["kind"],
-																	"type": "object"
-																},
-																{
-																	"additionalProperties": false,
-																	"properties": {
-																		"kind": { "const": "surround" },
-																		"layout": { "enum": ["5.1", "7.1"] }
-																	},
-																	"required": ["kind", "layout"],
-																	"type": "object"
-																}
-															] },
+																		"required": ["variant", "layout"],
+																		"type": "object"
+																	}
+																],
+																"x-discriminator": "variant"
+															},
 															"maxItems": 2,
 															"type": "array"
 														},
@@ -83429,48 +84049,57 @@ var PorticoCastContracts = (function(exports) {
 										"available": { "type": "boolean" },
 										"backdropUrl": { "type": "string" },
 										"badges": {
-											"items": { "oneOf": [
-												{
-													"additionalProperties": false,
-													"properties": {
-														"bitDepth": {
-															"minimum": 17,
-															"type": "integer"
+											"items": {
+												"oneOf": [
+													{
+														"additionalProperties": false,
+														"properties": {
+															"bitDepth": {
+																"minimum": 17,
+																"type": "integer"
+															},
+															"codec": {
+																"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																"type": "string"
+															},
+															"sampleRate": {
+																"minimum": 1,
+																"type": "integer"
+															},
+															"variant": { "const": "lossless" }
 														},
-														"codec": {
-															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-															"type": "string"
+														"required": [
+															"variant",
+															"codec",
+															"bitDepth",
+															"sampleRate"
+														],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": { "variant": { "const": "atmos" } },
+														"required": ["variant"],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": { "variant": { "const": "dsd" } },
+														"required": ["variant"],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": {
+															"layout": { "enum": ["5.1", "7.1"] },
+															"variant": { "const": "surround" }
 														},
-														"kind": { "const": "lossless" },
-														"sampleRate": {
-															"minimum": 1,
-															"type": "integer"
-														}
-													},
-													"required": [
-														"kind",
-														"codec",
-														"bitDepth",
-														"sampleRate"
-													],
-													"type": "object"
-												},
-												{
-													"additionalProperties": false,
-													"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-													"required": ["kind"],
-													"type": "object"
-												},
-												{
-													"additionalProperties": false,
-													"properties": {
-														"kind": { "const": "surround" },
-														"layout": { "enum": ["5.1", "7.1"] }
-													},
-													"required": ["kind", "layout"],
-													"type": "object"
-												}
-											] },
+														"required": ["variant", "layout"],
+														"type": "object"
+													}
+												],
+												"x-discriminator": "variant"
+											},
 											"maxItems": 2,
 											"type": "array"
 										},
@@ -83797,48 +84426,57 @@ var PorticoCastContracts = (function(exports) {
 												"available": { "type": "boolean" },
 												"backdropUrl": { "type": "string" },
 												"badges": {
-													"items": { "oneOf": [
-														{
-															"additionalProperties": false,
-															"properties": {
-																"bitDepth": {
-																	"minimum": 17,
-																	"type": "integer"
+													"items": {
+														"oneOf": [
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"bitDepth": {
+																		"minimum": 17,
+																		"type": "integer"
+																	},
+																	"codec": {
+																		"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																		"type": "string"
+																	},
+																	"sampleRate": {
+																		"minimum": 1,
+																		"type": "integer"
+																	},
+																	"variant": { "const": "lossless" }
 																},
-																"codec": {
-																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																	"type": "string"
+																"required": [
+																	"variant",
+																	"codec",
+																	"bitDepth",
+																	"sampleRate"
+																],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "atmos" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "dsd" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"layout": { "enum": ["5.1", "7.1"] },
+																	"variant": { "const": "surround" }
 																},
-																"kind": { "const": "lossless" },
-																"sampleRate": {
-																	"minimum": 1,
-																	"type": "integer"
-																}
-															},
-															"required": [
-																"kind",
-																"codec",
-																"bitDepth",
-																"sampleRate"
-															],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-															"required": ["kind"],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": {
-																"kind": { "const": "surround" },
-																"layout": { "enum": ["5.1", "7.1"] }
-															},
-															"required": ["kind", "layout"],
-															"type": "object"
-														}
-													] },
+																"required": ["variant", "layout"],
+																"type": "object"
+															}
+														],
+														"x-discriminator": "variant"
+													},
 													"maxItems": 2,
 													"type": "array"
 												},
@@ -84892,48 +85530,57 @@ var PorticoCastContracts = (function(exports) {
 												"available": { "type": "boolean" },
 												"backdropUrl": { "type": "string" },
 												"badges": {
-													"items": { "oneOf": [
-														{
-															"additionalProperties": false,
-															"properties": {
-																"bitDepth": {
-																	"minimum": 17,
-																	"type": "integer"
+													"items": {
+														"oneOf": [
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"bitDepth": {
+																		"minimum": 17,
+																		"type": "integer"
+																	},
+																	"codec": {
+																		"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																		"type": "string"
+																	},
+																	"sampleRate": {
+																		"minimum": 1,
+																		"type": "integer"
+																	},
+																	"variant": { "const": "lossless" }
 																},
-																"codec": {
-																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																	"type": "string"
+																"required": [
+																	"variant",
+																	"codec",
+																	"bitDepth",
+																	"sampleRate"
+																],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "atmos" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "dsd" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"layout": { "enum": ["5.1", "7.1"] },
+																	"variant": { "const": "surround" }
 																},
-																"kind": { "const": "lossless" },
-																"sampleRate": {
-																	"minimum": 1,
-																	"type": "integer"
-																}
-															},
-															"required": [
-																"kind",
-																"codec",
-																"bitDepth",
-																"sampleRate"
-															],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-															"required": ["kind"],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": {
-																"kind": { "const": "surround" },
-																"layout": { "enum": ["5.1", "7.1"] }
-															},
-															"required": ["kind", "layout"],
-															"type": "object"
-														}
-													] },
+																"required": ["variant", "layout"],
+																"type": "object"
+															}
+														],
+														"x-discriminator": "variant"
+													},
 													"maxItems": 2,
 													"type": "array"
 												},
@@ -85260,48 +85907,57 @@ var PorticoCastContracts = (function(exports) {
 														"available": { "type": "boolean" },
 														"backdropUrl": { "type": "string" },
 														"badges": {
-															"items": { "oneOf": [
-																{
-																	"additionalProperties": false,
-																	"properties": {
-																		"bitDepth": {
-																			"minimum": 17,
-																			"type": "integer"
+															"items": {
+																"oneOf": [
+																	{
+																		"additionalProperties": false,
+																		"properties": {
+																			"bitDepth": {
+																				"minimum": 17,
+																				"type": "integer"
+																			},
+																			"codec": {
+																				"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																				"type": "string"
+																			},
+																			"sampleRate": {
+																				"minimum": 1,
+																				"type": "integer"
+																			},
+																			"variant": { "const": "lossless" }
 																		},
-																		"codec": {
-																			"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																			"type": "string"
+																		"required": [
+																			"variant",
+																			"codec",
+																			"bitDepth",
+																			"sampleRate"
+																		],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": { "variant": { "const": "atmos" } },
+																		"required": ["variant"],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": { "variant": { "const": "dsd" } },
+																		"required": ["variant"],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": {
+																			"layout": { "enum": ["5.1", "7.1"] },
+																			"variant": { "const": "surround" }
 																		},
-																		"kind": { "const": "lossless" },
-																		"sampleRate": {
-																			"minimum": 1,
-																			"type": "integer"
-																		}
-																	},
-																	"required": [
-																		"kind",
-																		"codec",
-																		"bitDepth",
-																		"sampleRate"
-																	],
-																	"type": "object"
-																},
-																{
-																	"additionalProperties": false,
-																	"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-																	"required": ["kind"],
-																	"type": "object"
-																},
-																{
-																	"additionalProperties": false,
-																	"properties": {
-																		"kind": { "const": "surround" },
-																		"layout": { "enum": ["5.1", "7.1"] }
-																	},
-																	"required": ["kind", "layout"],
-																	"type": "object"
-																}
-															] },
+																		"required": ["variant", "layout"],
+																		"type": "object"
+																	}
+																],
+																"x-discriminator": "variant"
+															},
 															"maxItems": 2,
 															"type": "array"
 														},
@@ -86496,48 +87152,57 @@ var PorticoCastContracts = (function(exports) {
 									"available": { "type": "boolean" },
 									"backdropUrl": { "type": "string" },
 									"badges": {
-										"items": { "oneOf": [
-											{
-												"additionalProperties": false,
-												"properties": {
-													"bitDepth": {
-														"minimum": 17,
-														"type": "integer"
+										"items": {
+											"oneOf": [
+												{
+													"additionalProperties": false,
+													"properties": {
+														"bitDepth": {
+															"minimum": 17,
+															"type": "integer"
+														},
+														"codec": {
+															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+															"type": "string"
+														},
+														"sampleRate": {
+															"minimum": 1,
+															"type": "integer"
+														},
+														"variant": { "const": "lossless" }
 													},
-													"codec": {
-														"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-														"type": "string"
+													"required": [
+														"variant",
+														"codec",
+														"bitDepth",
+														"sampleRate"
+													],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "atmos" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "dsd" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": {
+														"layout": { "enum": ["5.1", "7.1"] },
+														"variant": { "const": "surround" }
 													},
-													"kind": { "const": "lossless" },
-													"sampleRate": {
-														"minimum": 1,
-														"type": "integer"
-													}
-												},
-												"required": [
-													"kind",
-													"codec",
-													"bitDepth",
-													"sampleRate"
-												],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-												"required": ["kind"],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": {
-													"kind": { "const": "surround" },
-													"layout": { "enum": ["5.1", "7.1"] }
-												},
-												"required": ["kind", "layout"],
-												"type": "object"
-											}
-										] },
+													"required": ["variant", "layout"],
+													"type": "object"
+												}
+											],
+											"x-discriminator": "variant"
+										},
 										"maxItems": 2,
 										"type": "array"
 									},
@@ -86864,48 +87529,57 @@ var PorticoCastContracts = (function(exports) {
 											"available": { "type": "boolean" },
 											"backdropUrl": { "type": "string" },
 											"badges": {
-												"items": { "oneOf": [
-													{
-														"additionalProperties": false,
-														"properties": {
-															"bitDepth": {
-																"minimum": 17,
-																"type": "integer"
+												"items": {
+													"oneOf": [
+														{
+															"additionalProperties": false,
+															"properties": {
+																"bitDepth": {
+																	"minimum": 17,
+																	"type": "integer"
+																},
+																"codec": {
+																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																	"type": "string"
+																},
+																"sampleRate": {
+																	"minimum": 1,
+																	"type": "integer"
+																},
+																"variant": { "const": "lossless" }
 															},
-															"codec": {
-																"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																"type": "string"
+															"required": [
+																"variant",
+																"codec",
+																"bitDepth",
+																"sampleRate"
+															],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": { "variant": { "const": "atmos" } },
+															"required": ["variant"],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": { "variant": { "const": "dsd" } },
+															"required": ["variant"],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": {
+																"layout": { "enum": ["5.1", "7.1"] },
+																"variant": { "const": "surround" }
 															},
-															"kind": { "const": "lossless" },
-															"sampleRate": {
-																"minimum": 1,
-																"type": "integer"
-															}
-														},
-														"required": [
-															"kind",
-															"codec",
-															"bitDepth",
-															"sampleRate"
-														],
-														"type": "object"
-													},
-													{
-														"additionalProperties": false,
-														"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-														"required": ["kind"],
-														"type": "object"
-													},
-													{
-														"additionalProperties": false,
-														"properties": {
-															"kind": { "const": "surround" },
-															"layout": { "enum": ["5.1", "7.1"] }
-														},
-														"required": ["kind", "layout"],
-														"type": "object"
-													}
-												] },
+															"required": ["variant", "layout"],
+															"type": "object"
+														}
+													],
+													"x-discriminator": "variant"
+												},
 												"maxItems": 2,
 												"type": "array"
 											},
@@ -87675,48 +88349,57 @@ var PorticoCastContracts = (function(exports) {
 							"available": { "type": "boolean" },
 							"backdropUrl": { "type": "string" },
 							"badges": {
-								"items": { "oneOf": [
-									{
-										"additionalProperties": false,
-										"properties": {
-											"bitDepth": {
-												"minimum": 17,
-												"type": "integer"
+								"items": {
+									"oneOf": [
+										{
+											"additionalProperties": false,
+											"properties": {
+												"bitDepth": {
+													"minimum": 17,
+													"type": "integer"
+												},
+												"codec": {
+													"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+													"type": "string"
+												},
+												"sampleRate": {
+													"minimum": 1,
+													"type": "integer"
+												},
+												"variant": { "const": "lossless" }
 											},
-											"codec": {
-												"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-												"type": "string"
+											"required": [
+												"variant",
+												"codec",
+												"bitDepth",
+												"sampleRate"
+											],
+											"type": "object"
+										},
+										{
+											"additionalProperties": false,
+											"properties": { "variant": { "const": "atmos" } },
+											"required": ["variant"],
+											"type": "object"
+										},
+										{
+											"additionalProperties": false,
+											"properties": { "variant": { "const": "dsd" } },
+											"required": ["variant"],
+											"type": "object"
+										},
+										{
+											"additionalProperties": false,
+											"properties": {
+												"layout": { "enum": ["5.1", "7.1"] },
+												"variant": { "const": "surround" }
 											},
-											"kind": { "const": "lossless" },
-											"sampleRate": {
-												"minimum": 1,
-												"type": "integer"
-											}
-										},
-										"required": [
-											"kind",
-											"codec",
-											"bitDepth",
-											"sampleRate"
-										],
-										"type": "object"
-									},
-									{
-										"additionalProperties": false,
-										"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-										"required": ["kind"],
-										"type": "object"
-									},
-									{
-										"additionalProperties": false,
-										"properties": {
-											"kind": { "const": "surround" },
-											"layout": { "enum": ["5.1", "7.1"] }
-										},
-										"required": ["kind", "layout"],
-										"type": "object"
-									}
-								] },
+											"required": ["variant", "layout"],
+											"type": "object"
+										}
+									],
+									"x-discriminator": "variant"
+								},
 								"maxItems": 2,
 								"type": "array"
 							},
@@ -88043,48 +88726,57 @@ var PorticoCastContracts = (function(exports) {
 									"available": { "type": "boolean" },
 									"backdropUrl": { "type": "string" },
 									"badges": {
-										"items": { "oneOf": [
-											{
-												"additionalProperties": false,
-												"properties": {
-													"bitDepth": {
-														"minimum": 17,
-														"type": "integer"
+										"items": {
+											"oneOf": [
+												{
+													"additionalProperties": false,
+													"properties": {
+														"bitDepth": {
+															"minimum": 17,
+															"type": "integer"
+														},
+														"codec": {
+															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+															"type": "string"
+														},
+														"sampleRate": {
+															"minimum": 1,
+															"type": "integer"
+														},
+														"variant": { "const": "lossless" }
 													},
-													"codec": {
-														"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-														"type": "string"
+													"required": [
+														"variant",
+														"codec",
+														"bitDepth",
+														"sampleRate"
+													],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "atmos" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "dsd" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": {
+														"layout": { "enum": ["5.1", "7.1"] },
+														"variant": { "const": "surround" }
 													},
-													"kind": { "const": "lossless" },
-													"sampleRate": {
-														"minimum": 1,
-														"type": "integer"
-													}
-												},
-												"required": [
-													"kind",
-													"codec",
-													"bitDepth",
-													"sampleRate"
-												],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-												"required": ["kind"],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": {
-													"kind": { "const": "surround" },
-													"layout": { "enum": ["5.1", "7.1"] }
-												},
-												"required": ["kind", "layout"],
-												"type": "object"
-											}
-										] },
+													"required": ["variant", "layout"],
+													"type": "object"
+												}
+											],
+											"x-discriminator": "variant"
+										},
 										"maxItems": 2,
 										"type": "array"
 									},
@@ -89138,48 +89830,57 @@ var PorticoCastContracts = (function(exports) {
 									"available": { "type": "boolean" },
 									"backdropUrl": { "type": "string" },
 									"badges": {
-										"items": { "oneOf": [
-											{
-												"additionalProperties": false,
-												"properties": {
-													"bitDepth": {
-														"minimum": 17,
-														"type": "integer"
+										"items": {
+											"oneOf": [
+												{
+													"additionalProperties": false,
+													"properties": {
+														"bitDepth": {
+															"minimum": 17,
+															"type": "integer"
+														},
+														"codec": {
+															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+															"type": "string"
+														},
+														"sampleRate": {
+															"minimum": 1,
+															"type": "integer"
+														},
+														"variant": { "const": "lossless" }
 													},
-													"codec": {
-														"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-														"type": "string"
+													"required": [
+														"variant",
+														"codec",
+														"bitDepth",
+														"sampleRate"
+													],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "atmos" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "dsd" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": {
+														"layout": { "enum": ["5.1", "7.1"] },
+														"variant": { "const": "surround" }
 													},
-													"kind": { "const": "lossless" },
-													"sampleRate": {
-														"minimum": 1,
-														"type": "integer"
-													}
-												},
-												"required": [
-													"kind",
-													"codec",
-													"bitDepth",
-													"sampleRate"
-												],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-												"required": ["kind"],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": {
-													"kind": { "const": "surround" },
-													"layout": { "enum": ["5.1", "7.1"] }
-												},
-												"required": ["kind", "layout"],
-												"type": "object"
-											}
-										] },
+													"required": ["variant", "layout"],
+													"type": "object"
+												}
+											],
+											"x-discriminator": "variant"
+										},
 										"maxItems": 2,
 										"type": "array"
 									},
@@ -89506,48 +90207,57 @@ var PorticoCastContracts = (function(exports) {
 											"available": { "type": "boolean" },
 											"backdropUrl": { "type": "string" },
 											"badges": {
-												"items": { "oneOf": [
-													{
-														"additionalProperties": false,
-														"properties": {
-															"bitDepth": {
-																"minimum": 17,
-																"type": "integer"
+												"items": {
+													"oneOf": [
+														{
+															"additionalProperties": false,
+															"properties": {
+																"bitDepth": {
+																	"minimum": 17,
+																	"type": "integer"
+																},
+																"codec": {
+																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																	"type": "string"
+																},
+																"sampleRate": {
+																	"minimum": 1,
+																	"type": "integer"
+																},
+																"variant": { "const": "lossless" }
 															},
-															"codec": {
-																"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																"type": "string"
+															"required": [
+																"variant",
+																"codec",
+																"bitDepth",
+																"sampleRate"
+															],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": { "variant": { "const": "atmos" } },
+															"required": ["variant"],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": { "variant": { "const": "dsd" } },
+															"required": ["variant"],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": {
+																"layout": { "enum": ["5.1", "7.1"] },
+																"variant": { "const": "surround" }
 															},
-															"kind": { "const": "lossless" },
-															"sampleRate": {
-																"minimum": 1,
-																"type": "integer"
-															}
-														},
-														"required": [
-															"kind",
-															"codec",
-															"bitDepth",
-															"sampleRate"
-														],
-														"type": "object"
-													},
-													{
-														"additionalProperties": false,
-														"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-														"required": ["kind"],
-														"type": "object"
-													},
-													{
-														"additionalProperties": false,
-														"properties": {
-															"kind": { "const": "surround" },
-															"layout": { "enum": ["5.1", "7.1"] }
-														},
-														"required": ["kind", "layout"],
-														"type": "object"
-													}
-												] },
+															"required": ["variant", "layout"],
+															"type": "object"
+														}
+													],
+													"x-discriminator": "variant"
+												},
 												"maxItems": 2,
 												"type": "array"
 											},
@@ -91124,13 +91834,18 @@ var PorticoCastContracts = (function(exports) {
 				"state": {
 					"const": "preparing",
 					"type": "string"
+				},
+				"variant": {
+					"const": "preparing",
+					"type": "string"
 				}
 			},
 			"required": [
 				"kind",
 				"state",
 				"queryId",
-				"retryAfterMs"
+				"retryAfterMs",
+				"variant"
 			],
 			"type": "object"
 		}] },
@@ -91224,48 +91939,57 @@ var PorticoCastContracts = (function(exports) {
 									"available": { "type": "boolean" },
 									"backdropUrl": { "type": "string" },
 									"badges": {
-										"items": { "oneOf": [
-											{
-												"additionalProperties": false,
-												"properties": {
-													"bitDepth": {
-														"minimum": 17,
-														"type": "integer"
+										"items": {
+											"oneOf": [
+												{
+													"additionalProperties": false,
+													"properties": {
+														"bitDepth": {
+															"minimum": 17,
+															"type": "integer"
+														},
+														"codec": {
+															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+															"type": "string"
+														},
+														"sampleRate": {
+															"minimum": 1,
+															"type": "integer"
+														},
+														"variant": { "const": "lossless" }
 													},
-													"codec": {
-														"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-														"type": "string"
+													"required": [
+														"variant",
+														"codec",
+														"bitDepth",
+														"sampleRate"
+													],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "atmos" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "dsd" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": {
+														"layout": { "enum": ["5.1", "7.1"] },
+														"variant": { "const": "surround" }
 													},
-													"kind": { "const": "lossless" },
-													"sampleRate": {
-														"minimum": 1,
-														"type": "integer"
-													}
-												},
-												"required": [
-													"kind",
-													"codec",
-													"bitDepth",
-													"sampleRate"
-												],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-												"required": ["kind"],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": {
-													"kind": { "const": "surround" },
-													"layout": { "enum": ["5.1", "7.1"] }
-												},
-												"required": ["kind", "layout"],
-												"type": "object"
-											}
-										] },
+													"required": ["variant", "layout"],
+													"type": "object"
+												}
+											],
+											"x-discriminator": "variant"
+										},
 										"maxItems": 2,
 										"type": "array"
 									},
@@ -91592,48 +92316,57 @@ var PorticoCastContracts = (function(exports) {
 											"available": { "type": "boolean" },
 											"backdropUrl": { "type": "string" },
 											"badges": {
-												"items": { "oneOf": [
-													{
-														"additionalProperties": false,
-														"properties": {
-															"bitDepth": {
-																"minimum": 17,
-																"type": "integer"
+												"items": {
+													"oneOf": [
+														{
+															"additionalProperties": false,
+															"properties": {
+																"bitDepth": {
+																	"minimum": 17,
+																	"type": "integer"
+																},
+																"codec": {
+																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																	"type": "string"
+																},
+																"sampleRate": {
+																	"minimum": 1,
+																	"type": "integer"
+																},
+																"variant": { "const": "lossless" }
 															},
-															"codec": {
-																"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																"type": "string"
+															"required": [
+																"variant",
+																"codec",
+																"bitDepth",
+																"sampleRate"
+															],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": { "variant": { "const": "atmos" } },
+															"required": ["variant"],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": { "variant": { "const": "dsd" } },
+															"required": ["variant"],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": {
+																"layout": { "enum": ["5.1", "7.1"] },
+																"variant": { "const": "surround" }
 															},
-															"kind": { "const": "lossless" },
-															"sampleRate": {
-																"minimum": 1,
-																"type": "integer"
-															}
-														},
-														"required": [
-															"kind",
-															"codec",
-															"bitDepth",
-															"sampleRate"
-														],
-														"type": "object"
-													},
-													{
-														"additionalProperties": false,
-														"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-														"required": ["kind"],
-														"type": "object"
-													},
-													{
-														"additionalProperties": false,
-														"properties": {
-															"kind": { "const": "surround" },
-															"layout": { "enum": ["5.1", "7.1"] }
-														},
-														"required": ["kind", "layout"],
-														"type": "object"
-													}
-												] },
+															"required": ["variant", "layout"],
+															"type": "object"
+														}
+													],
+													"x-discriminator": "variant"
+												},
 												"maxItems": 2,
 												"type": "array"
 											},
@@ -95085,48 +95818,57 @@ var PorticoCastContracts = (function(exports) {
 						"available": { "type": "boolean" },
 						"backdropUrl": { "type": "string" },
 						"badges": {
-							"items": { "oneOf": [
-								{
-									"additionalProperties": false,
-									"properties": {
-										"bitDepth": {
-											"minimum": 17,
-											"type": "integer"
+							"items": {
+								"oneOf": [
+									{
+										"additionalProperties": false,
+										"properties": {
+											"bitDepth": {
+												"minimum": 17,
+												"type": "integer"
+											},
+											"codec": {
+												"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+												"type": "string"
+											},
+											"sampleRate": {
+												"minimum": 1,
+												"type": "integer"
+											},
+											"variant": { "const": "lossless" }
 										},
-										"codec": {
-											"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-											"type": "string"
+										"required": [
+											"variant",
+											"codec",
+											"bitDepth",
+											"sampleRate"
+										],
+										"type": "object"
+									},
+									{
+										"additionalProperties": false,
+										"properties": { "variant": { "const": "atmos" } },
+										"required": ["variant"],
+										"type": "object"
+									},
+									{
+										"additionalProperties": false,
+										"properties": { "variant": { "const": "dsd" } },
+										"required": ["variant"],
+										"type": "object"
+									},
+									{
+										"additionalProperties": false,
+										"properties": {
+											"layout": { "enum": ["5.1", "7.1"] },
+											"variant": { "const": "surround" }
 										},
-										"kind": { "const": "lossless" },
-										"sampleRate": {
-											"minimum": 1,
-											"type": "integer"
-										}
-									},
-									"required": [
-										"kind",
-										"codec",
-										"bitDepth",
-										"sampleRate"
-									],
-									"type": "object"
-								},
-								{
-									"additionalProperties": false,
-									"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-									"required": ["kind"],
-									"type": "object"
-								},
-								{
-									"additionalProperties": false,
-									"properties": {
-										"kind": { "const": "surround" },
-										"layout": { "enum": ["5.1", "7.1"] }
-									},
-									"required": ["kind", "layout"],
-									"type": "object"
-								}
-							] },
+										"required": ["variant", "layout"],
+										"type": "object"
+									}
+								],
+								"x-discriminator": "variant"
+							},
 							"maxItems": 2,
 							"type": "array"
 						},
@@ -95453,48 +96195,57 @@ var PorticoCastContracts = (function(exports) {
 								"available": { "type": "boolean" },
 								"backdropUrl": { "type": "string" },
 								"badges": {
-									"items": { "oneOf": [
-										{
-											"additionalProperties": false,
-											"properties": {
-												"bitDepth": {
-													"minimum": 17,
-													"type": "integer"
+									"items": {
+										"oneOf": [
+											{
+												"additionalProperties": false,
+												"properties": {
+													"bitDepth": {
+														"minimum": 17,
+														"type": "integer"
+													},
+													"codec": {
+														"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+														"type": "string"
+													},
+													"sampleRate": {
+														"minimum": 1,
+														"type": "integer"
+													},
+													"variant": { "const": "lossless" }
 												},
-												"codec": {
-													"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-													"type": "string"
+												"required": [
+													"variant",
+													"codec",
+													"bitDepth",
+													"sampleRate"
+												],
+												"type": "object"
+											},
+											{
+												"additionalProperties": false,
+												"properties": { "variant": { "const": "atmos" } },
+												"required": ["variant"],
+												"type": "object"
+											},
+											{
+												"additionalProperties": false,
+												"properties": { "variant": { "const": "dsd" } },
+												"required": ["variant"],
+												"type": "object"
+											},
+											{
+												"additionalProperties": false,
+												"properties": {
+													"layout": { "enum": ["5.1", "7.1"] },
+													"variant": { "const": "surround" }
 												},
-												"kind": { "const": "lossless" },
-												"sampleRate": {
-													"minimum": 1,
-													"type": "integer"
-												}
-											},
-											"required": [
-												"kind",
-												"codec",
-												"bitDepth",
-												"sampleRate"
-											],
-											"type": "object"
-										},
-										{
-											"additionalProperties": false,
-											"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-											"required": ["kind"],
-											"type": "object"
-										},
-										{
-											"additionalProperties": false,
-											"properties": {
-												"kind": { "const": "surround" },
-												"layout": { "enum": ["5.1", "7.1"] }
-											},
-											"required": ["kind", "layout"],
-											"type": "object"
-										}
-									] },
+												"required": ["variant", "layout"],
+												"type": "object"
+											}
+										],
+										"x-discriminator": "variant"
+									},
 									"maxItems": 2,
 									"type": "array"
 								},
@@ -96406,48 +97157,57 @@ var PorticoCastContracts = (function(exports) {
 										"available": { "type": "boolean" },
 										"backdropUrl": { "type": "string" },
 										"badges": {
-											"items": { "oneOf": [
-												{
-													"additionalProperties": false,
-													"properties": {
-														"bitDepth": {
-															"minimum": 17,
-															"type": "integer"
+											"items": {
+												"oneOf": [
+													{
+														"additionalProperties": false,
+														"properties": {
+															"bitDepth": {
+																"minimum": 17,
+																"type": "integer"
+															},
+															"codec": {
+																"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																"type": "string"
+															},
+															"sampleRate": {
+																"minimum": 1,
+																"type": "integer"
+															},
+															"variant": { "const": "lossless" }
 														},
-														"codec": {
-															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-															"type": "string"
+														"required": [
+															"variant",
+															"codec",
+															"bitDepth",
+															"sampleRate"
+														],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": { "variant": { "const": "atmos" } },
+														"required": ["variant"],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": { "variant": { "const": "dsd" } },
+														"required": ["variant"],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": {
+															"layout": { "enum": ["5.1", "7.1"] },
+															"variant": { "const": "surround" }
 														},
-														"kind": { "const": "lossless" },
-														"sampleRate": {
-															"minimum": 1,
-															"type": "integer"
-														}
-													},
-													"required": [
-														"kind",
-														"codec",
-														"bitDepth",
-														"sampleRate"
-													],
-													"type": "object"
-												},
-												{
-													"additionalProperties": false,
-													"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-													"required": ["kind"],
-													"type": "object"
-												},
-												{
-													"additionalProperties": false,
-													"properties": {
-														"kind": { "const": "surround" },
-														"layout": { "enum": ["5.1", "7.1"] }
-													},
-													"required": ["kind", "layout"],
-													"type": "object"
-												}
-											] },
+														"required": ["variant", "layout"],
+														"type": "object"
+													}
+												],
+												"x-discriminator": "variant"
+											},
 											"maxItems": 2,
 											"type": "array"
 										},
@@ -96774,48 +97534,57 @@ var PorticoCastContracts = (function(exports) {
 												"available": { "type": "boolean" },
 												"backdropUrl": { "type": "string" },
 												"badges": {
-													"items": { "oneOf": [
-														{
-															"additionalProperties": false,
-															"properties": {
-																"bitDepth": {
-																	"minimum": 17,
-																	"type": "integer"
+													"items": {
+														"oneOf": [
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"bitDepth": {
+																		"minimum": 17,
+																		"type": "integer"
+																	},
+																	"codec": {
+																		"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																		"type": "string"
+																	},
+																	"sampleRate": {
+																		"minimum": 1,
+																		"type": "integer"
+																	},
+																	"variant": { "const": "lossless" }
 																},
-																"codec": {
-																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																	"type": "string"
+																"required": [
+																	"variant",
+																	"codec",
+																	"bitDepth",
+																	"sampleRate"
+																],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "atmos" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "dsd" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"layout": { "enum": ["5.1", "7.1"] },
+																	"variant": { "const": "surround" }
 																},
-																"kind": { "const": "lossless" },
-																"sampleRate": {
-																	"minimum": 1,
-																	"type": "integer"
-																}
-															},
-															"required": [
-																"kind",
-																"codec",
-																"bitDepth",
-																"sampleRate"
-															],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-															"required": ["kind"],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": {
-																"kind": { "const": "surround" },
-																"layout": { "enum": ["5.1", "7.1"] }
-															},
-															"required": ["kind", "layout"],
-															"type": "object"
-														}
-													] },
+																"required": ["variant", "layout"],
+																"type": "object"
+															}
+														],
+														"x-discriminator": "variant"
+													},
 													"maxItems": 2,
 													"type": "array"
 												},
@@ -97775,48 +98544,57 @@ var PorticoCastContracts = (function(exports) {
 										"available": { "type": "boolean" },
 										"backdropUrl": { "type": "string" },
 										"badges": {
-											"items": { "oneOf": [
-												{
-													"additionalProperties": false,
-													"properties": {
-														"bitDepth": {
-															"minimum": 17,
-															"type": "integer"
+											"items": {
+												"oneOf": [
+													{
+														"additionalProperties": false,
+														"properties": {
+															"bitDepth": {
+																"minimum": 17,
+																"type": "integer"
+															},
+															"codec": {
+																"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																"type": "string"
+															},
+															"sampleRate": {
+																"minimum": 1,
+																"type": "integer"
+															},
+															"variant": { "const": "lossless" }
 														},
-														"codec": {
-															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-															"type": "string"
+														"required": [
+															"variant",
+															"codec",
+															"bitDepth",
+															"sampleRate"
+														],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": { "variant": { "const": "atmos" } },
+														"required": ["variant"],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": { "variant": { "const": "dsd" } },
+														"required": ["variant"],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": {
+															"layout": { "enum": ["5.1", "7.1"] },
+															"variant": { "const": "surround" }
 														},
-														"kind": { "const": "lossless" },
-														"sampleRate": {
-															"minimum": 1,
-															"type": "integer"
-														}
-													},
-													"required": [
-														"kind",
-														"codec",
-														"bitDepth",
-														"sampleRate"
-													],
-													"type": "object"
-												},
-												{
-													"additionalProperties": false,
-													"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-													"required": ["kind"],
-													"type": "object"
-												},
-												{
-													"additionalProperties": false,
-													"properties": {
-														"kind": { "const": "surround" },
-														"layout": { "enum": ["5.1", "7.1"] }
-													},
-													"required": ["kind", "layout"],
-													"type": "object"
-												}
-											] },
+														"required": ["variant", "layout"],
+														"type": "object"
+													}
+												],
+												"x-discriminator": "variant"
+											},
 											"maxItems": 2,
 											"type": "array"
 										},
@@ -98143,48 +98921,57 @@ var PorticoCastContracts = (function(exports) {
 												"available": { "type": "boolean" },
 												"backdropUrl": { "type": "string" },
 												"badges": {
-													"items": { "oneOf": [
-														{
-															"additionalProperties": false,
-															"properties": {
-																"bitDepth": {
-																	"minimum": 17,
-																	"type": "integer"
+													"items": {
+														"oneOf": [
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"bitDepth": {
+																		"minimum": 17,
+																		"type": "integer"
+																	},
+																	"codec": {
+																		"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																		"type": "string"
+																	},
+																	"sampleRate": {
+																		"minimum": 1,
+																		"type": "integer"
+																	},
+																	"variant": { "const": "lossless" }
 																},
-																"codec": {
-																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																	"type": "string"
+																"required": [
+																	"variant",
+																	"codec",
+																	"bitDepth",
+																	"sampleRate"
+																],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "atmos" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "dsd" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"layout": { "enum": ["5.1", "7.1"] },
+																	"variant": { "const": "surround" }
 																},
-																"kind": { "const": "lossless" },
-																"sampleRate": {
-																	"minimum": 1,
-																	"type": "integer"
-																}
-															},
-															"required": [
-																"kind",
-																"codec",
-																"bitDepth",
-																"sampleRate"
-															],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-															"required": ["kind"],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": {
-																"kind": { "const": "surround" },
-																"layout": { "enum": ["5.1", "7.1"] }
-															},
-															"required": ["kind", "layout"],
-															"type": "object"
-														}
-													] },
+																"required": ["variant", "layout"],
+																"type": "object"
+															}
+														],
+														"x-discriminator": "variant"
+													},
 													"maxItems": 2,
 													"type": "array"
 												},
@@ -99388,48 +100175,57 @@ var PorticoCastContracts = (function(exports) {
 								"available": { "type": "boolean" },
 								"backdropUrl": { "type": "string" },
 								"badges": {
-									"items": { "oneOf": [
-										{
-											"additionalProperties": false,
-											"properties": {
-												"bitDepth": {
-													"minimum": 17,
-													"type": "integer"
+									"items": {
+										"oneOf": [
+											{
+												"additionalProperties": false,
+												"properties": {
+													"bitDepth": {
+														"minimum": 17,
+														"type": "integer"
+													},
+													"codec": {
+														"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+														"type": "string"
+													},
+													"sampleRate": {
+														"minimum": 1,
+														"type": "integer"
+													},
+													"variant": { "const": "lossless" }
 												},
-												"codec": {
-													"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-													"type": "string"
+												"required": [
+													"variant",
+													"codec",
+													"bitDepth",
+													"sampleRate"
+												],
+												"type": "object"
+											},
+											{
+												"additionalProperties": false,
+												"properties": { "variant": { "const": "atmos" } },
+												"required": ["variant"],
+												"type": "object"
+											},
+											{
+												"additionalProperties": false,
+												"properties": { "variant": { "const": "dsd" } },
+												"required": ["variant"],
+												"type": "object"
+											},
+											{
+												"additionalProperties": false,
+												"properties": {
+													"layout": { "enum": ["5.1", "7.1"] },
+													"variant": { "const": "surround" }
 												},
-												"kind": { "const": "lossless" },
-												"sampleRate": {
-													"minimum": 1,
-													"type": "integer"
-												}
-											},
-											"required": [
-												"kind",
-												"codec",
-												"bitDepth",
-												"sampleRate"
-											],
-											"type": "object"
-										},
-										{
-											"additionalProperties": false,
-											"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-											"required": ["kind"],
-											"type": "object"
-										},
-										{
-											"additionalProperties": false,
-											"properties": {
-												"kind": { "const": "surround" },
-												"layout": { "enum": ["5.1", "7.1"] }
-											},
-											"required": ["kind", "layout"],
-											"type": "object"
-										}
-									] },
+												"required": ["variant", "layout"],
+												"type": "object"
+											}
+										],
+										"x-discriminator": "variant"
+									},
 									"maxItems": 2,
 									"type": "array"
 								},
@@ -99756,48 +100552,57 @@ var PorticoCastContracts = (function(exports) {
 										"available": { "type": "boolean" },
 										"backdropUrl": { "type": "string" },
 										"badges": {
-											"items": { "oneOf": [
-												{
-													"additionalProperties": false,
-													"properties": {
-														"bitDepth": {
-															"minimum": 17,
-															"type": "integer"
+											"items": {
+												"oneOf": [
+													{
+														"additionalProperties": false,
+														"properties": {
+															"bitDepth": {
+																"minimum": 17,
+																"type": "integer"
+															},
+															"codec": {
+																"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																"type": "string"
+															},
+															"sampleRate": {
+																"minimum": 1,
+																"type": "integer"
+															},
+															"variant": { "const": "lossless" }
 														},
-														"codec": {
-															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-															"type": "string"
+														"required": [
+															"variant",
+															"codec",
+															"bitDepth",
+															"sampleRate"
+														],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": { "variant": { "const": "atmos" } },
+														"required": ["variant"],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": { "variant": { "const": "dsd" } },
+														"required": ["variant"],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": {
+															"layout": { "enum": ["5.1", "7.1"] },
+															"variant": { "const": "surround" }
 														},
-														"kind": { "const": "lossless" },
-														"sampleRate": {
-															"minimum": 1,
-															"type": "integer"
-														}
-													},
-													"required": [
-														"kind",
-														"codec",
-														"bitDepth",
-														"sampleRate"
-													],
-													"type": "object"
-												},
-												{
-													"additionalProperties": false,
-													"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-													"required": ["kind"],
-													"type": "object"
-												},
-												{
-													"additionalProperties": false,
-													"properties": {
-														"kind": { "const": "surround" },
-														"layout": { "enum": ["5.1", "7.1"] }
-													},
-													"required": ["kind", "layout"],
-													"type": "object"
-												}
-											] },
+														"required": ["variant", "layout"],
+														"type": "object"
+													}
+												],
+												"x-discriminator": "variant"
+											},
 											"maxItems": 2,
 											"type": "array"
 										},
@@ -100709,48 +101514,57 @@ var PorticoCastContracts = (function(exports) {
 												"available": { "type": "boolean" },
 												"backdropUrl": { "type": "string" },
 												"badges": {
-													"items": { "oneOf": [
-														{
-															"additionalProperties": false,
-															"properties": {
-																"bitDepth": {
-																	"minimum": 17,
-																	"type": "integer"
+													"items": {
+														"oneOf": [
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"bitDepth": {
+																		"minimum": 17,
+																		"type": "integer"
+																	},
+																	"codec": {
+																		"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																		"type": "string"
+																	},
+																	"sampleRate": {
+																		"minimum": 1,
+																		"type": "integer"
+																	},
+																	"variant": { "const": "lossless" }
 																},
-																"codec": {
-																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																	"type": "string"
+																"required": [
+																	"variant",
+																	"codec",
+																	"bitDepth",
+																	"sampleRate"
+																],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "atmos" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "dsd" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"layout": { "enum": ["5.1", "7.1"] },
+																	"variant": { "const": "surround" }
 																},
-																"kind": { "const": "lossless" },
-																"sampleRate": {
-																	"minimum": 1,
-																	"type": "integer"
-																}
-															},
-															"required": [
-																"kind",
-																"codec",
-																"bitDepth",
-																"sampleRate"
-															],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-															"required": ["kind"],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": {
-																"kind": { "const": "surround" },
-																"layout": { "enum": ["5.1", "7.1"] }
-															},
-															"required": ["kind", "layout"],
-															"type": "object"
-														}
-													] },
+																"required": ["variant", "layout"],
+																"type": "object"
+															}
+														],
+														"x-discriminator": "variant"
+													},
 													"maxItems": 2,
 													"type": "array"
 												},
@@ -101077,48 +101891,57 @@ var PorticoCastContracts = (function(exports) {
 														"available": { "type": "boolean" },
 														"backdropUrl": { "type": "string" },
 														"badges": {
-															"items": { "oneOf": [
-																{
-																	"additionalProperties": false,
-																	"properties": {
-																		"bitDepth": {
-																			"minimum": 17,
-																			"type": "integer"
+															"items": {
+																"oneOf": [
+																	{
+																		"additionalProperties": false,
+																		"properties": {
+																			"bitDepth": {
+																				"minimum": 17,
+																				"type": "integer"
+																			},
+																			"codec": {
+																				"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																				"type": "string"
+																			},
+																			"sampleRate": {
+																				"minimum": 1,
+																				"type": "integer"
+																			},
+																			"variant": { "const": "lossless" }
 																		},
-																		"codec": {
-																			"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																			"type": "string"
+																		"required": [
+																			"variant",
+																			"codec",
+																			"bitDepth",
+																			"sampleRate"
+																		],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": { "variant": { "const": "atmos" } },
+																		"required": ["variant"],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": { "variant": { "const": "dsd" } },
+																		"required": ["variant"],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": {
+																			"layout": { "enum": ["5.1", "7.1"] },
+																			"variant": { "const": "surround" }
 																		},
-																		"kind": { "const": "lossless" },
-																		"sampleRate": {
-																			"minimum": 1,
-																			"type": "integer"
-																		}
-																	},
-																	"required": [
-																		"kind",
-																		"codec",
-																		"bitDepth",
-																		"sampleRate"
-																	],
-																	"type": "object"
-																},
-																{
-																	"additionalProperties": false,
-																	"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-																	"required": ["kind"],
-																	"type": "object"
-																},
-																{
-																	"additionalProperties": false,
-																	"properties": {
-																		"kind": { "const": "surround" },
-																		"layout": { "enum": ["5.1", "7.1"] }
-																	},
-																	"required": ["kind", "layout"],
-																	"type": "object"
-																}
-															] },
+																		"required": ["variant", "layout"],
+																		"type": "object"
+																	}
+																],
+																"x-discriminator": "variant"
+															},
 															"maxItems": 2,
 															"type": "array"
 														},
@@ -102009,48 +102832,57 @@ var PorticoCastContracts = (function(exports) {
 						"available": { "type": "boolean" },
 						"backdropUrl": { "type": "string" },
 						"badges": {
-							"items": { "oneOf": [
-								{
-									"additionalProperties": false,
-									"properties": {
-										"bitDepth": {
-											"minimum": 17,
-											"type": "integer"
+							"items": {
+								"oneOf": [
+									{
+										"additionalProperties": false,
+										"properties": {
+											"bitDepth": {
+												"minimum": 17,
+												"type": "integer"
+											},
+											"codec": {
+												"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+												"type": "string"
+											},
+											"sampleRate": {
+												"minimum": 1,
+												"type": "integer"
+											},
+											"variant": { "const": "lossless" }
 										},
-										"codec": {
-											"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-											"type": "string"
+										"required": [
+											"variant",
+											"codec",
+											"bitDepth",
+											"sampleRate"
+										],
+										"type": "object"
+									},
+									{
+										"additionalProperties": false,
+										"properties": { "variant": { "const": "atmos" } },
+										"required": ["variant"],
+										"type": "object"
+									},
+									{
+										"additionalProperties": false,
+										"properties": { "variant": { "const": "dsd" } },
+										"required": ["variant"],
+										"type": "object"
+									},
+									{
+										"additionalProperties": false,
+										"properties": {
+											"layout": { "enum": ["5.1", "7.1"] },
+											"variant": { "const": "surround" }
 										},
-										"kind": { "const": "lossless" },
-										"sampleRate": {
-											"minimum": 1,
-											"type": "integer"
-										}
-									},
-									"required": [
-										"kind",
-										"codec",
-										"bitDepth",
-										"sampleRate"
-									],
-									"type": "object"
-								},
-								{
-									"additionalProperties": false,
-									"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-									"required": ["kind"],
-									"type": "object"
-								},
-								{
-									"additionalProperties": false,
-									"properties": {
-										"kind": { "const": "surround" },
-										"layout": { "enum": ["5.1", "7.1"] }
-									},
-									"required": ["kind", "layout"],
-									"type": "object"
-								}
-							] },
+										"required": ["variant", "layout"],
+										"type": "object"
+									}
+								],
+								"x-discriminator": "variant"
+							},
 							"maxItems": 2,
 							"type": "array"
 						},
@@ -102377,48 +103209,57 @@ var PorticoCastContracts = (function(exports) {
 								"available": { "type": "boolean" },
 								"backdropUrl": { "type": "string" },
 								"badges": {
-									"items": { "oneOf": [
-										{
-											"additionalProperties": false,
-											"properties": {
-												"bitDepth": {
-													"minimum": 17,
-													"type": "integer"
+									"items": {
+										"oneOf": [
+											{
+												"additionalProperties": false,
+												"properties": {
+													"bitDepth": {
+														"minimum": 17,
+														"type": "integer"
+													},
+													"codec": {
+														"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+														"type": "string"
+													},
+													"sampleRate": {
+														"minimum": 1,
+														"type": "integer"
+													},
+													"variant": { "const": "lossless" }
 												},
-												"codec": {
-													"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-													"type": "string"
+												"required": [
+													"variant",
+													"codec",
+													"bitDepth",
+													"sampleRate"
+												],
+												"type": "object"
+											},
+											{
+												"additionalProperties": false,
+												"properties": { "variant": { "const": "atmos" } },
+												"required": ["variant"],
+												"type": "object"
+											},
+											{
+												"additionalProperties": false,
+												"properties": { "variant": { "const": "dsd" } },
+												"required": ["variant"],
+												"type": "object"
+											},
+											{
+												"additionalProperties": false,
+												"properties": {
+													"layout": { "enum": ["5.1", "7.1"] },
+													"variant": { "const": "surround" }
 												},
-												"kind": { "const": "lossless" },
-												"sampleRate": {
-													"minimum": 1,
-													"type": "integer"
-												}
-											},
-											"required": [
-												"kind",
-												"codec",
-												"bitDepth",
-												"sampleRate"
-											],
-											"type": "object"
-										},
-										{
-											"additionalProperties": false,
-											"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-											"required": ["kind"],
-											"type": "object"
-										},
-										{
-											"additionalProperties": false,
-											"properties": {
-												"kind": { "const": "surround" },
-												"layout": { "enum": ["5.1", "7.1"] }
-											},
-											"required": ["kind", "layout"],
-											"type": "object"
-										}
-									] },
+												"required": ["variant", "layout"],
+												"type": "object"
+											}
+										],
+										"x-discriminator": "variant"
+									},
 									"maxItems": 2,
 									"type": "array"
 								},
@@ -104441,48 +105282,57 @@ var PorticoCastContracts = (function(exports) {
 							"available": { "type": "boolean" },
 							"backdropUrl": { "type": "string" },
 							"badges": {
-								"items": { "oneOf": [
-									{
-										"additionalProperties": false,
-										"properties": {
-											"bitDepth": {
-												"minimum": 17,
-												"type": "integer"
+								"items": {
+									"oneOf": [
+										{
+											"additionalProperties": false,
+											"properties": {
+												"bitDepth": {
+													"minimum": 17,
+													"type": "integer"
+												},
+												"codec": {
+													"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+													"type": "string"
+												},
+												"sampleRate": {
+													"minimum": 1,
+													"type": "integer"
+												},
+												"variant": { "const": "lossless" }
 											},
-											"codec": {
-												"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-												"type": "string"
+											"required": [
+												"variant",
+												"codec",
+												"bitDepth",
+												"sampleRate"
+											],
+											"type": "object"
+										},
+										{
+											"additionalProperties": false,
+											"properties": { "variant": { "const": "atmos" } },
+											"required": ["variant"],
+											"type": "object"
+										},
+										{
+											"additionalProperties": false,
+											"properties": { "variant": { "const": "dsd" } },
+											"required": ["variant"],
+											"type": "object"
+										},
+										{
+											"additionalProperties": false,
+											"properties": {
+												"layout": { "enum": ["5.1", "7.1"] },
+												"variant": { "const": "surround" }
 											},
-											"kind": { "const": "lossless" },
-											"sampleRate": {
-												"minimum": 1,
-												"type": "integer"
-											}
-										},
-										"required": [
-											"kind",
-											"codec",
-											"bitDepth",
-											"sampleRate"
-										],
-										"type": "object"
-									},
-									{
-										"additionalProperties": false,
-										"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-										"required": ["kind"],
-										"type": "object"
-									},
-									{
-										"additionalProperties": false,
-										"properties": {
-											"kind": { "const": "surround" },
-											"layout": { "enum": ["5.1", "7.1"] }
-										},
-										"required": ["kind", "layout"],
-										"type": "object"
-									}
-								] },
+											"required": ["variant", "layout"],
+											"type": "object"
+										}
+									],
+									"x-discriminator": "variant"
+								},
 								"maxItems": 2,
 								"type": "array"
 							},
@@ -104809,48 +105659,57 @@ var PorticoCastContracts = (function(exports) {
 									"available": { "type": "boolean" },
 									"backdropUrl": { "type": "string" },
 									"badges": {
-										"items": { "oneOf": [
-											{
-												"additionalProperties": false,
-												"properties": {
-													"bitDepth": {
-														"minimum": 17,
-														"type": "integer"
+										"items": {
+											"oneOf": [
+												{
+													"additionalProperties": false,
+													"properties": {
+														"bitDepth": {
+															"minimum": 17,
+															"type": "integer"
+														},
+														"codec": {
+															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+															"type": "string"
+														},
+														"sampleRate": {
+															"minimum": 1,
+															"type": "integer"
+														},
+														"variant": { "const": "lossless" }
 													},
-													"codec": {
-														"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-														"type": "string"
+													"required": [
+														"variant",
+														"codec",
+														"bitDepth",
+														"sampleRate"
+													],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "atmos" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "dsd" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": {
+														"layout": { "enum": ["5.1", "7.1"] },
+														"variant": { "const": "surround" }
 													},
-													"kind": { "const": "lossless" },
-													"sampleRate": {
-														"minimum": 1,
-														"type": "integer"
-													}
-												},
-												"required": [
-													"kind",
-													"codec",
-													"bitDepth",
-													"sampleRate"
-												],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-												"required": ["kind"],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": {
-													"kind": { "const": "surround" },
-													"layout": { "enum": ["5.1", "7.1"] }
-												},
-												"required": ["kind", "layout"],
-												"type": "object"
-											}
-										] },
+													"required": ["variant", "layout"],
+													"type": "object"
+												}
+											],
+											"x-discriminator": "variant"
+										},
 										"maxItems": 2,
 										"type": "array"
 									},
@@ -109439,48 +110298,57 @@ var PorticoCastContracts = (function(exports) {
 									"available": { "type": "boolean" },
 									"backdropUrl": { "type": "string" },
 									"badges": {
-										"items": { "oneOf": [
-											{
-												"additionalProperties": false,
-												"properties": {
-													"bitDepth": {
-														"minimum": 17,
-														"type": "integer"
+										"items": {
+											"oneOf": [
+												{
+													"additionalProperties": false,
+													"properties": {
+														"bitDepth": {
+															"minimum": 17,
+															"type": "integer"
+														},
+														"codec": {
+															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+															"type": "string"
+														},
+														"sampleRate": {
+															"minimum": 1,
+															"type": "integer"
+														},
+														"variant": { "const": "lossless" }
 													},
-													"codec": {
-														"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-														"type": "string"
+													"required": [
+														"variant",
+														"codec",
+														"bitDepth",
+														"sampleRate"
+													],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "atmos" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "dsd" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": {
+														"layout": { "enum": ["5.1", "7.1"] },
+														"variant": { "const": "surround" }
 													},
-													"kind": { "const": "lossless" },
-													"sampleRate": {
-														"minimum": 1,
-														"type": "integer"
-													}
-												},
-												"required": [
-													"kind",
-													"codec",
-													"bitDepth",
-													"sampleRate"
-												],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-												"required": ["kind"],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": {
-													"kind": { "const": "surround" },
-													"layout": { "enum": ["5.1", "7.1"] }
-												},
-												"required": ["kind", "layout"],
-												"type": "object"
-											}
-										] },
+													"required": ["variant", "layout"],
+													"type": "object"
+												}
+											],
+											"x-discriminator": "variant"
+										},
 										"maxItems": 2,
 										"type": "array"
 									},
@@ -109807,48 +110675,57 @@ var PorticoCastContracts = (function(exports) {
 											"available": { "type": "boolean" },
 											"backdropUrl": { "type": "string" },
 											"badges": {
-												"items": { "oneOf": [
-													{
-														"additionalProperties": false,
-														"properties": {
-															"bitDepth": {
-																"minimum": 17,
-																"type": "integer"
+												"items": {
+													"oneOf": [
+														{
+															"additionalProperties": false,
+															"properties": {
+																"bitDepth": {
+																	"minimum": 17,
+																	"type": "integer"
+																},
+																"codec": {
+																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																	"type": "string"
+																},
+																"sampleRate": {
+																	"minimum": 1,
+																	"type": "integer"
+																},
+																"variant": { "const": "lossless" }
 															},
-															"codec": {
-																"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																"type": "string"
+															"required": [
+																"variant",
+																"codec",
+																"bitDepth",
+																"sampleRate"
+															],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": { "variant": { "const": "atmos" } },
+															"required": ["variant"],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": { "variant": { "const": "dsd" } },
+															"required": ["variant"],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": {
+																"layout": { "enum": ["5.1", "7.1"] },
+																"variant": { "const": "surround" }
 															},
-															"kind": { "const": "lossless" },
-															"sampleRate": {
-																"minimum": 1,
-																"type": "integer"
-															}
-														},
-														"required": [
-															"kind",
-															"codec",
-															"bitDepth",
-															"sampleRate"
-														],
-														"type": "object"
-													},
-													{
-														"additionalProperties": false,
-														"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-														"required": ["kind"],
-														"type": "object"
-													},
-													{
-														"additionalProperties": false,
-														"properties": {
-															"kind": { "const": "surround" },
-															"layout": { "enum": ["5.1", "7.1"] }
-														},
-														"required": ["kind", "layout"],
-														"type": "object"
-													}
-												] },
+															"required": ["variant", "layout"],
+															"type": "object"
+														}
+													],
+													"x-discriminator": "variant"
+												},
 												"maxItems": 2,
 												"type": "array"
 											},
@@ -110653,48 +111530,57 @@ var PorticoCastContracts = (function(exports) {
 									"available": { "type": "boolean" },
 									"backdropUrl": { "type": "string" },
 									"badges": {
-										"items": { "oneOf": [
-											{
-												"additionalProperties": false,
-												"properties": {
-													"bitDepth": {
-														"minimum": 17,
-														"type": "integer"
+										"items": {
+											"oneOf": [
+												{
+													"additionalProperties": false,
+													"properties": {
+														"bitDepth": {
+															"minimum": 17,
+															"type": "integer"
+														},
+														"codec": {
+															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+															"type": "string"
+														},
+														"sampleRate": {
+															"minimum": 1,
+															"type": "integer"
+														},
+														"variant": { "const": "lossless" }
 													},
-													"codec": {
-														"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-														"type": "string"
+													"required": [
+														"variant",
+														"codec",
+														"bitDepth",
+														"sampleRate"
+													],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "atmos" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "dsd" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": {
+														"layout": { "enum": ["5.1", "7.1"] },
+														"variant": { "const": "surround" }
 													},
-													"kind": { "const": "lossless" },
-													"sampleRate": {
-														"minimum": 1,
-														"type": "integer"
-													}
-												},
-												"required": [
-													"kind",
-													"codec",
-													"bitDepth",
-													"sampleRate"
-												],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-												"required": ["kind"],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": {
-													"kind": { "const": "surround" },
-													"layout": { "enum": ["5.1", "7.1"] }
-												},
-												"required": ["kind", "layout"],
-												"type": "object"
-											}
-										] },
+													"required": ["variant", "layout"],
+													"type": "object"
+												}
+											],
+											"x-discriminator": "variant"
+										},
 										"maxItems": 2,
 										"type": "array"
 									},
@@ -111021,48 +111907,57 @@ var PorticoCastContracts = (function(exports) {
 											"available": { "type": "boolean" },
 											"backdropUrl": { "type": "string" },
 											"badges": {
-												"items": { "oneOf": [
-													{
-														"additionalProperties": false,
-														"properties": {
-															"bitDepth": {
-																"minimum": 17,
-																"type": "integer"
+												"items": {
+													"oneOf": [
+														{
+															"additionalProperties": false,
+															"properties": {
+																"bitDepth": {
+																	"minimum": 17,
+																	"type": "integer"
+																},
+																"codec": {
+																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																	"type": "string"
+																},
+																"sampleRate": {
+																	"minimum": 1,
+																	"type": "integer"
+																},
+																"variant": { "const": "lossless" }
 															},
-															"codec": {
-																"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																"type": "string"
+															"required": [
+																"variant",
+																"codec",
+																"bitDepth",
+																"sampleRate"
+															],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": { "variant": { "const": "atmos" } },
+															"required": ["variant"],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": { "variant": { "const": "dsd" } },
+															"required": ["variant"],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": {
+																"layout": { "enum": ["5.1", "7.1"] },
+																"variant": { "const": "surround" }
 															},
-															"kind": { "const": "lossless" },
-															"sampleRate": {
-																"minimum": 1,
-																"type": "integer"
-															}
-														},
-														"required": [
-															"kind",
-															"codec",
-															"bitDepth",
-															"sampleRate"
-														],
-														"type": "object"
-													},
-													{
-														"additionalProperties": false,
-														"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-														"required": ["kind"],
-														"type": "object"
-													},
-													{
-														"additionalProperties": false,
-														"properties": {
-															"kind": { "const": "surround" },
-															"layout": { "enum": ["5.1", "7.1"] }
-														},
-														"required": ["kind", "layout"],
-														"type": "object"
-													}
-												] },
+															"required": ["variant", "layout"],
+															"type": "object"
+														}
+													],
+													"x-discriminator": "variant"
+												},
 												"maxItems": 2,
 												"type": "array"
 											},
@@ -111944,48 +112839,57 @@ var PorticoCastContracts = (function(exports) {
 									"available": { "type": "boolean" },
 									"backdropUrl": { "type": "string" },
 									"badges": {
-										"items": { "oneOf": [
-											{
-												"additionalProperties": false,
-												"properties": {
-													"bitDepth": {
-														"minimum": 17,
-														"type": "integer"
+										"items": {
+											"oneOf": [
+												{
+													"additionalProperties": false,
+													"properties": {
+														"bitDepth": {
+															"minimum": 17,
+															"type": "integer"
+														},
+														"codec": {
+															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+															"type": "string"
+														},
+														"sampleRate": {
+															"minimum": 1,
+															"type": "integer"
+														},
+														"variant": { "const": "lossless" }
 													},
-													"codec": {
-														"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-														"type": "string"
+													"required": [
+														"variant",
+														"codec",
+														"bitDepth",
+														"sampleRate"
+													],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "atmos" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "dsd" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": {
+														"layout": { "enum": ["5.1", "7.1"] },
+														"variant": { "const": "surround" }
 													},
-													"kind": { "const": "lossless" },
-													"sampleRate": {
-														"minimum": 1,
-														"type": "integer"
-													}
-												},
-												"required": [
-													"kind",
-													"codec",
-													"bitDepth",
-													"sampleRate"
-												],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-												"required": ["kind"],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": {
-													"kind": { "const": "surround" },
-													"layout": { "enum": ["5.1", "7.1"] }
-												},
-												"required": ["kind", "layout"],
-												"type": "object"
-											}
-										] },
+													"required": ["variant", "layout"],
+													"type": "object"
+												}
+											],
+											"x-discriminator": "variant"
+										},
 										"maxItems": 2,
 										"type": "array"
 									},
@@ -112312,48 +113216,57 @@ var PorticoCastContracts = (function(exports) {
 											"available": { "type": "boolean" },
 											"backdropUrl": { "type": "string" },
 											"badges": {
-												"items": { "oneOf": [
-													{
-														"additionalProperties": false,
-														"properties": {
-															"bitDepth": {
-																"minimum": 17,
-																"type": "integer"
+												"items": {
+													"oneOf": [
+														{
+															"additionalProperties": false,
+															"properties": {
+																"bitDepth": {
+																	"minimum": 17,
+																	"type": "integer"
+																},
+																"codec": {
+																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																	"type": "string"
+																},
+																"sampleRate": {
+																	"minimum": 1,
+																	"type": "integer"
+																},
+																"variant": { "const": "lossless" }
 															},
-															"codec": {
-																"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																"type": "string"
+															"required": [
+																"variant",
+																"codec",
+																"bitDepth",
+																"sampleRate"
+															],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": { "variant": { "const": "atmos" } },
+															"required": ["variant"],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": { "variant": { "const": "dsd" } },
+															"required": ["variant"],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": {
+																"layout": { "enum": ["5.1", "7.1"] },
+																"variant": { "const": "surround" }
 															},
-															"kind": { "const": "lossless" },
-															"sampleRate": {
-																"minimum": 1,
-																"type": "integer"
-															}
-														},
-														"required": [
-															"kind",
-															"codec",
-															"bitDepth",
-															"sampleRate"
-														],
-														"type": "object"
-													},
-													{
-														"additionalProperties": false,
-														"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-														"required": ["kind"],
-														"type": "object"
-													},
-													{
-														"additionalProperties": false,
-														"properties": {
-															"kind": { "const": "surround" },
-															"layout": { "enum": ["5.1", "7.1"] }
-														},
-														"required": ["kind", "layout"],
-														"type": "object"
-													}
-												] },
+															"required": ["variant", "layout"],
+															"type": "object"
+														}
+													],
+													"x-discriminator": "variant"
+												},
 												"maxItems": 2,
 												"type": "array"
 											},
@@ -114916,48 +115829,57 @@ var PorticoCastContracts = (function(exports) {
 						"available": { "type": "boolean" },
 						"backdropUrl": { "type": "string" },
 						"badges": {
-							"items": { "oneOf": [
-								{
-									"additionalProperties": false,
-									"properties": {
-										"bitDepth": {
-											"minimum": 17,
-											"type": "integer"
+							"items": {
+								"oneOf": [
+									{
+										"additionalProperties": false,
+										"properties": {
+											"bitDepth": {
+												"minimum": 17,
+												"type": "integer"
+											},
+											"codec": {
+												"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+												"type": "string"
+											},
+											"sampleRate": {
+												"minimum": 1,
+												"type": "integer"
+											},
+											"variant": { "const": "lossless" }
 										},
-										"codec": {
-											"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-											"type": "string"
+										"required": [
+											"variant",
+											"codec",
+											"bitDepth",
+											"sampleRate"
+										],
+										"type": "object"
+									},
+									{
+										"additionalProperties": false,
+										"properties": { "variant": { "const": "atmos" } },
+										"required": ["variant"],
+										"type": "object"
+									},
+									{
+										"additionalProperties": false,
+										"properties": { "variant": { "const": "dsd" } },
+										"required": ["variant"],
+										"type": "object"
+									},
+									{
+										"additionalProperties": false,
+										"properties": {
+											"layout": { "enum": ["5.1", "7.1"] },
+											"variant": { "const": "surround" }
 										},
-										"kind": { "const": "lossless" },
-										"sampleRate": {
-											"minimum": 1,
-											"type": "integer"
-										}
-									},
-									"required": [
-										"kind",
-										"codec",
-										"bitDepth",
-										"sampleRate"
-									],
-									"type": "object"
-								},
-								{
-									"additionalProperties": false,
-									"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-									"required": ["kind"],
-									"type": "object"
-								},
-								{
-									"additionalProperties": false,
-									"properties": {
-										"kind": { "const": "surround" },
-										"layout": { "enum": ["5.1", "7.1"] }
-									},
-									"required": ["kind", "layout"],
-									"type": "object"
-								}
-							] },
+										"required": ["variant", "layout"],
+										"type": "object"
+									}
+								],
+								"x-discriminator": "variant"
+							},
 							"maxItems": 2,
 							"type": "array"
 						},
@@ -115284,48 +116206,57 @@ var PorticoCastContracts = (function(exports) {
 								"available": { "type": "boolean" },
 								"backdropUrl": { "type": "string" },
 								"badges": {
-									"items": { "oneOf": [
-										{
-											"additionalProperties": false,
-											"properties": {
-												"bitDepth": {
-													"minimum": 17,
-													"type": "integer"
+									"items": {
+										"oneOf": [
+											{
+												"additionalProperties": false,
+												"properties": {
+													"bitDepth": {
+														"minimum": 17,
+														"type": "integer"
+													},
+													"codec": {
+														"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+														"type": "string"
+													},
+													"sampleRate": {
+														"minimum": 1,
+														"type": "integer"
+													},
+													"variant": { "const": "lossless" }
 												},
-												"codec": {
-													"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-													"type": "string"
+												"required": [
+													"variant",
+													"codec",
+													"bitDepth",
+													"sampleRate"
+												],
+												"type": "object"
+											},
+											{
+												"additionalProperties": false,
+												"properties": { "variant": { "const": "atmos" } },
+												"required": ["variant"],
+												"type": "object"
+											},
+											{
+												"additionalProperties": false,
+												"properties": { "variant": { "const": "dsd" } },
+												"required": ["variant"],
+												"type": "object"
+											},
+											{
+												"additionalProperties": false,
+												"properties": {
+													"layout": { "enum": ["5.1", "7.1"] },
+													"variant": { "const": "surround" }
 												},
-												"kind": { "const": "lossless" },
-												"sampleRate": {
-													"minimum": 1,
-													"type": "integer"
-												}
-											},
-											"required": [
-												"kind",
-												"codec",
-												"bitDepth",
-												"sampleRate"
-											],
-											"type": "object"
-										},
-										{
-											"additionalProperties": false,
-											"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-											"required": ["kind"],
-											"type": "object"
-										},
-										{
-											"additionalProperties": false,
-											"properties": {
-												"kind": { "const": "surround" },
-												"layout": { "enum": ["5.1", "7.1"] }
-											},
-											"required": ["kind", "layout"],
-											"type": "object"
-										}
-									] },
+												"required": ["variant", "layout"],
+												"type": "object"
+											}
+										],
+										"x-discriminator": "variant"
+									},
 									"maxItems": 2,
 									"type": "array"
 								},
@@ -116237,48 +117168,57 @@ var PorticoCastContracts = (function(exports) {
 										"available": { "type": "boolean" },
 										"backdropUrl": { "type": "string" },
 										"badges": {
-											"items": { "oneOf": [
-												{
-													"additionalProperties": false,
-													"properties": {
-														"bitDepth": {
-															"minimum": 17,
-															"type": "integer"
+											"items": {
+												"oneOf": [
+													{
+														"additionalProperties": false,
+														"properties": {
+															"bitDepth": {
+																"minimum": 17,
+																"type": "integer"
+															},
+															"codec": {
+																"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																"type": "string"
+															},
+															"sampleRate": {
+																"minimum": 1,
+																"type": "integer"
+															},
+															"variant": { "const": "lossless" }
 														},
-														"codec": {
-															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-															"type": "string"
+														"required": [
+															"variant",
+															"codec",
+															"bitDepth",
+															"sampleRate"
+														],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": { "variant": { "const": "atmos" } },
+														"required": ["variant"],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": { "variant": { "const": "dsd" } },
+														"required": ["variant"],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": {
+															"layout": { "enum": ["5.1", "7.1"] },
+															"variant": { "const": "surround" }
 														},
-														"kind": { "const": "lossless" },
-														"sampleRate": {
-															"minimum": 1,
-															"type": "integer"
-														}
-													},
-													"required": [
-														"kind",
-														"codec",
-														"bitDepth",
-														"sampleRate"
-													],
-													"type": "object"
-												},
-												{
-													"additionalProperties": false,
-													"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-													"required": ["kind"],
-													"type": "object"
-												},
-												{
-													"additionalProperties": false,
-													"properties": {
-														"kind": { "const": "surround" },
-														"layout": { "enum": ["5.1", "7.1"] }
-													},
-													"required": ["kind", "layout"],
-													"type": "object"
-												}
-											] },
+														"required": ["variant", "layout"],
+														"type": "object"
+													}
+												],
+												"x-discriminator": "variant"
+											},
 											"maxItems": 2,
 											"type": "array"
 										},
@@ -116605,48 +117545,57 @@ var PorticoCastContracts = (function(exports) {
 												"available": { "type": "boolean" },
 												"backdropUrl": { "type": "string" },
 												"badges": {
-													"items": { "oneOf": [
-														{
-															"additionalProperties": false,
-															"properties": {
-																"bitDepth": {
-																	"minimum": 17,
-																	"type": "integer"
+													"items": {
+														"oneOf": [
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"bitDepth": {
+																		"minimum": 17,
+																		"type": "integer"
+																	},
+																	"codec": {
+																		"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																		"type": "string"
+																	},
+																	"sampleRate": {
+																		"minimum": 1,
+																		"type": "integer"
+																	},
+																	"variant": { "const": "lossless" }
 																},
-																"codec": {
-																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																	"type": "string"
+																"required": [
+																	"variant",
+																	"codec",
+																	"bitDepth",
+																	"sampleRate"
+																],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "atmos" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "dsd" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"layout": { "enum": ["5.1", "7.1"] },
+																	"variant": { "const": "surround" }
 																},
-																"kind": { "const": "lossless" },
-																"sampleRate": {
-																	"minimum": 1,
-																	"type": "integer"
-																}
-															},
-															"required": [
-																"kind",
-																"codec",
-																"bitDepth",
-																"sampleRate"
-															],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-															"required": ["kind"],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": {
-																"kind": { "const": "surround" },
-																"layout": { "enum": ["5.1", "7.1"] }
-															},
-															"required": ["kind", "layout"],
-															"type": "object"
-														}
-													] },
+																"required": ["variant", "layout"],
+																"type": "object"
+															}
+														],
+														"x-discriminator": "variant"
+													},
 													"maxItems": 2,
 													"type": "array"
 												},
@@ -120760,48 +121709,57 @@ var PorticoCastContracts = (function(exports) {
 						"available": { "type": "boolean" },
 						"backdropUrl": { "type": "string" },
 						"badges": {
-							"items": { "oneOf": [
-								{
-									"additionalProperties": false,
-									"properties": {
-										"bitDepth": {
-											"minimum": 17,
-											"type": "integer"
+							"items": {
+								"oneOf": [
+									{
+										"additionalProperties": false,
+										"properties": {
+											"bitDepth": {
+												"minimum": 17,
+												"type": "integer"
+											},
+											"codec": {
+												"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+												"type": "string"
+											},
+											"sampleRate": {
+												"minimum": 1,
+												"type": "integer"
+											},
+											"variant": { "const": "lossless" }
 										},
-										"codec": {
-											"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-											"type": "string"
+										"required": [
+											"variant",
+											"codec",
+											"bitDepth",
+											"sampleRate"
+										],
+										"type": "object"
+									},
+									{
+										"additionalProperties": false,
+										"properties": { "variant": { "const": "atmos" } },
+										"required": ["variant"],
+										"type": "object"
+									},
+									{
+										"additionalProperties": false,
+										"properties": { "variant": { "const": "dsd" } },
+										"required": ["variant"],
+										"type": "object"
+									},
+									{
+										"additionalProperties": false,
+										"properties": {
+											"layout": { "enum": ["5.1", "7.1"] },
+											"variant": { "const": "surround" }
 										},
-										"kind": { "const": "lossless" },
-										"sampleRate": {
-											"minimum": 1,
-											"type": "integer"
-										}
-									},
-									"required": [
-										"kind",
-										"codec",
-										"bitDepth",
-										"sampleRate"
-									],
-									"type": "object"
-								},
-								{
-									"additionalProperties": false,
-									"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-									"required": ["kind"],
-									"type": "object"
-								},
-								{
-									"additionalProperties": false,
-									"properties": {
-										"kind": { "const": "surround" },
-										"layout": { "enum": ["5.1", "7.1"] }
-									},
-									"required": ["kind", "layout"],
-									"type": "object"
-								}
-							] },
+										"required": ["variant", "layout"],
+										"type": "object"
+									}
+								],
+								"x-discriminator": "variant"
+							},
 							"maxItems": 2,
 							"type": "array"
 						},
@@ -121128,48 +122086,57 @@ var PorticoCastContracts = (function(exports) {
 								"available": { "type": "boolean" },
 								"backdropUrl": { "type": "string" },
 								"badges": {
-									"items": { "oneOf": [
-										{
-											"additionalProperties": false,
-											"properties": {
-												"bitDepth": {
-													"minimum": 17,
-													"type": "integer"
+									"items": {
+										"oneOf": [
+											{
+												"additionalProperties": false,
+												"properties": {
+													"bitDepth": {
+														"minimum": 17,
+														"type": "integer"
+													},
+													"codec": {
+														"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+														"type": "string"
+													},
+													"sampleRate": {
+														"minimum": 1,
+														"type": "integer"
+													},
+													"variant": { "const": "lossless" }
 												},
-												"codec": {
-													"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-													"type": "string"
+												"required": [
+													"variant",
+													"codec",
+													"bitDepth",
+													"sampleRate"
+												],
+												"type": "object"
+											},
+											{
+												"additionalProperties": false,
+												"properties": { "variant": { "const": "atmos" } },
+												"required": ["variant"],
+												"type": "object"
+											},
+											{
+												"additionalProperties": false,
+												"properties": { "variant": { "const": "dsd" } },
+												"required": ["variant"],
+												"type": "object"
+											},
+											{
+												"additionalProperties": false,
+												"properties": {
+													"layout": { "enum": ["5.1", "7.1"] },
+													"variant": { "const": "surround" }
 												},
-												"kind": { "const": "lossless" },
-												"sampleRate": {
-													"minimum": 1,
-													"type": "integer"
-												}
-											},
-											"required": [
-												"kind",
-												"codec",
-												"bitDepth",
-												"sampleRate"
-											],
-											"type": "object"
-										},
-										{
-											"additionalProperties": false,
-											"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-											"required": ["kind"],
-											"type": "object"
-										},
-										{
-											"additionalProperties": false,
-											"properties": {
-												"kind": { "const": "surround" },
-												"layout": { "enum": ["5.1", "7.1"] }
-											},
-											"required": ["kind", "layout"],
-											"type": "object"
-										}
-									] },
+												"required": ["variant", "layout"],
+												"type": "object"
+											}
+										],
+										"x-discriminator": "variant"
+									},
 									"maxItems": 2,
 									"type": "array"
 								},
@@ -122086,48 +123053,57 @@ var PorticoCastContracts = (function(exports) {
 										"available": { "type": "boolean" },
 										"backdropUrl": { "type": "string" },
 										"badges": {
-											"items": { "oneOf": [
-												{
-													"additionalProperties": false,
-													"properties": {
-														"bitDepth": {
-															"minimum": 17,
-															"type": "integer"
+											"items": {
+												"oneOf": [
+													{
+														"additionalProperties": false,
+														"properties": {
+															"bitDepth": {
+																"minimum": 17,
+																"type": "integer"
+															},
+															"codec": {
+																"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																"type": "string"
+															},
+															"sampleRate": {
+																"minimum": 1,
+																"type": "integer"
+															},
+															"variant": { "const": "lossless" }
 														},
-														"codec": {
-															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-															"type": "string"
+														"required": [
+															"variant",
+															"codec",
+															"bitDepth",
+															"sampleRate"
+														],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": { "variant": { "const": "atmos" } },
+														"required": ["variant"],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": { "variant": { "const": "dsd" } },
+														"required": ["variant"],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": {
+															"layout": { "enum": ["5.1", "7.1"] },
+															"variant": { "const": "surround" }
 														},
-														"kind": { "const": "lossless" },
-														"sampleRate": {
-															"minimum": 1,
-															"type": "integer"
-														}
-													},
-													"required": [
-														"kind",
-														"codec",
-														"bitDepth",
-														"sampleRate"
-													],
-													"type": "object"
-												},
-												{
-													"additionalProperties": false,
-													"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-													"required": ["kind"],
-													"type": "object"
-												},
-												{
-													"additionalProperties": false,
-													"properties": {
-														"kind": { "const": "surround" },
-														"layout": { "enum": ["5.1", "7.1"] }
-													},
-													"required": ["kind", "layout"],
-													"type": "object"
-												}
-											] },
+														"required": ["variant", "layout"],
+														"type": "object"
+													}
+												],
+												"x-discriminator": "variant"
+											},
 											"maxItems": 2,
 											"type": "array"
 										},
@@ -122477,48 +123453,57 @@ var PorticoCastContracts = (function(exports) {
 												"available": { "type": "boolean" },
 												"backdropUrl": { "type": "string" },
 												"badges": {
-													"items": { "oneOf": [
-														{
-															"additionalProperties": false,
-															"properties": {
-																"bitDepth": {
-																	"minimum": 17,
-																	"type": "integer"
+													"items": {
+														"oneOf": [
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"bitDepth": {
+																		"minimum": 17,
+																		"type": "integer"
+																	},
+																	"codec": {
+																		"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																		"type": "string"
+																	},
+																	"sampleRate": {
+																		"minimum": 1,
+																		"type": "integer"
+																	},
+																	"variant": { "const": "lossless" }
 																},
-																"codec": {
-																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																	"type": "string"
+																"required": [
+																	"variant",
+																	"codec",
+																	"bitDepth",
+																	"sampleRate"
+																],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "atmos" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "dsd" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"layout": { "enum": ["5.1", "7.1"] },
+																	"variant": { "const": "surround" }
 																},
-																"kind": { "const": "lossless" },
-																"sampleRate": {
-																	"minimum": 1,
-																	"type": "integer"
-																}
-															},
-															"required": [
-																"kind",
-																"codec",
-																"bitDepth",
-																"sampleRate"
-															],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-															"required": ["kind"],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": {
-																"kind": { "const": "surround" },
-																"layout": { "enum": ["5.1", "7.1"] }
-															},
-															"required": ["kind", "layout"],
-															"type": "object"
-														}
-													] },
+																"required": ["variant", "layout"],
+																"type": "object"
+															}
+														],
+														"x-discriminator": "variant"
+													},
 													"maxItems": 2,
 													"type": "array"
 												},
@@ -123701,48 +124686,57 @@ var PorticoCastContracts = (function(exports) {
 									"available": { "type": "boolean" },
 									"backdropUrl": { "type": "string" },
 									"badges": {
-										"items": { "oneOf": [
-											{
-												"additionalProperties": false,
-												"properties": {
-													"bitDepth": {
-														"minimum": 17,
-														"type": "integer"
+										"items": {
+											"oneOf": [
+												{
+													"additionalProperties": false,
+													"properties": {
+														"bitDepth": {
+															"minimum": 17,
+															"type": "integer"
+														},
+														"codec": {
+															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+															"type": "string"
+														},
+														"sampleRate": {
+															"minimum": 1,
+															"type": "integer"
+														},
+														"variant": { "const": "lossless" }
 													},
-													"codec": {
-														"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-														"type": "string"
+													"required": [
+														"variant",
+														"codec",
+														"bitDepth",
+														"sampleRate"
+													],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "atmos" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "dsd" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": {
+														"layout": { "enum": ["5.1", "7.1"] },
+														"variant": { "const": "surround" }
 													},
-													"kind": { "const": "lossless" },
-													"sampleRate": {
-														"minimum": 1,
-														"type": "integer"
-													}
-												},
-												"required": [
-													"kind",
-													"codec",
-													"bitDepth",
-													"sampleRate"
-												],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-												"required": ["kind"],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": {
-													"kind": { "const": "surround" },
-													"layout": { "enum": ["5.1", "7.1"] }
-												},
-												"required": ["kind", "layout"],
-												"type": "object"
-											}
-										] },
+													"required": ["variant", "layout"],
+													"type": "object"
+												}
+											],
+											"x-discriminator": "variant"
+										},
 										"maxItems": 2,
 										"type": "array"
 									},
@@ -124069,48 +125063,57 @@ var PorticoCastContracts = (function(exports) {
 											"available": { "type": "boolean" },
 											"backdropUrl": { "type": "string" },
 											"badges": {
-												"items": { "oneOf": [
-													{
-														"additionalProperties": false,
-														"properties": {
-															"bitDepth": {
-																"minimum": 17,
-																"type": "integer"
+												"items": {
+													"oneOf": [
+														{
+															"additionalProperties": false,
+															"properties": {
+																"bitDepth": {
+																	"minimum": 17,
+																	"type": "integer"
+																},
+																"codec": {
+																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																	"type": "string"
+																},
+																"sampleRate": {
+																	"minimum": 1,
+																	"type": "integer"
+																},
+																"variant": { "const": "lossless" }
 															},
-															"codec": {
-																"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																"type": "string"
+															"required": [
+																"variant",
+																"codec",
+																"bitDepth",
+																"sampleRate"
+															],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": { "variant": { "const": "atmos" } },
+															"required": ["variant"],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": { "variant": { "const": "dsd" } },
+															"required": ["variant"],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": {
+																"layout": { "enum": ["5.1", "7.1"] },
+																"variant": { "const": "surround" }
 															},
-															"kind": { "const": "lossless" },
-															"sampleRate": {
-																"minimum": 1,
-																"type": "integer"
-															}
-														},
-														"required": [
-															"kind",
-															"codec",
-															"bitDepth",
-															"sampleRate"
-														],
-														"type": "object"
-													},
-													{
-														"additionalProperties": false,
-														"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-														"required": ["kind"],
-														"type": "object"
-													},
-													{
-														"additionalProperties": false,
-														"properties": {
-															"kind": { "const": "surround" },
-															"layout": { "enum": ["5.1", "7.1"] }
-														},
-														"required": ["kind", "layout"],
-														"type": "object"
-													}
-												] },
+															"required": ["variant", "layout"],
+															"type": "object"
+														}
+													],
+													"x-discriminator": "variant"
+												},
 												"maxItems": 2,
 												"type": "array"
 											},
@@ -125142,48 +126145,57 @@ var PorticoCastContracts = (function(exports) {
 									"available": { "type": "boolean" },
 									"backdropUrl": { "type": "string" },
 									"badges": {
-										"items": { "oneOf": [
-											{
-												"additionalProperties": false,
-												"properties": {
-													"bitDepth": {
-														"minimum": 17,
-														"type": "integer"
+										"items": {
+											"oneOf": [
+												{
+													"additionalProperties": false,
+													"properties": {
+														"bitDepth": {
+															"minimum": 17,
+															"type": "integer"
+														},
+														"codec": {
+															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+															"type": "string"
+														},
+														"sampleRate": {
+															"minimum": 1,
+															"type": "integer"
+														},
+														"variant": { "const": "lossless" }
 													},
-													"codec": {
-														"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-														"type": "string"
+													"required": [
+														"variant",
+														"codec",
+														"bitDepth",
+														"sampleRate"
+													],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "atmos" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "dsd" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": {
+														"layout": { "enum": ["5.1", "7.1"] },
+														"variant": { "const": "surround" }
 													},
-													"kind": { "const": "lossless" },
-													"sampleRate": {
-														"minimum": 1,
-														"type": "integer"
-													}
-												},
-												"required": [
-													"kind",
-													"codec",
-													"bitDepth",
-													"sampleRate"
-												],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-												"required": ["kind"],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": {
-													"kind": { "const": "surround" },
-													"layout": { "enum": ["5.1", "7.1"] }
-												},
-												"required": ["kind", "layout"],
-												"type": "object"
-											}
-										] },
+													"required": ["variant", "layout"],
+													"type": "object"
+												}
+											],
+											"x-discriminator": "variant"
+										},
 										"maxItems": 2,
 										"type": "array"
 									},
@@ -125510,48 +126522,57 @@ var PorticoCastContracts = (function(exports) {
 											"available": { "type": "boolean" },
 											"backdropUrl": { "type": "string" },
 											"badges": {
-												"items": { "oneOf": [
-													{
-														"additionalProperties": false,
-														"properties": {
-															"bitDepth": {
-																"minimum": 17,
-																"type": "integer"
+												"items": {
+													"oneOf": [
+														{
+															"additionalProperties": false,
+															"properties": {
+																"bitDepth": {
+																	"minimum": 17,
+																	"type": "integer"
+																},
+																"codec": {
+																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																	"type": "string"
+																},
+																"sampleRate": {
+																	"minimum": 1,
+																	"type": "integer"
+																},
+																"variant": { "const": "lossless" }
 															},
-															"codec": {
-																"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																"type": "string"
+															"required": [
+																"variant",
+																"codec",
+																"bitDepth",
+																"sampleRate"
+															],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": { "variant": { "const": "atmos" } },
+															"required": ["variant"],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": { "variant": { "const": "dsd" } },
+															"required": ["variant"],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": {
+																"layout": { "enum": ["5.1", "7.1"] },
+																"variant": { "const": "surround" }
 															},
-															"kind": { "const": "lossless" },
-															"sampleRate": {
-																"minimum": 1,
-																"type": "integer"
-															}
-														},
-														"required": [
-															"kind",
-															"codec",
-															"bitDepth",
-															"sampleRate"
-														],
-														"type": "object"
-													},
-													{
-														"additionalProperties": false,
-														"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-														"required": ["kind"],
-														"type": "object"
-													},
-													{
-														"additionalProperties": false,
-														"properties": {
-															"kind": { "const": "surround" },
-															"layout": { "enum": ["5.1", "7.1"] }
-														},
-														"required": ["kind", "layout"],
-														"type": "object"
-													}
-												] },
+															"required": ["variant", "layout"],
+															"type": "object"
+														}
+													],
+													"x-discriminator": "variant"
+												},
 												"maxItems": 2,
 												"type": "array"
 											},
@@ -127012,48 +128033,57 @@ var PorticoCastContracts = (function(exports) {
 										"available": { "type": "boolean" },
 										"backdropUrl": { "type": "string" },
 										"badges": {
-											"items": { "oneOf": [
-												{
-													"additionalProperties": false,
-													"properties": {
-														"bitDepth": {
-															"minimum": 17,
-															"type": "integer"
+											"items": {
+												"oneOf": [
+													{
+														"additionalProperties": false,
+														"properties": {
+															"bitDepth": {
+																"minimum": 17,
+																"type": "integer"
+															},
+															"codec": {
+																"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																"type": "string"
+															},
+															"sampleRate": {
+																"minimum": 1,
+																"type": "integer"
+															},
+															"variant": { "const": "lossless" }
 														},
-														"codec": {
-															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-															"type": "string"
+														"required": [
+															"variant",
+															"codec",
+															"bitDepth",
+															"sampleRate"
+														],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": { "variant": { "const": "atmos" } },
+														"required": ["variant"],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": { "variant": { "const": "dsd" } },
+														"required": ["variant"],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": {
+															"layout": { "enum": ["5.1", "7.1"] },
+															"variant": { "const": "surround" }
 														},
-														"kind": { "const": "lossless" },
-														"sampleRate": {
-															"minimum": 1,
-															"type": "integer"
-														}
-													},
-													"required": [
-														"kind",
-														"codec",
-														"bitDepth",
-														"sampleRate"
-													],
-													"type": "object"
-												},
-												{
-													"additionalProperties": false,
-													"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-													"required": ["kind"],
-													"type": "object"
-												},
-												{
-													"additionalProperties": false,
-													"properties": {
-														"kind": { "const": "surround" },
-														"layout": { "enum": ["5.1", "7.1"] }
-													},
-													"required": ["kind", "layout"],
-													"type": "object"
-												}
-											] },
+														"required": ["variant", "layout"],
+														"type": "object"
+													}
+												],
+												"x-discriminator": "variant"
+											},
 											"maxItems": 2,
 											"type": "array"
 										},
@@ -127380,48 +128410,57 @@ var PorticoCastContracts = (function(exports) {
 												"available": { "type": "boolean" },
 												"backdropUrl": { "type": "string" },
 												"badges": {
-													"items": { "oneOf": [
-														{
-															"additionalProperties": false,
-															"properties": {
-																"bitDepth": {
-																	"minimum": 17,
-																	"type": "integer"
+													"items": {
+														"oneOf": [
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"bitDepth": {
+																		"minimum": 17,
+																		"type": "integer"
+																	},
+																	"codec": {
+																		"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																		"type": "string"
+																	},
+																	"sampleRate": {
+																		"minimum": 1,
+																		"type": "integer"
+																	},
+																	"variant": { "const": "lossless" }
 																},
-																"codec": {
-																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																	"type": "string"
+																"required": [
+																	"variant",
+																	"codec",
+																	"bitDepth",
+																	"sampleRate"
+																],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "atmos" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "dsd" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"layout": { "enum": ["5.1", "7.1"] },
+																	"variant": { "const": "surround" }
 																},
-																"kind": { "const": "lossless" },
-																"sampleRate": {
-																	"minimum": 1,
-																	"type": "integer"
-																}
-															},
-															"required": [
-																"kind",
-																"codec",
-																"bitDepth",
-																"sampleRate"
-															],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-															"required": ["kind"],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": {
-																"kind": { "const": "surround" },
-																"layout": { "enum": ["5.1", "7.1"] }
-															},
-															"required": ["kind", "layout"],
-															"type": "object"
-														}
-													] },
+																"required": ["variant", "layout"],
+																"type": "object"
+															}
+														],
+														"x-discriminator": "variant"
+													},
 													"maxItems": 2,
 													"type": "array"
 												},
@@ -130422,48 +131461,57 @@ var PorticoCastContracts = (function(exports) {
 															"available": { "type": "boolean" },
 															"backdropUrl": { "type": "string" },
 															"badges": {
-																"items": { "oneOf": [
-																	{
-																		"additionalProperties": false,
-																		"properties": {
-																			"bitDepth": {
-																				"minimum": 17,
-																				"type": "integer"
+																"items": {
+																	"oneOf": [
+																		{
+																			"additionalProperties": false,
+																			"properties": {
+																				"bitDepth": {
+																					"minimum": 17,
+																					"type": "integer"
+																				},
+																				"codec": {
+																					"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																					"type": "string"
+																				},
+																				"sampleRate": {
+																					"minimum": 1,
+																					"type": "integer"
+																				},
+																				"variant": { "const": "lossless" }
 																			},
-																			"codec": {
-																				"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																				"type": "string"
+																			"required": [
+																				"variant",
+																				"codec",
+																				"bitDepth",
+																				"sampleRate"
+																			],
+																			"type": "object"
+																		},
+																		{
+																			"additionalProperties": false,
+																			"properties": { "variant": { "const": "atmos" } },
+																			"required": ["variant"],
+																			"type": "object"
+																		},
+																		{
+																			"additionalProperties": false,
+																			"properties": { "variant": { "const": "dsd" } },
+																			"required": ["variant"],
+																			"type": "object"
+																		},
+																		{
+																			"additionalProperties": false,
+																			"properties": {
+																				"layout": { "enum": ["5.1", "7.1"] },
+																				"variant": { "const": "surround" }
 																			},
-																			"kind": { "const": "lossless" },
-																			"sampleRate": {
-																				"minimum": 1,
-																				"type": "integer"
-																			}
-																		},
-																		"required": [
-																			"kind",
-																			"codec",
-																			"bitDepth",
-																			"sampleRate"
-																		],
-																		"type": "object"
-																	},
-																	{
-																		"additionalProperties": false,
-																		"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-																		"required": ["kind"],
-																		"type": "object"
-																	},
-																	{
-																		"additionalProperties": false,
-																		"properties": {
-																			"kind": { "const": "surround" },
-																			"layout": { "enum": ["5.1", "7.1"] }
-																		},
-																		"required": ["kind", "layout"],
-																		"type": "object"
-																	}
-																] },
+																			"required": ["variant", "layout"],
+																			"type": "object"
+																		}
+																	],
+																	"x-discriminator": "variant"
+																},
 																"maxItems": 2,
 																"type": "array"
 															},
@@ -130790,48 +131838,57 @@ var PorticoCastContracts = (function(exports) {
 																	"available": { "type": "boolean" },
 																	"backdropUrl": { "type": "string" },
 																	"badges": {
-																		"items": { "oneOf": [
-																			{
-																				"additionalProperties": false,
-																				"properties": {
-																					"bitDepth": {
-																						"minimum": 17,
-																						"type": "integer"
+																		"items": {
+																			"oneOf": [
+																				{
+																					"additionalProperties": false,
+																					"properties": {
+																						"bitDepth": {
+																							"minimum": 17,
+																							"type": "integer"
+																						},
+																						"codec": {
+																							"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																							"type": "string"
+																						},
+																						"sampleRate": {
+																							"minimum": 1,
+																							"type": "integer"
+																						},
+																						"variant": { "const": "lossless" }
 																					},
-																					"codec": {
-																						"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																						"type": "string"
+																					"required": [
+																						"variant",
+																						"codec",
+																						"bitDepth",
+																						"sampleRate"
+																					],
+																					"type": "object"
+																				},
+																				{
+																					"additionalProperties": false,
+																					"properties": { "variant": { "const": "atmos" } },
+																					"required": ["variant"],
+																					"type": "object"
+																				},
+																				{
+																					"additionalProperties": false,
+																					"properties": { "variant": { "const": "dsd" } },
+																					"required": ["variant"],
+																					"type": "object"
+																				},
+																				{
+																					"additionalProperties": false,
+																					"properties": {
+																						"layout": { "enum": ["5.1", "7.1"] },
+																						"variant": { "const": "surround" }
 																					},
-																					"kind": { "const": "lossless" },
-																					"sampleRate": {
-																						"minimum": 1,
-																						"type": "integer"
-																					}
-																				},
-																				"required": [
-																					"kind",
-																					"codec",
-																					"bitDepth",
-																					"sampleRate"
-																				],
-																				"type": "object"
-																			},
-																			{
-																				"additionalProperties": false,
-																				"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-																				"required": ["kind"],
-																				"type": "object"
-																			},
-																			{
-																				"additionalProperties": false,
-																				"properties": {
-																					"kind": { "const": "surround" },
-																					"layout": { "enum": ["5.1", "7.1"] }
-																				},
-																				"required": ["kind", "layout"],
-																				"type": "object"
-																			}
-																		] },
+																					"required": ["variant", "layout"],
+																					"type": "object"
+																				}
+																			],
+																			"x-discriminator": "variant"
+																		},
 																		"maxItems": 2,
 																		"type": "array"
 																	},
@@ -131604,48 +132661,57 @@ var PorticoCastContracts = (function(exports) {
 													"available": { "type": "boolean" },
 													"backdropUrl": { "type": "string" },
 													"badges": {
-														"items": { "oneOf": [
-															{
-																"additionalProperties": false,
-																"properties": {
-																	"bitDepth": {
-																		"minimum": 17,
-																		"type": "integer"
+														"items": {
+															"oneOf": [
+																{
+																	"additionalProperties": false,
+																	"properties": {
+																		"bitDepth": {
+																			"minimum": 17,
+																			"type": "integer"
+																		},
+																		"codec": {
+																			"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																			"type": "string"
+																		},
+																		"sampleRate": {
+																			"minimum": 1,
+																			"type": "integer"
+																		},
+																		"variant": { "const": "lossless" }
 																	},
-																	"codec": {
-																		"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																		"type": "string"
+																	"required": [
+																		"variant",
+																		"codec",
+																		"bitDepth",
+																		"sampleRate"
+																	],
+																	"type": "object"
+																},
+																{
+																	"additionalProperties": false,
+																	"properties": { "variant": { "const": "atmos" } },
+																	"required": ["variant"],
+																	"type": "object"
+																},
+																{
+																	"additionalProperties": false,
+																	"properties": { "variant": { "const": "dsd" } },
+																	"required": ["variant"],
+																	"type": "object"
+																},
+																{
+																	"additionalProperties": false,
+																	"properties": {
+																		"layout": { "enum": ["5.1", "7.1"] },
+																		"variant": { "const": "surround" }
 																	},
-																	"kind": { "const": "lossless" },
-																	"sampleRate": {
-																		"minimum": 1,
-																		"type": "integer"
-																	}
-																},
-																"required": [
-																	"kind",
-																	"codec",
-																	"bitDepth",
-																	"sampleRate"
-																],
-																"type": "object"
-															},
-															{
-																"additionalProperties": false,
-																"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-																"required": ["kind"],
-																"type": "object"
-															},
-															{
-																"additionalProperties": false,
-																"properties": {
-																	"kind": { "const": "surround" },
-																	"layout": { "enum": ["5.1", "7.1"] }
-																},
-																"required": ["kind", "layout"],
-																"type": "object"
-															}
-														] },
+																	"required": ["variant", "layout"],
+																	"type": "object"
+																}
+															],
+															"x-discriminator": "variant"
+														},
 														"maxItems": 2,
 														"type": "array"
 													},
@@ -131972,48 +133038,57 @@ var PorticoCastContracts = (function(exports) {
 															"available": { "type": "boolean" },
 															"backdropUrl": { "type": "string" },
 															"badges": {
-																"items": { "oneOf": [
-																	{
-																		"additionalProperties": false,
-																		"properties": {
-																			"bitDepth": {
-																				"minimum": 17,
-																				"type": "integer"
+																"items": {
+																	"oneOf": [
+																		{
+																			"additionalProperties": false,
+																			"properties": {
+																				"bitDepth": {
+																					"minimum": 17,
+																					"type": "integer"
+																				},
+																				"codec": {
+																					"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																					"type": "string"
+																				},
+																				"sampleRate": {
+																					"minimum": 1,
+																					"type": "integer"
+																				},
+																				"variant": { "const": "lossless" }
 																			},
-																			"codec": {
-																				"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																				"type": "string"
+																			"required": [
+																				"variant",
+																				"codec",
+																				"bitDepth",
+																				"sampleRate"
+																			],
+																			"type": "object"
+																		},
+																		{
+																			"additionalProperties": false,
+																			"properties": { "variant": { "const": "atmos" } },
+																			"required": ["variant"],
+																			"type": "object"
+																		},
+																		{
+																			"additionalProperties": false,
+																			"properties": { "variant": { "const": "dsd" } },
+																			"required": ["variant"],
+																			"type": "object"
+																		},
+																		{
+																			"additionalProperties": false,
+																			"properties": {
+																				"layout": { "enum": ["5.1", "7.1"] },
+																				"variant": { "const": "surround" }
 																			},
-																			"kind": { "const": "lossless" },
-																			"sampleRate": {
-																				"minimum": 1,
-																				"type": "integer"
-																			}
-																		},
-																		"required": [
-																			"kind",
-																			"codec",
-																			"bitDepth",
-																			"sampleRate"
-																		],
-																		"type": "object"
-																	},
-																	{
-																		"additionalProperties": false,
-																		"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-																		"required": ["kind"],
-																		"type": "object"
-																	},
-																	{
-																		"additionalProperties": false,
-																		"properties": {
-																			"kind": { "const": "surround" },
-																			"layout": { "enum": ["5.1", "7.1"] }
-																		},
-																		"required": ["kind", "layout"],
-																		"type": "object"
-																	}
-																] },
+																			"required": ["variant", "layout"],
+																			"type": "object"
+																		}
+																	],
+																	"x-discriminator": "variant"
+																},
 																"maxItems": 2,
 																"type": "array"
 															},
@@ -133067,48 +134142,57 @@ var PorticoCastContracts = (function(exports) {
 															"available": { "type": "boolean" },
 															"backdropUrl": { "type": "string" },
 															"badges": {
-																"items": { "oneOf": [
-																	{
-																		"additionalProperties": false,
-																		"properties": {
-																			"bitDepth": {
-																				"minimum": 17,
-																				"type": "integer"
+																"items": {
+																	"oneOf": [
+																		{
+																			"additionalProperties": false,
+																			"properties": {
+																				"bitDepth": {
+																					"minimum": 17,
+																					"type": "integer"
+																				},
+																				"codec": {
+																					"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																					"type": "string"
+																				},
+																				"sampleRate": {
+																					"minimum": 1,
+																					"type": "integer"
+																				},
+																				"variant": { "const": "lossless" }
 																			},
-																			"codec": {
-																				"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																				"type": "string"
+																			"required": [
+																				"variant",
+																				"codec",
+																				"bitDepth",
+																				"sampleRate"
+																			],
+																			"type": "object"
+																		},
+																		{
+																			"additionalProperties": false,
+																			"properties": { "variant": { "const": "atmos" } },
+																			"required": ["variant"],
+																			"type": "object"
+																		},
+																		{
+																			"additionalProperties": false,
+																			"properties": { "variant": { "const": "dsd" } },
+																			"required": ["variant"],
+																			"type": "object"
+																		},
+																		{
+																			"additionalProperties": false,
+																			"properties": {
+																				"layout": { "enum": ["5.1", "7.1"] },
+																				"variant": { "const": "surround" }
 																			},
-																			"kind": { "const": "lossless" },
-																			"sampleRate": {
-																				"minimum": 1,
-																				"type": "integer"
-																			}
-																		},
-																		"required": [
-																			"kind",
-																			"codec",
-																			"bitDepth",
-																			"sampleRate"
-																		],
-																		"type": "object"
-																	},
-																	{
-																		"additionalProperties": false,
-																		"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-																		"required": ["kind"],
-																		"type": "object"
-																	},
-																	{
-																		"additionalProperties": false,
-																		"properties": {
-																			"kind": { "const": "surround" },
-																			"layout": { "enum": ["5.1", "7.1"] }
-																		},
-																		"required": ["kind", "layout"],
-																		"type": "object"
-																	}
-																] },
+																			"required": ["variant", "layout"],
+																			"type": "object"
+																		}
+																	],
+																	"x-discriminator": "variant"
+																},
 																"maxItems": 2,
 																"type": "array"
 															},
@@ -133435,48 +134519,57 @@ var PorticoCastContracts = (function(exports) {
 																	"available": { "type": "boolean" },
 																	"backdropUrl": { "type": "string" },
 																	"badges": {
-																		"items": { "oneOf": [
-																			{
-																				"additionalProperties": false,
-																				"properties": {
-																					"bitDepth": {
-																						"minimum": 17,
-																						"type": "integer"
+																		"items": {
+																			"oneOf": [
+																				{
+																					"additionalProperties": false,
+																					"properties": {
+																						"bitDepth": {
+																							"minimum": 17,
+																							"type": "integer"
+																						},
+																						"codec": {
+																							"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																							"type": "string"
+																						},
+																						"sampleRate": {
+																							"minimum": 1,
+																							"type": "integer"
+																						},
+																						"variant": { "const": "lossless" }
 																					},
-																					"codec": {
-																						"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																						"type": "string"
+																					"required": [
+																						"variant",
+																						"codec",
+																						"bitDepth",
+																						"sampleRate"
+																					],
+																					"type": "object"
+																				},
+																				{
+																					"additionalProperties": false,
+																					"properties": { "variant": { "const": "atmos" } },
+																					"required": ["variant"],
+																					"type": "object"
+																				},
+																				{
+																					"additionalProperties": false,
+																					"properties": { "variant": { "const": "dsd" } },
+																					"required": ["variant"],
+																					"type": "object"
+																				},
+																				{
+																					"additionalProperties": false,
+																					"properties": {
+																						"layout": { "enum": ["5.1", "7.1"] },
+																						"variant": { "const": "surround" }
 																					},
-																					"kind": { "const": "lossless" },
-																					"sampleRate": {
-																						"minimum": 1,
-																						"type": "integer"
-																					}
-																				},
-																				"required": [
-																					"kind",
-																					"codec",
-																					"bitDepth",
-																					"sampleRate"
-																				],
-																				"type": "object"
-																			},
-																			{
-																				"additionalProperties": false,
-																				"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-																				"required": ["kind"],
-																				"type": "object"
-																			},
-																			{
-																				"additionalProperties": false,
-																				"properties": {
-																					"kind": { "const": "surround" },
-																					"layout": { "enum": ["5.1", "7.1"] }
-																				},
-																				"required": ["kind", "layout"],
-																				"type": "object"
-																			}
-																		] },
+																					"required": ["variant", "layout"],
+																					"type": "object"
+																				}
+																			],
+																			"x-discriminator": "variant"
+																		},
 																		"maxItems": 2,
 																		"type": "array"
 																	},
@@ -134671,48 +135764,57 @@ var PorticoCastContracts = (function(exports) {
 												"available": { "type": "boolean" },
 												"backdropUrl": { "type": "string" },
 												"badges": {
-													"items": { "oneOf": [
-														{
-															"additionalProperties": false,
-															"properties": {
-																"bitDepth": {
-																	"minimum": 17,
-																	"type": "integer"
+													"items": {
+														"oneOf": [
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"bitDepth": {
+																		"minimum": 17,
+																		"type": "integer"
+																	},
+																	"codec": {
+																		"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																		"type": "string"
+																	},
+																	"sampleRate": {
+																		"minimum": 1,
+																		"type": "integer"
+																	},
+																	"variant": { "const": "lossless" }
 																},
-																"codec": {
-																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																	"type": "string"
+																"required": [
+																	"variant",
+																	"codec",
+																	"bitDepth",
+																	"sampleRate"
+																],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "atmos" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "dsd" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"layout": { "enum": ["5.1", "7.1"] },
+																	"variant": { "const": "surround" }
 																},
-																"kind": { "const": "lossless" },
-																"sampleRate": {
-																	"minimum": 1,
-																	"type": "integer"
-																}
-															},
-															"required": [
-																"kind",
-																"codec",
-																"bitDepth",
-																"sampleRate"
-															],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-															"required": ["kind"],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": {
-																"kind": { "const": "surround" },
-																"layout": { "enum": ["5.1", "7.1"] }
-															},
-															"required": ["kind", "layout"],
-															"type": "object"
-														}
-													] },
+																"required": ["variant", "layout"],
+																"type": "object"
+															}
+														],
+														"x-discriminator": "variant"
+													},
 													"maxItems": 2,
 													"type": "array"
 												},
@@ -135039,48 +136141,57 @@ var PorticoCastContracts = (function(exports) {
 														"available": { "type": "boolean" },
 														"backdropUrl": { "type": "string" },
 														"badges": {
-															"items": { "oneOf": [
-																{
-																	"additionalProperties": false,
-																	"properties": {
-																		"bitDepth": {
-																			"minimum": 17,
-																			"type": "integer"
+															"items": {
+																"oneOf": [
+																	{
+																		"additionalProperties": false,
+																		"properties": {
+																			"bitDepth": {
+																				"minimum": 17,
+																				"type": "integer"
+																			},
+																			"codec": {
+																				"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																				"type": "string"
+																			},
+																			"sampleRate": {
+																				"minimum": 1,
+																				"type": "integer"
+																			},
+																			"variant": { "const": "lossless" }
 																		},
-																		"codec": {
-																			"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																			"type": "string"
+																		"required": [
+																			"variant",
+																			"codec",
+																			"bitDepth",
+																			"sampleRate"
+																		],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": { "variant": { "const": "atmos" } },
+																		"required": ["variant"],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": { "variant": { "const": "dsd" } },
+																		"required": ["variant"],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": {
+																			"layout": { "enum": ["5.1", "7.1"] },
+																			"variant": { "const": "surround" }
 																		},
-																		"kind": { "const": "lossless" },
-																		"sampleRate": {
-																			"minimum": 1,
-																			"type": "integer"
-																		}
-																	},
-																	"required": [
-																		"kind",
-																		"codec",
-																		"bitDepth",
-																		"sampleRate"
-																	],
-																	"type": "object"
-																},
-																{
-																	"additionalProperties": false,
-																	"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-																	"required": ["kind"],
-																	"type": "object"
-																},
-																{
-																	"additionalProperties": false,
-																	"properties": {
-																		"kind": { "const": "surround" },
-																		"layout": { "enum": ["5.1", "7.1"] }
-																	},
-																	"required": ["kind", "layout"],
-																	"type": "object"
-																}
-															] },
+																		"required": ["variant", "layout"],
+																		"type": "object"
+																	}
+																],
+																"x-discriminator": "variant"
+															},
 															"maxItems": 2,
 															"type": "array"
 														},
@@ -135850,48 +136961,57 @@ var PorticoCastContracts = (function(exports) {
 										"available": { "type": "boolean" },
 										"backdropUrl": { "type": "string" },
 										"badges": {
-											"items": { "oneOf": [
-												{
-													"additionalProperties": false,
-													"properties": {
-														"bitDepth": {
-															"minimum": 17,
-															"type": "integer"
+											"items": {
+												"oneOf": [
+													{
+														"additionalProperties": false,
+														"properties": {
+															"bitDepth": {
+																"minimum": 17,
+																"type": "integer"
+															},
+															"codec": {
+																"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																"type": "string"
+															},
+															"sampleRate": {
+																"minimum": 1,
+																"type": "integer"
+															},
+															"variant": { "const": "lossless" }
 														},
-														"codec": {
-															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-															"type": "string"
+														"required": [
+															"variant",
+															"codec",
+															"bitDepth",
+															"sampleRate"
+														],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": { "variant": { "const": "atmos" } },
+														"required": ["variant"],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": { "variant": { "const": "dsd" } },
+														"required": ["variant"],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": {
+															"layout": { "enum": ["5.1", "7.1"] },
+															"variant": { "const": "surround" }
 														},
-														"kind": { "const": "lossless" },
-														"sampleRate": {
-															"minimum": 1,
-															"type": "integer"
-														}
-													},
-													"required": [
-														"kind",
-														"codec",
-														"bitDepth",
-														"sampleRate"
-													],
-													"type": "object"
-												},
-												{
-													"additionalProperties": false,
-													"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-													"required": ["kind"],
-													"type": "object"
-												},
-												{
-													"additionalProperties": false,
-													"properties": {
-														"kind": { "const": "surround" },
-														"layout": { "enum": ["5.1", "7.1"] }
-													},
-													"required": ["kind", "layout"],
-													"type": "object"
-												}
-											] },
+														"required": ["variant", "layout"],
+														"type": "object"
+													}
+												],
+												"x-discriminator": "variant"
+											},
 											"maxItems": 2,
 											"type": "array"
 										},
@@ -136218,48 +137338,57 @@ var PorticoCastContracts = (function(exports) {
 												"available": { "type": "boolean" },
 												"backdropUrl": { "type": "string" },
 												"badges": {
-													"items": { "oneOf": [
-														{
-															"additionalProperties": false,
-															"properties": {
-																"bitDepth": {
-																	"minimum": 17,
-																	"type": "integer"
+													"items": {
+														"oneOf": [
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"bitDepth": {
+																		"minimum": 17,
+																		"type": "integer"
+																	},
+																	"codec": {
+																		"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																		"type": "string"
+																	},
+																	"sampleRate": {
+																		"minimum": 1,
+																		"type": "integer"
+																	},
+																	"variant": { "const": "lossless" }
 																},
-																"codec": {
-																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																	"type": "string"
+																"required": [
+																	"variant",
+																	"codec",
+																	"bitDepth",
+																	"sampleRate"
+																],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "atmos" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "dsd" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"layout": { "enum": ["5.1", "7.1"] },
+																	"variant": { "const": "surround" }
 																},
-																"kind": { "const": "lossless" },
-																"sampleRate": {
-																	"minimum": 1,
-																	"type": "integer"
-																}
-															},
-															"required": [
-																"kind",
-																"codec",
-																"bitDepth",
-																"sampleRate"
-															],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-															"required": ["kind"],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": {
-																"kind": { "const": "surround" },
-																"layout": { "enum": ["5.1", "7.1"] }
-															},
-															"required": ["kind", "layout"],
-															"type": "object"
-														}
-													] },
+																"required": ["variant", "layout"],
+																"type": "object"
+															}
+														],
+														"x-discriminator": "variant"
+													},
 													"maxItems": 2,
 													"type": "array"
 												},
@@ -137313,48 +138442,57 @@ var PorticoCastContracts = (function(exports) {
 												"available": { "type": "boolean" },
 												"backdropUrl": { "type": "string" },
 												"badges": {
-													"items": { "oneOf": [
-														{
-															"additionalProperties": false,
-															"properties": {
-																"bitDepth": {
-																	"minimum": 17,
-																	"type": "integer"
+													"items": {
+														"oneOf": [
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"bitDepth": {
+																		"minimum": 17,
+																		"type": "integer"
+																	},
+																	"codec": {
+																		"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																		"type": "string"
+																	},
+																	"sampleRate": {
+																		"minimum": 1,
+																		"type": "integer"
+																	},
+																	"variant": { "const": "lossless" }
 																},
-																"codec": {
-																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																	"type": "string"
+																"required": [
+																	"variant",
+																	"codec",
+																	"bitDepth",
+																	"sampleRate"
+																],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "atmos" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "dsd" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"layout": { "enum": ["5.1", "7.1"] },
+																	"variant": { "const": "surround" }
 																},
-																"kind": { "const": "lossless" },
-																"sampleRate": {
-																	"minimum": 1,
-																	"type": "integer"
-																}
-															},
-															"required": [
-																"kind",
-																"codec",
-																"bitDepth",
-																"sampleRate"
-															],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-															"required": ["kind"],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": {
-																"kind": { "const": "surround" },
-																"layout": { "enum": ["5.1", "7.1"] }
-															},
-															"required": ["kind", "layout"],
-															"type": "object"
-														}
-													] },
+																"required": ["variant", "layout"],
+																"type": "object"
+															}
+														],
+														"x-discriminator": "variant"
+													},
 													"maxItems": 2,
 													"type": "array"
 												},
@@ -137681,48 +138819,57 @@ var PorticoCastContracts = (function(exports) {
 														"available": { "type": "boolean" },
 														"backdropUrl": { "type": "string" },
 														"badges": {
-															"items": { "oneOf": [
-																{
-																	"additionalProperties": false,
-																	"properties": {
-																		"bitDepth": {
-																			"minimum": 17,
-																			"type": "integer"
+															"items": {
+																"oneOf": [
+																	{
+																		"additionalProperties": false,
+																		"properties": {
+																			"bitDepth": {
+																				"minimum": 17,
+																				"type": "integer"
+																			},
+																			"codec": {
+																				"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																				"type": "string"
+																			},
+																			"sampleRate": {
+																				"minimum": 1,
+																				"type": "integer"
+																			},
+																			"variant": { "const": "lossless" }
 																		},
-																		"codec": {
-																			"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																			"type": "string"
+																		"required": [
+																			"variant",
+																			"codec",
+																			"bitDepth",
+																			"sampleRate"
+																		],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": { "variant": { "const": "atmos" } },
+																		"required": ["variant"],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": { "variant": { "const": "dsd" } },
+																		"required": ["variant"],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": {
+																			"layout": { "enum": ["5.1", "7.1"] },
+																			"variant": { "const": "surround" }
 																		},
-																		"kind": { "const": "lossless" },
-																		"sampleRate": {
-																			"minimum": 1,
-																			"type": "integer"
-																		}
-																	},
-																	"required": [
-																		"kind",
-																		"codec",
-																		"bitDepth",
-																		"sampleRate"
-																	],
-																	"type": "object"
-																},
-																{
-																	"additionalProperties": false,
-																	"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-																	"required": ["kind"],
-																	"type": "object"
-																},
-																{
-																	"additionalProperties": false,
-																	"properties": {
-																		"kind": { "const": "surround" },
-																		"layout": { "enum": ["5.1", "7.1"] }
-																	},
-																	"required": ["kind", "layout"],
-																	"type": "object"
-																}
-															] },
+																		"required": ["variant", "layout"],
+																		"type": "object"
+																	}
+																],
+																"x-discriminator": "variant"
+															},
 															"maxItems": 2,
 															"type": "array"
 														},
@@ -138949,48 +140096,57 @@ var PorticoCastContracts = (function(exports) {
 												"available": { "type": "boolean" },
 												"backdropUrl": { "type": "string" },
 												"badges": {
-													"items": { "oneOf": [
-														{
-															"additionalProperties": false,
-															"properties": {
-																"bitDepth": {
-																	"minimum": 17,
-																	"type": "integer"
+													"items": {
+														"oneOf": [
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"bitDepth": {
+																		"minimum": 17,
+																		"type": "integer"
+																	},
+																	"codec": {
+																		"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																		"type": "string"
+																	},
+																	"sampleRate": {
+																		"minimum": 1,
+																		"type": "integer"
+																	},
+																	"variant": { "const": "lossless" }
 																},
-																"codec": {
-																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																	"type": "string"
+																"required": [
+																	"variant",
+																	"codec",
+																	"bitDepth",
+																	"sampleRate"
+																],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "atmos" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "dsd" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"layout": { "enum": ["5.1", "7.1"] },
+																	"variant": { "const": "surround" }
 																},
-																"kind": { "const": "lossless" },
-																"sampleRate": {
-																	"minimum": 1,
-																	"type": "integer"
-																}
-															},
-															"required": [
-																"kind",
-																"codec",
-																"bitDepth",
-																"sampleRate"
-															],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-															"required": ["kind"],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": {
-																"kind": { "const": "surround" },
-																"layout": { "enum": ["5.1", "7.1"] }
-															},
-															"required": ["kind", "layout"],
-															"type": "object"
-														}
-													] },
+																"required": ["variant", "layout"],
+																"type": "object"
+															}
+														],
+														"x-discriminator": "variant"
+													},
 													"maxItems": 2,
 													"type": "array"
 												},
@@ -139317,48 +140473,57 @@ var PorticoCastContracts = (function(exports) {
 														"available": { "type": "boolean" },
 														"backdropUrl": { "type": "string" },
 														"badges": {
-															"items": { "oneOf": [
-																{
-																	"additionalProperties": false,
-																	"properties": {
-																		"bitDepth": {
-																			"minimum": 17,
-																			"type": "integer"
+															"items": {
+																"oneOf": [
+																	{
+																		"additionalProperties": false,
+																		"properties": {
+																			"bitDepth": {
+																				"minimum": 17,
+																				"type": "integer"
+																			},
+																			"codec": {
+																				"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																				"type": "string"
+																			},
+																			"sampleRate": {
+																				"minimum": 1,
+																				"type": "integer"
+																			},
+																			"variant": { "const": "lossless" }
 																		},
-																		"codec": {
-																			"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																			"type": "string"
+																		"required": [
+																			"variant",
+																			"codec",
+																			"bitDepth",
+																			"sampleRate"
+																		],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": { "variant": { "const": "atmos" } },
+																		"required": ["variant"],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": { "variant": { "const": "dsd" } },
+																		"required": ["variant"],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": {
+																			"layout": { "enum": ["5.1", "7.1"] },
+																			"variant": { "const": "surround" }
 																		},
-																		"kind": { "const": "lossless" },
-																		"sampleRate": {
-																			"minimum": 1,
-																			"type": "integer"
-																		}
-																	},
-																	"required": [
-																		"kind",
-																		"codec",
-																		"bitDepth",
-																		"sampleRate"
-																	],
-																	"type": "object"
-																},
-																{
-																	"additionalProperties": false,
-																	"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-																	"required": ["kind"],
-																	"type": "object"
-																},
-																{
-																	"additionalProperties": false,
-																	"properties": {
-																		"kind": { "const": "surround" },
-																		"layout": { "enum": ["5.1", "7.1"] }
-																	},
-																	"required": ["kind", "layout"],
-																	"type": "object"
-																}
-															] },
+																		"required": ["variant", "layout"],
+																		"type": "object"
+																	}
+																],
+																"x-discriminator": "variant"
+															},
 															"maxItems": 2,
 															"type": "array"
 														},
@@ -140131,48 +141296,57 @@ var PorticoCastContracts = (function(exports) {
 										"available": { "type": "boolean" },
 										"backdropUrl": { "type": "string" },
 										"badges": {
-											"items": { "oneOf": [
-												{
-													"additionalProperties": false,
-													"properties": {
-														"bitDepth": {
-															"minimum": 17,
-															"type": "integer"
+											"items": {
+												"oneOf": [
+													{
+														"additionalProperties": false,
+														"properties": {
+															"bitDepth": {
+																"minimum": 17,
+																"type": "integer"
+															},
+															"codec": {
+																"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																"type": "string"
+															},
+															"sampleRate": {
+																"minimum": 1,
+																"type": "integer"
+															},
+															"variant": { "const": "lossless" }
 														},
-														"codec": {
-															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-															"type": "string"
+														"required": [
+															"variant",
+															"codec",
+															"bitDepth",
+															"sampleRate"
+														],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": { "variant": { "const": "atmos" } },
+														"required": ["variant"],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": { "variant": { "const": "dsd" } },
+														"required": ["variant"],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": {
+															"layout": { "enum": ["5.1", "7.1"] },
+															"variant": { "const": "surround" }
 														},
-														"kind": { "const": "lossless" },
-														"sampleRate": {
-															"minimum": 1,
-															"type": "integer"
-														}
-													},
-													"required": [
-														"kind",
-														"codec",
-														"bitDepth",
-														"sampleRate"
-													],
-													"type": "object"
-												},
-												{
-													"additionalProperties": false,
-													"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-													"required": ["kind"],
-													"type": "object"
-												},
-												{
-													"additionalProperties": false,
-													"properties": {
-														"kind": { "const": "surround" },
-														"layout": { "enum": ["5.1", "7.1"] }
-													},
-													"required": ["kind", "layout"],
-													"type": "object"
-												}
-											] },
+														"required": ["variant", "layout"],
+														"type": "object"
+													}
+												],
+												"x-discriminator": "variant"
+											},
 											"maxItems": 2,
 											"type": "array"
 										},
@@ -140499,48 +141673,57 @@ var PorticoCastContracts = (function(exports) {
 												"available": { "type": "boolean" },
 												"backdropUrl": { "type": "string" },
 												"badges": {
-													"items": { "oneOf": [
-														{
-															"additionalProperties": false,
-															"properties": {
-																"bitDepth": {
-																	"minimum": 17,
-																	"type": "integer"
+													"items": {
+														"oneOf": [
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"bitDepth": {
+																		"minimum": 17,
+																		"type": "integer"
+																	},
+																	"codec": {
+																		"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																		"type": "string"
+																	},
+																	"sampleRate": {
+																		"minimum": 1,
+																		"type": "integer"
+																	},
+																	"variant": { "const": "lossless" }
 																},
-																"codec": {
-																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																	"type": "string"
+																"required": [
+																	"variant",
+																	"codec",
+																	"bitDepth",
+																	"sampleRate"
+																],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "atmos" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "dsd" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"layout": { "enum": ["5.1", "7.1"] },
+																	"variant": { "const": "surround" }
 																},
-																"kind": { "const": "lossless" },
-																"sampleRate": {
-																	"minimum": 1,
-																	"type": "integer"
-																}
-															},
-															"required": [
-																"kind",
-																"codec",
-																"bitDepth",
-																"sampleRate"
-															],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-															"required": ["kind"],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": {
-																"kind": { "const": "surround" },
-																"layout": { "enum": ["5.1", "7.1"] }
-															},
-															"required": ["kind", "layout"],
-															"type": "object"
-														}
-													] },
+																"required": ["variant", "layout"],
+																"type": "object"
+															}
+														],
+														"x-discriminator": "variant"
+													},
 													"maxItems": 2,
 													"type": "array"
 												},
@@ -141594,48 +142777,57 @@ var PorticoCastContracts = (function(exports) {
 												"available": { "type": "boolean" },
 												"backdropUrl": { "type": "string" },
 												"badges": {
-													"items": { "oneOf": [
-														{
-															"additionalProperties": false,
-															"properties": {
-																"bitDepth": {
-																	"minimum": 17,
-																	"type": "integer"
+													"items": {
+														"oneOf": [
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"bitDepth": {
+																		"minimum": 17,
+																		"type": "integer"
+																	},
+																	"codec": {
+																		"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																		"type": "string"
+																	},
+																	"sampleRate": {
+																		"minimum": 1,
+																		"type": "integer"
+																	},
+																	"variant": { "const": "lossless" }
 																},
-																"codec": {
-																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																	"type": "string"
+																"required": [
+																	"variant",
+																	"codec",
+																	"bitDepth",
+																	"sampleRate"
+																],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "atmos" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "dsd" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"layout": { "enum": ["5.1", "7.1"] },
+																	"variant": { "const": "surround" }
 																},
-																"kind": { "const": "lossless" },
-																"sampleRate": {
-																	"minimum": 1,
-																	"type": "integer"
-																}
-															},
-															"required": [
-																"kind",
-																"codec",
-																"bitDepth",
-																"sampleRate"
-															],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-															"required": ["kind"],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": {
-																"kind": { "const": "surround" },
-																"layout": { "enum": ["5.1", "7.1"] }
-															},
-															"required": ["kind", "layout"],
-															"type": "object"
-														}
-													] },
+																"required": ["variant", "layout"],
+																"type": "object"
+															}
+														],
+														"x-discriminator": "variant"
+													},
 													"maxItems": 2,
 													"type": "array"
 												},
@@ -141962,48 +143154,57 @@ var PorticoCastContracts = (function(exports) {
 														"available": { "type": "boolean" },
 														"backdropUrl": { "type": "string" },
 														"badges": {
-															"items": { "oneOf": [
-																{
-																	"additionalProperties": false,
-																	"properties": {
-																		"bitDepth": {
-																			"minimum": 17,
-																			"type": "integer"
+															"items": {
+																"oneOf": [
+																	{
+																		"additionalProperties": false,
+																		"properties": {
+																			"bitDepth": {
+																				"minimum": 17,
+																				"type": "integer"
+																			},
+																			"codec": {
+																				"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																				"type": "string"
+																			},
+																			"sampleRate": {
+																				"minimum": 1,
+																				"type": "integer"
+																			},
+																			"variant": { "const": "lossless" }
 																		},
-																		"codec": {
-																			"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																			"type": "string"
+																		"required": [
+																			"variant",
+																			"codec",
+																			"bitDepth",
+																			"sampleRate"
+																		],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": { "variant": { "const": "atmos" } },
+																		"required": ["variant"],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": { "variant": { "const": "dsd" } },
+																		"required": ["variant"],
+																		"type": "object"
+																	},
+																	{
+																		"additionalProperties": false,
+																		"properties": {
+																			"layout": { "enum": ["5.1", "7.1"] },
+																			"variant": { "const": "surround" }
 																		},
-																		"kind": { "const": "lossless" },
-																		"sampleRate": {
-																			"minimum": 1,
-																			"type": "integer"
-																		}
-																	},
-																	"required": [
-																		"kind",
-																		"codec",
-																		"bitDepth",
-																		"sampleRate"
-																	],
-																	"type": "object"
-																},
-																{
-																	"additionalProperties": false,
-																	"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-																	"required": ["kind"],
-																	"type": "object"
-																},
-																{
-																	"additionalProperties": false,
-																	"properties": {
-																		"kind": { "const": "surround" },
-																		"layout": { "enum": ["5.1", "7.1"] }
-																	},
-																	"required": ["kind", "layout"],
-																	"type": "object"
-																}
-															] },
+																		"required": ["variant", "layout"],
+																		"type": "object"
+																	}
+																],
+																"x-discriminator": "variant"
+															},
 															"maxItems": 2,
 															"type": "array"
 														},
@@ -143198,48 +144399,57 @@ var PorticoCastContracts = (function(exports) {
 									"available": { "type": "boolean" },
 									"backdropUrl": { "type": "string" },
 									"badges": {
-										"items": { "oneOf": [
-											{
-												"additionalProperties": false,
-												"properties": {
-													"bitDepth": {
-														"minimum": 17,
-														"type": "integer"
+										"items": {
+											"oneOf": [
+												{
+													"additionalProperties": false,
+													"properties": {
+														"bitDepth": {
+															"minimum": 17,
+															"type": "integer"
+														},
+														"codec": {
+															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+															"type": "string"
+														},
+														"sampleRate": {
+															"minimum": 1,
+															"type": "integer"
+														},
+														"variant": { "const": "lossless" }
 													},
-													"codec": {
-														"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-														"type": "string"
+													"required": [
+														"variant",
+														"codec",
+														"bitDepth",
+														"sampleRate"
+													],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "atmos" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "dsd" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": {
+														"layout": { "enum": ["5.1", "7.1"] },
+														"variant": { "const": "surround" }
 													},
-													"kind": { "const": "lossless" },
-													"sampleRate": {
-														"minimum": 1,
-														"type": "integer"
-													}
-												},
-												"required": [
-													"kind",
-													"codec",
-													"bitDepth",
-													"sampleRate"
-												],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-												"required": ["kind"],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": {
-													"kind": { "const": "surround" },
-													"layout": { "enum": ["5.1", "7.1"] }
-												},
-												"required": ["kind", "layout"],
-												"type": "object"
-											}
-										] },
+													"required": ["variant", "layout"],
+													"type": "object"
+												}
+											],
+											"x-discriminator": "variant"
+										},
 										"maxItems": 2,
 										"type": "array"
 									},
@@ -143566,48 +144776,57 @@ var PorticoCastContracts = (function(exports) {
 											"available": { "type": "boolean" },
 											"backdropUrl": { "type": "string" },
 											"badges": {
-												"items": { "oneOf": [
-													{
-														"additionalProperties": false,
-														"properties": {
-															"bitDepth": {
-																"minimum": 17,
-																"type": "integer"
+												"items": {
+													"oneOf": [
+														{
+															"additionalProperties": false,
+															"properties": {
+																"bitDepth": {
+																	"minimum": 17,
+																	"type": "integer"
+																},
+																"codec": {
+																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																	"type": "string"
+																},
+																"sampleRate": {
+																	"minimum": 1,
+																	"type": "integer"
+																},
+																"variant": { "const": "lossless" }
 															},
-															"codec": {
-																"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																"type": "string"
+															"required": [
+																"variant",
+																"codec",
+																"bitDepth",
+																"sampleRate"
+															],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": { "variant": { "const": "atmos" } },
+															"required": ["variant"],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": { "variant": { "const": "dsd" } },
+															"required": ["variant"],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": {
+																"layout": { "enum": ["5.1", "7.1"] },
+																"variant": { "const": "surround" }
 															},
-															"kind": { "const": "lossless" },
-															"sampleRate": {
-																"minimum": 1,
-																"type": "integer"
-															}
-														},
-														"required": [
-															"kind",
-															"codec",
-															"bitDepth",
-															"sampleRate"
-														],
-														"type": "object"
-													},
-													{
-														"additionalProperties": false,
-														"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-														"required": ["kind"],
-														"type": "object"
-													},
-													{
-														"additionalProperties": false,
-														"properties": {
-															"kind": { "const": "surround" },
-															"layout": { "enum": ["5.1", "7.1"] }
-														},
-														"required": ["kind", "layout"],
-														"type": "object"
-													}
-												] },
+															"required": ["variant", "layout"],
+															"type": "object"
+														}
+													],
+													"x-discriminator": "variant"
+												},
 												"maxItems": 2,
 												"type": "array"
 											},
@@ -144377,48 +145596,57 @@ var PorticoCastContracts = (function(exports) {
 							"available": { "type": "boolean" },
 							"backdropUrl": { "type": "string" },
 							"badges": {
-								"items": { "oneOf": [
-									{
-										"additionalProperties": false,
-										"properties": {
-											"bitDepth": {
-												"minimum": 17,
-												"type": "integer"
+								"items": {
+									"oneOf": [
+										{
+											"additionalProperties": false,
+											"properties": {
+												"bitDepth": {
+													"minimum": 17,
+													"type": "integer"
+												},
+												"codec": {
+													"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+													"type": "string"
+												},
+												"sampleRate": {
+													"minimum": 1,
+													"type": "integer"
+												},
+												"variant": { "const": "lossless" }
 											},
-											"codec": {
-												"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-												"type": "string"
+											"required": [
+												"variant",
+												"codec",
+												"bitDepth",
+												"sampleRate"
+											],
+											"type": "object"
+										},
+										{
+											"additionalProperties": false,
+											"properties": { "variant": { "const": "atmos" } },
+											"required": ["variant"],
+											"type": "object"
+										},
+										{
+											"additionalProperties": false,
+											"properties": { "variant": { "const": "dsd" } },
+											"required": ["variant"],
+											"type": "object"
+										},
+										{
+											"additionalProperties": false,
+											"properties": {
+												"layout": { "enum": ["5.1", "7.1"] },
+												"variant": { "const": "surround" }
 											},
-											"kind": { "const": "lossless" },
-											"sampleRate": {
-												"minimum": 1,
-												"type": "integer"
-											}
-										},
-										"required": [
-											"kind",
-											"codec",
-											"bitDepth",
-											"sampleRate"
-										],
-										"type": "object"
-									},
-									{
-										"additionalProperties": false,
-										"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-										"required": ["kind"],
-										"type": "object"
-									},
-									{
-										"additionalProperties": false,
-										"properties": {
-											"kind": { "const": "surround" },
-											"layout": { "enum": ["5.1", "7.1"] }
-										},
-										"required": ["kind", "layout"],
-										"type": "object"
-									}
-								] },
+											"required": ["variant", "layout"],
+											"type": "object"
+										}
+									],
+									"x-discriminator": "variant"
+								},
 								"maxItems": 2,
 								"type": "array"
 							},
@@ -144745,48 +145973,57 @@ var PorticoCastContracts = (function(exports) {
 									"available": { "type": "boolean" },
 									"backdropUrl": { "type": "string" },
 									"badges": {
-										"items": { "oneOf": [
-											{
-												"additionalProperties": false,
-												"properties": {
-													"bitDepth": {
-														"minimum": 17,
-														"type": "integer"
+										"items": {
+											"oneOf": [
+												{
+													"additionalProperties": false,
+													"properties": {
+														"bitDepth": {
+															"minimum": 17,
+															"type": "integer"
+														},
+														"codec": {
+															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+															"type": "string"
+														},
+														"sampleRate": {
+															"minimum": 1,
+															"type": "integer"
+														},
+														"variant": { "const": "lossless" }
 													},
-													"codec": {
-														"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-														"type": "string"
+													"required": [
+														"variant",
+														"codec",
+														"bitDepth",
+														"sampleRate"
+													],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "atmos" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "dsd" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": {
+														"layout": { "enum": ["5.1", "7.1"] },
+														"variant": { "const": "surround" }
 													},
-													"kind": { "const": "lossless" },
-													"sampleRate": {
-														"minimum": 1,
-														"type": "integer"
-													}
-												},
-												"required": [
-													"kind",
-													"codec",
-													"bitDepth",
-													"sampleRate"
-												],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-												"required": ["kind"],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": {
-													"kind": { "const": "surround" },
-													"layout": { "enum": ["5.1", "7.1"] }
-												},
-												"required": ["kind", "layout"],
-												"type": "object"
-											}
-										] },
+													"required": ["variant", "layout"],
+													"type": "object"
+												}
+											],
+											"x-discriminator": "variant"
+										},
 										"maxItems": 2,
 										"type": "array"
 									},
@@ -145840,48 +147077,57 @@ var PorticoCastContracts = (function(exports) {
 									"available": { "type": "boolean" },
 									"backdropUrl": { "type": "string" },
 									"badges": {
-										"items": { "oneOf": [
-											{
-												"additionalProperties": false,
-												"properties": {
-													"bitDepth": {
-														"minimum": 17,
-														"type": "integer"
+										"items": {
+											"oneOf": [
+												{
+													"additionalProperties": false,
+													"properties": {
+														"bitDepth": {
+															"minimum": 17,
+															"type": "integer"
+														},
+														"codec": {
+															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+															"type": "string"
+														},
+														"sampleRate": {
+															"minimum": 1,
+															"type": "integer"
+														},
+														"variant": { "const": "lossless" }
 													},
-													"codec": {
-														"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-														"type": "string"
+													"required": [
+														"variant",
+														"codec",
+														"bitDepth",
+														"sampleRate"
+													],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "atmos" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "dsd" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": {
+														"layout": { "enum": ["5.1", "7.1"] },
+														"variant": { "const": "surround" }
 													},
-													"kind": { "const": "lossless" },
-													"sampleRate": {
-														"minimum": 1,
-														"type": "integer"
-													}
-												},
-												"required": [
-													"kind",
-													"codec",
-													"bitDepth",
-													"sampleRate"
-												],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-												"required": ["kind"],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": {
-													"kind": { "const": "surround" },
-													"layout": { "enum": ["5.1", "7.1"] }
-												},
-												"required": ["kind", "layout"],
-												"type": "object"
-											}
-										] },
+													"required": ["variant", "layout"],
+													"type": "object"
+												}
+											],
+											"x-discriminator": "variant"
+										},
 										"maxItems": 2,
 										"type": "array"
 									},
@@ -146208,48 +147454,57 @@ var PorticoCastContracts = (function(exports) {
 											"available": { "type": "boolean" },
 											"backdropUrl": { "type": "string" },
 											"badges": {
-												"items": { "oneOf": [
-													{
-														"additionalProperties": false,
-														"properties": {
-															"bitDepth": {
-																"minimum": 17,
-																"type": "integer"
+												"items": {
+													"oneOf": [
+														{
+															"additionalProperties": false,
+															"properties": {
+																"bitDepth": {
+																	"minimum": 17,
+																	"type": "integer"
+																},
+																"codec": {
+																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																	"type": "string"
+																},
+																"sampleRate": {
+																	"minimum": 1,
+																	"type": "integer"
+																},
+																"variant": { "const": "lossless" }
 															},
-															"codec": {
-																"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																"type": "string"
+															"required": [
+																"variant",
+																"codec",
+																"bitDepth",
+																"sampleRate"
+															],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": { "variant": { "const": "atmos" } },
+															"required": ["variant"],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": { "variant": { "const": "dsd" } },
+															"required": ["variant"],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": {
+																"layout": { "enum": ["5.1", "7.1"] },
+																"variant": { "const": "surround" }
 															},
-															"kind": { "const": "lossless" },
-															"sampleRate": {
-																"minimum": 1,
-																"type": "integer"
-															}
-														},
-														"required": [
-															"kind",
-															"codec",
-															"bitDepth",
-															"sampleRate"
-														],
-														"type": "object"
-													},
-													{
-														"additionalProperties": false,
-														"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-														"required": ["kind"],
-														"type": "object"
-													},
-													{
-														"additionalProperties": false,
-														"properties": {
-															"kind": { "const": "surround" },
-															"layout": { "enum": ["5.1", "7.1"] }
-														},
-														"required": ["kind", "layout"],
-														"type": "object"
-													}
-												] },
+															"required": ["variant", "layout"],
+															"type": "object"
+														}
+													],
+													"x-discriminator": "variant"
+												},
 												"maxItems": 2,
 												"type": "array"
 											},
@@ -150527,48 +151782,57 @@ var PorticoCastContracts = (function(exports) {
 									"available": { "type": "boolean" },
 									"backdropUrl": { "type": "string" },
 									"badges": {
-										"items": { "oneOf": [
-											{
-												"additionalProperties": false,
-												"properties": {
-													"bitDepth": {
-														"minimum": 17,
-														"type": "integer"
+										"items": {
+											"oneOf": [
+												{
+													"additionalProperties": false,
+													"properties": {
+														"bitDepth": {
+															"minimum": 17,
+															"type": "integer"
+														},
+														"codec": {
+															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+															"type": "string"
+														},
+														"sampleRate": {
+															"minimum": 1,
+															"type": "integer"
+														},
+														"variant": { "const": "lossless" }
 													},
-													"codec": {
-														"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-														"type": "string"
+													"required": [
+														"variant",
+														"codec",
+														"bitDepth",
+														"sampleRate"
+													],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "atmos" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "dsd" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": {
+														"layout": { "enum": ["5.1", "7.1"] },
+														"variant": { "const": "surround" }
 													},
-													"kind": { "const": "lossless" },
-													"sampleRate": {
-														"minimum": 1,
-														"type": "integer"
-													}
-												},
-												"required": [
-													"kind",
-													"codec",
-													"bitDepth",
-													"sampleRate"
-												],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-												"required": ["kind"],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": {
-													"kind": { "const": "surround" },
-													"layout": { "enum": ["5.1", "7.1"] }
-												},
-												"required": ["kind", "layout"],
-												"type": "object"
-											}
-										] },
+													"required": ["variant", "layout"],
+													"type": "object"
+												}
+											],
+											"x-discriminator": "variant"
+										},
 										"maxItems": 2,
 										"type": "array"
 									},
@@ -150895,48 +152159,57 @@ var PorticoCastContracts = (function(exports) {
 											"available": { "type": "boolean" },
 											"backdropUrl": { "type": "string" },
 											"badges": {
-												"items": { "oneOf": [
-													{
-														"additionalProperties": false,
-														"properties": {
-															"bitDepth": {
-																"minimum": 17,
-																"type": "integer"
+												"items": {
+													"oneOf": [
+														{
+															"additionalProperties": false,
+															"properties": {
+																"bitDepth": {
+																	"minimum": 17,
+																	"type": "integer"
+																},
+																"codec": {
+																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																	"type": "string"
+																},
+																"sampleRate": {
+																	"minimum": 1,
+																	"type": "integer"
+																},
+																"variant": { "const": "lossless" }
 															},
-															"codec": {
-																"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																"type": "string"
+															"required": [
+																"variant",
+																"codec",
+																"bitDepth",
+																"sampleRate"
+															],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": { "variant": { "const": "atmos" } },
+															"required": ["variant"],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": { "variant": { "const": "dsd" } },
+															"required": ["variant"],
+															"type": "object"
+														},
+														{
+															"additionalProperties": false,
+															"properties": {
+																"layout": { "enum": ["5.1", "7.1"] },
+																"variant": { "const": "surround" }
 															},
-															"kind": { "const": "lossless" },
-															"sampleRate": {
-																"minimum": 1,
-																"type": "integer"
-															}
-														},
-														"required": [
-															"kind",
-															"codec",
-															"bitDepth",
-															"sampleRate"
-														],
-														"type": "object"
-													},
-													{
-														"additionalProperties": false,
-														"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-														"required": ["kind"],
-														"type": "object"
-													},
-													{
-														"additionalProperties": false,
-														"properties": {
-															"kind": { "const": "surround" },
-															"layout": { "enum": ["5.1", "7.1"] }
-														},
-														"required": ["kind", "layout"],
-														"type": "object"
-													}
-												] },
+															"required": ["variant", "layout"],
+															"type": "object"
+														}
+													],
+													"x-discriminator": "variant"
+												},
 												"maxItems": 2,
 												"type": "array"
 											},
@@ -158867,258 +160140,276 @@ var PorticoCastContracts = (function(exports) {
 				"type": "object"
 			}
 		] },
-		"PostAccessInvitationsAcceptResponse": { "anyOf": [
-			{
-				"properties": {
-					"accountId": { "type": "string" },
-					"allowedLibraries": {
-						"items": { "type": "string" },
-						"type": "array"
+		"PostAccessInvitationsAcceptResponse": {
+			"anyOf": [
+				{
+					"properties": {
+						"accountId": { "type": "string" },
+						"allowedLibraries": {
+							"items": { "type": "string" },
+							"type": "array"
+						},
+						"profileId": { "type": "string" },
+						"role": { "type": "string" },
+						"username": { "type": "string" },
+						"variant": {
+							"const": "accepted",
+							"type": "string"
+						}
 					},
-					"profileId": { "type": "string" },
-					"role": { "type": "string" },
-					"username": { "type": "string" }
+					"required": [
+						"accountId",
+						"username",
+						"profileId",
+						"role",
+						"allowedLibraries",
+						"variant"
+					],
+					"type": "object"
 				},
-				"required": [
-					"accountId",
-					"username",
-					"profileId",
-					"role",
-					"allowedLibraries"
-				],
-				"type": "object"
-			},
-			{
-				"properties": {
-					"account": {
-						"properties": {
-							"allowedLibraries": {
-								"items": { "type": "string" },
-								"type": "array"
-							},
-							"disabled": { "type": "boolean" },
-							"disabledAt": { "type": "string" },
-							"disabledReason": { "type": "string" },
-							"hostedAccountId": { "type": "string" },
-							"id": { "type": "string" },
-							"primaryProfileId": { "type": "string" },
-							"revision": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							},
-							"role": { "type": "string" },
-							"username": { "type": "string" }
-						},
-						"required": [
-							"id",
-							"username",
-							"primaryProfileId",
-							"role",
-							"revision",
-							"disabled",
-							"allowedLibraries"
-						],
-						"type": "object"
-					},
-					"authority": { "type": "string" },
-					"canManage": { "type": "boolean" },
-					"capabilities": {
-						"properties": {
-							"manageAccount": { "type": "boolean" },
-							"managePeople": { "type": "boolean" },
-							"manageServer": { "type": "boolean" },
-							"manageSignIn": { "type": "boolean" }
-						},
-						"required": [
-							"manageAccount",
-							"managePeople",
-							"manageServer",
-							"manageSignIn"
-						],
-						"type": "object"
-					},
-					"custodyPending": { "type": "boolean" },
-					"deviceId": { "type": "string" },
-					"installationId": { "type": "string" },
-					"passwordChangeRequired": { "type": "boolean" },
-					"profiles": {
-						"items": {
+				{
+					"properties": {
+						"account": {
 							"properties": {
 								"allowedLibraries": {
 									"items": { "type": "string" },
 									"type": "array"
 								},
-								"art": { "type": "string" },
+								"disabled": { "type": "boolean" },
+								"disabledAt": { "type": "string" },
+								"disabledReason": { "type": "string" },
+								"hostedAccountId": { "type": "string" },
 								"id": { "type": "string" },
-								"name": { "type": "string" },
-								"pinRequired": { "type": "boolean" },
-								"pinRevision": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
-								},
-								"position": {
-									"maximum": 9007199254740991,
-									"minimum": -9007199254740991,
-									"type": "integer"
-								},
-								"primary": { "type": "boolean" },
+								"primaryProfileId": { "type": "string" },
 								"revision": {
 									"maximum": 9007199254740991,
 									"minimum": -9007199254740991,
 									"type": "integer"
-								}
+								},
+								"role": { "type": "string" },
+								"username": { "type": "string" }
 							},
 							"required": [
 								"id",
-								"name",
-								"primary",
-								"position",
-								"art",
+								"username",
+								"primaryProfileId",
+								"role",
 								"revision",
-								"pinRevision",
-								"pinRequired",
+								"disabled",
 								"allowedLibraries"
 							],
 							"type": "object"
 						},
-						"type": "array"
-					},
-					"serverId": { "type": "string" },
-					"session": {
-						"properties": {
-							"accessToken": { "type": "string" },
-							"authorizationHorizon": { "type": "string" },
-							"deviceId": { "type": "string" },
-							"expiresAt": { "type": "string" },
-							"installationId": { "type": "string" },
-							"refreshToken": { "type": "string" },
-							"serverIdentity": {
-								"properties": {
-									"fingerprint": { "type": "string" },
-									"publicKey": { "type": "string" }
-								},
-								"required": ["publicKey", "fingerprint"],
-								"type": "object"
+						"authority": { "type": "string" },
+						"canManage": { "type": "boolean" },
+						"capabilities": {
+							"properties": {
+								"manageAccount": { "type": "boolean" },
+								"managePeople": { "type": "boolean" },
+								"manageServer": { "type": "boolean" },
+								"manageSignIn": { "type": "boolean" }
 							},
-							"sessionFamilyId": { "type": "string" },
-							"tokenGeneration": { "type": "string" },
-							"viewer": {
+							"required": [
+								"manageAccount",
+								"managePeople",
+								"manageServer",
+								"manageSignIn"
+							],
+							"type": "object"
+						},
+						"custodyPending": { "type": "boolean" },
+						"deviceId": { "type": "string" },
+						"installationId": { "type": "string" },
+						"passwordChangeRequired": { "type": "boolean" },
+						"profiles": {
+							"items": {
 								"properties": {
-									"accountId": { "type": "string" },
-									"authority": { "type": "string" },
-									"profileId": { "type": "string" },
-									"role": { "type": "string" },
-									"serverId": { "type": "string" }
+									"allowedLibraries": {
+										"items": { "type": "string" },
+										"type": "array"
+									},
+									"art": { "type": "string" },
+									"id": { "type": "string" },
+									"name": { "type": "string" },
+									"pinRequired": { "type": "boolean" },
+									"pinRevision": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"position": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									},
+									"primary": { "type": "boolean" },
+									"revision": {
+										"maximum": 9007199254740991,
+										"minimum": -9007199254740991,
+										"type": "integer"
+									}
 								},
 								"required": [
-									"accountId",
-									"profileId",
-									"serverId",
-									"authority",
-									"role"
+									"id",
+									"name",
+									"primary",
+									"position",
+									"art",
+									"revision",
+									"pinRevision",
+									"pinRequired",
+									"allowedLibraries"
 								],
 								"type": "object"
-							}
-						},
-						"required": [
-							"accessToken",
-							"deviceId",
-							"installationId",
-							"expiresAt",
-							"viewer",
-							"sessionFamilyId",
-							"tokenGeneration",
-							"authorizationHorizon"
-						],
-						"type": "object"
-					},
-					"twoStepSetupRequired": { "type": "boolean" }
-				},
-				"required": [
-					"authority",
-					"serverId",
-					"account",
-					"profiles",
-					"canManage",
-					"capabilities",
-					"session"
-				],
-				"type": "object"
-			},
-			{
-				"properties": {
-					"account": {
-						"properties": {
-							"allowedLibraries": { "type": "null" },
-							"disabled": { "type": "boolean" },
-							"disabledAt": { "type": "string" },
-							"disabledReason": { "type": "string" },
-							"hostedAccountId": { "type": "string" },
-							"id": { "type": "string" },
-							"primaryProfileId": { "type": "string" },
-							"revision": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
 							},
-							"role": { "type": "string" },
-							"username": { "type": "string" }
+							"type": "array"
 						},
-						"required": [
-							"id",
-							"username",
-							"primaryProfileId",
-							"role",
-							"revision",
-							"disabled",
-							"allowedLibraries"
-						],
-						"type": "object"
-					},
-					"authority": { "type": "string" },
-					"canManage": { "type": "boolean" },
-					"capabilities": {
-						"properties": {
-							"manageAccount": { "type": "boolean" },
-							"managePeople": { "type": "boolean" },
-							"manageServer": { "type": "boolean" },
-							"manageSignIn": { "type": "boolean" }
+						"serverId": { "type": "string" },
+						"session": {
+							"properties": {
+								"accessToken": { "type": "string" },
+								"authorizationHorizon": { "type": "string" },
+								"deviceId": { "type": "string" },
+								"expiresAt": { "type": "string" },
+								"installationId": { "type": "string" },
+								"refreshToken": { "type": "string" },
+								"serverIdentity": {
+									"properties": {
+										"fingerprint": { "type": "string" },
+										"publicKey": { "type": "string" }
+									},
+									"required": ["publicKey", "fingerprint"],
+									"type": "object"
+								},
+								"sessionFamilyId": { "type": "string" },
+								"tokenGeneration": { "type": "string" },
+								"viewer": {
+									"properties": {
+										"accountId": { "type": "string" },
+										"authority": { "type": "string" },
+										"profileId": { "type": "string" },
+										"role": { "type": "string" },
+										"serverId": { "type": "string" }
+									},
+									"required": [
+										"accountId",
+										"profileId",
+										"serverId",
+										"authority",
+										"role"
+									],
+									"type": "object"
+								}
+							},
+							"required": [
+								"accessToken",
+								"deviceId",
+								"installationId",
+								"expiresAt",
+								"viewer",
+								"sessionFamilyId",
+								"tokenGeneration",
+								"authorizationHorizon"
+							],
+							"type": "object"
 						},
-						"required": [
-							"manageAccount",
-							"managePeople",
-							"manageServer",
-							"manageSignIn"
-						],
-						"type": "object"
+						"twoStepSetupRequired": { "type": "boolean" },
+						"variant": {
+							"const": "signed-in",
+							"type": "string"
+						}
 					},
-					"challenge": {
-						"properties": {
-							"expiresAt": { "type": "string" },
-							"token": { "type": "string" }
-						},
-						"required": ["token", "expiresAt"],
-						"type": "object"
-					},
-					"custodyPending": { "type": "boolean" },
-					"profiles": { "type": "null" },
-					"serverId": { "type": "string" },
-					"twoStepSetupRequired": { "type": "boolean" }
+					"required": [
+						"authority",
+						"serverId",
+						"account",
+						"profiles",
+						"canManage",
+						"capabilities",
+						"session",
+						"variant"
+					],
+					"type": "object"
 				},
-				"required": [
-					"authority",
-					"serverId",
-					"account",
-					"profiles",
-					"canManage",
-					"capabilities",
-					"challenge"
-				],
-				"type": "object"
-			}
-		] },
+				{
+					"properties": {
+						"account": {
+							"properties": {
+								"allowedLibraries": { "type": "null" },
+								"disabled": { "type": "boolean" },
+								"disabledAt": { "type": "string" },
+								"disabledReason": { "type": "string" },
+								"hostedAccountId": { "type": "string" },
+								"id": { "type": "string" },
+								"primaryProfileId": { "type": "string" },
+								"revision": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"role": { "type": "string" },
+								"username": { "type": "string" }
+							},
+							"required": [
+								"id",
+								"username",
+								"primaryProfileId",
+								"role",
+								"revision",
+								"disabled",
+								"allowedLibraries"
+							],
+							"type": "object"
+						},
+						"authority": { "type": "string" },
+						"canManage": { "type": "boolean" },
+						"capabilities": {
+							"properties": {
+								"manageAccount": { "type": "boolean" },
+								"managePeople": { "type": "boolean" },
+								"manageServer": { "type": "boolean" },
+								"manageSignIn": { "type": "boolean" }
+							},
+							"required": [
+								"manageAccount",
+								"managePeople",
+								"manageServer",
+								"manageSignIn"
+							],
+							"type": "object"
+						},
+						"challenge": {
+							"properties": {
+								"expiresAt": { "type": "string" },
+								"token": { "type": "string" }
+							},
+							"required": ["token", "expiresAt"],
+							"type": "object"
+						},
+						"custodyPending": { "type": "boolean" },
+						"profiles": { "type": "null" },
+						"serverId": { "type": "string" },
+						"twoStepSetupRequired": { "type": "boolean" },
+						"variant": {
+							"const": "challenge",
+							"type": "string"
+						}
+					},
+					"required": [
+						"authority",
+						"serverId",
+						"account",
+						"profiles",
+						"canManage",
+						"capabilities",
+						"challenge",
+						"variant"
+					],
+					"type": "object"
+				}
+			],
+			"x-discriminator": "variant"
+		},
 		"PostAdminAccessInvitationLinkRequest": {
 			"properties": { "expectedRevision": {
 				"maximum": 9007199254740991,
@@ -165168,351 +166459,364 @@ var PorticoCastContracts = (function(exports) {
 			"required": ["code"],
 			"type": "object"
 		},
-		"PostAuthOwnerResetVerifyResponse": { "oneOf": [{
-			"properties": {
-				"account": {
-					"properties": {
-						"allowedLibraries": {
-							"items": { "type": "string" },
-							"type": "array"
-						},
-						"disabled": { "type": "boolean" },
-						"disabledAt": { "type": "string" },
-						"disabledReason": { "type": "string" },
-						"hostedAccountId": { "type": "string" },
-						"id": { "type": "string" },
-						"primaryProfileId": { "type": "string" },
-						"revision": {
-							"maximum": 9007199254740991,
-							"minimum": -9007199254740991,
-							"type": "integer"
-						},
-						"role": { "type": "string" },
-						"username": { "type": "string" }
-					},
-					"required": [
-						"id",
-						"username",
-						"primaryProfileId",
-						"role",
-						"revision",
-						"disabled",
-						"allowedLibraries"
-					],
-					"type": "object"
-				},
-				"authority": { "type": "string" },
-				"canManage": { "type": "boolean" },
-				"capabilities": {
-					"properties": {
-						"manageAccount": { "type": "boolean" },
-						"managePeople": { "type": "boolean" },
-						"manageServer": { "type": "boolean" },
-						"manageSignIn": { "type": "boolean" }
-					},
-					"required": [
-						"manageAccount",
-						"managePeople",
-						"manageServer",
-						"manageSignIn"
-					],
-					"type": "object"
-				},
-				"custodyPending": { "type": "boolean" },
-				"deviceId": { "type": "string" },
-				"installationId": { "type": "string" },
-				"passwordChangeRequired": {
-					"const": true,
-					"type": "boolean"
-				},
-				"profiles": {
-					"items": {
+		"PostAuthOwnerResetVerifyResponse": {
+			"oneOf": [{
+				"properties": {
+					"account": {
 						"properties": {
 							"allowedLibraries": {
 								"items": { "type": "string" },
 								"type": "array"
 							},
-							"art": { "type": "string" },
+							"disabled": { "type": "boolean" },
+							"disabledAt": { "type": "string" },
+							"disabledReason": { "type": "string" },
+							"hostedAccountId": { "type": "string" },
 							"id": { "type": "string" },
-							"name": { "type": "string" },
-							"pinRequired": { "type": "boolean" },
-							"pinRevision": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							},
-							"position": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							},
-							"primary": { "type": "boolean" },
+							"primaryProfileId": { "type": "string" },
 							"revision": {
 								"maximum": 9007199254740991,
 								"minimum": -9007199254740991,
 								"type": "integer"
-							}
+							},
+							"role": { "type": "string" },
+							"username": { "type": "string" }
 						},
 						"required": [
 							"id",
-							"name",
-							"primary",
-							"position",
-							"art",
+							"username",
+							"primaryProfileId",
+							"role",
 							"revision",
-							"pinRevision",
-							"pinRequired",
+							"disabled",
 							"allowedLibraries"
 						],
 						"type": "object"
 					},
-					"type": "array"
-				},
-				"resetFileOwnerSession": {
-					"const": false,
-					"type": "boolean"
-				},
-				"serverId": { "type": "string" },
-				"session": {
-					"properties": {
-						"accessToken": { "type": "string" },
-						"authorizationHorizon": { "type": "string" },
-						"deviceId": { "type": "string" },
-						"expiresAt": { "type": "string" },
-						"installationId": { "type": "string" },
-						"refreshToken": {
-							"maxLength": 0,
-							"type": "string"
+					"authority": { "type": "string" },
+					"canManage": { "type": "boolean" },
+					"capabilities": {
+						"properties": {
+							"manageAccount": { "type": "boolean" },
+							"managePeople": { "type": "boolean" },
+							"manageServer": { "type": "boolean" },
+							"manageSignIn": { "type": "boolean" }
 						},
-						"serverIdentity": {
+						"required": [
+							"manageAccount",
+							"managePeople",
+							"manageServer",
+							"manageSignIn"
+						],
+						"type": "object"
+					},
+					"custodyPending": { "type": "boolean" },
+					"deviceId": { "type": "string" },
+					"installationId": { "type": "string" },
+					"passwordChangeRequired": {
+						"const": true,
+						"type": "boolean"
+					},
+					"profiles": {
+						"items": {
 							"properties": {
-								"fingerprint": { "type": "string" },
-								"publicKey": { "type": "string" }
-							},
-							"required": ["publicKey", "fingerprint"],
-							"type": "object"
-						},
-						"sessionFamilyId": { "type": "string" },
-						"tokenGeneration": { "type": "string" },
-						"viewer": {
-							"properties": {
-								"accountId": { "type": "string" },
-								"authority": { "type": "string" },
-								"profileId": { "type": "string" },
-								"role": {
-									"enum": ["account"],
-									"type": "string"
+								"allowedLibraries": {
+									"items": { "type": "string" },
+									"type": "array"
 								},
-								"serverId": { "type": "string" }
+								"art": { "type": "string" },
+								"id": { "type": "string" },
+								"name": { "type": "string" },
+								"pinRequired": { "type": "boolean" },
+								"pinRevision": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"position": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"primary": { "type": "boolean" },
+								"revision": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								}
 							},
 							"required": [
-								"accountId",
-								"profileId",
-								"serverId",
-								"authority",
-								"role"
+								"id",
+								"name",
+								"primary",
+								"position",
+								"art",
+								"revision",
+								"pinRevision",
+								"pinRequired",
+								"allowedLibraries"
 							],
 							"type": "object"
-						}
-					},
-					"required": [
-						"accessToken",
-						"deviceId",
-						"installationId",
-						"expiresAt",
-						"viewer",
-						"sessionFamilyId",
-						"tokenGeneration",
-						"authorizationHorizon"
-					],
-					"type": "object"
-				},
-				"twoStepSetupRequired": { "type": "boolean" }
-			},
-			"required": [
-				"authority",
-				"serverId",
-				"account",
-				"profiles",
-				"canManage",
-				"capabilities",
-				"session",
-				"passwordChangeRequired"
-			],
-			"type": "object"
-		}, {
-			"properties": {
-				"account": {
-					"properties": {
-						"allowedLibraries": {
-							"items": { "type": "string" },
-							"type": "array"
 						},
-						"disabled": { "type": "boolean" },
-						"disabledAt": { "type": "string" },
-						"disabledReason": { "type": "string" },
-						"hostedAccountId": { "type": "string" },
-						"id": { "type": "string" },
-						"primaryProfileId": { "type": "string" },
-						"revision": {
-							"maximum": 9007199254740991,
-							"minimum": -9007199254740991,
-							"type": "integer"
+						"type": "array"
+					},
+					"resetFileOwnerSession": {
+						"const": false,
+						"type": "boolean"
+					},
+					"serverId": { "type": "string" },
+					"session": {
+						"properties": {
+							"accessToken": { "type": "string" },
+							"authorizationHorizon": { "type": "string" },
+							"deviceId": { "type": "string" },
+							"expiresAt": { "type": "string" },
+							"installationId": { "type": "string" },
+							"refreshToken": {
+								"maxLength": 0,
+								"type": "string"
+							},
+							"serverIdentity": {
+								"properties": {
+									"fingerprint": { "type": "string" },
+									"publicKey": { "type": "string" }
+								},
+								"required": ["publicKey", "fingerprint"],
+								"type": "object"
+							},
+							"sessionFamilyId": { "type": "string" },
+							"tokenGeneration": { "type": "string" },
+							"viewer": {
+								"properties": {
+									"accountId": { "type": "string" },
+									"authority": { "type": "string" },
+									"profileId": { "type": "string" },
+									"role": {
+										"enum": ["account"],
+										"type": "string"
+									},
+									"serverId": { "type": "string" }
+								},
+								"required": [
+									"accountId",
+									"profileId",
+									"serverId",
+									"authority",
+									"role"
+								],
+								"type": "object"
+							}
 						},
-						"role": { "type": "string" },
-						"username": { "type": "string" }
+						"required": [
+							"accessToken",
+							"deviceId",
+							"installationId",
+							"expiresAt",
+							"viewer",
+							"sessionFamilyId",
+							"tokenGeneration",
+							"authorizationHorizon"
+						],
+						"type": "object"
 					},
-					"required": [
-						"id",
-						"username",
-						"primaryProfileId",
-						"role",
-						"revision",
-						"disabled",
-						"allowedLibraries"
-					],
-					"type": "object"
+					"twoStepSetupRequired": { "type": "boolean" },
+					"variant": {
+						"const": "password-change",
+						"type": "string"
+					}
 				},
-				"authority": { "type": "string" },
-				"canManage": { "type": "boolean" },
-				"capabilities": {
-					"properties": {
-						"manageAccount": { "type": "boolean" },
-						"managePeople": { "type": "boolean" },
-						"manageServer": { "type": "boolean" },
-						"manageSignIn": { "type": "boolean" }
-					},
-					"required": [
-						"manageAccount",
-						"managePeople",
-						"manageServer",
-						"manageSignIn"
-					],
-					"type": "object"
-				},
-				"custodyPending": { "type": "boolean" },
-				"deviceId": { "type": "string" },
-				"installationId": { "type": "string" },
-				"passwordChangeRequired": {
-					"const": false,
-					"type": "boolean"
-				},
-				"profiles": {
-					"items": {
+				"required": [
+					"authority",
+					"serverId",
+					"account",
+					"profiles",
+					"canManage",
+					"capabilities",
+					"session",
+					"passwordChangeRequired",
+					"variant"
+				],
+				"type": "object"
+			}, {
+				"properties": {
+					"account": {
 						"properties": {
 							"allowedLibraries": {
 								"items": { "type": "string" },
 								"type": "array"
 							},
-							"art": { "type": "string" },
+							"disabled": { "type": "boolean" },
+							"disabledAt": { "type": "string" },
+							"disabledReason": { "type": "string" },
+							"hostedAccountId": { "type": "string" },
 							"id": { "type": "string" },
-							"name": { "type": "string" },
-							"pinRequired": { "type": "boolean" },
-							"pinRevision": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							},
-							"position": {
-								"maximum": 9007199254740991,
-								"minimum": -9007199254740991,
-								"type": "integer"
-							},
-							"primary": { "type": "boolean" },
+							"primaryProfileId": { "type": "string" },
 							"revision": {
 								"maximum": 9007199254740991,
 								"minimum": -9007199254740991,
 								"type": "integer"
-							}
+							},
+							"role": { "type": "string" },
+							"username": { "type": "string" }
 						},
 						"required": [
 							"id",
-							"name",
-							"primary",
-							"position",
-							"art",
+							"username",
+							"primaryProfileId",
+							"role",
 							"revision",
-							"pinRevision",
-							"pinRequired",
+							"disabled",
 							"allowedLibraries"
 						],
 						"type": "object"
 					},
-					"type": "array"
-				},
-				"resetFileOwnerSession": {
-					"const": true,
-					"type": "boolean"
-				},
-				"serverId": { "type": "string" },
-				"session": {
-					"properties": {
-						"accessToken": { "type": "string" },
-						"authorizationHorizon": { "type": "string" },
-						"deviceId": { "type": "string" },
-						"expiresAt": { "type": "string" },
-						"installationId": { "type": "string" },
-						"refreshToken": {
-							"maxLength": 0,
-							"type": "string"
+					"authority": { "type": "string" },
+					"canManage": { "type": "boolean" },
+					"capabilities": {
+						"properties": {
+							"manageAccount": { "type": "boolean" },
+							"managePeople": { "type": "boolean" },
+							"manageServer": { "type": "boolean" },
+							"manageSignIn": { "type": "boolean" }
 						},
-						"serverIdentity": {
+						"required": [
+							"manageAccount",
+							"managePeople",
+							"manageServer",
+							"manageSignIn"
+						],
+						"type": "object"
+					},
+					"custodyPending": { "type": "boolean" },
+					"deviceId": { "type": "string" },
+					"installationId": { "type": "string" },
+					"passwordChangeRequired": {
+						"const": false,
+						"type": "boolean"
+					},
+					"profiles": {
+						"items": {
 							"properties": {
-								"fingerprint": { "type": "string" },
-								"publicKey": { "type": "string" }
-							},
-							"required": ["publicKey", "fingerprint"],
-							"type": "object"
-						},
-						"sessionFamilyId": { "type": "string" },
-						"tokenGeneration": { "type": "string" },
-						"viewer": {
-							"properties": {
-								"accountId": { "type": "string" },
-								"authority": { "type": "string" },
-								"profileId": { "type": "string" },
-								"role": {
-									"enum": ["owner"],
-									"type": "string"
+								"allowedLibraries": {
+									"items": { "type": "string" },
+									"type": "array"
 								},
-								"serverId": { "type": "string" }
+								"art": { "type": "string" },
+								"id": { "type": "string" },
+								"name": { "type": "string" },
+								"pinRequired": { "type": "boolean" },
+								"pinRevision": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"position": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								},
+								"primary": { "type": "boolean" },
+								"revision": {
+									"maximum": 9007199254740991,
+									"minimum": -9007199254740991,
+									"type": "integer"
+								}
 							},
 							"required": [
-								"accountId",
-								"profileId",
-								"serverId",
-								"authority",
-								"role"
+								"id",
+								"name",
+								"primary",
+								"position",
+								"art",
+								"revision",
+								"pinRevision",
+								"pinRequired",
+								"allowedLibraries"
 							],
 							"type": "object"
-						}
+						},
+						"type": "array"
 					},
-					"required": [
-						"accessToken",
-						"deviceId",
-						"installationId",
-						"expiresAt",
-						"viewer",
-						"sessionFamilyId",
-						"tokenGeneration",
-						"authorizationHorizon"
-					],
-					"type": "object"
+					"resetFileOwnerSession": {
+						"const": true,
+						"type": "boolean"
+					},
+					"serverId": { "type": "string" },
+					"session": {
+						"properties": {
+							"accessToken": { "type": "string" },
+							"authorizationHorizon": { "type": "string" },
+							"deviceId": { "type": "string" },
+							"expiresAt": { "type": "string" },
+							"installationId": { "type": "string" },
+							"refreshToken": {
+								"maxLength": 0,
+								"type": "string"
+							},
+							"serverIdentity": {
+								"properties": {
+									"fingerprint": { "type": "string" },
+									"publicKey": { "type": "string" }
+								},
+								"required": ["publicKey", "fingerprint"],
+								"type": "object"
+							},
+							"sessionFamilyId": { "type": "string" },
+							"tokenGeneration": { "type": "string" },
+							"viewer": {
+								"properties": {
+									"accountId": { "type": "string" },
+									"authority": { "type": "string" },
+									"profileId": { "type": "string" },
+									"role": {
+										"enum": ["owner"],
+										"type": "string"
+									},
+									"serverId": { "type": "string" }
+								},
+								"required": [
+									"accountId",
+									"profileId",
+									"serverId",
+									"authority",
+									"role"
+								],
+								"type": "object"
+							}
+						},
+						"required": [
+							"accessToken",
+							"deviceId",
+							"installationId",
+							"expiresAt",
+							"viewer",
+							"sessionFamilyId",
+							"tokenGeneration",
+							"authorizationHorizon"
+						],
+						"type": "object"
+					},
+					"twoStepSetupRequired": { "type": "boolean" },
+					"variant": {
+						"const": "owner-session",
+						"type": "string"
+					}
 				},
-				"twoStepSetupRequired": { "type": "boolean" }
-			},
-			"required": [
-				"authority",
-				"serverId",
-				"account",
-				"profiles",
-				"canManage",
-				"capabilities",
-				"session",
-				"resetFileOwnerSession"
-			],
-			"type": "object"
-		}] },
+				"required": [
+					"authority",
+					"serverId",
+					"account",
+					"profiles",
+					"canManage",
+					"capabilities",
+					"session",
+					"resetFileOwnerSession",
+					"variant"
+				],
+				"type": "object"
+			}],
+			"x-discriminator": "variant"
+		},
 		"PostAuthPorticoReturnExchangeRequest": { "oneOf": [
 			{
 				"additionalProperties": false,
@@ -169088,48 +170392,57 @@ var PorticoCastContracts = (function(exports) {
 										"available": { "type": "boolean" },
 										"backdropUrl": { "type": "string" },
 										"badges": {
-											"items": { "oneOf": [
-												{
-													"additionalProperties": false,
-													"properties": {
-														"bitDepth": {
-															"minimum": 17,
-															"type": "integer"
+											"items": {
+												"oneOf": [
+													{
+														"additionalProperties": false,
+														"properties": {
+															"bitDepth": {
+																"minimum": 17,
+																"type": "integer"
+															},
+															"codec": {
+																"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																"type": "string"
+															},
+															"sampleRate": {
+																"minimum": 1,
+																"type": "integer"
+															},
+															"variant": { "const": "lossless" }
 														},
-														"codec": {
-															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-															"type": "string"
+														"required": [
+															"variant",
+															"codec",
+															"bitDepth",
+															"sampleRate"
+														],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": { "variant": { "const": "atmos" } },
+														"required": ["variant"],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": { "variant": { "const": "dsd" } },
+														"required": ["variant"],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": {
+															"layout": { "enum": ["5.1", "7.1"] },
+															"variant": { "const": "surround" }
 														},
-														"kind": { "const": "lossless" },
-														"sampleRate": {
-															"minimum": 1,
-															"type": "integer"
-														}
-													},
-													"required": [
-														"kind",
-														"codec",
-														"bitDepth",
-														"sampleRate"
-													],
-													"type": "object"
-												},
-												{
-													"additionalProperties": false,
-													"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-													"required": ["kind"],
-													"type": "object"
-												},
-												{
-													"additionalProperties": false,
-													"properties": {
-														"kind": { "const": "surround" },
-														"layout": { "enum": ["5.1", "7.1"] }
-													},
-													"required": ["kind", "layout"],
-													"type": "object"
-												}
-											] },
+														"required": ["variant", "layout"],
+														"type": "object"
+													}
+												],
+												"x-discriminator": "variant"
+											},
 											"maxItems": 2,
 											"type": "array"
 										},
@@ -169456,48 +170769,57 @@ var PorticoCastContracts = (function(exports) {
 												"available": { "type": "boolean" },
 												"backdropUrl": { "type": "string" },
 												"badges": {
-													"items": { "oneOf": [
-														{
-															"additionalProperties": false,
-															"properties": {
-																"bitDepth": {
-																	"minimum": 17,
-																	"type": "integer"
+													"items": {
+														"oneOf": [
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"bitDepth": {
+																		"minimum": 17,
+																		"type": "integer"
+																	},
+																	"codec": {
+																		"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																		"type": "string"
+																	},
+																	"sampleRate": {
+																		"minimum": 1,
+																		"type": "integer"
+																	},
+																	"variant": { "const": "lossless" }
 																},
-																"codec": {
-																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																	"type": "string"
+																"required": [
+																	"variant",
+																	"codec",
+																	"bitDepth",
+																	"sampleRate"
+																],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "atmos" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "dsd" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"layout": { "enum": ["5.1", "7.1"] },
+																	"variant": { "const": "surround" }
 																},
-																"kind": { "const": "lossless" },
-																"sampleRate": {
-																	"minimum": 1,
-																	"type": "integer"
-																}
-															},
-															"required": [
-																"kind",
-																"codec",
-																"bitDepth",
-																"sampleRate"
-															],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-															"required": ["kind"],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": {
-																"kind": { "const": "surround" },
-																"layout": { "enum": ["5.1", "7.1"] }
-															},
-															"required": ["kind", "layout"],
-															"type": "object"
-														}
-													] },
+																"required": ["variant", "layout"],
+																"type": "object"
+															}
+														],
+														"x-discriminator": "variant"
+													},
 													"maxItems": 2,
 													"type": "array"
 												},
@@ -170319,48 +171641,57 @@ var PorticoCastContracts = (function(exports) {
 							"available": { "type": "boolean" },
 							"backdropUrl": { "type": "string" },
 							"badges": {
-								"items": { "oneOf": [
-									{
-										"additionalProperties": false,
-										"properties": {
-											"bitDepth": {
-												"minimum": 17,
-												"type": "integer"
+								"items": {
+									"oneOf": [
+										{
+											"additionalProperties": false,
+											"properties": {
+												"bitDepth": {
+													"minimum": 17,
+													"type": "integer"
+												},
+												"codec": {
+													"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+													"type": "string"
+												},
+												"sampleRate": {
+													"minimum": 1,
+													"type": "integer"
+												},
+												"variant": { "const": "lossless" }
 											},
-											"codec": {
-												"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-												"type": "string"
+											"required": [
+												"variant",
+												"codec",
+												"bitDepth",
+												"sampleRate"
+											],
+											"type": "object"
+										},
+										{
+											"additionalProperties": false,
+											"properties": { "variant": { "const": "atmos" } },
+											"required": ["variant"],
+											"type": "object"
+										},
+										{
+											"additionalProperties": false,
+											"properties": { "variant": { "const": "dsd" } },
+											"required": ["variant"],
+											"type": "object"
+										},
+										{
+											"additionalProperties": false,
+											"properties": {
+												"layout": { "enum": ["5.1", "7.1"] },
+												"variant": { "const": "surround" }
 											},
-											"kind": { "const": "lossless" },
-											"sampleRate": {
-												"minimum": 1,
-												"type": "integer"
-											}
-										},
-										"required": [
-											"kind",
-											"codec",
-											"bitDepth",
-											"sampleRate"
-										],
-										"type": "object"
-									},
-									{
-										"additionalProperties": false,
-										"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-										"required": ["kind"],
-										"type": "object"
-									},
-									{
-										"additionalProperties": false,
-										"properties": {
-											"kind": { "const": "surround" },
-											"layout": { "enum": ["5.1", "7.1"] }
-										},
-										"required": ["kind", "layout"],
-										"type": "object"
-									}
-								] },
+											"required": ["variant", "layout"],
+											"type": "object"
+										}
+									],
+									"x-discriminator": "variant"
+								},
 								"maxItems": 2,
 								"type": "array"
 							},
@@ -170687,48 +172018,57 @@ var PorticoCastContracts = (function(exports) {
 									"available": { "type": "boolean" },
 									"backdropUrl": { "type": "string" },
 									"badges": {
-										"items": { "oneOf": [
-											{
-												"additionalProperties": false,
-												"properties": {
-													"bitDepth": {
-														"minimum": 17,
-														"type": "integer"
+										"items": {
+											"oneOf": [
+												{
+													"additionalProperties": false,
+													"properties": {
+														"bitDepth": {
+															"minimum": 17,
+															"type": "integer"
+														},
+														"codec": {
+															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+															"type": "string"
+														},
+														"sampleRate": {
+															"minimum": 1,
+															"type": "integer"
+														},
+														"variant": { "const": "lossless" }
 													},
-													"codec": {
-														"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-														"type": "string"
+													"required": [
+														"variant",
+														"codec",
+														"bitDepth",
+														"sampleRate"
+													],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "atmos" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": { "variant": { "const": "dsd" } },
+													"required": ["variant"],
+													"type": "object"
+												},
+												{
+													"additionalProperties": false,
+													"properties": {
+														"layout": { "enum": ["5.1", "7.1"] },
+														"variant": { "const": "surround" }
 													},
-													"kind": { "const": "lossless" },
-													"sampleRate": {
-														"minimum": 1,
-														"type": "integer"
-													}
-												},
-												"required": [
-													"kind",
-													"codec",
-													"bitDepth",
-													"sampleRate"
-												],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-												"required": ["kind"],
-												"type": "object"
-											},
-											{
-												"additionalProperties": false,
-												"properties": {
-													"kind": { "const": "surround" },
-													"layout": { "enum": ["5.1", "7.1"] }
-												},
-												"required": ["kind", "layout"],
-												"type": "object"
-											}
-										] },
+													"required": ["variant", "layout"],
+													"type": "object"
+												}
+											],
+											"x-discriminator": "variant"
+										},
 										"maxItems": 2,
 										"type": "array"
 									},
@@ -178741,76 +180081,89 @@ var PorticoCastContracts = (function(exports) {
 			"required": ["requestId", "setupToken"],
 			"type": "object"
 		},
-		"PostSetupResumeResponse": { "oneOf": [{
-			"properties": {
-				"accessToken": { "type": "string" },
-				"authorizationHorizon": { "type": "string" },
-				"deviceId": { "type": "string" },
-				"expiresAt": { "type": "string" },
-				"installationId": { "type": "string" },
-				"refreshToken": { "type": "string" },
-				"serverIdentity": {
-					"properties": {
-						"fingerprint": { "type": "string" },
-						"publicKey": { "type": "string" }
+		"PostSetupResumeResponse": {
+			"oneOf": [{
+				"properties": {
+					"accessToken": { "type": "string" },
+					"authorizationHorizon": { "type": "string" },
+					"deviceId": { "type": "string" },
+					"expiresAt": { "type": "string" },
+					"installationId": { "type": "string" },
+					"refreshToken": { "type": "string" },
+					"serverIdentity": {
+						"properties": {
+							"fingerprint": { "type": "string" },
+							"publicKey": { "type": "string" }
+						},
+						"required": ["publicKey", "fingerprint"],
+						"type": "object"
 					},
-					"required": ["publicKey", "fingerprint"],
-					"type": "object"
-				},
-				"sessionFamilyId": { "type": "string" },
-				"tokenGeneration": { "type": "string" },
-				"viewer": {
-					"properties": {
-						"accountId": { "type": "string" },
-						"authority": { "type": "string" },
-						"profileId": { "type": "string" },
-						"role": { "type": "string" },
-						"serverId": { "type": "string" }
+					"sessionFamilyId": { "type": "string" },
+					"tokenGeneration": { "type": "string" },
+					"variant": {
+						"const": "session",
+						"type": "string"
 					},
-					"required": [
-						"accountId",
-						"profileId",
-						"serverId",
-						"authority",
-						"role"
-					],
-					"type": "object"
-				}
-			},
-			"required": [
-				"accessToken",
-				"deviceId",
-				"installationId",
-				"expiresAt",
-				"viewer",
-				"sessionFamilyId",
-				"tokenGeneration",
-				"authorizationHorizon"
-			],
-			"type": "object"
-		}, {
-			"properties": {
-				"authMode": {
-					"enum": ["hosted"],
-					"type": "string"
+					"viewer": {
+						"properties": {
+							"accountId": { "type": "string" },
+							"authority": { "type": "string" },
+							"profileId": { "type": "string" },
+							"role": { "type": "string" },
+							"serverId": { "type": "string" }
+						},
+						"required": [
+							"accountId",
+							"profileId",
+							"serverId",
+							"authority",
+							"role"
+						],
+						"type": "object"
+					}
 				},
-				"claimRequired": {
-					"const": true,
-					"type": "boolean"
+				"required": [
+					"accessToken",
+					"deviceId",
+					"installationId",
+					"expiresAt",
+					"viewer",
+					"sessionFamilyId",
+					"tokenGeneration",
+					"authorizationHorizon",
+					"variant"
+				],
+				"type": "object"
+			}, {
+				"properties": {
+					"authMode": {
+						"enum": ["hosted"],
+						"type": "string"
+					},
+					"claimRequired": {
+						"const": true,
+						"type": "boolean"
+					},
+					"requestId": { "type": "string" },
+					"revision": { "type": "string" },
+					"serverId": { "type": "string" },
+					"variant": {
+						"const": "claim-required",
+						"type": "string"
+					}
 				},
-				"requestId": { "type": "string" },
-				"revision": { "type": "string" },
-				"serverId": { "type": "string" }
-			},
-			"required": [
-				"serverId",
-				"requestId",
-				"authMode",
-				"claimRequired",
-				"revision"
-			],
-			"type": "object"
-		}] },
+				"required": [
+					"serverId",
+					"requestId",
+					"authMode",
+					"claimRequired",
+					"revision",
+					"variant"
+				],
+				"type": "object"
+			}],
+			"x-discriminator": "variant"
+		},
 		"PostShowsIdMetadataScreenRetryRequest": {
 			"properties": { "expectedRevision": {
 				"maximum": 9007199254740991,
@@ -196152,48 +197505,57 @@ var PorticoCastContracts = (function(exports) {
 										"available": { "type": "boolean" },
 										"backdropUrl": { "type": "string" },
 										"badges": {
-											"items": { "oneOf": [
-												{
-													"additionalProperties": false,
-													"properties": {
-														"bitDepth": {
-															"minimum": 17,
-															"type": "integer"
+											"items": {
+												"oneOf": [
+													{
+														"additionalProperties": false,
+														"properties": {
+															"bitDepth": {
+																"minimum": 17,
+																"type": "integer"
+															},
+															"codec": {
+																"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																"type": "string"
+															},
+															"sampleRate": {
+																"minimum": 1,
+																"type": "integer"
+															},
+															"variant": { "const": "lossless" }
 														},
-														"codec": {
-															"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-															"type": "string"
+														"required": [
+															"variant",
+															"codec",
+															"bitDepth",
+															"sampleRate"
+														],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": { "variant": { "const": "atmos" } },
+														"required": ["variant"],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": { "variant": { "const": "dsd" } },
+														"required": ["variant"],
+														"type": "object"
+													},
+													{
+														"additionalProperties": false,
+														"properties": {
+															"layout": { "enum": ["5.1", "7.1"] },
+															"variant": { "const": "surround" }
 														},
-														"kind": { "const": "lossless" },
-														"sampleRate": {
-															"minimum": 1,
-															"type": "integer"
-														}
-													},
-													"required": [
-														"kind",
-														"codec",
-														"bitDepth",
-														"sampleRate"
-													],
-													"type": "object"
-												},
-												{
-													"additionalProperties": false,
-													"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-													"required": ["kind"],
-													"type": "object"
-												},
-												{
-													"additionalProperties": false,
-													"properties": {
-														"kind": { "const": "surround" },
-														"layout": { "enum": ["5.1", "7.1"] }
-													},
-													"required": ["kind", "layout"],
-													"type": "object"
-												}
-											] },
+														"required": ["variant", "layout"],
+														"type": "object"
+													}
+												],
+												"x-discriminator": "variant"
+											},
 											"maxItems": 2,
 											"type": "array"
 										},
@@ -196520,48 +197882,57 @@ var PorticoCastContracts = (function(exports) {
 												"available": { "type": "boolean" },
 												"backdropUrl": { "type": "string" },
 												"badges": {
-													"items": { "oneOf": [
-														{
-															"additionalProperties": false,
-															"properties": {
-																"bitDepth": {
-																	"minimum": 17,
-																	"type": "integer"
+													"items": {
+														"oneOf": [
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"bitDepth": {
+																		"minimum": 17,
+																		"type": "integer"
+																	},
+																	"codec": {
+																		"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
+																		"type": "string"
+																	},
+																	"sampleRate": {
+																		"minimum": 1,
+																		"type": "integer"
+																	},
+																	"variant": { "const": "lossless" }
 																},
-																"codec": {
-																	"pattern": "^[A-Za-z0-9_.+-]{1,64}$",
-																	"type": "string"
+																"required": [
+																	"variant",
+																	"codec",
+																	"bitDepth",
+																	"sampleRate"
+																],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "atmos" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": { "variant": { "const": "dsd" } },
+																"required": ["variant"],
+																"type": "object"
+															},
+															{
+																"additionalProperties": false,
+																"properties": {
+																	"layout": { "enum": ["5.1", "7.1"] },
+																	"variant": { "const": "surround" }
 																},
-																"kind": { "const": "lossless" },
-																"sampleRate": {
-																	"minimum": 1,
-																	"type": "integer"
-																}
-															},
-															"required": [
-																"kind",
-																"codec",
-																"bitDepth",
-																"sampleRate"
-															],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": { "kind": { "enum": ["atmos", "dsd"] } },
-															"required": ["kind"],
-															"type": "object"
-														},
-														{
-															"additionalProperties": false,
-															"properties": {
-																"kind": { "const": "surround" },
-																"layout": { "enum": ["5.1", "7.1"] }
-															},
-															"required": ["kind", "layout"],
-															"type": "object"
-														}
-													] },
+																"required": ["variant", "layout"],
+																"type": "object"
+															}
+														],
+														"x-discriminator": "variant"
+													},
 													"maxItems": 2,
 													"type": "array"
 												},
@@ -198081,76 +199452,89 @@ var PorticoCastContracts = (function(exports) {
 			"required": ["setupToken", "name"],
 			"type": "object"
 		},
-		"SetupServerResponse": { "oneOf": [{
-			"properties": {
-				"accessToken": { "type": "string" },
-				"authorizationHorizon": { "type": "string" },
-				"deviceId": { "type": "string" },
-				"expiresAt": { "type": "string" },
-				"installationId": { "type": "string" },
-				"refreshToken": { "type": "string" },
-				"serverIdentity": {
-					"properties": {
-						"fingerprint": { "type": "string" },
-						"publicKey": { "type": "string" }
+		"SetupServerResponse": {
+			"oneOf": [{
+				"properties": {
+					"accessToken": { "type": "string" },
+					"authorizationHorizon": { "type": "string" },
+					"deviceId": { "type": "string" },
+					"expiresAt": { "type": "string" },
+					"installationId": { "type": "string" },
+					"refreshToken": { "type": "string" },
+					"serverIdentity": {
+						"properties": {
+							"fingerprint": { "type": "string" },
+							"publicKey": { "type": "string" }
+						},
+						"required": ["publicKey", "fingerprint"],
+						"type": "object"
 					},
-					"required": ["publicKey", "fingerprint"],
-					"type": "object"
-				},
-				"sessionFamilyId": { "type": "string" },
-				"tokenGeneration": { "type": "string" },
-				"viewer": {
-					"properties": {
-						"accountId": { "type": "string" },
-						"authority": { "type": "string" },
-						"profileId": { "type": "string" },
-						"role": { "type": "string" },
-						"serverId": { "type": "string" }
+					"sessionFamilyId": { "type": "string" },
+					"tokenGeneration": { "type": "string" },
+					"variant": {
+						"const": "session",
+						"type": "string"
 					},
-					"required": [
-						"accountId",
-						"profileId",
-						"serverId",
-						"authority",
-						"role"
-					],
-					"type": "object"
-				}
-			},
-			"required": [
-				"accessToken",
-				"deviceId",
-				"installationId",
-				"expiresAt",
-				"viewer",
-				"sessionFamilyId",
-				"tokenGeneration",
-				"authorizationHorizon"
-			],
-			"type": "object"
-		}, {
-			"properties": {
-				"authMode": {
-					"enum": ["hosted"],
-					"type": "string"
+					"viewer": {
+						"properties": {
+							"accountId": { "type": "string" },
+							"authority": { "type": "string" },
+							"profileId": { "type": "string" },
+							"role": { "type": "string" },
+							"serverId": { "type": "string" }
+						},
+						"required": [
+							"accountId",
+							"profileId",
+							"serverId",
+							"authority",
+							"role"
+						],
+						"type": "object"
+					}
 				},
-				"claimRequired": {
-					"const": true,
-					"type": "boolean"
+				"required": [
+					"accessToken",
+					"deviceId",
+					"installationId",
+					"expiresAt",
+					"viewer",
+					"sessionFamilyId",
+					"tokenGeneration",
+					"authorizationHorizon",
+					"variant"
+				],
+				"type": "object"
+			}, {
+				"properties": {
+					"authMode": {
+						"enum": ["hosted"],
+						"type": "string"
+					},
+					"claimRequired": {
+						"const": true,
+						"type": "boolean"
+					},
+					"requestId": { "type": "string" },
+					"revision": { "type": "string" },
+					"serverId": { "type": "string" },
+					"variant": {
+						"const": "claim-required",
+						"type": "string"
+					}
 				},
-				"requestId": { "type": "string" },
-				"revision": { "type": "string" },
-				"serverId": { "type": "string" }
-			},
-			"required": [
-				"serverId",
-				"requestId",
-				"authMode",
-				"claimRequired",
-				"revision"
-			],
-			"type": "object"
-		}] },
+				"required": [
+					"serverId",
+					"requestId",
+					"authMode",
+					"claimRequired",
+					"revision",
+					"variant"
+				],
+				"type": "object"
+			}],
+			"x-discriminator": "variant"
+		},
 		"SocialDeleteV1CastBootstrapIdRequest": {
 			"properties": {},
 			"required": [],

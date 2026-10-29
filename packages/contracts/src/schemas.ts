@@ -5962,16 +5962,16 @@ export const schemas = {
                         "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                         "type": "string"
                       },
-                      "kind": {
-                        "const": "lossless"
-                      },
                       "sampleRate": {
                         "minimum": 1,
                         "type": "integer"
+                      },
+                      "variant": {
+                        "const": "lossless"
                       }
                     },
                     "required": [
-                      "kind",
+                      "variant",
                       "codec",
                       "bitDepth",
                       "sampleRate"
@@ -5981,38 +5981,48 @@ export const schemas = {
                   {
                     "additionalProperties": false,
                     "properties": {
-                      "kind": {
-                        "enum": [
-                          "atmos",
-                          "dsd"
-                        ]
+                      "variant": {
+                        "const": "atmos"
                       }
                     },
                     "required": [
-                      "kind"
+                      "variant"
                     ],
                     "type": "object"
                   },
                   {
                     "additionalProperties": false,
                     "properties": {
-                      "kind": {
-                        "const": "surround"
-                      },
+                      "variant": {
+                        "const": "dsd"
+                      }
+                    },
+                    "required": [
+                      "variant"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
                       "layout": {
                         "enum": [
                           "5.1",
                           "7.1"
                         ]
+                      },
+                      "variant": {
+                        "const": "surround"
                       }
                     },
                     "required": [
-                      "kind",
+                      "variant",
                       "layout"
                     ],
                     "type": "object"
                   }
-                ]
+                ],
+                "x-discriminator": "variant"
               },
               "maxItems": 2,
               "type": "array"
@@ -6494,16 +6504,16 @@ export const schemas = {
                             "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                             "type": "string"
                           },
-                          "kind": {
-                            "const": "lossless"
-                          },
                           "sampleRate": {
                             "minimum": 1,
                             "type": "integer"
+                          },
+                          "variant": {
+                            "const": "lossless"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "codec",
                           "bitDepth",
                           "sampleRate"
@@ -6513,38 +6523,48 @@ export const schemas = {
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "enum": [
-                              "atmos",
-                              "dsd"
-                            ]
+                          "variant": {
+                            "const": "atmos"
                           }
                         },
                         "required": [
-                          "kind"
+                          "variant"
                         ],
                         "type": "object"
                       },
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "const": "surround"
-                          },
+                          "variant": {
+                            "const": "dsd"
+                          }
+                        },
+                        "required": [
+                          "variant"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
                           "layout": {
                             "enum": [
                               "5.1",
                               "7.1"
                             ]
+                          },
+                          "variant": {
+                            "const": "surround"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "layout"
                         ],
                         "type": "object"
                       }
-                    ]
+                    ],
+                    "x-discriminator": "variant"
                   },
                   "maxItems": 2,
                   "type": "array"
@@ -8396,16 +8416,16 @@ export const schemas = {
                             "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                             "type": "string"
                           },
-                          "kind": {
-                            "const": "lossless"
-                          },
                           "sampleRate": {
                             "minimum": 1,
                             "type": "integer"
+                          },
+                          "variant": {
+                            "const": "lossless"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "codec",
                           "bitDepth",
                           "sampleRate"
@@ -8415,38 +8435,48 @@ export const schemas = {
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "enum": [
-                              "atmos",
-                              "dsd"
-                            ]
+                          "variant": {
+                            "const": "atmos"
                           }
                         },
                         "required": [
-                          "kind"
+                          "variant"
                         ],
                         "type": "object"
                       },
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "const": "surround"
-                          },
+                          "variant": {
+                            "const": "dsd"
+                          }
+                        },
+                        "required": [
+                          "variant"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
                           "layout": {
                             "enum": [
                               "5.1",
                               "7.1"
                             ]
+                          },
+                          "variant": {
+                            "const": "surround"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "layout"
                         ],
                         "type": "object"
                       }
-                    ]
+                    ],
+                    "x-discriminator": "variant"
                   },
                   "maxItems": 2,
                   "type": "array"
@@ -8928,16 +8958,16 @@ export const schemas = {
                                 "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                 "type": "string"
                               },
-                              "kind": {
-                                "const": "lossless"
-                              },
                               "sampleRate": {
                                 "minimum": 1,
                                 "type": "integer"
+                              },
+                              "variant": {
+                                "const": "lossless"
                               }
                             },
                             "required": [
-                              "kind",
+                              "variant",
                               "codec",
                               "bitDepth",
                               "sampleRate"
@@ -8947,38 +8977,48 @@ export const schemas = {
                           {
                             "additionalProperties": false,
                             "properties": {
-                              "kind": {
-                                "enum": [
-                                  "atmos",
-                                  "dsd"
-                                ]
+                              "variant": {
+                                "const": "atmos"
                               }
                             },
                             "required": [
-                              "kind"
+                              "variant"
                             ],
                             "type": "object"
                           },
                           {
                             "additionalProperties": false,
                             "properties": {
-                              "kind": {
-                                "const": "surround"
-                              },
+                              "variant": {
+                                "const": "dsd"
+                              }
+                            },
+                            "required": [
+                              "variant"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
                               "layout": {
                                 "enum": [
                                   "5.1",
                                   "7.1"
                                 ]
+                              },
+                              "variant": {
+                                "const": "surround"
                               }
                             },
                             "required": [
-                              "kind",
+                              "variant",
                               "layout"
                             ],
                             "type": "object"
                           }
-                        ]
+                        ],
+                        "x-discriminator": "variant"
                       },
                       "maxItems": 2,
                       "type": "array"
@@ -51320,16 +51360,16 @@ export const schemas = {
                                   "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                   "type": "string"
                                 },
-                                "kind": {
-                                  "const": "lossless"
-                                },
                                 "sampleRate": {
                                   "minimum": 1,
                                   "type": "integer"
+                                },
+                                "variant": {
+                                  "const": "lossless"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "codec",
                                 "bitDepth",
                                 "sampleRate"
@@ -51339,38 +51379,48 @@ export const schemas = {
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "enum": [
-                                    "atmos",
-                                    "dsd"
-                                  ]
+                                "variant": {
+                                  "const": "atmos"
                                 }
                               },
                               "required": [
-                                "kind"
+                                "variant"
                               ],
                               "type": "object"
                             },
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "const": "surround"
-                                },
+                                "variant": {
+                                  "const": "dsd"
+                                }
+                              },
+                              "required": [
+                                "variant"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
                                 "layout": {
                                   "enum": [
                                     "5.1",
                                     "7.1"
                                   ]
+                                },
+                                "variant": {
+                                  "const": "surround"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "layout"
                               ],
                               "type": "object"
                             }
-                          ]
+                          ],
+                          "x-discriminator": "variant"
                         },
                         "maxItems": 2,
                         "type": "array"
@@ -51852,16 +51902,16 @@ export const schemas = {
                                       "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                       "type": "string"
                                     },
-                                    "kind": {
-                                      "const": "lossless"
-                                    },
                                     "sampleRate": {
                                       "minimum": 1,
                                       "type": "integer"
+                                    },
+                                    "variant": {
+                                      "const": "lossless"
                                     }
                                   },
                                   "required": [
-                                    "kind",
+                                    "variant",
                                     "codec",
                                     "bitDepth",
                                     "sampleRate"
@@ -51871,38 +51921,48 @@ export const schemas = {
                                 {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "enum": [
-                                        "atmos",
-                                        "dsd"
-                                      ]
+                                    "variant": {
+                                      "const": "atmos"
                                     }
                                   },
                                   "required": [
-                                    "kind"
+                                    "variant"
                                   ],
                                   "type": "object"
                                 },
                                 {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "const": "surround"
-                                    },
+                                    "variant": {
+                                      "const": "dsd"
+                                    }
+                                  },
+                                  "required": [
+                                    "variant"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
                                     "layout": {
                                       "enum": [
                                         "5.1",
                                         "7.1"
                                       ]
+                                    },
+                                    "variant": {
+                                      "const": "surround"
                                     }
                                   },
                                   "required": [
-                                    "kind",
+                                    "variant",
                                     "layout"
                                   ],
                                   "type": "object"
                                 }
-                              ]
+                              ],
+                              "x-discriminator": "variant"
                             },
                             "maxItems": 2,
                             "type": "array"
@@ -54188,16 +54248,16 @@ export const schemas = {
                                       "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                       "type": "string"
                                     },
-                                    "kind": {
-                                      "const": "lossless"
-                                    },
                                     "sampleRate": {
                                       "minimum": 1,
                                       "type": "integer"
+                                    },
+                                    "variant": {
+                                      "const": "lossless"
                                     }
                                   },
                                   "required": [
-                                    "kind",
+                                    "variant",
                                     "codec",
                                     "bitDepth",
                                     "sampleRate"
@@ -54207,38 +54267,48 @@ export const schemas = {
                                 {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "enum": [
-                                        "atmos",
-                                        "dsd"
-                                      ]
+                                    "variant": {
+                                      "const": "atmos"
                                     }
                                   },
                                   "required": [
-                                    "kind"
+                                    "variant"
                                   ],
                                   "type": "object"
                                 },
                                 {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "const": "surround"
-                                    },
+                                    "variant": {
+                                      "const": "dsd"
+                                    }
+                                  },
+                                  "required": [
+                                    "variant"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
                                     "layout": {
                                       "enum": [
                                         "5.1",
                                         "7.1"
                                       ]
+                                    },
+                                    "variant": {
+                                      "const": "surround"
                                     }
                                   },
                                   "required": [
-                                    "kind",
+                                    "variant",
                                     "layout"
                                   ],
                                   "type": "object"
                                 }
-                              ]
+                              ],
+                              "x-discriminator": "variant"
                             },
                             "maxItems": 2,
                             "type": "array"
@@ -54720,16 +54790,16 @@ export const schemas = {
                                           "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                           "type": "string"
                                         },
-                                        "kind": {
-                                          "const": "lossless"
-                                        },
                                         "sampleRate": {
                                           "minimum": 1,
                                           "type": "integer"
+                                        },
+                                        "variant": {
+                                          "const": "lossless"
                                         }
                                       },
                                       "required": [
-                                        "kind",
+                                        "variant",
                                         "codec",
                                         "bitDepth",
                                         "sampleRate"
@@ -54739,38 +54809,48 @@ export const schemas = {
                                     {
                                       "additionalProperties": false,
                                       "properties": {
-                                        "kind": {
-                                          "enum": [
-                                            "atmos",
-                                            "dsd"
-                                          ]
+                                        "variant": {
+                                          "const": "atmos"
                                         }
                                       },
                                       "required": [
-                                        "kind"
+                                        "variant"
                                       ],
                                       "type": "object"
                                     },
                                     {
                                       "additionalProperties": false,
                                       "properties": {
-                                        "kind": {
-                                          "const": "surround"
-                                        },
+                                        "variant": {
+                                          "const": "dsd"
+                                        }
+                                      },
+                                      "required": [
+                                        "variant"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    {
+                                      "additionalProperties": false,
+                                      "properties": {
                                         "layout": {
                                           "enum": [
                                             "5.1",
                                             "7.1"
                                           ]
+                                        },
+                                        "variant": {
+                                          "const": "surround"
                                         }
                                       },
                                       "required": [
-                                        "kind",
+                                        "variant",
                                         "layout"
                                       ],
                                       "type": "object"
                                     }
-                                  ]
+                                  ],
+                                  "x-discriminator": "variant"
                                 },
                                 "maxItems": 2,
                                 "type": "array"
@@ -55847,6 +55927,10 @@ export const schemas = {
               "viewerFence"
             ],
             "type": "object"
+          },
+          "variant": {
+            "const": "detail",
+            "type": "string"
           }
         },
         "required": [
@@ -55858,816 +55942,823 @@ export const schemas = {
           "personal",
           "actions",
           "metadata",
-          "markers"
+          "markers",
+          "variant"
         ],
         "type": "object"
       },
       {
-        "anyOf": [
-          {
+        "properties": {
+          "addedAt": {
+            "nullable": true,
+            "type": "string"
+          },
+          "audioFacts": {
             "properties": {
-              "addedAt": {
-                "nullable": true,
-                "type": "string"
-              },
-              "audioFacts": {
-                "properties": {
-                  "atmos": {
-                    "type": "boolean"
-                  },
-                  "bitDepth": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "channels": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "codec": {
-                    "type": "string"
-                  },
-                  "layout": {
-                    "type": "string"
-                  },
-                  "lossless": {
-                    "type": "boolean"
-                  },
-                  "sampleRate": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "codec"
-                ],
-                "type": "object"
-              },
-              "available": {
+              "atmos": {
                 "type": "boolean"
               },
-              "backdropUrl": {
-                "type": "string"
-              },
-              "bookFile": {
-                "properties": {
-                  "bookId": {
-                    "type": "string"
-                  },
-                  "bookTitle": {
-                    "type": "string"
-                  },
-                  "discNumber": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "localMetadata": {
-                    "properties": {
-                      "authors": {
-                        "items": {
-                          "type": "string"
-                        },
-                        "type": "array"
-                      },
-                      "description": {
-                        "type": "string"
-                      },
-                      "edition": {
-                        "type": "string"
-                      },
-                      "identifiers": {
-                        "items": {
-                          "properties": {
-                            "scheme": {
-                              "type": "string"
-                            },
-                            "value": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "scheme",
-                            "value"
-                          ],
-                          "type": "object"
-                        },
-                        "type": "array"
-                      },
-                      "language": {
-                        "type": "string"
-                      },
-                      "narrators": {
-                        "items": {
-                          "type": "string"
-                        },
-                        "type": "array"
-                      },
-                      "publishedYear": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "publisher": {
-                        "type": "string"
-                      },
-                      "series": {
-                        "items": {
-                          "properties": {
-                            "name": {
-                              "type": "string"
-                            },
-                            "position": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "name"
-                          ],
-                          "type": "object"
-                        },
-                        "type": "array"
-                      },
-                      "sources": {
-                        "additionalProperties": {
-                          "type": "string"
-                        },
-                        "type": "object"
-                      }
-                    },
-                    "required": [
-                      "authors",
-                      "narrators",
-                      "series",
-                      "identifiers",
-                      "sources"
-                    ],
-                    "type": "object"
-                  },
-                  "localMetadataIssue": {
-                    "type": "string"
-                  },
-                  "localPolicy": {
-                    "properties": {
-                      "localMode": {
-                        "type": "string"
-                      },
-                      "revision": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "revision",
-                      "localMode"
-                    ],
-                    "type": "object"
-                  },
-                  "partNumber": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "sourceBoundary": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "bookId",
-                  "bookTitle",
-                  "sourceBoundary"
-                ],
-                "type": "object"
-              },
-              "durationMs": {
+              "bitDepth": {
                 "maximum": 9007199254740991,
-                "minimum": 0,
+                "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "episode": {
-                "properties": {
-                  "airDate": {
-                    "type": "string"
-                  },
-                  "localIdentityStatus": {
-                    "type": "string"
-                  },
-                  "number": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "numbering": {
-                    "type": "string"
-                  },
-                  "orderingBasis": {
-                    "type": "string"
-                  },
-                  "providerMatchStatus": {
-                    "type": "string"
-                  },
-                  "seasonId": {
-                    "type": "string"
-                  },
-                  "seasonNumber": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "showId": {
-                    "type": "string"
-                  },
-                  "showTitle": {
-                    "type": "string"
-                  },
-                  "sourceBoundary": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "showId",
-                  "showTitle",
-                  "numbering",
-                  "number",
-                  "localIdentityStatus",
-                  "providerMatchStatus",
-                  "orderingBasis",
-                  "sourceBoundary"
-                ],
-                "type": "object"
-              },
-              "fileInfoOpening": {
-                "type": "string"
-              },
-              "id": {
-                "type": "string"
-              },
-              "kind": {
-                "type": "string"
-              },
-              "libraryId": {
-                "type": "string"
-              },
-              "missing": {
-                "type": "boolean"
-              },
-              "overview": {
-                "type": "string"
-              },
-              "posterUrl": {
-                "type": "string"
-              },
-              "progressMs": {
+              "channels": {
                 "maximum": 9007199254740991,
-                "minimum": 0,
+                "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "song": {
-                "properties": {
-                  "albumArtist": {
-                    "type": "string"
-                  },
-                  "albumId": {
-                    "type": "string"
-                  },
-                  "albumTitle": {
-                    "type": "string"
-                  },
-                  "artist": {
-                    "type": "string"
-                  },
-                  "discNumber": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "localMetadataIssue": {
-                    "type": "string"
-                  },
-                  "providerArtist": {
-                    "type": "string"
-                  },
-                  "providerMatchStatus": {
-                    "type": "string"
-                  },
-                  "providerObservedAt": {
-                    "type": "string"
-                  },
-                  "providerRecordingId": {
-                    "type": "string"
-                  },
-                  "providerReleaseGroupId": {
-                    "type": "string"
-                  },
-                  "providerReleaseId": {
-                    "type": "string"
-                  },
-                  "providerReleaseStatus": {
-                    "type": "string"
-                  },
-                  "providerSourceUrl": {
-                    "type": "string"
-                  },
-                  "providerTitle": {
-                    "type": "string"
-                  },
-                  "providerTrackId": {
-                    "type": "string"
-                  },
-                  "trackNumber": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "providerReleaseStatus",
-                  "albumId",
-                  "albumTitle",
-                  "albumArtist",
-                  "artist",
-                  "providerMatchStatus"
-                ],
-                "type": "object"
-              },
-              "sources": {
-                "items": {
-                  "properties": {
-                    "audioCodec": {
-                      "type": "string"
-                    },
-                    "container": {
-                      "type": "string"
-                    },
-                    "durationMs": {
-                      "maximum": 9007199254740991,
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    "height": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "id": {
-                      "type": "string"
-                    },
-                    "videoCodec": {
-                      "type": "string"
-                    },
-                    "width": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "container",
-                    "videoCodec",
-                    "audioCodec",
-                    "width",
-                    "height",
-                    "durationMs"
-                  ],
-                  "type": "object"
-                },
-                "type": "array"
-              },
-              "stillUrl": {
+              "codec": {
                 "type": "string"
               },
-              "title": {
+              "layout": {
                 "type": "string"
               },
-              "watched": {
+              "lossless": {
                 "type": "boolean"
               },
-              "year": {
+              "sampleRate": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
               }
             },
             "required": [
-              "missing",
-              "addedAt",
-              "id",
-              "libraryId",
-              "title",
-              "kind",
-              "durationMs",
-              "progressMs",
-              "available"
+              "codec"
             ],
             "type": "object"
           },
-          {
+          "available": {
+            "type": "boolean"
+          },
+          "backdropUrl": {
+            "type": "string"
+          },
+          "bookFile": {
             "properties": {
-              "addedAt": {
-                "nullable": true,
+              "bookId": {
                 "type": "string"
               },
-              "audioFacts": {
-                "properties": {
-                  "atmos": {
-                    "type": "boolean"
-                  },
-                  "bitDepth": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "channels": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "codec": {
-                    "type": "string"
-                  },
-                  "layout": {
-                    "type": "string"
-                  },
-                  "lossless": {
-                    "type": "boolean"
-                  },
-                  "sampleRate": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "codec"
-                ],
-                "type": "object"
-              },
-              "available": {
-                "type": "boolean"
-              },
-              "backdropUrl": {
+              "bookTitle": {
                 "type": "string"
               },
-              "bookFile": {
-                "properties": {
-                  "bookId": {
-                    "type": "string"
-                  },
-                  "bookTitle": {
-                    "type": "string"
-                  },
-                  "discNumber": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "localMetadata": {
-                    "properties": {
-                      "authors": {
-                        "items": {
-                          "type": "string"
-                        },
-                        "type": "array"
-                      },
-                      "description": {
-                        "type": "string"
-                      },
-                      "edition": {
-                        "type": "string"
-                      },
-                      "identifiers": {
-                        "items": {
-                          "properties": {
-                            "scheme": {
-                              "type": "string"
-                            },
-                            "value": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "scheme",
-                            "value"
-                          ],
-                          "type": "object"
-                        },
-                        "type": "array"
-                      },
-                      "language": {
-                        "type": "string"
-                      },
-                      "narrators": {
-                        "items": {
-                          "type": "string"
-                        },
-                        "type": "array"
-                      },
-                      "publishedYear": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "publisher": {
-                        "type": "string"
-                      },
-                      "series": {
-                        "items": {
-                          "properties": {
-                            "name": {
-                              "type": "string"
-                            },
-                            "position": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "name"
-                          ],
-                          "type": "object"
-                        },
-                        "type": "array"
-                      },
-                      "sources": {
-                        "additionalProperties": {
-                          "type": "string"
-                        },
-                        "type": "object"
-                      }
-                    },
-                    "required": [
-                      "authors",
-                      "narrators",
-                      "series",
-                      "identifiers",
-                      "sources"
-                    ],
-                    "type": "object"
-                  },
-                  "localMetadataIssue": {
-                    "type": "string"
-                  },
-                  "localPolicy": {
-                    "properties": {
-                      "localMode": {
-                        "type": "string"
-                      },
-                      "revision": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "revision",
-                      "localMode"
-                    ],
-                    "type": "object"
-                  },
-                  "partNumber": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "sourceBoundary": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "bookId",
-                  "bookTitle",
-                  "sourceBoundary"
-                ],
-                "type": "object"
-              },
-              "durationState": {
-                "enum": [
-                  "unrepresentable"
-                ],
-                "type": "string"
-              },
-              "episode": {
-                "properties": {
-                  "airDate": {
-                    "type": "string"
-                  },
-                  "localIdentityStatus": {
-                    "type": "string"
-                  },
-                  "number": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "numbering": {
-                    "type": "string"
-                  },
-                  "orderingBasis": {
-                    "type": "string"
-                  },
-                  "providerMatchStatus": {
-                    "type": "string"
-                  },
-                  "seasonId": {
-                    "type": "string"
-                  },
-                  "seasonNumber": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "showId": {
-                    "type": "string"
-                  },
-                  "showTitle": {
-                    "type": "string"
-                  },
-                  "sourceBoundary": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "showId",
-                  "showTitle",
-                  "numbering",
-                  "number",
-                  "localIdentityStatus",
-                  "providerMatchStatus",
-                  "orderingBasis",
-                  "sourceBoundary"
-                ],
-                "type": "object"
-              },
-              "fileInfoOpening": {
-                "type": "string"
-              },
-              "id": {
-                "type": "string"
-              },
-              "kind": {
-                "type": "string"
-              },
-              "libraryId": {
-                "type": "string"
-              },
-              "missing": {
-                "type": "boolean"
-              },
-              "overview": {
-                "type": "string"
-              },
-              "posterUrl": {
-                "type": "string"
-              },
-              "progressMs": {
+              "discNumber": {
                 "maximum": 9007199254740991,
-                "minimum": 0,
+                "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "song": {
+              "localMetadata": {
                 "properties": {
-                  "albumArtist": {
+                  "authors": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "description": {
                     "type": "string"
                   },
-                  "albumId": {
+                  "edition": {
                     "type": "string"
                   },
-                  "albumTitle": {
+                  "identifiers": {
+                    "items": {
+                      "properties": {
+                        "scheme": {
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "scheme",
+                        "value"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "language": {
                     "type": "string"
                   },
-                  "artist": {
-                    "type": "string"
+                  "narrators": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
                   },
-                  "discNumber": {
+                  "publishedYear": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
-                  "localMetadataIssue": {
+                  "publisher": {
                     "type": "string"
                   },
-                  "providerArtist": {
+                  "series": {
+                    "items": {
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "position": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "sources": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "authors",
+                  "narrators",
+                  "series",
+                  "identifiers",
+                  "sources"
+                ],
+                "type": "object"
+              },
+              "localMetadataIssue": {
+                "type": "string"
+              },
+              "localPolicy": {
+                "properties": {
+                  "localMode": {
                     "type": "string"
                   },
-                  "providerMatchStatus": {
-                    "type": "string"
-                  },
-                  "providerObservedAt": {
-                    "type": "string"
-                  },
-                  "providerRecordingId": {
-                    "type": "string"
-                  },
-                  "providerReleaseGroupId": {
-                    "type": "string"
-                  },
-                  "providerReleaseId": {
-                    "type": "string"
-                  },
-                  "providerReleaseStatus": {
-                    "type": "string"
-                  },
-                  "providerSourceUrl": {
-                    "type": "string"
-                  },
-                  "providerTitle": {
-                    "type": "string"
-                  },
-                  "providerTrackId": {
-                    "type": "string"
-                  },
-                  "trackNumber": {
+                  "revision": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
                   }
                 },
                 "required": [
-                  "providerReleaseStatus",
-                  "albumId",
-                  "albumTitle",
-                  "albumArtist",
-                  "artist",
-                  "providerMatchStatus"
+                  "revision",
+                  "localMode"
                 ],
                 "type": "object"
               },
-              "sources": {
-                "items": {
-                  "properties": {
-                    "audioCodec": {
-                      "type": "string"
-                    },
-                    "container": {
-                      "type": "string"
-                    },
-                    "durationMs": {
-                      "maximum": 9007199254740991,
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    "height": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "id": {
-                      "type": "string"
-                    },
-                    "videoCodec": {
-                      "type": "string"
-                    },
-                    "width": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "container",
-                    "videoCodec",
-                    "audioCodec",
-                    "width",
-                    "height",
-                    "durationMs"
-                  ],
-                  "type": "object"
-                },
-                "type": "array"
+              "partNumber": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
               },
-              "stillUrl": {
+              "sourceBoundary": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "bookId",
+              "bookTitle",
+              "sourceBoundary"
+            ],
+            "type": "object"
+          },
+          "durationMs": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "episode": {
+            "properties": {
+              "airDate": {
                 "type": "string"
               },
-              "title": {
+              "localIdentityStatus": {
                 "type": "string"
               },
-              "watched": {
-                "type": "boolean"
+              "number": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
               },
-              "year": {
+              "numbering": {
+                "type": "string"
+              },
+              "orderingBasis": {
+                "type": "string"
+              },
+              "providerMatchStatus": {
+                "type": "string"
+              },
+              "seasonId": {
+                "type": "string"
+              },
+              "seasonNumber": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "showId": {
+                "type": "string"
+              },
+              "showTitle": {
+                "type": "string"
+              },
+              "sourceBoundary": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "showId",
+              "showTitle",
+              "numbering",
+              "number",
+              "localIdentityStatus",
+              "providerMatchStatus",
+              "orderingBasis",
+              "sourceBoundary"
+            ],
+            "type": "object"
+          },
+          "fileInfoOpening": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "libraryId": {
+            "type": "string"
+          },
+          "missing": {
+            "type": "boolean"
+          },
+          "overview": {
+            "type": "string"
+          },
+          "posterUrl": {
+            "type": "string"
+          },
+          "progressMs": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "song": {
+            "properties": {
+              "albumArtist": {
+                "type": "string"
+              },
+              "albumId": {
+                "type": "string"
+              },
+              "albumTitle": {
+                "type": "string"
+              },
+              "artist": {
+                "type": "string"
+              },
+              "discNumber": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "localMetadataIssue": {
+                "type": "string"
+              },
+              "providerArtist": {
+                "type": "string"
+              },
+              "providerMatchStatus": {
+                "type": "string"
+              },
+              "providerObservedAt": {
+                "type": "string"
+              },
+              "providerRecordingId": {
+                "type": "string"
+              },
+              "providerReleaseGroupId": {
+                "type": "string"
+              },
+              "providerReleaseId": {
+                "type": "string"
+              },
+              "providerReleaseStatus": {
+                "type": "string"
+              },
+              "providerSourceUrl": {
+                "type": "string"
+              },
+              "providerTitle": {
+                "type": "string"
+              },
+              "providerTrackId": {
+                "type": "string"
+              },
+              "trackNumber": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
               }
             },
             "required": [
-              "missing",
-              "addedAt",
-              "id",
-              "libraryId",
-              "title",
-              "kind",
-              "progressMs",
-              "available",
-              "durationState"
+              "providerReleaseStatus",
+              "albumId",
+              "albumTitle",
+              "albumArtist",
+              "artist",
+              "providerMatchStatus"
             ],
             "type": "object"
+          },
+          "sources": {
+            "items": {
+              "properties": {
+                "audioCodec": {
+                  "type": "string"
+                },
+                "container": {
+                  "type": "string"
+                },
+                "durationMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "height": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "videoCodec": {
+                  "type": "string"
+                },
+                "width": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "container",
+                "videoCodec",
+                "audioCodec",
+                "width",
+                "height",
+                "durationMs"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "stillUrl": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "variant": {
+            "const": "item",
+            "type": "string"
+          },
+          "watched": {
+            "type": "boolean"
+          },
+          "year": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           }
-        ]
+        },
+        "required": [
+          "missing",
+          "addedAt",
+          "id",
+          "libraryId",
+          "title",
+          "kind",
+          "durationMs",
+          "progressMs",
+          "available",
+          "variant"
+        ],
+        "type": "object"
+      },
+      {
+        "properties": {
+          "addedAt": {
+            "nullable": true,
+            "type": "string"
+          },
+          "audioFacts": {
+            "properties": {
+              "atmos": {
+                "type": "boolean"
+              },
+              "bitDepth": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "channels": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "codec": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "lossless": {
+                "type": "boolean"
+              },
+              "sampleRate": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "codec"
+            ],
+            "type": "object"
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "backdropUrl": {
+            "type": "string"
+          },
+          "bookFile": {
+            "properties": {
+              "bookId": {
+                "type": "string"
+              },
+              "bookTitle": {
+                "type": "string"
+              },
+              "discNumber": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "localMetadata": {
+                "properties": {
+                  "authors": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "edition": {
+                    "type": "string"
+                  },
+                  "identifiers": {
+                    "items": {
+                      "properties": {
+                        "scheme": {
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "scheme",
+                        "value"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "language": {
+                    "type": "string"
+                  },
+                  "narrators": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "publishedYear": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "publisher": {
+                    "type": "string"
+                  },
+                  "series": {
+                    "items": {
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "position": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "sources": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "authors",
+                  "narrators",
+                  "series",
+                  "identifiers",
+                  "sources"
+                ],
+                "type": "object"
+              },
+              "localMetadataIssue": {
+                "type": "string"
+              },
+              "localPolicy": {
+                "properties": {
+                  "localMode": {
+                    "type": "string"
+                  },
+                  "revision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "revision",
+                  "localMode"
+                ],
+                "type": "object"
+              },
+              "partNumber": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "sourceBoundary": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "bookId",
+              "bookTitle",
+              "sourceBoundary"
+            ],
+            "type": "object"
+          },
+          "durationState": {
+            "enum": [
+              "unrepresentable"
+            ],
+            "type": "string"
+          },
+          "episode": {
+            "properties": {
+              "airDate": {
+                "type": "string"
+              },
+              "localIdentityStatus": {
+                "type": "string"
+              },
+              "number": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "numbering": {
+                "type": "string"
+              },
+              "orderingBasis": {
+                "type": "string"
+              },
+              "providerMatchStatus": {
+                "type": "string"
+              },
+              "seasonId": {
+                "type": "string"
+              },
+              "seasonNumber": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "showId": {
+                "type": "string"
+              },
+              "showTitle": {
+                "type": "string"
+              },
+              "sourceBoundary": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "showId",
+              "showTitle",
+              "numbering",
+              "number",
+              "localIdentityStatus",
+              "providerMatchStatus",
+              "orderingBasis",
+              "sourceBoundary"
+            ],
+            "type": "object"
+          },
+          "fileInfoOpening": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "libraryId": {
+            "type": "string"
+          },
+          "missing": {
+            "type": "boolean"
+          },
+          "overview": {
+            "type": "string"
+          },
+          "posterUrl": {
+            "type": "string"
+          },
+          "progressMs": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "song": {
+            "properties": {
+              "albumArtist": {
+                "type": "string"
+              },
+              "albumId": {
+                "type": "string"
+              },
+              "albumTitle": {
+                "type": "string"
+              },
+              "artist": {
+                "type": "string"
+              },
+              "discNumber": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "localMetadataIssue": {
+                "type": "string"
+              },
+              "providerArtist": {
+                "type": "string"
+              },
+              "providerMatchStatus": {
+                "type": "string"
+              },
+              "providerObservedAt": {
+                "type": "string"
+              },
+              "providerRecordingId": {
+                "type": "string"
+              },
+              "providerReleaseGroupId": {
+                "type": "string"
+              },
+              "providerReleaseId": {
+                "type": "string"
+              },
+              "providerReleaseStatus": {
+                "type": "string"
+              },
+              "providerSourceUrl": {
+                "type": "string"
+              },
+              "providerTitle": {
+                "type": "string"
+              },
+              "providerTrackId": {
+                "type": "string"
+              },
+              "trackNumber": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "providerReleaseStatus",
+              "albumId",
+              "albumTitle",
+              "albumArtist",
+              "artist",
+              "providerMatchStatus"
+            ],
+            "type": "object"
+          },
+          "sources": {
+            "items": {
+              "properties": {
+                "audioCodec": {
+                  "type": "string"
+                },
+                "container": {
+                  "type": "string"
+                },
+                "durationMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "height": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "videoCodec": {
+                  "type": "string"
+                },
+                "width": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "container",
+                "videoCodec",
+                "audioCodec",
+                "width",
+                "height",
+                "durationMs"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "stillUrl": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "variant": {
+            "const": "item-unrepresentable",
+            "type": "string"
+          },
+          "watched": {
+            "type": "boolean"
+          },
+          "year": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "missing",
+          "addedAt",
+          "id",
+          "libraryId",
+          "title",
+          "kind",
+          "progressMs",
+          "available",
+          "durationState",
+          "variant"
+        ],
+        "type": "object"
       },
       {
         "properties": {
@@ -56973,6 +57064,10 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "variant": {
+            "const": "files",
+            "type": "string"
+          },
           "window": {
             "properties": {
               "limit": {
@@ -57026,7 +57121,8 @@ export const schemas = {
           "kind",
           "itemKind",
           "surface",
-          "files"
+          "files",
+          "variant"
         ],
         "type": "object"
       },
@@ -57322,6 +57418,10 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "variant": {
+            "const": "groups",
+            "type": "string"
+          },
           "window": {
             "properties": {
               "limit": {
@@ -57374,7 +57474,8 @@ export const schemas = {
           "window",
           "kind",
           "surface",
-          "groups"
+          "groups",
+          "variant"
         ],
         "type": "object"
       },
@@ -57632,6 +57733,10 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "variant": {
+            "const": "members",
+            "type": "string"
+          },
           "window": {
             "properties": {
               "limit": {
@@ -57685,7 +57790,8 @@ export const schemas = {
           "kind",
           "groupId",
           "total",
-          "members"
+          "members",
+          "variant"
         ],
         "type": "object"
       },
@@ -57867,6 +57973,10 @@ export const schemas = {
             "maxItems": 100,
             "type": "array"
           },
+          "variant": {
+            "const": "tracks",
+            "type": "string"
+          },
           "window": {
             "properties": {
               "limit": {
@@ -57921,7 +58031,8 @@ export const schemas = {
           "lane",
           "occurrence",
           "total",
-          "tracks"
+          "tracks",
+          "variant"
         ],
         "type": "object"
       },
@@ -58110,6 +58221,10 @@ export const schemas = {
             "maxItems": 100,
             "type": "array"
           },
+          "variant": {
+            "const": "head-tracks",
+            "type": "string"
+          },
           "window": {
             "properties": {
               "limit": {
@@ -58165,7 +58280,8 @@ export const schemas = {
           "groupId",
           "occurrence",
           "total",
-          "tracks"
+          "tracks",
+          "variant"
         ],
         "type": "object"
       },
@@ -58316,6 +58432,10 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "variant": {
+            "const": "sources",
+            "type": "string"
+          },
           "window": {
             "properties": {
               "limit": {
@@ -58368,7 +58488,8 @@ export const schemas = {
           "window",
           "kind",
           "total",
-          "sources"
+          "sources",
+          "variant"
         ],
         "type": "object"
       },
@@ -58508,6 +58629,10 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "variant": {
+            "const": "disc-titles",
+            "type": "string"
+          },
           "window": {
             "properties": {
               "limit": {
@@ -58562,7 +58687,8 @@ export const schemas = {
           "occurrence",
           "discKind",
           "total",
-          "titles"
+          "titles",
+          "variant"
         ],
         "type": "object"
       },
@@ -58636,17 +58762,23 @@ export const schemas = {
           "state": {
             "const": "preparing",
             "type": "string"
+          },
+          "variant": {
+            "const": "preparing",
+            "type": "string"
           }
         },
         "required": [
           "kind",
           "state",
           "queryId",
-          "retryAfterMs"
+          "retryAfterMs",
+          "variant"
         ],
         "type": "object"
       }
-    ]
+    ],
+    "x-discriminator": "variant"
   },
   "GetGenreQueryRequest": {
     "properties": {},
@@ -61959,16 +62091,16 @@ export const schemas = {
                                         "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                         "type": "string"
                                       },
-                                      "kind": {
-                                        "const": "lossless"
-                                      },
                                       "sampleRate": {
                                         "minimum": 1,
                                         "type": "integer"
+                                      },
+                                      "variant": {
+                                        "const": "lossless"
                                       }
                                     },
                                     "required": [
-                                      "kind",
+                                      "variant",
                                       "codec",
                                       "bitDepth",
                                       "sampleRate"
@@ -61978,38 +62110,48 @@ export const schemas = {
                                   {
                                     "additionalProperties": false,
                                     "properties": {
-                                      "kind": {
-                                        "enum": [
-                                          "atmos",
-                                          "dsd"
-                                        ]
+                                      "variant": {
+                                        "const": "atmos"
                                       }
                                     },
                                     "required": [
-                                      "kind"
+                                      "variant"
                                     ],
                                     "type": "object"
                                   },
                                   {
                                     "additionalProperties": false,
                                     "properties": {
-                                      "kind": {
-                                        "const": "surround"
-                                      },
+                                      "variant": {
+                                        "const": "dsd"
+                                      }
+                                    },
+                                    "required": [
+                                      "variant"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
                                       "layout": {
                                         "enum": [
                                           "5.1",
                                           "7.1"
                                         ]
+                                      },
+                                      "variant": {
+                                        "const": "surround"
                                       }
                                     },
                                     "required": [
-                                      "kind",
+                                      "variant",
                                       "layout"
                                     ],
                                     "type": "object"
                                   }
-                                ]
+                                ],
+                                "x-discriminator": "variant"
                               },
                               "maxItems": 2,
                               "type": "array"
@@ -62491,16 +62633,16 @@ export const schemas = {
                                             "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                             "type": "string"
                                           },
-                                          "kind": {
-                                            "const": "lossless"
-                                          },
                                           "sampleRate": {
                                             "minimum": 1,
                                             "type": "integer"
+                                          },
+                                          "variant": {
+                                            "const": "lossless"
                                           }
                                         },
                                         "required": [
-                                          "kind",
+                                          "variant",
                                           "codec",
                                           "bitDepth",
                                           "sampleRate"
@@ -62510,38 +62652,48 @@ export const schemas = {
                                       {
                                         "additionalProperties": false,
                                         "properties": {
-                                          "kind": {
-                                            "enum": [
-                                              "atmos",
-                                              "dsd"
-                                            ]
+                                          "variant": {
+                                            "const": "atmos"
                                           }
                                         },
                                         "required": [
-                                          "kind"
+                                          "variant"
                                         ],
                                         "type": "object"
                                       },
                                       {
                                         "additionalProperties": false,
                                         "properties": {
-                                          "kind": {
-                                            "const": "surround"
-                                          },
+                                          "variant": {
+                                            "const": "dsd"
+                                          }
+                                        },
+                                        "required": [
+                                          "variant"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      {
+                                        "additionalProperties": false,
+                                        "properties": {
                                           "layout": {
                                             "enum": [
                                               "5.1",
                                               "7.1"
                                             ]
+                                          },
+                                          "variant": {
+                                            "const": "surround"
                                           }
                                         },
                                         "required": [
-                                          "kind",
+                                          "variant",
                                           "layout"
                                         ],
                                         "type": "object"
                                       }
-                                    ]
+                                    ],
+                                    "x-discriminator": "variant"
                                   },
                                   "maxItems": 2,
                                   "type": "array"
@@ -63681,16 +63833,16 @@ export const schemas = {
                                     "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                     "type": "string"
                                   },
-                                  "kind": {
-                                    "const": "lossless"
-                                  },
                                   "sampleRate": {
                                     "minimum": 1,
                                     "type": "integer"
+                                  },
+                                  "variant": {
+                                    "const": "lossless"
                                   }
                                 },
                                 "required": [
-                                  "kind",
+                                  "variant",
                                   "codec",
                                   "bitDepth",
                                   "sampleRate"
@@ -63700,38 +63852,48 @@ export const schemas = {
                               {
                                 "additionalProperties": false,
                                 "properties": {
-                                  "kind": {
-                                    "enum": [
-                                      "atmos",
-                                      "dsd"
-                                    ]
+                                  "variant": {
+                                    "const": "atmos"
                                   }
                                 },
                                 "required": [
-                                  "kind"
+                                  "variant"
                                 ],
                                 "type": "object"
                               },
                               {
                                 "additionalProperties": false,
                                 "properties": {
-                                  "kind": {
-                                    "const": "surround"
-                                  },
+                                  "variant": {
+                                    "const": "dsd"
+                                  }
+                                },
+                                "required": [
+                                  "variant"
+                                ],
+                                "type": "object"
+                              },
+                              {
+                                "additionalProperties": false,
+                                "properties": {
                                   "layout": {
                                     "enum": [
                                       "5.1",
                                       "7.1"
                                     ]
+                                  },
+                                  "variant": {
+                                    "const": "surround"
                                   }
                                 },
                                 "required": [
-                                  "kind",
+                                  "variant",
                                   "layout"
                                 ],
                                 "type": "object"
                               }
-                            ]
+                            ],
+                            "x-discriminator": "variant"
                           },
                           "maxItems": 2,
                           "type": "array"
@@ -64213,16 +64375,16 @@ export const schemas = {
                                         "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                         "type": "string"
                                       },
-                                      "kind": {
-                                        "const": "lossless"
-                                      },
                                       "sampleRate": {
                                         "minimum": 1,
                                         "type": "integer"
+                                      },
+                                      "variant": {
+                                        "const": "lossless"
                                       }
                                     },
                                     "required": [
-                                      "kind",
+                                      "variant",
                                       "codec",
                                       "bitDepth",
                                       "sampleRate"
@@ -64232,38 +64394,48 @@ export const schemas = {
                                   {
                                     "additionalProperties": false,
                                     "properties": {
-                                      "kind": {
-                                        "enum": [
-                                          "atmos",
-                                          "dsd"
-                                        ]
+                                      "variant": {
+                                        "const": "atmos"
                                       }
                                     },
                                     "required": [
-                                      "kind"
+                                      "variant"
                                     ],
                                     "type": "object"
                                   },
                                   {
                                     "additionalProperties": false,
                                     "properties": {
-                                      "kind": {
-                                        "const": "surround"
-                                      },
+                                      "variant": {
+                                        "const": "dsd"
+                                      }
+                                    },
+                                    "required": [
+                                      "variant"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
                                       "layout": {
                                         "enum": [
                                           "5.1",
                                           "7.1"
                                         ]
+                                      },
+                                      "variant": {
+                                        "const": "surround"
                                       }
                                     },
                                     "required": [
-                                      "kind",
+                                      "variant",
                                       "layout"
                                     ],
                                     "type": "object"
                                   }
-                                ]
+                                ],
+                                "x-discriminator": "variant"
                               },
                               "maxItems": 2,
                               "type": "array"
@@ -65865,16 +66037,16 @@ export const schemas = {
                                         "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                         "type": "string"
                                       },
-                                      "kind": {
-                                        "const": "lossless"
-                                      },
                                       "sampleRate": {
                                         "minimum": 1,
                                         "type": "integer"
+                                      },
+                                      "variant": {
+                                        "const": "lossless"
                                       }
                                     },
                                     "required": [
-                                      "kind",
+                                      "variant",
                                       "codec",
                                       "bitDepth",
                                       "sampleRate"
@@ -65884,38 +66056,48 @@ export const schemas = {
                                   {
                                     "additionalProperties": false,
                                     "properties": {
-                                      "kind": {
-                                        "enum": [
-                                          "atmos",
-                                          "dsd"
-                                        ]
+                                      "variant": {
+                                        "const": "atmos"
                                       }
                                     },
                                     "required": [
-                                      "kind"
+                                      "variant"
                                     ],
                                     "type": "object"
                                   },
                                   {
                                     "additionalProperties": false,
                                     "properties": {
-                                      "kind": {
-                                        "const": "surround"
-                                      },
+                                      "variant": {
+                                        "const": "dsd"
+                                      }
+                                    },
+                                    "required": [
+                                      "variant"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
                                       "layout": {
                                         "enum": [
                                           "5.1",
                                           "7.1"
                                         ]
+                                      },
+                                      "variant": {
+                                        "const": "surround"
                                       }
                                     },
                                     "required": [
-                                      "kind",
+                                      "variant",
                                       "layout"
                                     ],
                                     "type": "object"
                                   }
-                                ]
+                                ],
+                                "x-discriminator": "variant"
                               },
                               "maxItems": 2,
                               "type": "array"
@@ -66397,16 +66579,16 @@ export const schemas = {
                                             "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                             "type": "string"
                                           },
-                                          "kind": {
-                                            "const": "lossless"
-                                          },
                                           "sampleRate": {
                                             "minimum": 1,
                                             "type": "integer"
+                                          },
+                                          "variant": {
+                                            "const": "lossless"
                                           }
                                         },
                                         "required": [
-                                          "kind",
+                                          "variant",
                                           "codec",
                                           "bitDepth",
                                           "sampleRate"
@@ -66416,38 +66598,48 @@ export const schemas = {
                                       {
                                         "additionalProperties": false,
                                         "properties": {
-                                          "kind": {
-                                            "enum": [
-                                              "atmos",
-                                              "dsd"
-                                            ]
+                                          "variant": {
+                                            "const": "atmos"
                                           }
                                         },
                                         "required": [
-                                          "kind"
+                                          "variant"
                                         ],
                                         "type": "object"
                                       },
                                       {
                                         "additionalProperties": false,
                                         "properties": {
-                                          "kind": {
-                                            "const": "surround"
-                                          },
+                                          "variant": {
+                                            "const": "dsd"
+                                          }
+                                        },
+                                        "required": [
+                                          "variant"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      {
+                                        "additionalProperties": false,
+                                        "properties": {
                                           "layout": {
                                             "enum": [
                                               "5.1",
                                               "7.1"
                                             ]
+                                          },
+                                          "variant": {
+                                            "const": "surround"
                                           }
                                         },
                                         "required": [
-                                          "kind",
+                                          "variant",
                                           "layout"
                                         ],
                                         "type": "object"
                                       }
-                                    ]
+                                    ],
+                                    "x-discriminator": "variant"
                                   },
                                   "maxItems": 2,
                                   "type": "array"
@@ -68144,16 +68336,16 @@ export const schemas = {
                                   "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                   "type": "string"
                                 },
-                                "kind": {
-                                  "const": "lossless"
-                                },
                                 "sampleRate": {
                                   "minimum": 1,
                                   "type": "integer"
+                                },
+                                "variant": {
+                                  "const": "lossless"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "codec",
                                 "bitDepth",
                                 "sampleRate"
@@ -68163,38 +68355,48 @@ export const schemas = {
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "enum": [
-                                    "atmos",
-                                    "dsd"
-                                  ]
+                                "variant": {
+                                  "const": "atmos"
                                 }
                               },
                               "required": [
-                                "kind"
+                                "variant"
                               ],
                               "type": "object"
                             },
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "const": "surround"
-                                },
+                                "variant": {
+                                  "const": "dsd"
+                                }
+                              },
+                              "required": [
+                                "variant"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
                                 "layout": {
                                   "enum": [
                                     "5.1",
                                     "7.1"
                                   ]
+                                },
+                                "variant": {
+                                  "const": "surround"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "layout"
                               ],
                               "type": "object"
                             }
-                          ]
+                          ],
+                          "x-discriminator": "variant"
                         },
                         "maxItems": 2,
                         "type": "array"
@@ -68676,16 +68878,16 @@ export const schemas = {
                                       "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                       "type": "string"
                                     },
-                                    "kind": {
-                                      "const": "lossless"
-                                    },
                                     "sampleRate": {
                                       "minimum": 1,
                                       "type": "integer"
+                                    },
+                                    "variant": {
+                                      "const": "lossless"
                                     }
                                   },
                                   "required": [
-                                    "kind",
+                                    "variant",
                                     "codec",
                                     "bitDepth",
                                     "sampleRate"
@@ -68695,38 +68897,48 @@ export const schemas = {
                                 {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "enum": [
-                                        "atmos",
-                                        "dsd"
-                                      ]
+                                    "variant": {
+                                      "const": "atmos"
                                     }
                                   },
                                   "required": [
-                                    "kind"
+                                    "variant"
                                   ],
                                   "type": "object"
                                 },
                                 {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "const": "surround"
-                                    },
+                                    "variant": {
+                                      "const": "dsd"
+                                    }
+                                  },
+                                  "required": [
+                                    "variant"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
                                     "layout": {
                                       "enum": [
                                         "5.1",
                                         "7.1"
                                       ]
+                                    },
+                                    "variant": {
+                                      "const": "surround"
                                     }
                                   },
                                   "required": [
-                                    "kind",
+                                    "variant",
                                     "layout"
                                   ],
                                   "type": "object"
                                 }
-                              ]
+                              ],
+                              "x-discriminator": "variant"
                             },
                             "maxItems": 2,
                             "type": "array"
@@ -69863,16 +70075,16 @@ export const schemas = {
                               "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                               "type": "string"
                             },
-                            "kind": {
-                              "const": "lossless"
-                            },
                             "sampleRate": {
                               "minimum": 1,
                               "type": "integer"
+                            },
+                            "variant": {
+                              "const": "lossless"
                             }
                           },
                           "required": [
-                            "kind",
+                            "variant",
                             "codec",
                             "bitDepth",
                             "sampleRate"
@@ -69882,38 +70094,48 @@ export const schemas = {
                         {
                           "additionalProperties": false,
                           "properties": {
-                            "kind": {
-                              "enum": [
-                                "atmos",
-                                "dsd"
-                              ]
+                            "variant": {
+                              "const": "atmos"
                             }
                           },
                           "required": [
-                            "kind"
+                            "variant"
                           ],
                           "type": "object"
                         },
                         {
                           "additionalProperties": false,
                           "properties": {
-                            "kind": {
-                              "const": "surround"
-                            },
+                            "variant": {
+                              "const": "dsd"
+                            }
+                          },
+                          "required": [
+                            "variant"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
                             "layout": {
                               "enum": [
                                 "5.1",
                                 "7.1"
                               ]
+                            },
+                            "variant": {
+                              "const": "surround"
                             }
                           },
                           "required": [
-                            "kind",
+                            "variant",
                             "layout"
                           ],
                           "type": "object"
                         }
-                      ]
+                      ],
+                      "x-discriminator": "variant"
                     },
                     "maxItems": 2,
                     "type": "array"
@@ -70395,16 +70617,16 @@ export const schemas = {
                                   "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                   "type": "string"
                                 },
-                                "kind": {
-                                  "const": "lossless"
-                                },
                                 "sampleRate": {
                                   "minimum": 1,
                                   "type": "integer"
+                                },
+                                "variant": {
+                                  "const": "lossless"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "codec",
                                 "bitDepth",
                                 "sampleRate"
@@ -70414,38 +70636,48 @@ export const schemas = {
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "enum": [
-                                    "atmos",
-                                    "dsd"
-                                  ]
+                                "variant": {
+                                  "const": "atmos"
                                 }
                               },
                               "required": [
-                                "kind"
+                                "variant"
                               ],
                               "type": "object"
                             },
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "const": "surround"
-                                },
+                                "variant": {
+                                  "const": "dsd"
+                                }
+                              },
+                              "required": [
+                                "variant"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
                                 "layout": {
                                   "enum": [
                                     "5.1",
                                     "7.1"
                                   ]
+                                },
+                                "variant": {
+                                  "const": "surround"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "layout"
                               ],
                               "type": "object"
                             }
-                          ]
+                          ],
+                          "x-discriminator": "variant"
                         },
                         "maxItems": 2,
                         "type": "array"
@@ -72047,16 +72279,16 @@ export const schemas = {
                                   "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                   "type": "string"
                                 },
-                                "kind": {
-                                  "const": "lossless"
-                                },
                                 "sampleRate": {
                                   "minimum": 1,
                                   "type": "integer"
+                                },
+                                "variant": {
+                                  "const": "lossless"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "codec",
                                 "bitDepth",
                                 "sampleRate"
@@ -72066,38 +72298,48 @@ export const schemas = {
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "enum": [
-                                    "atmos",
-                                    "dsd"
-                                  ]
+                                "variant": {
+                                  "const": "atmos"
                                 }
                               },
                               "required": [
-                                "kind"
+                                "variant"
                               ],
                               "type": "object"
                             },
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "const": "surround"
-                                },
+                                "variant": {
+                                  "const": "dsd"
+                                }
+                              },
+                              "required": [
+                                "variant"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
                                 "layout": {
                                   "enum": [
                                     "5.1",
                                     "7.1"
                                   ]
+                                },
+                                "variant": {
+                                  "const": "surround"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "layout"
                               ],
                               "type": "object"
                             }
-                          ]
+                          ],
+                          "x-discriminator": "variant"
                         },
                         "maxItems": 2,
                         "type": "array"
@@ -72579,16 +72821,16 @@ export const schemas = {
                                       "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                       "type": "string"
                                     },
-                                    "kind": {
-                                      "const": "lossless"
-                                    },
                                     "sampleRate": {
                                       "minimum": 1,
                                       "type": "integer"
+                                    },
+                                    "variant": {
+                                      "const": "lossless"
                                     }
                                   },
                                   "required": [
-                                    "kind",
+                                    "variant",
                                     "codec",
                                     "bitDepth",
                                     "sampleRate"
@@ -72598,38 +72840,48 @@ export const schemas = {
                                 {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "enum": [
-                                        "atmos",
-                                        "dsd"
-                                      ]
+                                    "variant": {
+                                      "const": "atmos"
                                     }
                                   },
                                   "required": [
-                                    "kind"
+                                    "variant"
                                   ],
                                   "type": "object"
                                 },
                                 {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "const": "surround"
-                                    },
+                                    "variant": {
+                                      "const": "dsd"
+                                    }
+                                  },
+                                  "required": [
+                                    "variant"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
                                     "layout": {
                                       "enum": [
                                         "5.1",
                                         "7.1"
                                       ]
+                                    },
+                                    "variant": {
+                                      "const": "surround"
                                     }
                                   },
                                   "required": [
-                                    "kind",
+                                    "variant",
                                     "layout"
                                   ],
                                   "type": "object"
                                 }
-                              ]
+                              ],
+                              "x-discriminator": "variant"
                             },
                             "maxItems": 2,
                             "type": "array"
@@ -74122,16 +74374,16 @@ export const schemas = {
                             "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                             "type": "string"
                           },
-                          "kind": {
-                            "const": "lossless"
-                          },
                           "sampleRate": {
                             "minimum": 1,
                             "type": "integer"
+                          },
+                          "variant": {
+                            "const": "lossless"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "codec",
                           "bitDepth",
                           "sampleRate"
@@ -74141,38 +74393,48 @@ export const schemas = {
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "enum": [
-                              "atmos",
-                              "dsd"
-                            ]
+                          "variant": {
+                            "const": "atmos"
                           }
                         },
                         "required": [
-                          "kind"
+                          "variant"
                         ],
                         "type": "object"
                       },
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "const": "surround"
-                          },
+                          "variant": {
+                            "const": "dsd"
+                          }
+                        },
+                        "required": [
+                          "variant"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
                           "layout": {
                             "enum": [
                               "5.1",
                               "7.1"
                             ]
+                          },
+                          "variant": {
+                            "const": "surround"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "layout"
                         ],
                         "type": "object"
                       }
-                    ]
+                    ],
+                    "x-discriminator": "variant"
                   },
                   "maxItems": 2,
                   "type": "array"
@@ -74654,16 +74916,16 @@ export const schemas = {
                                 "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                 "type": "string"
                               },
-                              "kind": {
-                                "const": "lossless"
-                              },
                               "sampleRate": {
                                 "minimum": 1,
                                 "type": "integer"
+                              },
+                              "variant": {
+                                "const": "lossless"
                               }
                             },
                             "required": [
-                              "kind",
+                              "variant",
                               "codec",
                               "bitDepth",
                               "sampleRate"
@@ -74673,38 +74935,48 @@ export const schemas = {
                           {
                             "additionalProperties": false,
                             "properties": {
-                              "kind": {
-                                "enum": [
-                                  "atmos",
-                                  "dsd"
-                                ]
+                              "variant": {
+                                "const": "atmos"
                               }
                             },
                             "required": [
-                              "kind"
+                              "variant"
                             ],
                             "type": "object"
                           },
                           {
                             "additionalProperties": false,
                             "properties": {
-                              "kind": {
-                                "const": "surround"
-                              },
+                              "variant": {
+                                "const": "dsd"
+                              }
+                            },
+                            "required": [
+                              "variant"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
                               "layout": {
                                 "enum": [
                                   "5.1",
                                   "7.1"
                                 ]
+                              },
+                              "variant": {
+                                "const": "surround"
                               }
                             },
                             "required": [
-                              "kind",
+                              "variant",
                               "layout"
                             ],
                             "type": "object"
                           }
-                        ]
+                        ],
+                        "x-discriminator": "variant"
                       },
                       "maxItems": 2,
                       "type": "array"
@@ -75849,16 +76121,16 @@ export const schemas = {
                             "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                             "type": "string"
                           },
-                          "kind": {
-                            "const": "lossless"
-                          },
                           "sampleRate": {
                             "minimum": 1,
                             "type": "integer"
+                          },
+                          "variant": {
+                            "const": "lossless"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "codec",
                           "bitDepth",
                           "sampleRate"
@@ -75868,38 +76140,48 @@ export const schemas = {
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "enum": [
-                              "atmos",
-                              "dsd"
-                            ]
+                          "variant": {
+                            "const": "atmos"
                           }
                         },
                         "required": [
-                          "kind"
+                          "variant"
                         ],
                         "type": "object"
                       },
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "const": "surround"
-                          },
+                          "variant": {
+                            "const": "dsd"
+                          }
+                        },
+                        "required": [
+                          "variant"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
                           "layout": {
                             "enum": [
                               "5.1",
                               "7.1"
                             ]
+                          },
+                          "variant": {
+                            "const": "surround"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "layout"
                         ],
                         "type": "object"
                       }
-                    ]
+                    ],
+                    "x-discriminator": "variant"
                   },
                   "maxItems": 2,
                   "type": "array"
@@ -76381,16 +76663,16 @@ export const schemas = {
                                 "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                 "type": "string"
                               },
-                              "kind": {
-                                "const": "lossless"
-                              },
                               "sampleRate": {
                                 "minimum": 1,
                                 "type": "integer"
+                              },
+                              "variant": {
+                                "const": "lossless"
                               }
                             },
                             "required": [
-                              "kind",
+                              "variant",
                               "codec",
                               "bitDepth",
                               "sampleRate"
@@ -76400,38 +76682,48 @@ export const schemas = {
                           {
                             "additionalProperties": false,
                             "properties": {
-                              "kind": {
-                                "enum": [
-                                  "atmos",
-                                  "dsd"
-                                ]
+                              "variant": {
+                                "const": "atmos"
                               }
                             },
                             "required": [
-                              "kind"
+                              "variant"
                             ],
                             "type": "object"
                           },
                           {
                             "additionalProperties": false,
                             "properties": {
-                              "kind": {
-                                "const": "surround"
-                              },
+                              "variant": {
+                                "const": "dsd"
+                              }
+                            },
+                            "required": [
+                              "variant"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
                               "layout": {
                                 "enum": [
                                   "5.1",
                                   "7.1"
                                 ]
+                              },
+                              "variant": {
+                                "const": "surround"
                               }
                             },
                             "required": [
-                              "kind",
+                              "variant",
                               "layout"
                             ],
                             "type": "object"
                           }
-                        ]
+                        ],
+                        "x-discriminator": "variant"
                       },
                       "maxItems": 2,
                       "type": "array"
@@ -77792,16 +78084,16 @@ export const schemas = {
                                   "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                   "type": "string"
                                 },
-                                "kind": {
-                                  "const": "lossless"
-                                },
                                 "sampleRate": {
                                   "minimum": 1,
                                   "type": "integer"
+                                },
+                                "variant": {
+                                  "const": "lossless"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "codec",
                                 "bitDepth",
                                 "sampleRate"
@@ -77811,38 +78103,48 @@ export const schemas = {
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "enum": [
-                                    "atmos",
-                                    "dsd"
-                                  ]
+                                "variant": {
+                                  "const": "atmos"
                                 }
                               },
                               "required": [
-                                "kind"
+                                "variant"
                               ],
                               "type": "object"
                             },
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "const": "surround"
-                                },
+                                "variant": {
+                                  "const": "dsd"
+                                }
+                              },
+                              "required": [
+                                "variant"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
                                 "layout": {
                                   "enum": [
                                     "5.1",
                                     "7.1"
                                   ]
+                                },
+                                "variant": {
+                                  "const": "surround"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "layout"
                               ],
                               "type": "object"
                             }
-                          ]
+                          ],
+                          "x-discriminator": "variant"
                         },
                         "maxItems": 2,
                         "type": "array"
@@ -78324,16 +78626,16 @@ export const schemas = {
                                       "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                       "type": "string"
                                     },
-                                    "kind": {
-                                      "const": "lossless"
-                                    },
                                     "sampleRate": {
                                       "minimum": 1,
                                       "type": "integer"
+                                    },
+                                    "variant": {
+                                      "const": "lossless"
                                     }
                                   },
                                   "required": [
-                                    "kind",
+                                    "variant",
                                     "codec",
                                     "bitDepth",
                                     "sampleRate"
@@ -78343,38 +78645,48 @@ export const schemas = {
                                 {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "enum": [
-                                        "atmos",
-                                        "dsd"
-                                      ]
+                                    "variant": {
+                                      "const": "atmos"
                                     }
                                   },
                                   "required": [
-                                    "kind"
+                                    "variant"
                                   ],
                                   "type": "object"
                                 },
                                 {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "const": "surround"
-                                    },
+                                    "variant": {
+                                      "const": "dsd"
+                                    }
+                                  },
+                                  "required": [
+                                    "variant"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
                                     "layout": {
                                       "enum": [
                                         "5.1",
                                         "7.1"
                                       ]
+                                    },
+                                    "variant": {
+                                      "const": "surround"
                                     }
                                   },
                                   "required": [
-                                    "kind",
+                                    "variant",
                                     "layout"
                                   ],
                                   "type": "object"
                                 }
-                              ]
+                              ],
+                              "x-discriminator": "variant"
                             },
                             "maxItems": 2,
                             "type": "array"
@@ -79514,16 +79826,16 @@ export const schemas = {
                               "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                               "type": "string"
                             },
-                            "kind": {
-                              "const": "lossless"
-                            },
                             "sampleRate": {
                               "minimum": 1,
                               "type": "integer"
+                            },
+                            "variant": {
+                              "const": "lossless"
                             }
                           },
                           "required": [
-                            "kind",
+                            "variant",
                             "codec",
                             "bitDepth",
                             "sampleRate"
@@ -79533,38 +79845,48 @@ export const schemas = {
                         {
                           "additionalProperties": false,
                           "properties": {
-                            "kind": {
-                              "enum": [
-                                "atmos",
-                                "dsd"
-                              ]
+                            "variant": {
+                              "const": "atmos"
                             }
                           },
                           "required": [
-                            "kind"
+                            "variant"
                           ],
                           "type": "object"
                         },
                         {
                           "additionalProperties": false,
                           "properties": {
-                            "kind": {
-                              "const": "surround"
-                            },
+                            "variant": {
+                              "const": "dsd"
+                            }
+                          },
+                          "required": [
+                            "variant"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
                             "layout": {
                               "enum": [
                                 "5.1",
                                 "7.1"
                               ]
+                            },
+                            "variant": {
+                              "const": "surround"
                             }
                           },
                           "required": [
-                            "kind",
+                            "variant",
                             "layout"
                           ],
                           "type": "object"
                         }
-                      ]
+                      ],
+                      "x-discriminator": "variant"
                     },
                     "maxItems": 2,
                     "type": "array"
@@ -80046,16 +80368,16 @@ export const schemas = {
                                   "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                   "type": "string"
                                 },
-                                "kind": {
-                                  "const": "lossless"
-                                },
                                 "sampleRate": {
                                   "minimum": 1,
                                   "type": "integer"
+                                },
+                                "variant": {
+                                  "const": "lossless"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "codec",
                                 "bitDepth",
                                 "sampleRate"
@@ -80065,38 +80387,48 @@ export const schemas = {
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "enum": [
-                                    "atmos",
-                                    "dsd"
-                                  ]
+                                "variant": {
+                                  "const": "atmos"
                                 }
                               },
                               "required": [
-                                "kind"
+                                "variant"
                               ],
                               "type": "object"
                             },
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "const": "surround"
-                                },
+                                "variant": {
+                                  "const": "dsd"
+                                }
+                              },
+                              "required": [
+                                "variant"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
                                 "layout": {
                                   "enum": [
                                     "5.1",
                                     "7.1"
                                   ]
+                                },
+                                "variant": {
+                                  "const": "surround"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "layout"
                               ],
                               "type": "object"
                             }
-                          ]
+                          ],
+                          "x-discriminator": "variant"
                         },
                         "maxItems": 2,
                         "type": "array"
@@ -81698,16 +82030,16 @@ export const schemas = {
                                   "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                   "type": "string"
                                 },
-                                "kind": {
-                                  "const": "lossless"
-                                },
                                 "sampleRate": {
                                   "minimum": 1,
                                   "type": "integer"
+                                },
+                                "variant": {
+                                  "const": "lossless"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "codec",
                                 "bitDepth",
                                 "sampleRate"
@@ -81717,38 +82049,48 @@ export const schemas = {
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "enum": [
-                                    "atmos",
-                                    "dsd"
-                                  ]
+                                "variant": {
+                                  "const": "atmos"
                                 }
                               },
                               "required": [
-                                "kind"
+                                "variant"
                               ],
                               "type": "object"
                             },
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "const": "surround"
-                                },
+                                "variant": {
+                                  "const": "dsd"
+                                }
+                              },
+                              "required": [
+                                "variant"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
                                 "layout": {
                                   "enum": [
                                     "5.1",
                                     "7.1"
                                   ]
+                                },
+                                "variant": {
+                                  "const": "surround"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "layout"
                               ],
                               "type": "object"
                             }
-                          ]
+                          ],
+                          "x-discriminator": "variant"
                         },
                         "maxItems": 2,
                         "type": "array"
@@ -82230,16 +82572,16 @@ export const schemas = {
                                       "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                       "type": "string"
                                     },
-                                    "kind": {
-                                      "const": "lossless"
-                                    },
                                     "sampleRate": {
                                       "minimum": 1,
                                       "type": "integer"
+                                    },
+                                    "variant": {
+                                      "const": "lossless"
                                     }
                                   },
                                   "required": [
-                                    "kind",
+                                    "variant",
                                     "codec",
                                     "bitDepth",
                                     "sampleRate"
@@ -82249,38 +82591,48 @@ export const schemas = {
                                 {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "enum": [
-                                        "atmos",
-                                        "dsd"
-                                      ]
+                                    "variant": {
+                                      "const": "atmos"
                                     }
                                   },
                                   "required": [
-                                    "kind"
+                                    "variant"
                                   ],
                                   "type": "object"
                                 },
                                 {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "const": "surround"
-                                    },
+                                    "variant": {
+                                      "const": "dsd"
+                                    }
+                                  },
+                                  "required": [
+                                    "variant"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
                                     "layout": {
                                       "enum": [
                                         "5.1",
                                         "7.1"
                                       ]
+                                    },
+                                    "variant": {
+                                      "const": "surround"
                                     }
                                   },
                                   "required": [
-                                    "kind",
+                                    "variant",
                                     "layout"
                                   ],
                                   "type": "object"
                                 }
-                              ]
+                              ],
+                              "x-discriminator": "variant"
                             },
                             "maxItems": 2,
                             "type": "array"
@@ -83977,16 +84329,16 @@ export const schemas = {
                             "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                             "type": "string"
                           },
-                          "kind": {
-                            "const": "lossless"
-                          },
                           "sampleRate": {
                             "minimum": 1,
                             "type": "integer"
+                          },
+                          "variant": {
+                            "const": "lossless"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "codec",
                           "bitDepth",
                           "sampleRate"
@@ -83996,38 +84348,48 @@ export const schemas = {
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "enum": [
-                              "atmos",
-                              "dsd"
-                            ]
+                          "variant": {
+                            "const": "atmos"
                           }
                         },
                         "required": [
-                          "kind"
+                          "variant"
                         ],
                         "type": "object"
                       },
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "const": "surround"
-                          },
+                          "variant": {
+                            "const": "dsd"
+                          }
+                        },
+                        "required": [
+                          "variant"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
                           "layout": {
                             "enum": [
                               "5.1",
                               "7.1"
                             ]
+                          },
+                          "variant": {
+                            "const": "surround"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "layout"
                         ],
                         "type": "object"
                       }
-                    ]
+                    ],
+                    "x-discriminator": "variant"
                   },
                   "maxItems": 2,
                   "type": "array"
@@ -84509,16 +84871,16 @@ export const schemas = {
                                 "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                 "type": "string"
                               },
-                              "kind": {
-                                "const": "lossless"
-                              },
                               "sampleRate": {
                                 "minimum": 1,
                                 "type": "integer"
+                              },
+                              "variant": {
+                                "const": "lossless"
                               }
                             },
                             "required": [
-                              "kind",
+                              "variant",
                               "codec",
                               "bitDepth",
                               "sampleRate"
@@ -84528,38 +84890,48 @@ export const schemas = {
                           {
                             "additionalProperties": false,
                             "properties": {
-                              "kind": {
-                                "enum": [
-                                  "atmos",
-                                  "dsd"
-                                ]
+                              "variant": {
+                                "const": "atmos"
                               }
                             },
                             "required": [
-                              "kind"
+                              "variant"
                             ],
                             "type": "object"
                           },
                           {
                             "additionalProperties": false,
                             "properties": {
-                              "kind": {
-                                "const": "surround"
-                              },
+                              "variant": {
+                                "const": "dsd"
+                              }
+                            },
+                            "required": [
+                              "variant"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
                               "layout": {
                                 "enum": [
                                   "5.1",
                                   "7.1"
                                 ]
+                              },
+                              "variant": {
+                                "const": "surround"
                               }
                             },
                             "required": [
-                              "kind",
+                              "variant",
                               "layout"
                             ],
                             "type": "object"
                           }
-                        ]
+                        ],
+                        "x-discriminator": "variant"
                       },
                       "maxItems": 2,
                       "type": "array"
@@ -85696,16 +86068,16 @@ export const schemas = {
                         "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                         "type": "string"
                       },
-                      "kind": {
-                        "const": "lossless"
-                      },
                       "sampleRate": {
                         "minimum": 1,
                         "type": "integer"
+                      },
+                      "variant": {
+                        "const": "lossless"
                       }
                     },
                     "required": [
-                      "kind",
+                      "variant",
                       "codec",
                       "bitDepth",
                       "sampleRate"
@@ -85715,38 +86087,48 @@ export const schemas = {
                   {
                     "additionalProperties": false,
                     "properties": {
-                      "kind": {
-                        "enum": [
-                          "atmos",
-                          "dsd"
-                        ]
+                      "variant": {
+                        "const": "atmos"
                       }
                     },
                     "required": [
-                      "kind"
+                      "variant"
                     ],
                     "type": "object"
                   },
                   {
                     "additionalProperties": false,
                     "properties": {
-                      "kind": {
-                        "const": "surround"
-                      },
+                      "variant": {
+                        "const": "dsd"
+                      }
+                    },
+                    "required": [
+                      "variant"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
                       "layout": {
                         "enum": [
                           "5.1",
                           "7.1"
                         ]
+                      },
+                      "variant": {
+                        "const": "surround"
                       }
                     },
                     "required": [
-                      "kind",
+                      "variant",
                       "layout"
                     ],
                     "type": "object"
                   }
-                ]
+                ],
+                "x-discriminator": "variant"
               },
               "maxItems": 2,
               "type": "array"
@@ -86228,16 +86610,16 @@ export const schemas = {
                             "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                             "type": "string"
                           },
-                          "kind": {
-                            "const": "lossless"
-                          },
                           "sampleRate": {
                             "minimum": 1,
                             "type": "integer"
+                          },
+                          "variant": {
+                            "const": "lossless"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "codec",
                           "bitDepth",
                           "sampleRate"
@@ -86247,38 +86629,48 @@ export const schemas = {
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "enum": [
-                              "atmos",
-                              "dsd"
-                            ]
+                          "variant": {
+                            "const": "atmos"
                           }
                         },
                         "required": [
-                          "kind"
+                          "variant"
                         ],
                         "type": "object"
                       },
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "const": "surround"
-                          },
+                          "variant": {
+                            "const": "dsd"
+                          }
+                        },
+                        "required": [
+                          "variant"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
                           "layout": {
                             "enum": [
                               "5.1",
                               "7.1"
                             ]
+                          },
+                          "variant": {
+                            "const": "surround"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "layout"
                         ],
                         "type": "object"
                       }
-                    ]
+                    ],
+                    "x-discriminator": "variant"
                   },
                   "maxItems": 2,
                   "type": "array"
@@ -87880,16 +88272,16 @@ export const schemas = {
                             "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                             "type": "string"
                           },
-                          "kind": {
-                            "const": "lossless"
-                          },
                           "sampleRate": {
                             "minimum": 1,
                             "type": "integer"
+                          },
+                          "variant": {
+                            "const": "lossless"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "codec",
                           "bitDepth",
                           "sampleRate"
@@ -87899,38 +88291,48 @@ export const schemas = {
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "enum": [
-                              "atmos",
-                              "dsd"
-                            ]
+                          "variant": {
+                            "const": "atmos"
                           }
                         },
                         "required": [
-                          "kind"
+                          "variant"
                         ],
                         "type": "object"
                       },
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "const": "surround"
-                          },
+                          "variant": {
+                            "const": "dsd"
+                          }
+                        },
+                        "required": [
+                          "variant"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
                           "layout": {
                             "enum": [
                               "5.1",
                               "7.1"
                             ]
+                          },
+                          "variant": {
+                            "const": "surround"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "layout"
                         ],
                         "type": "object"
                       }
-                    ]
+                    ],
+                    "x-discriminator": "variant"
                   },
                   "maxItems": 2,
                   "type": "array"
@@ -88412,16 +88814,16 @@ export const schemas = {
                                 "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                 "type": "string"
                               },
-                              "kind": {
-                                "const": "lossless"
-                              },
                               "sampleRate": {
                                 "minimum": 1,
                                 "type": "integer"
+                              },
+                              "variant": {
+                                "const": "lossless"
                               }
                             },
                             "required": [
-                              "kind",
+                              "variant",
                               "codec",
                               "bitDepth",
                               "sampleRate"
@@ -88431,38 +88833,48 @@ export const schemas = {
                           {
                             "additionalProperties": false,
                             "properties": {
-                              "kind": {
-                                "enum": [
-                                  "atmos",
-                                  "dsd"
-                                ]
+                              "variant": {
+                                "const": "atmos"
                               }
                             },
                             "required": [
-                              "kind"
+                              "variant"
                             ],
                             "type": "object"
                           },
                           {
                             "additionalProperties": false,
                             "properties": {
-                              "kind": {
-                                "const": "surround"
-                              },
+                              "variant": {
+                                "const": "dsd"
+                              }
+                            },
+                            "required": [
+                              "variant"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
                               "layout": {
                                 "enum": [
                                   "5.1",
                                   "7.1"
                                 ]
+                              },
+                              "variant": {
+                                "const": "surround"
                               }
                             },
                             "required": [
-                              "kind",
+                              "variant",
                               "layout"
                             ],
                             "type": "object"
                           }
-                        ]
+                        ],
+                        "x-discriminator": "variant"
                       },
                       "maxItems": 2,
                       "type": "array"
@@ -90067,6 +90479,10 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "variant": {
+            "const": "disc-titles",
+            "type": "string"
+          },
           "window": {
             "properties": {
               "limit": {
@@ -90121,7 +90537,8 @@ export const schemas = {
           "occurrence",
           "discKind",
           "total",
-          "titles"
+          "titles",
+          "variant"
         ],
         "type": "object"
       },
@@ -90195,6 +90612,10 @@ export const schemas = {
           "state": {
             "const": "preparing",
             "type": "string"
+          },
+          "variant": {
+            "const": "preparing",
+            "type": "string"
           }
         },
         "required": [
@@ -90202,12 +90623,13 @@ export const schemas = {
           "state",
           "queryId",
           "retryAfterMs",
+          "variant",
           "detail"
         ],
         "type": "object"
       }
     ],
-    "x-discriminator": "kind"
+    "x-discriminator": "variant"
   },
   "GetItemFileInfoGroupsRequest": {
     "properties": {},
@@ -90508,6 +90930,10 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "variant": {
+            "const": "groups",
+            "type": "string"
+          },
           "window": {
             "properties": {
               "limit": {
@@ -90560,7 +90986,8 @@ export const schemas = {
           "window",
           "kind",
           "surface",
-          "groups"
+          "groups",
+          "variant"
         ],
         "type": "object"
       },
@@ -90634,6 +91061,10 @@ export const schemas = {
           "state": {
             "const": "preparing",
             "type": "string"
+          },
+          "variant": {
+            "const": "preparing",
+            "type": "string"
           }
         },
         "required": [
@@ -90641,12 +91072,13 @@ export const schemas = {
           "state",
           "queryId",
           "retryAfterMs",
+          "variant",
           "detail"
         ],
         "type": "object"
       }
     ],
-    "x-discriminator": "kind"
+    "x-discriminator": "variant"
   },
   "GetItemFileInfoHeadTracksRequest": {
     "properties": {},
@@ -90840,6 +91272,10 @@ export const schemas = {
             "maxItems": 100,
             "type": "array"
           },
+          "variant": {
+            "const": "head-tracks",
+            "type": "string"
+          },
           "window": {
             "properties": {
               "limit": {
@@ -90895,7 +91331,8 @@ export const schemas = {
           "groupId",
           "occurrence",
           "total",
-          "tracks"
+          "tracks",
+          "variant"
         ],
         "type": "object"
       },
@@ -90969,6 +91406,10 @@ export const schemas = {
           "state": {
             "const": "preparing",
             "type": "string"
+          },
+          "variant": {
+            "const": "preparing",
+            "type": "string"
           }
         },
         "required": [
@@ -90976,12 +91417,13 @@ export const schemas = {
           "state",
           "queryId",
           "retryAfterMs",
+          "variant",
           "detail"
         ],
         "type": "object"
       }
     ],
-    "x-discriminator": "kind"
+    "x-discriminator": "variant"
   },
   "GetItemFileInfoMembersRequest": {
     "properties": {},
@@ -91244,6 +91686,10 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "variant": {
+            "const": "members",
+            "type": "string"
+          },
           "window": {
             "properties": {
               "limit": {
@@ -91297,7 +91743,8 @@ export const schemas = {
           "kind",
           "groupId",
           "total",
-          "members"
+          "members",
+          "variant"
         ],
         "type": "object"
       },
@@ -91371,6 +91818,10 @@ export const schemas = {
           "state": {
             "const": "preparing",
             "type": "string"
+          },
+          "variant": {
+            "const": "preparing",
+            "type": "string"
           }
         },
         "required": [
@@ -91378,12 +91829,13 @@ export const schemas = {
           "state",
           "queryId",
           "retryAfterMs",
+          "variant",
           "detail"
         ],
         "type": "object"
       }
     ],
-    "x-discriminator": "kind"
+    "x-discriminator": "variant"
   },
   "GetItemFileInfoSourcesRequest": {
     "properties": {},
@@ -91539,6 +91991,10 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "variant": {
+            "const": "sources",
+            "type": "string"
+          },
           "window": {
             "properties": {
               "limit": {
@@ -91591,7 +92047,8 @@ export const schemas = {
           "window",
           "kind",
           "total",
-          "sources"
+          "sources",
+          "variant"
         ],
         "type": "object"
       },
@@ -91665,6 +92122,10 @@ export const schemas = {
           "state": {
             "const": "preparing",
             "type": "string"
+          },
+          "variant": {
+            "const": "preparing",
+            "type": "string"
           }
         },
         "required": [
@@ -91672,12 +92133,13 @@ export const schemas = {
           "state",
           "queryId",
           "retryAfterMs",
+          "variant",
           "detail"
         ],
         "type": "object"
       }
     ],
-    "x-discriminator": "kind"
+    "x-discriminator": "variant"
   },
   "GetItemFileInfoTracksRequest": {
     "properties": {},
@@ -91864,6 +92326,10 @@ export const schemas = {
             "maxItems": 100,
             "type": "array"
           },
+          "variant": {
+            "const": "tracks",
+            "type": "string"
+          },
           "window": {
             "properties": {
               "limit": {
@@ -91918,7 +92384,8 @@ export const schemas = {
           "lane",
           "occurrence",
           "total",
-          "tracks"
+          "tracks",
+          "variant"
         ],
         "type": "object"
       },
@@ -91992,6 +92459,10 @@ export const schemas = {
           "state": {
             "const": "preparing",
             "type": "string"
+          },
+          "variant": {
+            "const": "preparing",
+            "type": "string"
           }
         },
         "required": [
@@ -91999,12 +92470,13 @@ export const schemas = {
           "state",
           "queryId",
           "retryAfterMs",
+          "variant",
           "detail"
         ],
         "type": "object"
       }
     ],
-    "x-discriminator": "kind"
+    "x-discriminator": "variant"
   },
   "GetItemsIdAnalysisArtifactsArtifactRequest": {
     "properties": {},
@@ -92803,16 +93275,16 @@ export const schemas = {
                                   "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                   "type": "string"
                                 },
-                                "kind": {
-                                  "const": "lossless"
-                                },
                                 "sampleRate": {
                                   "minimum": 1,
                                   "type": "integer"
+                                },
+                                "variant": {
+                                  "const": "lossless"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "codec",
                                 "bitDepth",
                                 "sampleRate"
@@ -92822,38 +93294,48 @@ export const schemas = {
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "enum": [
-                                    "atmos",
-                                    "dsd"
-                                  ]
+                                "variant": {
+                                  "const": "atmos"
                                 }
                               },
                               "required": [
-                                "kind"
+                                "variant"
                               ],
                               "type": "object"
                             },
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "const": "surround"
-                                },
+                                "variant": {
+                                  "const": "dsd"
+                                }
+                              },
+                              "required": [
+                                "variant"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
                                 "layout": {
                                   "enum": [
                                     "5.1",
                                     "7.1"
                                   ]
+                                },
+                                "variant": {
+                                  "const": "surround"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "layout"
                               ],
                               "type": "object"
                             }
-                          ]
+                          ],
+                          "x-discriminator": "variant"
                         },
                         "maxItems": 2,
                         "type": "array"
@@ -93335,16 +93817,16 @@ export const schemas = {
                                       "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                       "type": "string"
                                     },
-                                    "kind": {
-                                      "const": "lossless"
-                                    },
                                     "sampleRate": {
                                       "minimum": 1,
                                       "type": "integer"
+                                    },
+                                    "variant": {
+                                      "const": "lossless"
                                     }
                                   },
                                   "required": [
-                                    "kind",
+                                    "variant",
                                     "codec",
                                     "bitDepth",
                                     "sampleRate"
@@ -93354,38 +93836,48 @@ export const schemas = {
                                 {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "enum": [
-                                        "atmos",
-                                        "dsd"
-                                      ]
+                                    "variant": {
+                                      "const": "atmos"
                                     }
                                   },
                                   "required": [
-                                    "kind"
+                                    "variant"
                                   ],
                                   "type": "object"
                                 },
                                 {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "const": "surround"
-                                    },
+                                    "variant": {
+                                      "const": "dsd"
+                                    }
+                                  },
+                                  "required": [
+                                    "variant"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
                                     "layout": {
                                       "enum": [
                                         "5.1",
                                         "7.1"
                                       ]
+                                    },
+                                    "variant": {
+                                      "const": "surround"
                                     }
                                   },
                                   "required": [
-                                    "kind",
+                                    "variant",
                                     "layout"
                                   ],
                                   "type": "object"
                                 }
-                              ]
+                              ],
+                              "x-discriminator": "variant"
                             },
                             "maxItems": 2,
                             "type": "array"
@@ -95671,16 +96163,16 @@ export const schemas = {
                                       "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                       "type": "string"
                                     },
-                                    "kind": {
-                                      "const": "lossless"
-                                    },
                                     "sampleRate": {
                                       "minimum": 1,
                                       "type": "integer"
+                                    },
+                                    "variant": {
+                                      "const": "lossless"
                                     }
                                   },
                                   "required": [
-                                    "kind",
+                                    "variant",
                                     "codec",
                                     "bitDepth",
                                     "sampleRate"
@@ -95690,38 +96182,48 @@ export const schemas = {
                                 {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "enum": [
-                                        "atmos",
-                                        "dsd"
-                                      ]
+                                    "variant": {
+                                      "const": "atmos"
                                     }
                                   },
                                   "required": [
-                                    "kind"
+                                    "variant"
                                   ],
                                   "type": "object"
                                 },
                                 {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "const": "surround"
-                                    },
+                                    "variant": {
+                                      "const": "dsd"
+                                    }
+                                  },
+                                  "required": [
+                                    "variant"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
                                     "layout": {
                                       "enum": [
                                         "5.1",
                                         "7.1"
                                       ]
+                                    },
+                                    "variant": {
+                                      "const": "surround"
                                     }
                                   },
                                   "required": [
-                                    "kind",
+                                    "variant",
                                     "layout"
                                   ],
                                   "type": "object"
                                 }
-                              ]
+                              ],
+                              "x-discriminator": "variant"
                             },
                             "maxItems": 2,
                             "type": "array"
@@ -96203,16 +96705,16 @@ export const schemas = {
                                           "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                           "type": "string"
                                         },
-                                        "kind": {
-                                          "const": "lossless"
-                                        },
                                         "sampleRate": {
                                           "minimum": 1,
                                           "type": "integer"
+                                        },
+                                        "variant": {
+                                          "const": "lossless"
                                         }
                                       },
                                       "required": [
-                                        "kind",
+                                        "variant",
                                         "codec",
                                         "bitDepth",
                                         "sampleRate"
@@ -96222,38 +96724,48 @@ export const schemas = {
                                     {
                                       "additionalProperties": false,
                                       "properties": {
-                                        "kind": {
-                                          "enum": [
-                                            "atmos",
-                                            "dsd"
-                                          ]
+                                        "variant": {
+                                          "const": "atmos"
                                         }
                                       },
                                       "required": [
-                                        "kind"
+                                        "variant"
                                       ],
                                       "type": "object"
                                     },
                                     {
                                       "additionalProperties": false,
                                       "properties": {
-                                        "kind": {
-                                          "const": "surround"
-                                        },
+                                        "variant": {
+                                          "const": "dsd"
+                                        }
+                                      },
+                                      "required": [
+                                        "variant"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    {
+                                      "additionalProperties": false,
+                                      "properties": {
                                         "layout": {
                                           "enum": [
                                             "5.1",
                                             "7.1"
                                           ]
+                                        },
+                                        "variant": {
+                                          "const": "surround"
                                         }
                                       },
                                       "required": [
-                                        "kind",
+                                        "variant",
                                         "layout"
                                       ],
                                       "type": "object"
                                     }
-                                  ]
+                                  ],
+                                  "x-discriminator": "variant"
                                 },
                                 "maxItems": 2,
                                 "type": "array"
@@ -97415,13 +97927,18 @@ export const schemas = {
           "state": {
             "const": "preparing",
             "type": "string"
+          },
+          "variant": {
+            "const": "preparing",
+            "type": "string"
           }
         },
         "required": [
           "kind",
           "state",
           "queryId",
-          "retryAfterMs"
+          "retryAfterMs",
+          "variant"
         ],
         "type": "object"
       }
@@ -97738,6 +98255,10 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "variant": {
+            "const": "files",
+            "type": "string"
+          },
           "window": {
             "properties": {
               "limit": {
@@ -97791,7 +98312,8 @@ export const schemas = {
           "kind",
           "itemKind",
           "surface",
-          "files"
+          "files",
+          "variant"
         ],
         "type": "object"
       },
@@ -97865,6 +98387,10 @@ export const schemas = {
           "state": {
             "const": "preparing",
             "type": "string"
+          },
+          "variant": {
+            "const": "preparing",
+            "type": "string"
           }
         },
         "required": [
@@ -97872,12 +98398,13 @@ export const schemas = {
           "state",
           "queryId",
           "retryAfterMs",
+          "variant",
           "detail"
         ],
         "type": "object"
       }
     ],
-    "x-discriminator": "kind"
+    "x-discriminator": "variant"
   },
   "GetItemsIdListeningRequest": {
     "properties": {},
@@ -101642,16 +102169,16 @@ export const schemas = {
                                         "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                         "type": "string"
                                       },
-                                      "kind": {
-                                        "const": "lossless"
-                                      },
                                       "sampleRate": {
                                         "minimum": 1,
                                         "type": "integer"
+                                      },
+                                      "variant": {
+                                        "const": "lossless"
                                       }
                                     },
                                     "required": [
-                                      "kind",
+                                      "variant",
                                       "codec",
                                       "bitDepth",
                                       "sampleRate"
@@ -101661,38 +102188,48 @@ export const schemas = {
                                   {
                                     "additionalProperties": false,
                                     "properties": {
-                                      "kind": {
-                                        "enum": [
-                                          "atmos",
-                                          "dsd"
-                                        ]
+                                      "variant": {
+                                        "const": "atmos"
                                       }
                                     },
                                     "required": [
-                                      "kind"
+                                      "variant"
                                     ],
                                     "type": "object"
                                   },
                                   {
                                     "additionalProperties": false,
                                     "properties": {
-                                      "kind": {
-                                        "const": "surround"
-                                      },
+                                      "variant": {
+                                        "const": "dsd"
+                                      }
+                                    },
+                                    "required": [
+                                      "variant"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
                                       "layout": {
                                         "enum": [
                                           "5.1",
                                           "7.1"
                                         ]
+                                      },
+                                      "variant": {
+                                        "const": "surround"
                                       }
                                     },
                                     "required": [
-                                      "kind",
+                                      "variant",
                                       "layout"
                                     ],
                                     "type": "object"
                                   }
-                                ]
+                                ],
+                                "x-discriminator": "variant"
                               },
                               "maxItems": 2,
                               "type": "array"
@@ -102174,16 +102711,16 @@ export const schemas = {
                                             "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                             "type": "string"
                                           },
-                                          "kind": {
-                                            "const": "lossless"
-                                          },
                                           "sampleRate": {
                                             "minimum": 1,
                                             "type": "integer"
+                                          },
+                                          "variant": {
+                                            "const": "lossless"
                                           }
                                         },
                                         "required": [
-                                          "kind",
+                                          "variant",
                                           "codec",
                                           "bitDepth",
                                           "sampleRate"
@@ -102193,38 +102730,48 @@ export const schemas = {
                                       {
                                         "additionalProperties": false,
                                         "properties": {
-                                          "kind": {
-                                            "enum": [
-                                              "atmos",
-                                              "dsd"
-                                            ]
+                                          "variant": {
+                                            "const": "atmos"
                                           }
                                         },
                                         "required": [
-                                          "kind"
+                                          "variant"
                                         ],
                                         "type": "object"
                                       },
                                       {
                                         "additionalProperties": false,
                                         "properties": {
-                                          "kind": {
-                                            "const": "surround"
-                                          },
+                                          "variant": {
+                                            "const": "dsd"
+                                          }
+                                        },
+                                        "required": [
+                                          "variant"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      {
+                                        "additionalProperties": false,
+                                        "properties": {
                                           "layout": {
                                             "enum": [
                                               "5.1",
                                               "7.1"
                                             ]
+                                          },
+                                          "variant": {
+                                            "const": "surround"
                                           }
                                         },
                                         "required": [
-                                          "kind",
+                                          "variant",
                                           "layout"
                                         ],
                                         "type": "object"
                                       }
-                                    ]
+                                    ],
+                                    "x-discriminator": "variant"
                                   },
                                   "maxItems": 2,
                                   "type": "array"
@@ -103364,16 +103911,16 @@ export const schemas = {
                                     "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                     "type": "string"
                                   },
-                                  "kind": {
-                                    "const": "lossless"
-                                  },
                                   "sampleRate": {
                                     "minimum": 1,
                                     "type": "integer"
+                                  },
+                                  "variant": {
+                                    "const": "lossless"
                                   }
                                 },
                                 "required": [
-                                  "kind",
+                                  "variant",
                                   "codec",
                                   "bitDepth",
                                   "sampleRate"
@@ -103383,38 +103930,48 @@ export const schemas = {
                               {
                                 "additionalProperties": false,
                                 "properties": {
-                                  "kind": {
-                                    "enum": [
-                                      "atmos",
-                                      "dsd"
-                                    ]
+                                  "variant": {
+                                    "const": "atmos"
                                   }
                                 },
                                 "required": [
-                                  "kind"
+                                  "variant"
                                 ],
                                 "type": "object"
                               },
                               {
                                 "additionalProperties": false,
                                 "properties": {
-                                  "kind": {
-                                    "const": "surround"
-                                  },
+                                  "variant": {
+                                    "const": "dsd"
+                                  }
+                                },
+                                "required": [
+                                  "variant"
+                                ],
+                                "type": "object"
+                              },
+                              {
+                                "additionalProperties": false,
+                                "properties": {
                                   "layout": {
                                     "enum": [
                                       "5.1",
                                       "7.1"
                                     ]
+                                  },
+                                  "variant": {
+                                    "const": "surround"
                                   }
                                 },
                                 "required": [
-                                  "kind",
+                                  "variant",
                                   "layout"
                                 ],
                                 "type": "object"
                               }
-                            ]
+                            ],
+                            "x-discriminator": "variant"
                           },
                           "maxItems": 2,
                           "type": "array"
@@ -103896,16 +104453,16 @@ export const schemas = {
                                         "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                         "type": "string"
                                       },
-                                      "kind": {
-                                        "const": "lossless"
-                                      },
                                       "sampleRate": {
                                         "minimum": 1,
                                         "type": "integer"
+                                      },
+                                      "variant": {
+                                        "const": "lossless"
                                       }
                                     },
                                     "required": [
-                                      "kind",
+                                      "variant",
                                       "codec",
                                       "bitDepth",
                                       "sampleRate"
@@ -103915,38 +104472,48 @@ export const schemas = {
                                   {
                                     "additionalProperties": false,
                                     "properties": {
-                                      "kind": {
-                                        "enum": [
-                                          "atmos",
-                                          "dsd"
-                                        ]
+                                      "variant": {
+                                        "const": "atmos"
                                       }
                                     },
                                     "required": [
-                                      "kind"
+                                      "variant"
                                     ],
                                     "type": "object"
                                   },
                                   {
                                     "additionalProperties": false,
                                     "properties": {
-                                      "kind": {
-                                        "const": "surround"
-                                      },
+                                      "variant": {
+                                        "const": "dsd"
+                                      }
+                                    },
+                                    "required": [
+                                      "variant"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
                                       "layout": {
                                         "enum": [
                                           "5.1",
                                           "7.1"
                                         ]
+                                      },
+                                      "variant": {
+                                        "const": "surround"
                                       }
                                     },
                                     "required": [
-                                      "kind",
+                                      "variant",
                                       "layout"
                                     ],
                                     "type": "object"
                                   }
-                                ]
+                                ],
+                                "x-discriminator": "variant"
                               },
                               "maxItems": 2,
                               "type": "array"
@@ -105548,16 +106115,16 @@ export const schemas = {
                                         "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                         "type": "string"
                                       },
-                                      "kind": {
-                                        "const": "lossless"
-                                      },
                                       "sampleRate": {
                                         "minimum": 1,
                                         "type": "integer"
+                                      },
+                                      "variant": {
+                                        "const": "lossless"
                                       }
                                     },
                                     "required": [
-                                      "kind",
+                                      "variant",
                                       "codec",
                                       "bitDepth",
                                       "sampleRate"
@@ -105567,38 +106134,48 @@ export const schemas = {
                                   {
                                     "additionalProperties": false,
                                     "properties": {
-                                      "kind": {
-                                        "enum": [
-                                          "atmos",
-                                          "dsd"
-                                        ]
+                                      "variant": {
+                                        "const": "atmos"
                                       }
                                     },
                                     "required": [
-                                      "kind"
+                                      "variant"
                                     ],
                                     "type": "object"
                                   },
                                   {
                                     "additionalProperties": false,
                                     "properties": {
-                                      "kind": {
-                                        "const": "surround"
-                                      },
+                                      "variant": {
+                                        "const": "dsd"
+                                      }
+                                    },
+                                    "required": [
+                                      "variant"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
                                       "layout": {
                                         "enum": [
                                           "5.1",
                                           "7.1"
                                         ]
+                                      },
+                                      "variant": {
+                                        "const": "surround"
                                       }
                                     },
                                     "required": [
-                                      "kind",
+                                      "variant",
                                       "layout"
                                     ],
                                     "type": "object"
                                   }
-                                ]
+                                ],
+                                "x-discriminator": "variant"
                               },
                               "maxItems": 2,
                               "type": "array"
@@ -106080,16 +106657,16 @@ export const schemas = {
                                             "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                             "type": "string"
                                           },
-                                          "kind": {
-                                            "const": "lossless"
-                                          },
                                           "sampleRate": {
                                             "minimum": 1,
                                             "type": "integer"
+                                          },
+                                          "variant": {
+                                            "const": "lossless"
                                           }
                                         },
                                         "required": [
-                                          "kind",
+                                          "variant",
                                           "codec",
                                           "bitDepth",
                                           "sampleRate"
@@ -106099,38 +106676,48 @@ export const schemas = {
                                       {
                                         "additionalProperties": false,
                                         "properties": {
-                                          "kind": {
-                                            "enum": [
-                                              "atmos",
-                                              "dsd"
-                                            ]
+                                          "variant": {
+                                            "const": "atmos"
                                           }
                                         },
                                         "required": [
-                                          "kind"
+                                          "variant"
                                         ],
                                         "type": "object"
                                       },
                                       {
                                         "additionalProperties": false,
                                         "properties": {
-                                          "kind": {
-                                            "const": "surround"
-                                          },
+                                          "variant": {
+                                            "const": "dsd"
+                                          }
+                                        },
+                                        "required": [
+                                          "variant"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      {
+                                        "additionalProperties": false,
+                                        "properties": {
                                           "layout": {
                                             "enum": [
                                               "5.1",
                                               "7.1"
                                             ]
+                                          },
+                                          "variant": {
+                                            "const": "surround"
                                           }
                                         },
                                         "required": [
-                                          "kind",
+                                          "variant",
                                           "layout"
                                         ],
                                         "type": "object"
                                       }
-                                    ]
+                                    ],
+                                    "x-discriminator": "variant"
                                   },
                                   "maxItems": 2,
                                   "type": "array"
@@ -107827,16 +108414,16 @@ export const schemas = {
                                   "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                   "type": "string"
                                 },
-                                "kind": {
-                                  "const": "lossless"
-                                },
                                 "sampleRate": {
                                   "minimum": 1,
                                   "type": "integer"
+                                },
+                                "variant": {
+                                  "const": "lossless"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "codec",
                                 "bitDepth",
                                 "sampleRate"
@@ -107846,38 +108433,48 @@ export const schemas = {
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "enum": [
-                                    "atmos",
-                                    "dsd"
-                                  ]
+                                "variant": {
+                                  "const": "atmos"
                                 }
                               },
                               "required": [
-                                "kind"
+                                "variant"
                               ],
                               "type": "object"
                             },
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "const": "surround"
-                                },
+                                "variant": {
+                                  "const": "dsd"
+                                }
+                              },
+                              "required": [
+                                "variant"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
                                 "layout": {
                                   "enum": [
                                     "5.1",
                                     "7.1"
                                   ]
+                                },
+                                "variant": {
+                                  "const": "surround"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "layout"
                               ],
                               "type": "object"
                             }
-                          ]
+                          ],
+                          "x-discriminator": "variant"
                         },
                         "maxItems": 2,
                         "type": "array"
@@ -108359,16 +108956,16 @@ export const schemas = {
                                       "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                       "type": "string"
                                     },
-                                    "kind": {
-                                      "const": "lossless"
-                                    },
                                     "sampleRate": {
                                       "minimum": 1,
                                       "type": "integer"
+                                    },
+                                    "variant": {
+                                      "const": "lossless"
                                     }
                                   },
                                   "required": [
-                                    "kind",
+                                    "variant",
                                     "codec",
                                     "bitDepth",
                                     "sampleRate"
@@ -108378,38 +108975,48 @@ export const schemas = {
                                 {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "enum": [
-                                        "atmos",
-                                        "dsd"
-                                      ]
+                                    "variant": {
+                                      "const": "atmos"
                                     }
                                   },
                                   "required": [
-                                    "kind"
+                                    "variant"
                                   ],
                                   "type": "object"
                                 },
                                 {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "const": "surround"
-                                    },
+                                    "variant": {
+                                      "const": "dsd"
+                                    }
+                                  },
+                                  "required": [
+                                    "variant"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
                                     "layout": {
                                       "enum": [
                                         "5.1",
                                         "7.1"
                                       ]
+                                    },
+                                    "variant": {
+                                      "const": "surround"
                                     }
                                   },
                                   "required": [
-                                    "kind",
+                                    "variant",
                                     "layout"
                                   ],
                                   "type": "object"
                                 }
-                              ]
+                              ],
+                              "x-discriminator": "variant"
                             },
                             "maxItems": 2,
                             "type": "array"
@@ -109546,16 +110153,16 @@ export const schemas = {
                               "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                               "type": "string"
                             },
-                            "kind": {
-                              "const": "lossless"
-                            },
                             "sampleRate": {
                               "minimum": 1,
                               "type": "integer"
+                            },
+                            "variant": {
+                              "const": "lossless"
                             }
                           },
                           "required": [
-                            "kind",
+                            "variant",
                             "codec",
                             "bitDepth",
                             "sampleRate"
@@ -109565,38 +110172,48 @@ export const schemas = {
                         {
                           "additionalProperties": false,
                           "properties": {
-                            "kind": {
-                              "enum": [
-                                "atmos",
-                                "dsd"
-                              ]
+                            "variant": {
+                              "const": "atmos"
                             }
                           },
                           "required": [
-                            "kind"
+                            "variant"
                           ],
                           "type": "object"
                         },
                         {
                           "additionalProperties": false,
                           "properties": {
-                            "kind": {
-                              "const": "surround"
-                            },
+                            "variant": {
+                              "const": "dsd"
+                            }
+                          },
+                          "required": [
+                            "variant"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
                             "layout": {
                               "enum": [
                                 "5.1",
                                 "7.1"
                               ]
+                            },
+                            "variant": {
+                              "const": "surround"
                             }
                           },
                           "required": [
-                            "kind",
+                            "variant",
                             "layout"
                           ],
                           "type": "object"
                         }
-                      ]
+                      ],
+                      "x-discriminator": "variant"
                     },
                     "maxItems": 2,
                     "type": "array"
@@ -110078,16 +110695,16 @@ export const schemas = {
                                   "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                   "type": "string"
                                 },
-                                "kind": {
-                                  "const": "lossless"
-                                },
                                 "sampleRate": {
                                   "minimum": 1,
                                   "type": "integer"
+                                },
+                                "variant": {
+                                  "const": "lossless"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "codec",
                                 "bitDepth",
                                 "sampleRate"
@@ -110097,38 +110714,48 @@ export const schemas = {
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "enum": [
-                                    "atmos",
-                                    "dsd"
-                                  ]
+                                "variant": {
+                                  "const": "atmos"
                                 }
                               },
                               "required": [
-                                "kind"
+                                "variant"
                               ],
                               "type": "object"
                             },
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "const": "surround"
-                                },
+                                "variant": {
+                                  "const": "dsd"
+                                }
+                              },
+                              "required": [
+                                "variant"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
                                 "layout": {
                                   "enum": [
                                     "5.1",
                                     "7.1"
                                   ]
+                                },
+                                "variant": {
+                                  "const": "surround"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "layout"
                               ],
                               "type": "object"
                             }
-                          ]
+                          ],
+                          "x-discriminator": "variant"
                         },
                         "maxItems": 2,
                         "type": "array"
@@ -111730,16 +112357,16 @@ export const schemas = {
                                   "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                   "type": "string"
                                 },
-                                "kind": {
-                                  "const": "lossless"
-                                },
                                 "sampleRate": {
                                   "minimum": 1,
                                   "type": "integer"
+                                },
+                                "variant": {
+                                  "const": "lossless"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "codec",
                                 "bitDepth",
                                 "sampleRate"
@@ -111749,38 +112376,48 @@ export const schemas = {
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "enum": [
-                                    "atmos",
-                                    "dsd"
-                                  ]
+                                "variant": {
+                                  "const": "atmos"
                                 }
                               },
                               "required": [
-                                "kind"
+                                "variant"
                               ],
                               "type": "object"
                             },
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "const": "surround"
-                                },
+                                "variant": {
+                                  "const": "dsd"
+                                }
+                              },
+                              "required": [
+                                "variant"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
                                 "layout": {
                                   "enum": [
                                     "5.1",
                                     "7.1"
                                   ]
+                                },
+                                "variant": {
+                                  "const": "surround"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "layout"
                               ],
                               "type": "object"
                             }
-                          ]
+                          ],
+                          "x-discriminator": "variant"
                         },
                         "maxItems": 2,
                         "type": "array"
@@ -112262,16 +112899,16 @@ export const schemas = {
                                       "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                       "type": "string"
                                     },
-                                    "kind": {
-                                      "const": "lossless"
-                                    },
                                     "sampleRate": {
                                       "minimum": 1,
                                       "type": "integer"
+                                    },
+                                    "variant": {
+                                      "const": "lossless"
                                     }
                                   },
                                   "required": [
-                                    "kind",
+                                    "variant",
                                     "codec",
                                     "bitDepth",
                                     "sampleRate"
@@ -112281,38 +112918,48 @@ export const schemas = {
                                 {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "enum": [
-                                        "atmos",
-                                        "dsd"
-                                      ]
+                                    "variant": {
+                                      "const": "atmos"
                                     }
                                   },
                                   "required": [
-                                    "kind"
+                                    "variant"
                                   ],
                                   "type": "object"
                                 },
                                 {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "const": "surround"
-                                    },
+                                    "variant": {
+                                      "const": "dsd"
+                                    }
+                                  },
+                                  "required": [
+                                    "variant"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
                                     "layout": {
                                       "enum": [
                                         "5.1",
                                         "7.1"
                                       ]
+                                    },
+                                    "variant": {
+                                      "const": "surround"
                                     }
                                   },
                                   "required": [
-                                    "kind",
+                                    "variant",
                                     "layout"
                                   ],
                                   "type": "object"
                                 }
-                              ]
+                              ],
+                              "x-discriminator": "variant"
                             },
                             "maxItems": 2,
                             "type": "array"
@@ -114048,16 +114695,16 @@ export const schemas = {
                                   "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                   "type": "string"
                                 },
-                                "kind": {
-                                  "const": "lossless"
-                                },
                                 "sampleRate": {
                                   "minimum": 1,
                                   "type": "integer"
+                                },
+                                "variant": {
+                                  "const": "lossless"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "codec",
                                 "bitDepth",
                                 "sampleRate"
@@ -114067,38 +114714,48 @@ export const schemas = {
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "enum": [
-                                    "atmos",
-                                    "dsd"
-                                  ]
+                                "variant": {
+                                  "const": "atmos"
                                 }
                               },
                               "required": [
-                                "kind"
+                                "variant"
                               ],
                               "type": "object"
                             },
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "const": "surround"
-                                },
+                                "variant": {
+                                  "const": "dsd"
+                                }
+                              },
+                              "required": [
+                                "variant"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
                                 "layout": {
                                   "enum": [
                                     "5.1",
                                     "7.1"
                                   ]
+                                },
+                                "variant": {
+                                  "const": "surround"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "layout"
                               ],
                               "type": "object"
                             }
-                          ]
+                          ],
+                          "x-discriminator": "variant"
                         },
                         "maxItems": 2,
                         "type": "array"
@@ -114580,16 +115237,16 @@ export const schemas = {
                                       "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                       "type": "string"
                                     },
-                                    "kind": {
-                                      "const": "lossless"
-                                    },
                                     "sampleRate": {
                                       "minimum": 1,
                                       "type": "integer"
+                                    },
+                                    "variant": {
+                                      "const": "lossless"
                                     }
                                   },
                                   "required": [
-                                    "kind",
+                                    "variant",
                                     "codec",
                                     "bitDepth",
                                     "sampleRate"
@@ -114599,38 +115256,48 @@ export const schemas = {
                                 {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "enum": [
-                                        "atmos",
-                                        "dsd"
-                                      ]
+                                    "variant": {
+                                      "const": "atmos"
                                     }
                                   },
                                   "required": [
-                                    "kind"
+                                    "variant"
                                   ],
                                   "type": "object"
                                 },
                                 {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "const": "surround"
-                                    },
+                                    "variant": {
+                                      "const": "dsd"
+                                    }
+                                  },
+                                  "required": [
+                                    "variant"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
                                     "layout": {
                                       "enum": [
                                         "5.1",
                                         "7.1"
                                       ]
+                                    },
+                                    "variant": {
+                                      "const": "surround"
                                     }
                                   },
                                   "required": [
-                                    "kind",
+                                    "variant",
                                     "layout"
                                   ],
                                   "type": "object"
                                 }
-                              ]
+                              ],
+                              "x-discriminator": "variant"
                             },
                             "maxItems": 2,
                             "type": "array"
@@ -115770,16 +116437,16 @@ export const schemas = {
                               "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                               "type": "string"
                             },
-                            "kind": {
-                              "const": "lossless"
-                            },
                             "sampleRate": {
                               "minimum": 1,
                               "type": "integer"
+                            },
+                            "variant": {
+                              "const": "lossless"
                             }
                           },
                           "required": [
-                            "kind",
+                            "variant",
                             "codec",
                             "bitDepth",
                             "sampleRate"
@@ -115789,38 +116456,48 @@ export const schemas = {
                         {
                           "additionalProperties": false,
                           "properties": {
-                            "kind": {
-                              "enum": [
-                                "atmos",
-                                "dsd"
-                              ]
+                            "variant": {
+                              "const": "atmos"
                             }
                           },
                           "required": [
-                            "kind"
+                            "variant"
                           ],
                           "type": "object"
                         },
                         {
                           "additionalProperties": false,
                           "properties": {
-                            "kind": {
-                              "const": "surround"
-                            },
+                            "variant": {
+                              "const": "dsd"
+                            }
+                          },
+                          "required": [
+                            "variant"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
                             "layout": {
                               "enum": [
                                 "5.1",
                                 "7.1"
                               ]
+                            },
+                            "variant": {
+                              "const": "surround"
                             }
                           },
                           "required": [
-                            "kind",
+                            "variant",
                             "layout"
                           ],
                           "type": "object"
                         }
-                      ]
+                      ],
+                      "x-discriminator": "variant"
                     },
                     "maxItems": 2,
                     "type": "array"
@@ -116302,16 +116979,16 @@ export const schemas = {
                                   "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                   "type": "string"
                                 },
-                                "kind": {
-                                  "const": "lossless"
-                                },
                                 "sampleRate": {
                                   "minimum": 1,
                                   "type": "integer"
+                                },
+                                "variant": {
+                                  "const": "lossless"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "codec",
                                 "bitDepth",
                                 "sampleRate"
@@ -116321,38 +116998,48 @@ export const schemas = {
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "enum": [
-                                    "atmos",
-                                    "dsd"
-                                  ]
+                                "variant": {
+                                  "const": "atmos"
                                 }
                               },
                               "required": [
-                                "kind"
+                                "variant"
                               ],
                               "type": "object"
                             },
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "const": "surround"
-                                },
+                                "variant": {
+                                  "const": "dsd"
+                                }
+                              },
+                              "required": [
+                                "variant"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
                                 "layout": {
                                   "enum": [
                                     "5.1",
                                     "7.1"
                                   ]
+                                },
+                                "variant": {
+                                  "const": "surround"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "layout"
                               ],
                               "type": "object"
                             }
-                          ]
+                          ],
+                          "x-discriminator": "variant"
                         },
                         "maxItems": 2,
                         "type": "array"
@@ -117954,16 +118641,16 @@ export const schemas = {
                                   "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                   "type": "string"
                                 },
-                                "kind": {
-                                  "const": "lossless"
-                                },
                                 "sampleRate": {
                                   "minimum": 1,
                                   "type": "integer"
+                                },
+                                "variant": {
+                                  "const": "lossless"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "codec",
                                 "bitDepth",
                                 "sampleRate"
@@ -117973,38 +118660,48 @@ export const schemas = {
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "enum": [
-                                    "atmos",
-                                    "dsd"
-                                  ]
+                                "variant": {
+                                  "const": "atmos"
                                 }
                               },
                               "required": [
-                                "kind"
+                                "variant"
                               ],
                               "type": "object"
                             },
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "const": "surround"
-                                },
+                                "variant": {
+                                  "const": "dsd"
+                                }
+                              },
+                              "required": [
+                                "variant"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
                                 "layout": {
                                   "enum": [
                                     "5.1",
                                     "7.1"
                                   ]
+                                },
+                                "variant": {
+                                  "const": "surround"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "layout"
                               ],
                               "type": "object"
                             }
-                          ]
+                          ],
+                          "x-discriminator": "variant"
                         },
                         "maxItems": 2,
                         "type": "array"
@@ -118486,16 +119183,16 @@ export const schemas = {
                                       "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                       "type": "string"
                                     },
-                                    "kind": {
-                                      "const": "lossless"
-                                    },
                                     "sampleRate": {
                                       "minimum": 1,
                                       "type": "integer"
+                                    },
+                                    "variant": {
+                                      "const": "lossless"
                                     }
                                   },
                                   "required": [
-                                    "kind",
+                                    "variant",
                                     "codec",
                                     "bitDepth",
                                     "sampleRate"
@@ -118505,38 +119202,48 @@ export const schemas = {
                                 {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "enum": [
-                                        "atmos",
-                                        "dsd"
-                                      ]
+                                    "variant": {
+                                      "const": "atmos"
                                     }
                                   },
                                   "required": [
-                                    "kind"
+                                    "variant"
                                   ],
                                   "type": "object"
                                 },
                                 {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "const": "surround"
-                                    },
+                                    "variant": {
+                                      "const": "dsd"
+                                    }
+                                  },
+                                  "required": [
+                                    "variant"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
                                     "layout": {
                                       "enum": [
                                         "5.1",
                                         "7.1"
                                       ]
+                                    },
+                                    "variant": {
+                                      "const": "surround"
                                     }
                                   },
                                   "required": [
-                                    "kind",
+                                    "variant",
                                     "layout"
                                   ],
                                   "type": "object"
                                 }
-                              ]
+                              ],
+                              "x-discriminator": "variant"
                             },
                             "maxItems": 2,
                             "type": "array"
@@ -120233,16 +120940,16 @@ export const schemas = {
                             "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                             "type": "string"
                           },
-                          "kind": {
-                            "const": "lossless"
-                          },
                           "sampleRate": {
                             "minimum": 1,
                             "type": "integer"
+                          },
+                          "variant": {
+                            "const": "lossless"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "codec",
                           "bitDepth",
                           "sampleRate"
@@ -120252,38 +120959,48 @@ export const schemas = {
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "enum": [
-                              "atmos",
-                              "dsd"
-                            ]
+                          "variant": {
+                            "const": "atmos"
                           }
                         },
                         "required": [
-                          "kind"
+                          "variant"
                         ],
                         "type": "object"
                       },
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "const": "surround"
-                          },
+                          "variant": {
+                            "const": "dsd"
+                          }
+                        },
+                        "required": [
+                          "variant"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
                           "layout": {
                             "enum": [
                               "5.1",
                               "7.1"
                             ]
+                          },
+                          "variant": {
+                            "const": "surround"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "layout"
                         ],
                         "type": "object"
                       }
-                    ]
+                    ],
+                    "x-discriminator": "variant"
                   },
                   "maxItems": 2,
                   "type": "array"
@@ -120765,16 +121482,16 @@ export const schemas = {
                                 "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                 "type": "string"
                               },
-                              "kind": {
-                                "const": "lossless"
-                              },
                               "sampleRate": {
                                 "minimum": 1,
                                 "type": "integer"
+                              },
+                              "variant": {
+                                "const": "lossless"
                               }
                             },
                             "required": [
-                              "kind",
+                              "variant",
                               "codec",
                               "bitDepth",
                               "sampleRate"
@@ -120784,38 +121501,48 @@ export const schemas = {
                           {
                             "additionalProperties": false,
                             "properties": {
-                              "kind": {
-                                "enum": [
-                                  "atmos",
-                                  "dsd"
-                                ]
+                              "variant": {
+                                "const": "atmos"
                               }
                             },
                             "required": [
-                              "kind"
+                              "variant"
                             ],
                             "type": "object"
                           },
                           {
                             "additionalProperties": false,
                             "properties": {
-                              "kind": {
-                                "const": "surround"
-                              },
+                              "variant": {
+                                "const": "dsd"
+                              }
+                            },
+                            "required": [
+                              "variant"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
                               "layout": {
                                 "enum": [
                                   "5.1",
                                   "7.1"
                                 ]
+                              },
+                              "variant": {
+                                "const": "surround"
                               }
                             },
                             "required": [
-                              "kind",
+                              "variant",
                               "layout"
                             ],
                             "type": "object"
                           }
-                        ]
+                        ],
+                        "x-discriminator": "variant"
                       },
                       "maxItems": 2,
                       "type": "array"
@@ -121952,16 +122679,16 @@ export const schemas = {
                         "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                         "type": "string"
                       },
-                      "kind": {
-                        "const": "lossless"
-                      },
                       "sampleRate": {
                         "minimum": 1,
                         "type": "integer"
+                      },
+                      "variant": {
+                        "const": "lossless"
                       }
                     },
                     "required": [
-                      "kind",
+                      "variant",
                       "codec",
                       "bitDepth",
                       "sampleRate"
@@ -121971,38 +122698,48 @@ export const schemas = {
                   {
                     "additionalProperties": false,
                     "properties": {
-                      "kind": {
-                        "enum": [
-                          "atmos",
-                          "dsd"
-                        ]
+                      "variant": {
+                        "const": "atmos"
                       }
                     },
                     "required": [
-                      "kind"
+                      "variant"
                     ],
                     "type": "object"
                   },
                   {
                     "additionalProperties": false,
                     "properties": {
-                      "kind": {
-                        "const": "surround"
-                      },
+                      "variant": {
+                        "const": "dsd"
+                      }
+                    },
+                    "required": [
+                      "variant"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
                       "layout": {
                         "enum": [
                           "5.1",
                           "7.1"
                         ]
+                      },
+                      "variant": {
+                        "const": "surround"
                       }
                     },
                     "required": [
-                      "kind",
+                      "variant",
                       "layout"
                     ],
                     "type": "object"
                   }
-                ]
+                ],
+                "x-discriminator": "variant"
               },
               "maxItems": 2,
               "type": "array"
@@ -122484,16 +123221,16 @@ export const schemas = {
                             "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                             "type": "string"
                           },
-                          "kind": {
-                            "const": "lossless"
-                          },
                           "sampleRate": {
                             "minimum": 1,
                             "type": "integer"
+                          },
+                          "variant": {
+                            "const": "lossless"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "codec",
                           "bitDepth",
                           "sampleRate"
@@ -122503,38 +123240,48 @@ export const schemas = {
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "enum": [
-                              "atmos",
-                              "dsd"
-                            ]
+                          "variant": {
+                            "const": "atmos"
                           }
                         },
                         "required": [
-                          "kind"
+                          "variant"
                         ],
                         "type": "object"
                       },
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "const": "surround"
-                          },
+                          "variant": {
+                            "const": "dsd"
+                          }
+                        },
+                        "required": [
+                          "variant"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
                           "layout": {
                             "enum": [
                               "5.1",
                               "7.1"
                             ]
+                          },
+                          "variant": {
+                            "const": "surround"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "layout"
                         ],
                         "type": "object"
                       }
-                    ]
+                    ],
+                    "x-discriminator": "variant"
                   },
                   "maxItems": 2,
                   "type": "array"
@@ -124136,16 +124883,16 @@ export const schemas = {
                             "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                             "type": "string"
                           },
-                          "kind": {
-                            "const": "lossless"
-                          },
                           "sampleRate": {
                             "minimum": 1,
                             "type": "integer"
+                          },
+                          "variant": {
+                            "const": "lossless"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "codec",
                           "bitDepth",
                           "sampleRate"
@@ -124155,38 +124902,48 @@ export const schemas = {
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "enum": [
-                              "atmos",
-                              "dsd"
-                            ]
+                          "variant": {
+                            "const": "atmos"
                           }
                         },
                         "required": [
-                          "kind"
+                          "variant"
                         ],
                         "type": "object"
                       },
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "const": "surround"
-                          },
+                          "variant": {
+                            "const": "dsd"
+                          }
+                        },
+                        "required": [
+                          "variant"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
                           "layout": {
                             "enum": [
                               "5.1",
                               "7.1"
                             ]
+                          },
+                          "variant": {
+                            "const": "surround"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "layout"
                         ],
                         "type": "object"
                       }
-                    ]
+                    ],
+                    "x-discriminator": "variant"
                   },
                   "maxItems": 2,
                   "type": "array"
@@ -124668,16 +125425,16 @@ export const schemas = {
                                 "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                 "type": "string"
                               },
-                              "kind": {
-                                "const": "lossless"
-                              },
                               "sampleRate": {
                                 "minimum": 1,
                                 "type": "integer"
+                              },
+                              "variant": {
+                                "const": "lossless"
                               }
                             },
                             "required": [
-                              "kind",
+                              "variant",
                               "codec",
                               "bitDepth",
                               "sampleRate"
@@ -124687,38 +125444,48 @@ export const schemas = {
                           {
                             "additionalProperties": false,
                             "properties": {
-                              "kind": {
-                                "enum": [
-                                  "atmos",
-                                  "dsd"
-                                ]
+                              "variant": {
+                                "const": "atmos"
                               }
                             },
                             "required": [
-                              "kind"
+                              "variant"
                             ],
                             "type": "object"
                           },
                           {
                             "additionalProperties": false,
                             "properties": {
-                              "kind": {
-                                "const": "surround"
-                              },
+                              "variant": {
+                                "const": "dsd"
+                              }
+                            },
+                            "required": [
+                              "variant"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
                               "layout": {
                                 "enum": [
                                   "5.1",
                                   "7.1"
                                 ]
+                              },
+                              "variant": {
+                                "const": "surround"
                               }
                             },
                             "required": [
-                              "kind",
+                              "variant",
                               "layout"
                             ],
                             "type": "object"
                           }
-                        ]
+                        ],
+                        "x-discriminator": "variant"
                       },
                       "maxItems": 2,
                       "type": "array"
@@ -126956,13 +127723,18 @@ export const schemas = {
           "state": {
             "const": "preparing",
             "type": "string"
+          },
+          "variant": {
+            "const": "preparing",
+            "type": "string"
           }
         },
         "required": [
           "kind",
           "state",
           "queryId",
-          "retryAfterMs"
+          "retryAfterMs",
+          "variant"
         ],
         "type": "object"
       }
@@ -127111,16 +127883,16 @@ export const schemas = {
                             "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                             "type": "string"
                           },
-                          "kind": {
-                            "const": "lossless"
-                          },
                           "sampleRate": {
                             "minimum": 1,
                             "type": "integer"
+                          },
+                          "variant": {
+                            "const": "lossless"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "codec",
                           "bitDepth",
                           "sampleRate"
@@ -127130,38 +127902,48 @@ export const schemas = {
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "enum": [
-                              "atmos",
-                              "dsd"
-                            ]
+                          "variant": {
+                            "const": "atmos"
                           }
                         },
                         "required": [
-                          "kind"
+                          "variant"
                         ],
                         "type": "object"
                       },
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "const": "surround"
-                          },
+                          "variant": {
+                            "const": "dsd"
+                          }
+                        },
+                        "required": [
+                          "variant"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
                           "layout": {
                             "enum": [
                               "5.1",
                               "7.1"
                             ]
+                          },
+                          "variant": {
+                            "const": "surround"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "layout"
                         ],
                         "type": "object"
                       }
-                    ]
+                    ],
+                    "x-discriminator": "variant"
                   },
                   "maxItems": 2,
                   "type": "array"
@@ -127643,16 +128425,16 @@ export const schemas = {
                                 "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                 "type": "string"
                               },
-                              "kind": {
-                                "const": "lossless"
-                              },
                               "sampleRate": {
                                 "minimum": 1,
                                 "type": "integer"
+                              },
+                              "variant": {
+                                "const": "lossless"
                               }
                             },
                             "required": [
-                              "kind",
+                              "variant",
                               "codec",
                               "bitDepth",
                               "sampleRate"
@@ -127662,38 +128444,48 @@ export const schemas = {
                           {
                             "additionalProperties": false,
                             "properties": {
-                              "kind": {
-                                "enum": [
-                                  "atmos",
-                                  "dsd"
-                                ]
+                              "variant": {
+                                "const": "atmos"
                               }
                             },
                             "required": [
-                              "kind"
+                              "variant"
                             ],
                             "type": "object"
                           },
                           {
                             "additionalProperties": false,
                             "properties": {
-                              "kind": {
-                                "const": "surround"
-                              },
+                              "variant": {
+                                "const": "dsd"
+                              }
+                            },
+                            "required": [
+                              "variant"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
                               "layout": {
                                 "enum": [
                                   "5.1",
                                   "7.1"
                                 ]
+                              },
+                              "variant": {
+                                "const": "surround"
                               }
                             },
                             "required": [
-                              "kind",
+                              "variant",
                               "layout"
                             ],
                             "type": "object"
                           }
-                        ]
+                        ],
+                        "x-discriminator": "variant"
                       },
                       "maxItems": 2,
                       "type": "array"
@@ -132596,16 +133388,16 @@ export const schemas = {
                       "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                       "type": "string"
                     },
-                    "kind": {
-                      "const": "lossless"
-                    },
                     "sampleRate": {
                       "minimum": 1,
                       "type": "integer"
+                    },
+                    "variant": {
+                      "const": "lossless"
                     }
                   },
                   "required": [
-                    "kind",
+                    "variant",
                     "codec",
                     "bitDepth",
                     "sampleRate"
@@ -132615,38 +133407,48 @@ export const schemas = {
                 {
                   "additionalProperties": false,
                   "properties": {
-                    "kind": {
-                      "enum": [
-                        "atmos",
-                        "dsd"
-                      ]
+                    "variant": {
+                      "const": "atmos"
                     }
                   },
                   "required": [
-                    "kind"
+                    "variant"
                   ],
                   "type": "object"
                 },
                 {
                   "additionalProperties": false,
                   "properties": {
-                    "kind": {
-                      "const": "surround"
-                    },
+                    "variant": {
+                      "const": "dsd"
+                    }
+                  },
+                  "required": [
+                    "variant"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
                     "layout": {
                       "enum": [
                         "5.1",
                         "7.1"
                       ]
+                    },
+                    "variant": {
+                      "const": "surround"
                     }
                   },
                   "required": [
-                    "kind",
+                    "variant",
                     "layout"
                   ],
                   "type": "object"
                 }
-              ]
+              ],
+              "x-discriminator": "variant"
             },
             "maxItems": 2,
             "type": "array"
@@ -133128,16 +133930,16 @@ export const schemas = {
                           "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                           "type": "string"
                         },
-                        "kind": {
-                          "const": "lossless"
-                        },
                         "sampleRate": {
                           "minimum": 1,
                           "type": "integer"
+                        },
+                        "variant": {
+                          "const": "lossless"
                         }
                       },
                       "required": [
-                        "kind",
+                        "variant",
                         "codec",
                         "bitDepth",
                         "sampleRate"
@@ -133147,38 +133949,48 @@ export const schemas = {
                     {
                       "additionalProperties": false,
                       "properties": {
-                        "kind": {
-                          "enum": [
-                            "atmos",
-                            "dsd"
-                          ]
+                        "variant": {
+                          "const": "atmos"
                         }
                       },
                       "required": [
-                        "kind"
+                        "variant"
                       ],
                       "type": "object"
                     },
                     {
                       "additionalProperties": false,
                       "properties": {
-                        "kind": {
-                          "const": "surround"
-                        },
+                        "variant": {
+                          "const": "dsd"
+                        }
+                      },
+                      "required": [
+                        "variant"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
                         "layout": {
                           "enum": [
                             "5.1",
                             "7.1"
                           ]
+                        },
+                        "variant": {
+                          "const": "surround"
                         }
                       },
                       "required": [
-                        "kind",
+                        "variant",
                         "layout"
                       ],
                       "type": "object"
                     }
-                  ]
+                  ],
+                  "x-discriminator": "variant"
                 },
                 "maxItems": 2,
                 "type": "array"
@@ -134505,16 +135317,16 @@ export const schemas = {
                               "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                               "type": "string"
                             },
-                            "kind": {
-                              "const": "lossless"
-                            },
                             "sampleRate": {
                               "minimum": 1,
                               "type": "integer"
+                            },
+                            "variant": {
+                              "const": "lossless"
                             }
                           },
                           "required": [
-                            "kind",
+                            "variant",
                             "codec",
                             "bitDepth",
                             "sampleRate"
@@ -134524,38 +135336,48 @@ export const schemas = {
                         {
                           "additionalProperties": false,
                           "properties": {
-                            "kind": {
-                              "enum": [
-                                "atmos",
-                                "dsd"
-                              ]
+                            "variant": {
+                              "const": "atmos"
                             }
                           },
                           "required": [
-                            "kind"
+                            "variant"
                           ],
                           "type": "object"
                         },
                         {
                           "additionalProperties": false,
                           "properties": {
-                            "kind": {
-                              "const": "surround"
-                            },
+                            "variant": {
+                              "const": "dsd"
+                            }
+                          },
+                          "required": [
+                            "variant"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
                             "layout": {
                               "enum": [
                                 "5.1",
                                 "7.1"
                               ]
+                            },
+                            "variant": {
+                              "const": "surround"
                             }
                           },
                           "required": [
-                            "kind",
+                            "variant",
                             "layout"
                           ],
                           "type": "object"
                         }
-                      ]
+                      ],
+                      "x-discriminator": "variant"
                     },
                     "maxItems": 2,
                     "type": "array"
@@ -135037,16 +135859,16 @@ export const schemas = {
                                   "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                   "type": "string"
                                 },
-                                "kind": {
-                                  "const": "lossless"
-                                },
                                 "sampleRate": {
                                   "minimum": 1,
                                   "type": "integer"
+                                },
+                                "variant": {
+                                  "const": "lossless"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "codec",
                                 "bitDepth",
                                 "sampleRate"
@@ -135056,38 +135878,48 @@ export const schemas = {
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "enum": [
-                                    "atmos",
-                                    "dsd"
-                                  ]
+                                "variant": {
+                                  "const": "atmos"
                                 }
                               },
                               "required": [
-                                "kind"
+                                "variant"
                               ],
                               "type": "object"
                             },
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "const": "surround"
-                                },
+                                "variant": {
+                                  "const": "dsd"
+                                }
+                              },
+                              "required": [
+                                "variant"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
                                 "layout": {
                                   "enum": [
                                     "5.1",
                                     "7.1"
                                   ]
+                                },
+                                "variant": {
+                                  "const": "surround"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "layout"
                               ],
                               "type": "object"
                             }
-                          ]
+                          ],
+                          "x-discriminator": "variant"
                         },
                         "maxItems": 2,
                         "type": "array"
@@ -136470,16 +137302,16 @@ export const schemas = {
                               "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                               "type": "string"
                             },
-                            "kind": {
-                              "const": "lossless"
-                            },
                             "sampleRate": {
                               "minimum": 1,
                               "type": "integer"
+                            },
+                            "variant": {
+                              "const": "lossless"
                             }
                           },
                           "required": [
-                            "kind",
+                            "variant",
                             "codec",
                             "bitDepth",
                             "sampleRate"
@@ -136489,38 +137321,48 @@ export const schemas = {
                         {
                           "additionalProperties": false,
                           "properties": {
-                            "kind": {
-                              "enum": [
-                                "atmos",
-                                "dsd"
-                              ]
+                            "variant": {
+                              "const": "atmos"
                             }
                           },
                           "required": [
-                            "kind"
+                            "variant"
                           ],
                           "type": "object"
                         },
                         {
                           "additionalProperties": false,
                           "properties": {
-                            "kind": {
-                              "const": "surround"
-                            },
+                            "variant": {
+                              "const": "dsd"
+                            }
+                          },
+                          "required": [
+                            "variant"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
                             "layout": {
                               "enum": [
                                 "5.1",
                                 "7.1"
                               ]
+                            },
+                            "variant": {
+                              "const": "surround"
                             }
                           },
                           "required": [
-                            "kind",
+                            "variant",
                             "layout"
                           ],
                           "type": "object"
                         }
-                      ]
+                      ],
+                      "x-discriminator": "variant"
                     },
                     "maxItems": 2,
                     "type": "array"
@@ -137002,16 +137844,16 @@ export const schemas = {
                                   "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                   "type": "string"
                                 },
-                                "kind": {
-                                  "const": "lossless"
-                                },
                                 "sampleRate": {
                                   "minimum": 1,
                                   "type": "integer"
+                                },
+                                "variant": {
+                                  "const": "lossless"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "codec",
                                 "bitDepth",
                                 "sampleRate"
@@ -137021,38 +137863,48 @@ export const schemas = {
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "enum": [
-                                    "atmos",
-                                    "dsd"
-                                  ]
+                                "variant": {
+                                  "const": "atmos"
                                 }
                               },
                               "required": [
-                                "kind"
+                                "variant"
                               ],
                               "type": "object"
                             },
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "const": "surround"
-                                },
+                                "variant": {
+                                  "const": "dsd"
+                                }
+                              },
+                              "required": [
+                                "variant"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
                                 "layout": {
                                   "enum": [
                                     "5.1",
                                     "7.1"
                                   ]
+                                },
+                                "variant": {
+                                  "const": "surround"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "layout"
                               ],
                               "type": "object"
                             }
-                          ]
+                          ],
+                          "x-discriminator": "variant"
                         },
                         "maxItems": 2,
                         "type": "array"
@@ -138783,16 +139635,16 @@ export const schemas = {
                           "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                           "type": "string"
                         },
-                        "kind": {
-                          "const": "lossless"
-                        },
                         "sampleRate": {
                           "minimum": 1,
                           "type": "integer"
+                        },
+                        "variant": {
+                          "const": "lossless"
                         }
                       },
                       "required": [
-                        "kind",
+                        "variant",
                         "codec",
                         "bitDepth",
                         "sampleRate"
@@ -138802,38 +139654,48 @@ export const schemas = {
                     {
                       "additionalProperties": false,
                       "properties": {
-                        "kind": {
-                          "enum": [
-                            "atmos",
-                            "dsd"
-                          ]
+                        "variant": {
+                          "const": "atmos"
                         }
                       },
                       "required": [
-                        "kind"
+                        "variant"
                       ],
                       "type": "object"
                     },
                     {
                       "additionalProperties": false,
                       "properties": {
-                        "kind": {
-                          "const": "surround"
-                        },
+                        "variant": {
+                          "const": "dsd"
+                        }
+                      },
+                      "required": [
+                        "variant"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
                         "layout": {
                           "enum": [
                             "5.1",
                             "7.1"
                           ]
+                        },
+                        "variant": {
+                          "const": "surround"
                         }
                       },
                       "required": [
-                        "kind",
+                        "variant",
                         "layout"
                       ],
                       "type": "object"
                     }
-                  ]
+                  ],
+                  "x-discriminator": "variant"
                 },
                 "maxItems": 2,
                 "type": "array"
@@ -139315,16 +140177,16 @@ export const schemas = {
                               "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                               "type": "string"
                             },
-                            "kind": {
-                              "const": "lossless"
-                            },
                             "sampleRate": {
                               "minimum": 1,
                               "type": "integer"
+                            },
+                            "variant": {
+                              "const": "lossless"
                             }
                           },
                           "required": [
-                            "kind",
+                            "variant",
                             "codec",
                             "bitDepth",
                             "sampleRate"
@@ -139334,38 +140196,48 @@ export const schemas = {
                         {
                           "additionalProperties": false,
                           "properties": {
-                            "kind": {
-                              "enum": [
-                                "atmos",
-                                "dsd"
-                              ]
+                            "variant": {
+                              "const": "atmos"
                             }
                           },
                           "required": [
-                            "kind"
+                            "variant"
                           ],
                           "type": "object"
                         },
                         {
                           "additionalProperties": false,
                           "properties": {
-                            "kind": {
-                              "const": "surround"
-                            },
+                            "variant": {
+                              "const": "dsd"
+                            }
+                          },
+                          "required": [
+                            "variant"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
                             "layout": {
                               "enum": [
                                 "5.1",
                                 "7.1"
                               ]
+                            },
+                            "variant": {
+                              "const": "surround"
                             }
                           },
                           "required": [
-                            "kind",
+                            "variant",
                             "layout"
                           ],
                           "type": "object"
                         }
-                      ]
+                      ],
+                      "x-discriminator": "variant"
                     },
                     "maxItems": 2,
                     "type": "array"
@@ -140692,16 +141564,16 @@ export const schemas = {
                                   "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                   "type": "string"
                                 },
-                                "kind": {
-                                  "const": "lossless"
-                                },
                                 "sampleRate": {
                                   "minimum": 1,
                                   "type": "integer"
+                                },
+                                "variant": {
+                                  "const": "lossless"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "codec",
                                 "bitDepth",
                                 "sampleRate"
@@ -140711,38 +141583,48 @@ export const schemas = {
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "enum": [
-                                    "atmos",
-                                    "dsd"
-                                  ]
+                                "variant": {
+                                  "const": "atmos"
                                 }
                               },
                               "required": [
-                                "kind"
+                                "variant"
                               ],
                               "type": "object"
                             },
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "const": "surround"
-                                },
+                                "variant": {
+                                  "const": "dsd"
+                                }
+                              },
+                              "required": [
+                                "variant"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
                                 "layout": {
                                   "enum": [
                                     "5.1",
                                     "7.1"
                                   ]
+                                },
+                                "variant": {
+                                  "const": "surround"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "layout"
                               ],
                               "type": "object"
                             }
-                          ]
+                          ],
+                          "x-discriminator": "variant"
                         },
                         "maxItems": 2,
                         "type": "array"
@@ -141224,16 +142106,16 @@ export const schemas = {
                                       "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                       "type": "string"
                                     },
-                                    "kind": {
-                                      "const": "lossless"
-                                    },
                                     "sampleRate": {
                                       "minimum": 1,
                                       "type": "integer"
+                                    },
+                                    "variant": {
+                                      "const": "lossless"
                                     }
                                   },
                                   "required": [
-                                    "kind",
+                                    "variant",
                                     "codec",
                                     "bitDepth",
                                     "sampleRate"
@@ -141243,38 +142125,48 @@ export const schemas = {
                                 {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "enum": [
-                                        "atmos",
-                                        "dsd"
-                                      ]
+                                    "variant": {
+                                      "const": "atmos"
                                     }
                                   },
                                   "required": [
-                                    "kind"
+                                    "variant"
                                   ],
                                   "type": "object"
                                 },
                                 {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "const": "surround"
-                                    },
+                                    "variant": {
+                                      "const": "dsd"
+                                    }
+                                  },
+                                  "required": [
+                                    "variant"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
                                     "layout": {
                                       "enum": [
                                         "5.1",
                                         "7.1"
                                       ]
+                                    },
+                                    "variant": {
+                                      "const": "surround"
                                     }
                                   },
                                   "required": [
-                                    "kind",
+                                    "variant",
                                     "layout"
                                   ],
                                   "type": "object"
                                 }
-                              ]
+                              ],
+                              "x-discriminator": "variant"
                             },
                             "maxItems": 2,
                             "type": "array"
@@ -142564,16 +143456,16 @@ export const schemas = {
                       "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                       "type": "string"
                     },
-                    "kind": {
-                      "const": "lossless"
-                    },
                     "sampleRate": {
                       "minimum": 1,
                       "type": "integer"
+                    },
+                    "variant": {
+                      "const": "lossless"
                     }
                   },
                   "required": [
-                    "kind",
+                    "variant",
                     "codec",
                     "bitDepth",
                     "sampleRate"
@@ -142583,38 +143475,48 @@ export const schemas = {
                 {
                   "additionalProperties": false,
                   "properties": {
-                    "kind": {
-                      "enum": [
-                        "atmos",
-                        "dsd"
-                      ]
+                    "variant": {
+                      "const": "atmos"
                     }
                   },
                   "required": [
-                    "kind"
+                    "variant"
                   ],
                   "type": "object"
                 },
                 {
                   "additionalProperties": false,
                   "properties": {
-                    "kind": {
-                      "const": "surround"
-                    },
+                    "variant": {
+                      "const": "dsd"
+                    }
+                  },
+                  "required": [
+                    "variant"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
                     "layout": {
                       "enum": [
                         "5.1",
                         "7.1"
                       ]
+                    },
+                    "variant": {
+                      "const": "surround"
                     }
                   },
                   "required": [
-                    "kind",
+                    "variant",
                     "layout"
                   ],
                   "type": "object"
                 }
-              ]
+              ],
+              "x-discriminator": "variant"
             },
             "maxItems": 2,
             "type": "array"
@@ -143096,16 +143998,16 @@ export const schemas = {
                           "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                           "type": "string"
                         },
-                        "kind": {
-                          "const": "lossless"
-                        },
                         "sampleRate": {
                           "minimum": 1,
                           "type": "integer"
+                        },
+                        "variant": {
+                          "const": "lossless"
                         }
                       },
                       "required": [
-                        "kind",
+                        "variant",
                         "codec",
                         "bitDepth",
                         "sampleRate"
@@ -143115,38 +144017,48 @@ export const schemas = {
                     {
                       "additionalProperties": false,
                       "properties": {
-                        "kind": {
-                          "enum": [
-                            "atmos",
-                            "dsd"
-                          ]
+                        "variant": {
+                          "const": "atmos"
                         }
                       },
                       "required": [
-                        "kind"
+                        "variant"
                       ],
                       "type": "object"
                     },
                     {
                       "additionalProperties": false,
                       "properties": {
-                        "kind": {
-                          "const": "surround"
-                        },
+                        "variant": {
+                          "const": "dsd"
+                        }
+                      },
+                      "required": [
+                        "variant"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
                         "layout": {
                           "enum": [
                             "5.1",
                             "7.1"
                           ]
+                        },
+                        "variant": {
+                          "const": "surround"
                         }
                       },
                       "required": [
-                        "kind",
+                        "variant",
                         "layout"
                       ],
                       "type": "object"
                     }
-                  ]
+                  ],
+                  "x-discriminator": "variant"
                 },
                 "maxItems": 2,
                 "type": "array"
@@ -145898,16 +146810,16 @@ export const schemas = {
                             "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                             "type": "string"
                           },
-                          "kind": {
-                            "const": "lossless"
-                          },
                           "sampleRate": {
                             "minimum": 1,
                             "type": "integer"
+                          },
+                          "variant": {
+                            "const": "lossless"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "codec",
                           "bitDepth",
                           "sampleRate"
@@ -145917,38 +146829,48 @@ export const schemas = {
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "enum": [
-                              "atmos",
-                              "dsd"
-                            ]
+                          "variant": {
+                            "const": "atmos"
                           }
                         },
                         "required": [
-                          "kind"
+                          "variant"
                         ],
                         "type": "object"
                       },
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "const": "surround"
-                          },
+                          "variant": {
+                            "const": "dsd"
+                          }
+                        },
+                        "required": [
+                          "variant"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
                           "layout": {
                             "enum": [
                               "5.1",
                               "7.1"
                             ]
+                          },
+                          "variant": {
+                            "const": "surround"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "layout"
                         ],
                         "type": "object"
                       }
-                    ]
+                    ],
+                    "x-discriminator": "variant"
                   },
                   "maxItems": 2,
                   "type": "array"
@@ -146430,16 +147352,16 @@ export const schemas = {
                                 "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                 "type": "string"
                               },
-                              "kind": {
-                                "const": "lossless"
-                              },
                               "sampleRate": {
                                 "minimum": 1,
                                 "type": "integer"
+                              },
+                              "variant": {
+                                "const": "lossless"
                               }
                             },
                             "required": [
-                              "kind",
+                              "variant",
                               "codec",
                               "bitDepth",
                               "sampleRate"
@@ -146449,38 +147371,48 @@ export const schemas = {
                           {
                             "additionalProperties": false,
                             "properties": {
-                              "kind": {
-                                "enum": [
-                                  "atmos",
-                                  "dsd"
-                                ]
+                              "variant": {
+                                "const": "atmos"
                               }
                             },
                             "required": [
-                              "kind"
+                              "variant"
                             ],
                             "type": "object"
                           },
                           {
                             "additionalProperties": false,
                             "properties": {
-                              "kind": {
-                                "const": "surround"
-                              },
+                              "variant": {
+                                "const": "dsd"
+                              }
+                            },
+                            "required": [
+                              "variant"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
                               "layout": {
                                 "enum": [
                                   "5.1",
                                   "7.1"
                                 ]
+                              },
+                              "variant": {
+                                "const": "surround"
                               }
                             },
                             "required": [
-                              "kind",
+                              "variant",
                               "layout"
                             ],
                             "type": "object"
                           }
-                        ]
+                        ],
+                        "x-discriminator": "variant"
                       },
                       "maxItems": 2,
                       "type": "array"
@@ -152700,16 +153632,16 @@ export const schemas = {
                             "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                             "type": "string"
                           },
-                          "kind": {
-                            "const": "lossless"
-                          },
                           "sampleRate": {
                             "minimum": 1,
                             "type": "integer"
+                          },
+                          "variant": {
+                            "const": "lossless"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "codec",
                           "bitDepth",
                           "sampleRate"
@@ -152719,38 +153651,48 @@ export const schemas = {
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "enum": [
-                              "atmos",
-                              "dsd"
-                            ]
+                          "variant": {
+                            "const": "atmos"
                           }
                         },
                         "required": [
-                          "kind"
+                          "variant"
                         ],
                         "type": "object"
                       },
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "const": "surround"
-                          },
+                          "variant": {
+                            "const": "dsd"
+                          }
+                        },
+                        "required": [
+                          "variant"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
                           "layout": {
                             "enum": [
                               "5.1",
                               "7.1"
                             ]
+                          },
+                          "variant": {
+                            "const": "surround"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "layout"
                         ],
                         "type": "object"
                       }
-                    ]
+                    ],
+                    "x-discriminator": "variant"
                   },
                   "maxItems": 2,
                   "type": "array"
@@ -153232,16 +154174,16 @@ export const schemas = {
                                 "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                 "type": "string"
                               },
-                              "kind": {
-                                "const": "lossless"
-                              },
                               "sampleRate": {
                                 "minimum": 1,
                                 "type": "integer"
+                              },
+                              "variant": {
+                                "const": "lossless"
                               }
                             },
                             "required": [
-                              "kind",
+                              "variant",
                               "codec",
                               "bitDepth",
                               "sampleRate"
@@ -153251,38 +154193,48 @@ export const schemas = {
                           {
                             "additionalProperties": false,
                             "properties": {
-                              "kind": {
-                                "enum": [
-                                  "atmos",
-                                  "dsd"
-                                ]
+                              "variant": {
+                                "const": "atmos"
                               }
                             },
                             "required": [
-                              "kind"
+                              "variant"
                             ],
                             "type": "object"
                           },
                           {
                             "additionalProperties": false,
                             "properties": {
-                              "kind": {
-                                "const": "surround"
-                              },
+                              "variant": {
+                                "const": "dsd"
+                              }
+                            },
+                            "required": [
+                              "variant"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
                               "layout": {
                                 "enum": [
                                   "5.1",
                                   "7.1"
                                 ]
+                              },
+                              "variant": {
+                                "const": "surround"
                               }
                             },
                             "required": [
-                              "kind",
+                              "variant",
                               "layout"
                             ],
                             "type": "object"
                           }
-                        ]
+                        ],
+                        "x-discriminator": "variant"
                       },
                       "maxItems": 2,
                       "type": "array"
@@ -154474,16 +155426,16 @@ export const schemas = {
                             "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                             "type": "string"
                           },
-                          "kind": {
-                            "const": "lossless"
-                          },
                           "sampleRate": {
                             "minimum": 1,
                             "type": "integer"
+                          },
+                          "variant": {
+                            "const": "lossless"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "codec",
                           "bitDepth",
                           "sampleRate"
@@ -154493,38 +155445,48 @@ export const schemas = {
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "enum": [
-                              "atmos",
-                              "dsd"
-                            ]
+                          "variant": {
+                            "const": "atmos"
                           }
                         },
                         "required": [
-                          "kind"
+                          "variant"
                         ],
                         "type": "object"
                       },
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "const": "surround"
-                          },
+                          "variant": {
+                            "const": "dsd"
+                          }
+                        },
+                        "required": [
+                          "variant"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
                           "layout": {
                             "enum": [
                               "5.1",
                               "7.1"
                             ]
+                          },
+                          "variant": {
+                            "const": "surround"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "layout"
                         ],
                         "type": "object"
                       }
-                    ]
+                    ],
+                    "x-discriminator": "variant"
                   },
                   "maxItems": 2,
                   "type": "array"
@@ -155006,16 +155968,16 @@ export const schemas = {
                                 "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                 "type": "string"
                               },
-                              "kind": {
-                                "const": "lossless"
-                              },
                               "sampleRate": {
                                 "minimum": 1,
                                 "type": "integer"
+                              },
+                              "variant": {
+                                "const": "lossless"
                               }
                             },
                             "required": [
-                              "kind",
+                              "variant",
                               "codec",
                               "bitDepth",
                               "sampleRate"
@@ -155025,38 +155987,48 @@ export const schemas = {
                           {
                             "additionalProperties": false,
                             "properties": {
-                              "kind": {
-                                "enum": [
-                                  "atmos",
-                                  "dsd"
-                                ]
+                              "variant": {
+                                "const": "atmos"
                               }
                             },
                             "required": [
-                              "kind"
+                              "variant"
                             ],
                             "type": "object"
                           },
                           {
                             "additionalProperties": false,
                             "properties": {
-                              "kind": {
-                                "const": "surround"
-                              },
+                              "variant": {
+                                "const": "dsd"
+                              }
+                            },
+                            "required": [
+                              "variant"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
                               "layout": {
                                 "enum": [
                                   "5.1",
                                   "7.1"
                                 ]
+                              },
+                              "variant": {
+                                "const": "surround"
                               }
                             },
                             "required": [
-                              "kind",
+                              "variant",
                               "layout"
                             ],
                             "type": "object"
                           }
-                        ]
+                        ],
+                        "x-discriminator": "variant"
                       },
                       "maxItems": 2,
                       "type": "array"
@@ -156330,16 +157302,16 @@ export const schemas = {
                             "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                             "type": "string"
                           },
-                          "kind": {
-                            "const": "lossless"
-                          },
                           "sampleRate": {
                             "minimum": 1,
                             "type": "integer"
+                          },
+                          "variant": {
+                            "const": "lossless"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "codec",
                           "bitDepth",
                           "sampleRate"
@@ -156349,38 +157321,48 @@ export const schemas = {
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "enum": [
-                              "atmos",
-                              "dsd"
-                            ]
+                          "variant": {
+                            "const": "atmos"
                           }
                         },
                         "required": [
-                          "kind"
+                          "variant"
                         ],
                         "type": "object"
                       },
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "const": "surround"
-                          },
+                          "variant": {
+                            "const": "dsd"
+                          }
+                        },
+                        "required": [
+                          "variant"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
                           "layout": {
                             "enum": [
                               "5.1",
                               "7.1"
                             ]
+                          },
+                          "variant": {
+                            "const": "surround"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "layout"
                         ],
                         "type": "object"
                       }
-                    ]
+                    ],
+                    "x-discriminator": "variant"
                   },
                   "maxItems": 2,
                   "type": "array"
@@ -156862,16 +157844,16 @@ export const schemas = {
                                 "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                 "type": "string"
                               },
-                              "kind": {
-                                "const": "lossless"
-                              },
                               "sampleRate": {
                                 "minimum": 1,
                                 "type": "integer"
+                              },
+                              "variant": {
+                                "const": "lossless"
                               }
                             },
                             "required": [
-                              "kind",
+                              "variant",
                               "codec",
                               "bitDepth",
                               "sampleRate"
@@ -156881,38 +157863,48 @@ export const schemas = {
                           {
                             "additionalProperties": false,
                             "properties": {
-                              "kind": {
-                                "enum": [
-                                  "atmos",
-                                  "dsd"
-                                ]
+                              "variant": {
+                                "const": "atmos"
                               }
                             },
                             "required": [
-                              "kind"
+                              "variant"
                             ],
                             "type": "object"
                           },
                           {
                             "additionalProperties": false,
                             "properties": {
-                              "kind": {
-                                "const": "surround"
-                              },
+                              "variant": {
+                                "const": "dsd"
+                              }
+                            },
+                            "required": [
+                              "variant"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
                               "layout": {
                                 "enum": [
                                   "5.1",
                                   "7.1"
                                 ]
+                              },
+                              "variant": {
+                                "const": "surround"
                               }
                             },
                             "required": [
-                              "kind",
+                              "variant",
                               "layout"
                             ],
                             "type": "object"
                           }
-                        ]
+                        ],
+                        "x-discriminator": "variant"
                       },
                       "maxItems": 2,
                       "type": "array"
@@ -160518,16 +161510,16 @@ export const schemas = {
                       "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                       "type": "string"
                     },
-                    "kind": {
-                      "const": "lossless"
-                    },
                     "sampleRate": {
                       "minimum": 1,
                       "type": "integer"
+                    },
+                    "variant": {
+                      "const": "lossless"
                     }
                   },
                   "required": [
-                    "kind",
+                    "variant",
                     "codec",
                     "bitDepth",
                     "sampleRate"
@@ -160537,38 +161529,48 @@ export const schemas = {
                 {
                   "additionalProperties": false,
                   "properties": {
-                    "kind": {
-                      "enum": [
-                        "atmos",
-                        "dsd"
-                      ]
+                    "variant": {
+                      "const": "atmos"
                     }
                   },
                   "required": [
-                    "kind"
+                    "variant"
                   ],
                   "type": "object"
                 },
                 {
                   "additionalProperties": false,
                   "properties": {
-                    "kind": {
-                      "const": "surround"
-                    },
+                    "variant": {
+                      "const": "dsd"
+                    }
+                  },
+                  "required": [
+                    "variant"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
                     "layout": {
                       "enum": [
                         "5.1",
                         "7.1"
                       ]
+                    },
+                    "variant": {
+                      "const": "surround"
                     }
                   },
                   "required": [
-                    "kind",
+                    "variant",
                     "layout"
                   ],
                   "type": "object"
                 }
-              ]
+              ],
+              "x-discriminator": "variant"
             },
             "maxItems": 2,
             "type": "array"
@@ -161050,16 +162052,16 @@ export const schemas = {
                           "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                           "type": "string"
                         },
-                        "kind": {
-                          "const": "lossless"
-                        },
                         "sampleRate": {
                           "minimum": 1,
                           "type": "integer"
+                        },
+                        "variant": {
+                          "const": "lossless"
                         }
                       },
                       "required": [
-                        "kind",
+                        "variant",
                         "codec",
                         "bitDepth",
                         "sampleRate"
@@ -161069,38 +162071,48 @@ export const schemas = {
                     {
                       "additionalProperties": false,
                       "properties": {
-                        "kind": {
-                          "enum": [
-                            "atmos",
-                            "dsd"
-                          ]
+                        "variant": {
+                          "const": "atmos"
                         }
                       },
                       "required": [
-                        "kind"
+                        "variant"
                       ],
                       "type": "object"
                     },
                     {
                       "additionalProperties": false,
                       "properties": {
-                        "kind": {
-                          "const": "surround"
-                        },
+                        "variant": {
+                          "const": "dsd"
+                        }
+                      },
+                      "required": [
+                        "variant"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
                         "layout": {
                           "enum": [
                             "5.1",
                             "7.1"
                           ]
+                        },
+                        "variant": {
+                          "const": "surround"
                         }
                       },
                       "required": [
-                        "kind",
+                        "variant",
                         "layout"
                       ],
                       "type": "object"
                     }
-                  ]
+                  ],
+                  "x-discriminator": "variant"
                 },
                 "maxItems": 2,
                 "type": "array"
@@ -162427,16 +163439,16 @@ export const schemas = {
                               "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                               "type": "string"
                             },
-                            "kind": {
-                              "const": "lossless"
-                            },
                             "sampleRate": {
                               "minimum": 1,
                               "type": "integer"
+                            },
+                            "variant": {
+                              "const": "lossless"
                             }
                           },
                           "required": [
-                            "kind",
+                            "variant",
                             "codec",
                             "bitDepth",
                             "sampleRate"
@@ -162446,38 +163458,48 @@ export const schemas = {
                         {
                           "additionalProperties": false,
                           "properties": {
-                            "kind": {
-                              "enum": [
-                                "atmos",
-                                "dsd"
-                              ]
+                            "variant": {
+                              "const": "atmos"
                             }
                           },
                           "required": [
-                            "kind"
+                            "variant"
                           ],
                           "type": "object"
                         },
                         {
                           "additionalProperties": false,
                           "properties": {
-                            "kind": {
-                              "const": "surround"
-                            },
+                            "variant": {
+                              "const": "dsd"
+                            }
+                          },
+                          "required": [
+                            "variant"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
                             "layout": {
                               "enum": [
                                 "5.1",
                                 "7.1"
                               ]
+                            },
+                            "variant": {
+                              "const": "surround"
                             }
                           },
                           "required": [
-                            "kind",
+                            "variant",
                             "layout"
                           ],
                           "type": "object"
                         }
-                      ]
+                      ],
+                      "x-discriminator": "variant"
                     },
                     "maxItems": 2,
                     "type": "array"
@@ -162959,16 +163981,16 @@ export const schemas = {
                                   "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                   "type": "string"
                                 },
-                                "kind": {
-                                  "const": "lossless"
-                                },
                                 "sampleRate": {
                                   "minimum": 1,
                                   "type": "integer"
+                                },
+                                "variant": {
+                                  "const": "lossless"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "codec",
                                 "bitDepth",
                                 "sampleRate"
@@ -162978,38 +164000,48 @@ export const schemas = {
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "enum": [
-                                    "atmos",
-                                    "dsd"
-                                  ]
+                                "variant": {
+                                  "const": "atmos"
                                 }
                               },
                               "required": [
-                                "kind"
+                                "variant"
                               ],
                               "type": "object"
                             },
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "const": "surround"
-                                },
+                                "variant": {
+                                  "const": "dsd"
+                                }
+                              },
+                              "required": [
+                                "variant"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
                                 "layout": {
                                   "enum": [
                                     "5.1",
                                     "7.1"
                                   ]
+                                },
+                                "variant": {
+                                  "const": "surround"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "layout"
                               ],
                               "type": "object"
                             }
-                          ]
+                          ],
+                          "x-discriminator": "variant"
                         },
                         "maxItems": 2,
                         "type": "array"
@@ -168206,16 +169238,16 @@ export const schemas = {
                       "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                       "type": "string"
                     },
-                    "kind": {
-                      "const": "lossless"
-                    },
                     "sampleRate": {
                       "minimum": 1,
                       "type": "integer"
+                    },
+                    "variant": {
+                      "const": "lossless"
                     }
                   },
                   "required": [
-                    "kind",
+                    "variant",
                     "codec",
                     "bitDepth",
                     "sampleRate"
@@ -168225,38 +169257,48 @@ export const schemas = {
                 {
                   "additionalProperties": false,
                   "properties": {
-                    "kind": {
-                      "enum": [
-                        "atmos",
-                        "dsd"
-                      ]
+                    "variant": {
+                      "const": "atmos"
                     }
                   },
                   "required": [
-                    "kind"
+                    "variant"
                   ],
                   "type": "object"
                 },
                 {
                   "additionalProperties": false,
                   "properties": {
-                    "kind": {
-                      "const": "surround"
-                    },
+                    "variant": {
+                      "const": "dsd"
+                    }
+                  },
+                  "required": [
+                    "variant"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
                     "layout": {
                       "enum": [
                         "5.1",
                         "7.1"
                       ]
+                    },
+                    "variant": {
+                      "const": "surround"
                     }
                   },
                   "required": [
-                    "kind",
+                    "variant",
                     "layout"
                   ],
                   "type": "object"
                 }
-              ]
+              ],
+              "x-discriminator": "variant"
             },
             "maxItems": 2,
             "type": "array"
@@ -168738,16 +169780,16 @@ export const schemas = {
                           "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                           "type": "string"
                         },
-                        "kind": {
-                          "const": "lossless"
-                        },
                         "sampleRate": {
                           "minimum": 1,
                           "type": "integer"
+                        },
+                        "variant": {
+                          "const": "lossless"
                         }
                       },
                       "required": [
-                        "kind",
+                        "variant",
                         "codec",
                         "bitDepth",
                         "sampleRate"
@@ -168757,38 +169799,48 @@ export const schemas = {
                     {
                       "additionalProperties": false,
                       "properties": {
-                        "kind": {
-                          "enum": [
-                            "atmos",
-                            "dsd"
-                          ]
+                        "variant": {
+                          "const": "atmos"
                         }
                       },
                       "required": [
-                        "kind"
+                        "variant"
                       ],
                       "type": "object"
                     },
                     {
                       "additionalProperties": false,
                       "properties": {
-                        "kind": {
-                          "const": "surround"
-                        },
+                        "variant": {
+                          "const": "dsd"
+                        }
+                      },
+                      "required": [
+                        "variant"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
                         "layout": {
                           "enum": [
                             "5.1",
                             "7.1"
                           ]
+                        },
+                        "variant": {
+                          "const": "surround"
                         }
                       },
                       "required": [
-                        "kind",
+                        "variant",
                         "layout"
                       ],
                       "type": "object"
                     }
-                  ]
+                  ],
+                  "x-discriminator": "variant"
                 },
                 "maxItems": 2,
                 "type": "array"
@@ -170122,16 +171174,16 @@ export const schemas = {
                                   "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                   "type": "string"
                                 },
-                                "kind": {
-                                  "const": "lossless"
-                                },
                                 "sampleRate": {
                                   "minimum": 1,
                                   "type": "integer"
+                                },
+                                "variant": {
+                                  "const": "lossless"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "codec",
                                 "bitDepth",
                                 "sampleRate"
@@ -170141,38 +171193,48 @@ export const schemas = {
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "enum": [
-                                    "atmos",
-                                    "dsd"
-                                  ]
+                                "variant": {
+                                  "const": "atmos"
                                 }
                               },
                               "required": [
-                                "kind"
+                                "variant"
                               ],
                               "type": "object"
                             },
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "const": "surround"
-                                },
+                                "variant": {
+                                  "const": "dsd"
+                                }
+                              },
+                              "required": [
+                                "variant"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
                                 "layout": {
                                   "enum": [
                                     "5.1",
                                     "7.1"
                                   ]
+                                },
+                                "variant": {
+                                  "const": "surround"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "layout"
                               ],
                               "type": "object"
                             }
-                          ]
+                          ],
+                          "x-discriminator": "variant"
                         },
                         "maxItems": 2,
                         "type": "array"
@@ -170675,16 +171737,16 @@ export const schemas = {
                                       "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                       "type": "string"
                                     },
-                                    "kind": {
-                                      "const": "lossless"
-                                    },
                                     "sampleRate": {
                                       "minimum": 1,
                                       "type": "integer"
+                                    },
+                                    "variant": {
+                                      "const": "lossless"
                                     }
                                   },
                                   "required": [
-                                    "kind",
+                                    "variant",
                                     "codec",
                                     "bitDepth",
                                     "sampleRate"
@@ -170694,38 +171756,48 @@ export const schemas = {
                                 {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "enum": [
-                                        "atmos",
-                                        "dsd"
-                                      ]
+                                    "variant": {
+                                      "const": "atmos"
                                     }
                                   },
                                   "required": [
-                                    "kind"
+                                    "variant"
                                   ],
                                   "type": "object"
                                 },
                                 {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "const": "surround"
-                                    },
+                                    "variant": {
+                                      "const": "dsd"
+                                    }
+                                  },
+                                  "required": [
+                                    "variant"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
                                     "layout": {
                                       "enum": [
                                         "5.1",
                                         "7.1"
                                       ]
+                                    },
+                                    "variant": {
+                                      "const": "surround"
                                     }
                                   },
                                   "required": [
-                                    "kind",
+                                    "variant",
                                     "layout"
                                   ],
                                   "type": "object"
                                 }
-                              ]
+                              ],
+                              "x-discriminator": "variant"
                             },
                             "maxItems": 2,
                             "type": "array"
@@ -172372,16 +173444,16 @@ export const schemas = {
                             "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                             "type": "string"
                           },
-                          "kind": {
-                            "const": "lossless"
-                          },
                           "sampleRate": {
                             "minimum": 1,
                             "type": "integer"
+                          },
+                          "variant": {
+                            "const": "lossless"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "codec",
                           "bitDepth",
                           "sampleRate"
@@ -172391,38 +173463,48 @@ export const schemas = {
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "enum": [
-                              "atmos",
-                              "dsd"
-                            ]
+                          "variant": {
+                            "const": "atmos"
                           }
                         },
                         "required": [
-                          "kind"
+                          "variant"
                         ],
                         "type": "object"
                       },
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "const": "surround"
-                          },
+                          "variant": {
+                            "const": "dsd"
+                          }
+                        },
+                        "required": [
+                          "variant"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
                           "layout": {
                             "enum": [
                               "5.1",
                               "7.1"
                             ]
+                          },
+                          "variant": {
+                            "const": "surround"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "layout"
                         ],
                         "type": "object"
                       }
-                    ]
+                    ],
+                    "x-discriminator": "variant"
                   },
                   "maxItems": 2,
                   "type": "array"
@@ -172904,16 +173986,16 @@ export const schemas = {
                                 "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                 "type": "string"
                               },
-                              "kind": {
-                                "const": "lossless"
-                              },
                               "sampleRate": {
                                 "minimum": 1,
                                 "type": "integer"
+                              },
+                              "variant": {
+                                "const": "lossless"
                               }
                             },
                             "required": [
-                              "kind",
+                              "variant",
                               "codec",
                               "bitDepth",
                               "sampleRate"
@@ -172923,38 +174005,48 @@ export const schemas = {
                           {
                             "additionalProperties": false,
                             "properties": {
-                              "kind": {
-                                "enum": [
-                                  "atmos",
-                                  "dsd"
-                                ]
+                              "variant": {
+                                "const": "atmos"
                               }
                             },
                             "required": [
-                              "kind"
+                              "variant"
                             ],
                             "type": "object"
                           },
                           {
                             "additionalProperties": false,
                             "properties": {
-                              "kind": {
-                                "const": "surround"
-                              },
+                              "variant": {
+                                "const": "dsd"
+                              }
+                            },
+                            "required": [
+                              "variant"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
                               "layout": {
                                 "enum": [
                                   "5.1",
                                   "7.1"
                                 ]
+                              },
+                              "variant": {
+                                "const": "surround"
                               }
                             },
                             "required": [
-                              "kind",
+                              "variant",
                               "layout"
                             ],
                             "type": "object"
                           }
-                        ]
+                        ],
+                        "x-discriminator": "variant"
                       },
                       "maxItems": 2,
                       "type": "array"
@@ -174406,16 +175498,16 @@ export const schemas = {
                             "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                             "type": "string"
                           },
-                          "kind": {
-                            "const": "lossless"
-                          },
                           "sampleRate": {
                             "minimum": 1,
                             "type": "integer"
+                          },
+                          "variant": {
+                            "const": "lossless"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "codec",
                           "bitDepth",
                           "sampleRate"
@@ -174425,38 +175517,48 @@ export const schemas = {
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "enum": [
-                              "atmos",
-                              "dsd"
-                            ]
+                          "variant": {
+                            "const": "atmos"
                           }
                         },
                         "required": [
-                          "kind"
+                          "variant"
                         ],
                         "type": "object"
                       },
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "const": "surround"
-                          },
+                          "variant": {
+                            "const": "dsd"
+                          }
+                        },
+                        "required": [
+                          "variant"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
                           "layout": {
                             "enum": [
                               "5.1",
                               "7.1"
                             ]
+                          },
+                          "variant": {
+                            "const": "surround"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "layout"
                         ],
                         "type": "object"
                       }
-                    ]
+                    ],
+                    "x-discriminator": "variant"
                   },
                   "maxItems": 2,
                   "type": "array"
@@ -174938,16 +176040,16 @@ export const schemas = {
                                 "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                 "type": "string"
                               },
-                              "kind": {
-                                "const": "lossless"
-                              },
                               "sampleRate": {
                                 "minimum": 1,
                                 "type": "integer"
+                              },
+                              "variant": {
+                                "const": "lossless"
                               }
                             },
                             "required": [
-                              "kind",
+                              "variant",
                               "codec",
                               "bitDepth",
                               "sampleRate"
@@ -174957,38 +176059,48 @@ export const schemas = {
                           {
                             "additionalProperties": false,
                             "properties": {
-                              "kind": {
-                                "enum": [
-                                  "atmos",
-                                  "dsd"
-                                ]
+                              "variant": {
+                                "const": "atmos"
                               }
                             },
                             "required": [
-                              "kind"
+                              "variant"
                             ],
                             "type": "object"
                           },
                           {
                             "additionalProperties": false,
                             "properties": {
-                              "kind": {
-                                "const": "surround"
-                              },
+                              "variant": {
+                                "const": "dsd"
+                              }
+                            },
+                            "required": [
+                              "variant"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
                               "layout": {
                                 "enum": [
                                   "5.1",
                                   "7.1"
                                 ]
+                              },
+                              "variant": {
+                                "const": "surround"
                               }
                             },
                             "required": [
-                              "kind",
+                              "variant",
                               "layout"
                             ],
                             "type": "object"
                           }
-                        ]
+                        ],
+                        "x-discriminator": "variant"
                       },
                       "maxItems": 2,
                       "type": "array"
@@ -177002,16 +178114,16 @@ export const schemas = {
                               "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                               "type": "string"
                             },
-                            "kind": {
-                              "const": "lossless"
-                            },
                             "sampleRate": {
                               "minimum": 1,
                               "type": "integer"
+                            },
+                            "variant": {
+                              "const": "lossless"
                             }
                           },
                           "required": [
-                            "kind",
+                            "variant",
                             "codec",
                             "bitDepth",
                             "sampleRate"
@@ -177021,38 +178133,48 @@ export const schemas = {
                         {
                           "additionalProperties": false,
                           "properties": {
-                            "kind": {
-                              "enum": [
-                                "atmos",
-                                "dsd"
-                              ]
+                            "variant": {
+                              "const": "atmos"
                             }
                           },
                           "required": [
-                            "kind"
+                            "variant"
                           ],
                           "type": "object"
                         },
                         {
                           "additionalProperties": false,
                           "properties": {
-                            "kind": {
-                              "const": "surround"
-                            },
+                            "variant": {
+                              "const": "dsd"
+                            }
+                          },
+                          "required": [
+                            "variant"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
                             "layout": {
                               "enum": [
                                 "5.1",
                                 "7.1"
                               ]
+                            },
+                            "variant": {
+                              "const": "surround"
                             }
                           },
                           "required": [
-                            "kind",
+                            "variant",
                             "layout"
                           ],
                           "type": "object"
                         }
-                      ]
+                      ],
+                      "x-discriminator": "variant"
                     },
                     "maxItems": 2,
                     "type": "array"
@@ -177534,16 +178656,16 @@ export const schemas = {
                                   "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                   "type": "string"
                                 },
-                                "kind": {
-                                  "const": "lossless"
-                                },
                                 "sampleRate": {
                                   "minimum": 1,
                                   "type": "integer"
+                                },
+                                "variant": {
+                                  "const": "lossless"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "codec",
                                 "bitDepth",
                                 "sampleRate"
@@ -177553,38 +178675,48 @@ export const schemas = {
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "enum": [
-                                    "atmos",
-                                    "dsd"
-                                  ]
+                                "variant": {
+                                  "const": "atmos"
                                 }
                               },
                               "required": [
-                                "kind"
+                                "variant"
                               ],
                               "type": "object"
                             },
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "const": "surround"
-                                },
+                                "variant": {
+                                  "const": "dsd"
+                                }
+                              },
+                              "required": [
+                                "variant"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
                                 "layout": {
                                   "enum": [
                                     "5.1",
                                     "7.1"
                                   ]
+                                },
+                                "variant": {
+                                  "const": "surround"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "layout"
                               ],
                               "type": "object"
                             }
-                          ]
+                          ],
+                          "x-discriminator": "variant"
                         },
                         "maxItems": 2,
                         "type": "array"
@@ -181816,16 +182948,16 @@ export const schemas = {
                                         "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                         "type": "string"
                                       },
-                                      "kind": {
-                                        "const": "lossless"
-                                      },
                                       "sampleRate": {
                                         "minimum": 1,
                                         "type": "integer"
+                                      },
+                                      "variant": {
+                                        "const": "lossless"
                                       }
                                     },
                                     "required": [
-                                      "kind",
+                                      "variant",
                                       "codec",
                                       "bitDepth",
                                       "sampleRate"
@@ -181835,38 +182967,48 @@ export const schemas = {
                                   {
                                     "additionalProperties": false,
                                     "properties": {
-                                      "kind": {
-                                        "enum": [
-                                          "atmos",
-                                          "dsd"
-                                        ]
+                                      "variant": {
+                                        "const": "atmos"
                                       }
                                     },
                                     "required": [
-                                      "kind"
+                                      "variant"
                                     ],
                                     "type": "object"
                                   },
                                   {
                                     "additionalProperties": false,
                                     "properties": {
-                                      "kind": {
-                                        "const": "surround"
-                                      },
+                                      "variant": {
+                                        "const": "dsd"
+                                      }
+                                    },
+                                    "required": [
+                                      "variant"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
                                       "layout": {
                                         "enum": [
                                           "5.1",
                                           "7.1"
                                         ]
+                                      },
+                                      "variant": {
+                                        "const": "surround"
                                       }
                                     },
                                     "required": [
-                                      "kind",
+                                      "variant",
                                       "layout"
                                     ],
                                     "type": "object"
                                   }
-                                ]
+                                ],
+                                "x-discriminator": "variant"
                               },
                               "maxItems": 2,
                               "type": "array"
@@ -182348,16 +183490,16 @@ export const schemas = {
                                             "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                             "type": "string"
                                           },
-                                          "kind": {
-                                            "const": "lossless"
-                                          },
                                           "sampleRate": {
                                             "minimum": 1,
                                             "type": "integer"
+                                          },
+                                          "variant": {
+                                            "const": "lossless"
                                           }
                                         },
                                         "required": [
-                                          "kind",
+                                          "variant",
                                           "codec",
                                           "bitDepth",
                                           "sampleRate"
@@ -182367,38 +183509,48 @@ export const schemas = {
                                       {
                                         "additionalProperties": false,
                                         "properties": {
-                                          "kind": {
-                                            "enum": [
-                                              "atmos",
-                                              "dsd"
-                                            ]
+                                          "variant": {
+                                            "const": "atmos"
                                           }
                                         },
                                         "required": [
-                                          "kind"
+                                          "variant"
                                         ],
                                         "type": "object"
                                       },
                                       {
                                         "additionalProperties": false,
                                         "properties": {
-                                          "kind": {
-                                            "const": "surround"
-                                          },
+                                          "variant": {
+                                            "const": "dsd"
+                                          }
+                                        },
+                                        "required": [
+                                          "variant"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      {
+                                        "additionalProperties": false,
+                                        "properties": {
                                           "layout": {
                                             "enum": [
                                               "5.1",
                                               "7.1"
                                             ]
+                                          },
+                                          "variant": {
+                                            "const": "surround"
                                           }
                                         },
                                         "required": [
-                                          "kind",
+                                          "variant",
                                           "layout"
                                         ],
                                         "type": "object"
                                       }
-                                    ]
+                                    ],
+                                    "x-discriminator": "variant"
                                   },
                                   "maxItems": 2,
                                   "type": "array"
@@ -183538,16 +184690,16 @@ export const schemas = {
                                     "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                     "type": "string"
                                   },
-                                  "kind": {
-                                    "const": "lossless"
-                                  },
                                   "sampleRate": {
                                     "minimum": 1,
                                     "type": "integer"
+                                  },
+                                  "variant": {
+                                    "const": "lossless"
                                   }
                                 },
                                 "required": [
-                                  "kind",
+                                  "variant",
                                   "codec",
                                   "bitDepth",
                                   "sampleRate"
@@ -183557,38 +184709,48 @@ export const schemas = {
                               {
                                 "additionalProperties": false,
                                 "properties": {
-                                  "kind": {
-                                    "enum": [
-                                      "atmos",
-                                      "dsd"
-                                    ]
+                                  "variant": {
+                                    "const": "atmos"
                                   }
                                 },
                                 "required": [
-                                  "kind"
+                                  "variant"
                                 ],
                                 "type": "object"
                               },
                               {
                                 "additionalProperties": false,
                                 "properties": {
-                                  "kind": {
-                                    "const": "surround"
-                                  },
+                                  "variant": {
+                                    "const": "dsd"
+                                  }
+                                },
+                                "required": [
+                                  "variant"
+                                ],
+                                "type": "object"
+                              },
+                              {
+                                "additionalProperties": false,
+                                "properties": {
                                   "layout": {
                                     "enum": [
                                       "5.1",
                                       "7.1"
                                     ]
+                                  },
+                                  "variant": {
+                                    "const": "surround"
                                   }
                                 },
                                 "required": [
-                                  "kind",
+                                  "variant",
                                   "layout"
                                 ],
                                 "type": "object"
                               }
-                            ]
+                            ],
+                            "x-discriminator": "variant"
                           },
                           "maxItems": 2,
                           "type": "array"
@@ -184070,16 +185232,16 @@ export const schemas = {
                                         "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                         "type": "string"
                                       },
-                                      "kind": {
-                                        "const": "lossless"
-                                      },
                                       "sampleRate": {
                                         "minimum": 1,
                                         "type": "integer"
+                                      },
+                                      "variant": {
+                                        "const": "lossless"
                                       }
                                     },
                                     "required": [
-                                      "kind",
+                                      "variant",
                                       "codec",
                                       "bitDepth",
                                       "sampleRate"
@@ -184089,38 +185251,48 @@ export const schemas = {
                                   {
                                     "additionalProperties": false,
                                     "properties": {
-                                      "kind": {
-                                        "enum": [
-                                          "atmos",
-                                          "dsd"
-                                        ]
+                                      "variant": {
+                                        "const": "atmos"
                                       }
                                     },
                                     "required": [
-                                      "kind"
+                                      "variant"
                                     ],
                                     "type": "object"
                                   },
                                   {
                                     "additionalProperties": false,
                                     "properties": {
-                                      "kind": {
-                                        "const": "surround"
-                                      },
+                                      "variant": {
+                                        "const": "dsd"
+                                      }
+                                    },
+                                    "required": [
+                                      "variant"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
                                       "layout": {
                                         "enum": [
                                           "5.1",
                                           "7.1"
                                         ]
+                                      },
+                                      "variant": {
+                                        "const": "surround"
                                       }
                                     },
                                     "required": [
-                                      "kind",
+                                      "variant",
                                       "layout"
                                     ],
                                     "type": "object"
                                   }
-                                ]
+                                ],
+                                "x-discriminator": "variant"
                               },
                               "maxItems": 2,
                               "type": "array"
@@ -185722,16 +186894,16 @@ export const schemas = {
                                         "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                         "type": "string"
                                       },
-                                      "kind": {
-                                        "const": "lossless"
-                                      },
                                       "sampleRate": {
                                         "minimum": 1,
                                         "type": "integer"
+                                      },
+                                      "variant": {
+                                        "const": "lossless"
                                       }
                                     },
                                     "required": [
-                                      "kind",
+                                      "variant",
                                       "codec",
                                       "bitDepth",
                                       "sampleRate"
@@ -185741,38 +186913,48 @@ export const schemas = {
                                   {
                                     "additionalProperties": false,
                                     "properties": {
-                                      "kind": {
-                                        "enum": [
-                                          "atmos",
-                                          "dsd"
-                                        ]
+                                      "variant": {
+                                        "const": "atmos"
                                       }
                                     },
                                     "required": [
-                                      "kind"
+                                      "variant"
                                     ],
                                     "type": "object"
                                   },
                                   {
                                     "additionalProperties": false,
                                     "properties": {
-                                      "kind": {
-                                        "const": "surround"
-                                      },
+                                      "variant": {
+                                        "const": "dsd"
+                                      }
+                                    },
+                                    "required": [
+                                      "variant"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
                                       "layout": {
                                         "enum": [
                                           "5.1",
                                           "7.1"
                                         ]
+                                      },
+                                      "variant": {
+                                        "const": "surround"
                                       }
                                     },
                                     "required": [
-                                      "kind",
+                                      "variant",
                                       "layout"
                                     ],
                                     "type": "object"
                                   }
-                                ]
+                                ],
+                                "x-discriminator": "variant"
                               },
                               "maxItems": 2,
                               "type": "array"
@@ -186254,16 +187436,16 @@ export const schemas = {
                                             "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                             "type": "string"
                                           },
-                                          "kind": {
-                                            "const": "lossless"
-                                          },
                                           "sampleRate": {
                                             "minimum": 1,
                                             "type": "integer"
+                                          },
+                                          "variant": {
+                                            "const": "lossless"
                                           }
                                         },
                                         "required": [
-                                          "kind",
+                                          "variant",
                                           "codec",
                                           "bitDepth",
                                           "sampleRate"
@@ -186273,38 +187455,48 @@ export const schemas = {
                                       {
                                         "additionalProperties": false,
                                         "properties": {
-                                          "kind": {
-                                            "enum": [
-                                              "atmos",
-                                              "dsd"
-                                            ]
+                                          "variant": {
+                                            "const": "atmos"
                                           }
                                         },
                                         "required": [
-                                          "kind"
+                                          "variant"
                                         ],
                                         "type": "object"
                                       },
                                       {
                                         "additionalProperties": false,
                                         "properties": {
-                                          "kind": {
-                                            "const": "surround"
-                                          },
+                                          "variant": {
+                                            "const": "dsd"
+                                          }
+                                        },
+                                        "required": [
+                                          "variant"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      {
+                                        "additionalProperties": false,
+                                        "properties": {
                                           "layout": {
                                             "enum": [
                                               "5.1",
                                               "7.1"
                                             ]
+                                          },
+                                          "variant": {
+                                            "const": "surround"
                                           }
                                         },
                                         "required": [
-                                          "kind",
+                                          "variant",
                                           "layout"
                                         ],
                                         "type": "object"
                                       }
-                                    ]
+                                    ],
+                                    "x-discriminator": "variant"
                                   },
                                   "maxItems": 2,
                                   "type": "array"
@@ -188001,16 +189193,16 @@ export const schemas = {
                                   "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                   "type": "string"
                                 },
-                                "kind": {
-                                  "const": "lossless"
-                                },
                                 "sampleRate": {
                                   "minimum": 1,
                                   "type": "integer"
+                                },
+                                "variant": {
+                                  "const": "lossless"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "codec",
                                 "bitDepth",
                                 "sampleRate"
@@ -188020,38 +189212,48 @@ export const schemas = {
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "enum": [
-                                    "atmos",
-                                    "dsd"
-                                  ]
+                                "variant": {
+                                  "const": "atmos"
                                 }
                               },
                               "required": [
-                                "kind"
+                                "variant"
                               ],
                               "type": "object"
                             },
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "const": "surround"
-                                },
+                                "variant": {
+                                  "const": "dsd"
+                                }
+                              },
+                              "required": [
+                                "variant"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
                                 "layout": {
                                   "enum": [
                                     "5.1",
                                     "7.1"
                                   ]
+                                },
+                                "variant": {
+                                  "const": "surround"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "layout"
                               ],
                               "type": "object"
                             }
-                          ]
+                          ],
+                          "x-discriminator": "variant"
                         },
                         "maxItems": 2,
                         "type": "array"
@@ -188533,16 +189735,16 @@ export const schemas = {
                                       "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                       "type": "string"
                                     },
-                                    "kind": {
-                                      "const": "lossless"
-                                    },
                                     "sampleRate": {
                                       "minimum": 1,
                                       "type": "integer"
+                                    },
+                                    "variant": {
+                                      "const": "lossless"
                                     }
                                   },
                                   "required": [
-                                    "kind",
+                                    "variant",
                                     "codec",
                                     "bitDepth",
                                     "sampleRate"
@@ -188552,38 +189754,48 @@ export const schemas = {
                                 {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "enum": [
-                                        "atmos",
-                                        "dsd"
-                                      ]
+                                    "variant": {
+                                      "const": "atmos"
                                     }
                                   },
                                   "required": [
-                                    "kind"
+                                    "variant"
                                   ],
                                   "type": "object"
                                 },
                                 {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "const": "surround"
-                                    },
+                                    "variant": {
+                                      "const": "dsd"
+                                    }
+                                  },
+                                  "required": [
+                                    "variant"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
                                     "layout": {
                                       "enum": [
                                         "5.1",
                                         "7.1"
                                       ]
+                                    },
+                                    "variant": {
+                                      "const": "surround"
                                     }
                                   },
                                   "required": [
-                                    "kind",
+                                    "variant",
                                     "layout"
                                   ],
                                   "type": "object"
                                 }
-                              ]
+                              ],
+                              "x-discriminator": "variant"
                             },
                             "maxItems": 2,
                             "type": "array"
@@ -189720,16 +190932,16 @@ export const schemas = {
                               "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                               "type": "string"
                             },
-                            "kind": {
-                              "const": "lossless"
-                            },
                             "sampleRate": {
                               "minimum": 1,
                               "type": "integer"
+                            },
+                            "variant": {
+                              "const": "lossless"
                             }
                           },
                           "required": [
-                            "kind",
+                            "variant",
                             "codec",
                             "bitDepth",
                             "sampleRate"
@@ -189739,38 +190951,48 @@ export const schemas = {
                         {
                           "additionalProperties": false,
                           "properties": {
-                            "kind": {
-                              "enum": [
-                                "atmos",
-                                "dsd"
-                              ]
+                            "variant": {
+                              "const": "atmos"
                             }
                           },
                           "required": [
-                            "kind"
+                            "variant"
                           ],
                           "type": "object"
                         },
                         {
                           "additionalProperties": false,
                           "properties": {
-                            "kind": {
-                              "const": "surround"
-                            },
+                            "variant": {
+                              "const": "dsd"
+                            }
+                          },
+                          "required": [
+                            "variant"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
                             "layout": {
                               "enum": [
                                 "5.1",
                                 "7.1"
                               ]
+                            },
+                            "variant": {
+                              "const": "surround"
                             }
                           },
                           "required": [
-                            "kind",
+                            "variant",
                             "layout"
                           ],
                           "type": "object"
                         }
-                      ]
+                      ],
+                      "x-discriminator": "variant"
                     },
                     "maxItems": 2,
                     "type": "array"
@@ -190252,16 +191474,16 @@ export const schemas = {
                                   "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                   "type": "string"
                                 },
-                                "kind": {
-                                  "const": "lossless"
-                                },
                                 "sampleRate": {
                                   "minimum": 1,
                                   "type": "integer"
+                                },
+                                "variant": {
+                                  "const": "lossless"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "codec",
                                 "bitDepth",
                                 "sampleRate"
@@ -190271,38 +191493,48 @@ export const schemas = {
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "enum": [
-                                    "atmos",
-                                    "dsd"
-                                  ]
+                                "variant": {
+                                  "const": "atmos"
                                 }
                               },
                               "required": [
-                                "kind"
+                                "variant"
                               ],
                               "type": "object"
                             },
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "const": "surround"
-                                },
+                                "variant": {
+                                  "const": "dsd"
+                                }
+                              },
+                              "required": [
+                                "variant"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
                                 "layout": {
                                   "enum": [
                                     "5.1",
                                     "7.1"
                                   ]
+                                },
+                                "variant": {
+                                  "const": "surround"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "layout"
                               ],
                               "type": "object"
                             }
-                          ]
+                          ],
+                          "x-discriminator": "variant"
                         },
                         "maxItems": 2,
                         "type": "array"
@@ -191904,16 +193136,16 @@ export const schemas = {
                                   "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                   "type": "string"
                                 },
-                                "kind": {
-                                  "const": "lossless"
-                                },
                                 "sampleRate": {
                                   "minimum": 1,
                                   "type": "integer"
+                                },
+                                "variant": {
+                                  "const": "lossless"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "codec",
                                 "bitDepth",
                                 "sampleRate"
@@ -191923,38 +193155,48 @@ export const schemas = {
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "enum": [
-                                    "atmos",
-                                    "dsd"
-                                  ]
+                                "variant": {
+                                  "const": "atmos"
                                 }
                               },
                               "required": [
-                                "kind"
+                                "variant"
                               ],
                               "type": "object"
                             },
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "const": "surround"
-                                },
+                                "variant": {
+                                  "const": "dsd"
+                                }
+                              },
+                              "required": [
+                                "variant"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
                                 "layout": {
                                   "enum": [
                                     "5.1",
                                     "7.1"
                                   ]
+                                },
+                                "variant": {
+                                  "const": "surround"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "layout"
                               ],
                               "type": "object"
                             }
-                          ]
+                          ],
+                          "x-discriminator": "variant"
                         },
                         "maxItems": 2,
                         "type": "array"
@@ -192436,16 +193678,16 @@ export const schemas = {
                                       "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                       "type": "string"
                                     },
-                                    "kind": {
-                                      "const": "lossless"
-                                    },
                                     "sampleRate": {
                                       "minimum": 1,
                                       "type": "integer"
+                                    },
+                                    "variant": {
+                                      "const": "lossless"
                                     }
                                   },
                                   "required": [
-                                    "kind",
+                                    "variant",
                                     "codec",
                                     "bitDepth",
                                     "sampleRate"
@@ -192455,38 +193697,48 @@ export const schemas = {
                                 {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "enum": [
-                                        "atmos",
-                                        "dsd"
-                                      ]
+                                    "variant": {
+                                      "const": "atmos"
                                     }
                                   },
                                   "required": [
-                                    "kind"
+                                    "variant"
                                   ],
                                   "type": "object"
                                 },
                                 {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "const": "surround"
-                                    },
+                                    "variant": {
+                                      "const": "dsd"
+                                    }
+                                  },
+                                  "required": [
+                                    "variant"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
                                     "layout": {
                                       "enum": [
                                         "5.1",
                                         "7.1"
                                       ]
+                                    },
+                                    "variant": {
+                                      "const": "surround"
                                     }
                                   },
                                   "required": [
-                                    "kind",
+                                    "variant",
                                     "layout"
                                   ],
                                   "type": "object"
                                 }
-                              ]
+                              ],
+                              "x-discriminator": "variant"
                             },
                             "maxItems": 2,
                             "type": "array"
@@ -194225,16 +195477,16 @@ export const schemas = {
                                   "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                   "type": "string"
                                 },
-                                "kind": {
-                                  "const": "lossless"
-                                },
                                 "sampleRate": {
                                   "minimum": 1,
                                   "type": "integer"
+                                },
+                                "variant": {
+                                  "const": "lossless"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "codec",
                                 "bitDepth",
                                 "sampleRate"
@@ -194244,38 +195496,48 @@ export const schemas = {
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "enum": [
-                                    "atmos",
-                                    "dsd"
-                                  ]
+                                "variant": {
+                                  "const": "atmos"
                                 }
                               },
                               "required": [
-                                "kind"
+                                "variant"
                               ],
                               "type": "object"
                             },
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "const": "surround"
-                                },
+                                "variant": {
+                                  "const": "dsd"
+                                }
+                              },
+                              "required": [
+                                "variant"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
                                 "layout": {
                                   "enum": [
                                     "5.1",
                                     "7.1"
                                   ]
+                                },
+                                "variant": {
+                                  "const": "surround"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "layout"
                               ],
                               "type": "object"
                             }
-                          ]
+                          ],
+                          "x-discriminator": "variant"
                         },
                         "maxItems": 2,
                         "type": "array"
@@ -194757,16 +196019,16 @@ export const schemas = {
                                       "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                       "type": "string"
                                     },
-                                    "kind": {
-                                      "const": "lossless"
-                                    },
                                     "sampleRate": {
                                       "minimum": 1,
                                       "type": "integer"
+                                    },
+                                    "variant": {
+                                      "const": "lossless"
                                     }
                                   },
                                   "required": [
-                                    "kind",
+                                    "variant",
                                     "codec",
                                     "bitDepth",
                                     "sampleRate"
@@ -194776,38 +196038,48 @@ export const schemas = {
                                 {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "enum": [
-                                        "atmos",
-                                        "dsd"
-                                      ]
+                                    "variant": {
+                                      "const": "atmos"
                                     }
                                   },
                                   "required": [
-                                    "kind"
+                                    "variant"
                                   ],
                                   "type": "object"
                                 },
                                 {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "const": "surround"
-                                    },
+                                    "variant": {
+                                      "const": "dsd"
+                                    }
+                                  },
+                                  "required": [
+                                    "variant"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
                                     "layout": {
                                       "enum": [
                                         "5.1",
                                         "7.1"
                                       ]
+                                    },
+                                    "variant": {
+                                      "const": "surround"
                                     }
                                   },
                                   "required": [
-                                    "kind",
+                                    "variant",
                                     "layout"
                                   ],
                                   "type": "object"
                                 }
-                              ]
+                              ],
+                              "x-discriminator": "variant"
                             },
                             "maxItems": 2,
                             "type": "array"
@@ -195947,16 +197219,16 @@ export const schemas = {
                               "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                               "type": "string"
                             },
-                            "kind": {
-                              "const": "lossless"
-                            },
                             "sampleRate": {
                               "minimum": 1,
                               "type": "integer"
+                            },
+                            "variant": {
+                              "const": "lossless"
                             }
                           },
                           "required": [
-                            "kind",
+                            "variant",
                             "codec",
                             "bitDepth",
                             "sampleRate"
@@ -195966,38 +197238,48 @@ export const schemas = {
                         {
                           "additionalProperties": false,
                           "properties": {
-                            "kind": {
-                              "enum": [
-                                "atmos",
-                                "dsd"
-                              ]
+                            "variant": {
+                              "const": "atmos"
                             }
                           },
                           "required": [
-                            "kind"
+                            "variant"
                           ],
                           "type": "object"
                         },
                         {
                           "additionalProperties": false,
                           "properties": {
-                            "kind": {
-                              "const": "surround"
-                            },
+                            "variant": {
+                              "const": "dsd"
+                            }
+                          },
+                          "required": [
+                            "variant"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
                             "layout": {
                               "enum": [
                                 "5.1",
                                 "7.1"
                               ]
+                            },
+                            "variant": {
+                              "const": "surround"
                             }
                           },
                           "required": [
-                            "kind",
+                            "variant",
                             "layout"
                           ],
                           "type": "object"
                         }
-                      ]
+                      ],
+                      "x-discriminator": "variant"
                     },
                     "maxItems": 2,
                     "type": "array"
@@ -196479,16 +197761,16 @@ export const schemas = {
                                   "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                   "type": "string"
                                 },
-                                "kind": {
-                                  "const": "lossless"
-                                },
                                 "sampleRate": {
                                   "minimum": 1,
                                   "type": "integer"
+                                },
+                                "variant": {
+                                  "const": "lossless"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "codec",
                                 "bitDepth",
                                 "sampleRate"
@@ -196498,38 +197780,48 @@ export const schemas = {
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "enum": [
-                                    "atmos",
-                                    "dsd"
-                                  ]
+                                "variant": {
+                                  "const": "atmos"
                                 }
                               },
                               "required": [
-                                "kind"
+                                "variant"
                               ],
                               "type": "object"
                             },
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "const": "surround"
-                                },
+                                "variant": {
+                                  "const": "dsd"
+                                }
+                              },
+                              "required": [
+                                "variant"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
                                 "layout": {
                                   "enum": [
                                     "5.1",
                                     "7.1"
                                   ]
+                                },
+                                "variant": {
+                                  "const": "surround"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "layout"
                               ],
                               "type": "object"
                             }
-                          ]
+                          ],
+                          "x-discriminator": "variant"
                         },
                         "maxItems": 2,
                         "type": "array"
@@ -198131,16 +199423,16 @@ export const schemas = {
                                   "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                   "type": "string"
                                 },
-                                "kind": {
-                                  "const": "lossless"
-                                },
                                 "sampleRate": {
                                   "minimum": 1,
                                   "type": "integer"
+                                },
+                                "variant": {
+                                  "const": "lossless"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "codec",
                                 "bitDepth",
                                 "sampleRate"
@@ -198150,38 +199442,48 @@ export const schemas = {
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "enum": [
-                                    "atmos",
-                                    "dsd"
-                                  ]
+                                "variant": {
+                                  "const": "atmos"
                                 }
                               },
                               "required": [
-                                "kind"
+                                "variant"
                               ],
                               "type": "object"
                             },
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "const": "surround"
-                                },
+                                "variant": {
+                                  "const": "dsd"
+                                }
+                              },
+                              "required": [
+                                "variant"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
                                 "layout": {
                                   "enum": [
                                     "5.1",
                                     "7.1"
                                   ]
+                                },
+                                "variant": {
+                                  "const": "surround"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "layout"
                               ],
                               "type": "object"
                             }
-                          ]
+                          ],
+                          "x-discriminator": "variant"
                         },
                         "maxItems": 2,
                         "type": "array"
@@ -198663,16 +199965,16 @@ export const schemas = {
                                       "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                       "type": "string"
                                     },
-                                    "kind": {
-                                      "const": "lossless"
-                                    },
                                     "sampleRate": {
                                       "minimum": 1,
                                       "type": "integer"
+                                    },
+                                    "variant": {
+                                      "const": "lossless"
                                     }
                                   },
                                   "required": [
-                                    "kind",
+                                    "variant",
                                     "codec",
                                     "bitDepth",
                                     "sampleRate"
@@ -198682,38 +199984,48 @@ export const schemas = {
                                 {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "enum": [
-                                        "atmos",
-                                        "dsd"
-                                      ]
+                                    "variant": {
+                                      "const": "atmos"
                                     }
                                   },
                                   "required": [
-                                    "kind"
+                                    "variant"
                                   ],
                                   "type": "object"
                                 },
                                 {
                                   "additionalProperties": false,
                                   "properties": {
-                                    "kind": {
-                                      "const": "surround"
-                                    },
+                                    "variant": {
+                                      "const": "dsd"
+                                    }
+                                  },
+                                  "required": [
+                                    "variant"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
                                     "layout": {
                                       "enum": [
                                         "5.1",
                                         "7.1"
                                       ]
+                                    },
+                                    "variant": {
+                                      "const": "surround"
                                     }
                                   },
                                   "required": [
-                                    "kind",
+                                    "variant",
                                     "layout"
                                   ],
                                   "type": "object"
                                 }
-                              ]
+                              ],
+                              "x-discriminator": "variant"
                             },
                             "maxItems": 2,
                             "type": "array"
@@ -200410,16 +201722,16 @@ export const schemas = {
                             "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                             "type": "string"
                           },
-                          "kind": {
-                            "const": "lossless"
-                          },
                           "sampleRate": {
                             "minimum": 1,
                             "type": "integer"
+                          },
+                          "variant": {
+                            "const": "lossless"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "codec",
                           "bitDepth",
                           "sampleRate"
@@ -200429,38 +201741,48 @@ export const schemas = {
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "enum": [
-                              "atmos",
-                              "dsd"
-                            ]
+                          "variant": {
+                            "const": "atmos"
                           }
                         },
                         "required": [
-                          "kind"
+                          "variant"
                         ],
                         "type": "object"
                       },
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "const": "surround"
-                          },
+                          "variant": {
+                            "const": "dsd"
+                          }
+                        },
+                        "required": [
+                          "variant"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
                           "layout": {
                             "enum": [
                               "5.1",
                               "7.1"
                             ]
+                          },
+                          "variant": {
+                            "const": "surround"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "layout"
                         ],
                         "type": "object"
                       }
-                    ]
+                    ],
+                    "x-discriminator": "variant"
                   },
                   "maxItems": 2,
                   "type": "array"
@@ -200942,16 +202264,16 @@ export const schemas = {
                                 "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                 "type": "string"
                               },
-                              "kind": {
-                                "const": "lossless"
-                              },
                               "sampleRate": {
                                 "minimum": 1,
                                 "type": "integer"
+                              },
+                              "variant": {
+                                "const": "lossless"
                               }
                             },
                             "required": [
-                              "kind",
+                              "variant",
                               "codec",
                               "bitDepth",
                               "sampleRate"
@@ -200961,38 +202283,48 @@ export const schemas = {
                           {
                             "additionalProperties": false,
                             "properties": {
-                              "kind": {
-                                "enum": [
-                                  "atmos",
-                                  "dsd"
-                                ]
+                              "variant": {
+                                "const": "atmos"
                               }
                             },
                             "required": [
-                              "kind"
+                              "variant"
                             ],
                             "type": "object"
                           },
                           {
                             "additionalProperties": false,
                             "properties": {
-                              "kind": {
-                                "const": "surround"
-                              },
+                              "variant": {
+                                "const": "dsd"
+                              }
+                            },
+                            "required": [
+                              "variant"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
                               "layout": {
                                 "enum": [
                                   "5.1",
                                   "7.1"
                                 ]
+                              },
+                              "variant": {
+                                "const": "surround"
                               }
                             },
                             "required": [
-                              "kind",
+                              "variant",
                               "layout"
                             ],
                             "type": "object"
                           }
-                        ]
+                        ],
+                        "x-discriminator": "variant"
                       },
                       "maxItems": 2,
                       "type": "array"
@@ -202129,16 +203461,16 @@ export const schemas = {
                         "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                         "type": "string"
                       },
-                      "kind": {
-                        "const": "lossless"
-                      },
                       "sampleRate": {
                         "minimum": 1,
                         "type": "integer"
+                      },
+                      "variant": {
+                        "const": "lossless"
                       }
                     },
                     "required": [
-                      "kind",
+                      "variant",
                       "codec",
                       "bitDepth",
                       "sampleRate"
@@ -202148,38 +203480,48 @@ export const schemas = {
                   {
                     "additionalProperties": false,
                     "properties": {
-                      "kind": {
-                        "enum": [
-                          "atmos",
-                          "dsd"
-                        ]
+                      "variant": {
+                        "const": "atmos"
                       }
                     },
                     "required": [
-                      "kind"
+                      "variant"
                     ],
                     "type": "object"
                   },
                   {
                     "additionalProperties": false,
                     "properties": {
-                      "kind": {
-                        "const": "surround"
-                      },
+                      "variant": {
+                        "const": "dsd"
+                      }
+                    },
+                    "required": [
+                      "variant"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
                       "layout": {
                         "enum": [
                           "5.1",
                           "7.1"
                         ]
+                      },
+                      "variant": {
+                        "const": "surround"
                       }
                     },
                     "required": [
-                      "kind",
+                      "variant",
                       "layout"
                     ],
                     "type": "object"
                   }
-                ]
+                ],
+                "x-discriminator": "variant"
               },
               "maxItems": 2,
               "type": "array"
@@ -202661,16 +204003,16 @@ export const schemas = {
                             "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                             "type": "string"
                           },
-                          "kind": {
-                            "const": "lossless"
-                          },
                           "sampleRate": {
                             "minimum": 1,
                             "type": "integer"
+                          },
+                          "variant": {
+                            "const": "lossless"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "codec",
                           "bitDepth",
                           "sampleRate"
@@ -202680,38 +204022,48 @@ export const schemas = {
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "enum": [
-                              "atmos",
-                              "dsd"
-                            ]
+                          "variant": {
+                            "const": "atmos"
                           }
                         },
                         "required": [
-                          "kind"
+                          "variant"
                         ],
                         "type": "object"
                       },
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "const": "surround"
-                          },
+                          "variant": {
+                            "const": "dsd"
+                          }
+                        },
+                        "required": [
+                          "variant"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
                           "layout": {
                             "enum": [
                               "5.1",
                               "7.1"
                             ]
+                          },
+                          "variant": {
+                            "const": "surround"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "layout"
                         ],
                         "type": "object"
                       }
-                    ]
+                    ],
+                    "x-discriminator": "variant"
                   },
                   "maxItems": 2,
                   "type": "array"
@@ -204313,16 +205665,16 @@ export const schemas = {
                             "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                             "type": "string"
                           },
-                          "kind": {
-                            "const": "lossless"
-                          },
                           "sampleRate": {
                             "minimum": 1,
                             "type": "integer"
+                          },
+                          "variant": {
+                            "const": "lossless"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "codec",
                           "bitDepth",
                           "sampleRate"
@@ -204332,38 +205684,48 @@ export const schemas = {
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "enum": [
-                              "atmos",
-                              "dsd"
-                            ]
+                          "variant": {
+                            "const": "atmos"
                           }
                         },
                         "required": [
-                          "kind"
+                          "variant"
                         ],
                         "type": "object"
                       },
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "const": "surround"
-                          },
+                          "variant": {
+                            "const": "dsd"
+                          }
+                        },
+                        "required": [
+                          "variant"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
                           "layout": {
                             "enum": [
                               "5.1",
                               "7.1"
                             ]
+                          },
+                          "variant": {
+                            "const": "surround"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "layout"
                         ],
                         "type": "object"
                       }
-                    ]
+                    ],
+                    "x-discriminator": "variant"
                   },
                   "maxItems": 2,
                   "type": "array"
@@ -204845,16 +206207,16 @@ export const schemas = {
                                 "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                 "type": "string"
                               },
-                              "kind": {
-                                "const": "lossless"
-                              },
                               "sampleRate": {
                                 "minimum": 1,
                                 "type": "integer"
+                              },
+                              "variant": {
+                                "const": "lossless"
                               }
                             },
                             "required": [
-                              "kind",
+                              "variant",
                               "codec",
                               "bitDepth",
                               "sampleRate"
@@ -204864,38 +206226,48 @@ export const schemas = {
                           {
                             "additionalProperties": false,
                             "properties": {
-                              "kind": {
-                                "enum": [
-                                  "atmos",
-                                  "dsd"
-                                ]
+                              "variant": {
+                                "const": "atmos"
                               }
                             },
                             "required": [
-                              "kind"
+                              "variant"
                             ],
                             "type": "object"
                           },
                           {
                             "additionalProperties": false,
                             "properties": {
-                              "kind": {
-                                "const": "surround"
-                              },
+                              "variant": {
+                                "const": "dsd"
+                              }
+                            },
+                            "required": [
+                              "variant"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
                               "layout": {
                                 "enum": [
                                   "5.1",
                                   "7.1"
                                 ]
+                              },
+                              "variant": {
+                                "const": "surround"
                               }
                             },
                             "required": [
-                              "kind",
+                              "variant",
                               "layout"
                             ],
                             "type": "object"
                           }
-                        ]
+                        ],
+                        "x-discriminator": "variant"
                       },
                       "maxItems": 2,
                       "type": "array"
@@ -210371,16 +211743,16 @@ export const schemas = {
                             "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                             "type": "string"
                           },
-                          "kind": {
-                            "const": "lossless"
-                          },
                           "sampleRate": {
                             "minimum": 1,
                             "type": "integer"
+                          },
+                          "variant": {
+                            "const": "lossless"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "codec",
                           "bitDepth",
                           "sampleRate"
@@ -210390,38 +211762,48 @@ export const schemas = {
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "enum": [
-                              "atmos",
-                              "dsd"
-                            ]
+                          "variant": {
+                            "const": "atmos"
                           }
                         },
                         "required": [
-                          "kind"
+                          "variant"
                         ],
                         "type": "object"
                       },
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "const": "surround"
-                          },
+                          "variant": {
+                            "const": "dsd"
+                          }
+                        },
+                        "required": [
+                          "variant"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
                           "layout": {
                             "enum": [
                               "5.1",
                               "7.1"
                             ]
+                          },
+                          "variant": {
+                            "const": "surround"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "layout"
                         ],
                         "type": "object"
                       }
-                    ]
+                    ],
+                    "x-discriminator": "variant"
                   },
                   "maxItems": 2,
                   "type": "array"
@@ -210903,16 +212285,16 @@ export const schemas = {
                                 "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                 "type": "string"
                               },
-                              "kind": {
-                                "const": "lossless"
-                              },
                               "sampleRate": {
                                 "minimum": 1,
                                 "type": "integer"
+                              },
+                              "variant": {
+                                "const": "lossless"
                               }
                             },
                             "required": [
-                              "kind",
+                              "variant",
                               "codec",
                               "bitDepth",
                               "sampleRate"
@@ -210922,38 +212304,48 @@ export const schemas = {
                           {
                             "additionalProperties": false,
                             "properties": {
-                              "kind": {
-                                "enum": [
-                                  "atmos",
-                                  "dsd"
-                                ]
+                              "variant": {
+                                "const": "atmos"
                               }
                             },
                             "required": [
-                              "kind"
+                              "variant"
                             ],
                             "type": "object"
                           },
                           {
                             "additionalProperties": false,
                             "properties": {
-                              "kind": {
-                                "const": "surround"
-                              },
+                              "variant": {
+                                "const": "dsd"
+                              }
+                            },
+                            "required": [
+                              "variant"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
                               "layout": {
                                 "enum": [
                                   "5.1",
                                   "7.1"
                                 ]
+                              },
+                              "variant": {
+                                "const": "surround"
                               }
                             },
                             "required": [
-                              "kind",
+                              "variant",
                               "layout"
                             ],
                             "type": "object"
                           }
-                        ]
+                        ],
+                        "x-discriminator": "variant"
                       },
                       "maxItems": 2,
                       "type": "array"
@@ -221995,6 +223387,10 @@ export const schemas = {
           },
           "username": {
             "type": "string"
+          },
+          "variant": {
+            "const": "accepted",
+            "type": "string"
           }
         },
         "required": [
@@ -222002,7 +223398,8 @@ export const schemas = {
           "username",
           "profileId",
           "role",
-          "allowedLibraries"
+          "allowedLibraries",
+          "variant"
         ],
         "type": "object"
       },
@@ -222239,6 +223636,10 @@ export const schemas = {
           },
           "twoStepSetupRequired": {
             "type": "boolean"
+          },
+          "variant": {
+            "const": "signed-in",
+            "type": "string"
           }
         },
         "required": [
@@ -222248,7 +223649,8 @@ export const schemas = {
           "profiles",
           "canManage",
           "capabilities",
-          "session"
+          "session",
+          "variant"
         ],
         "type": "object"
       },
@@ -222355,6 +223757,10 @@ export const schemas = {
           },
           "twoStepSetupRequired": {
             "type": "boolean"
+          },
+          "variant": {
+            "const": "challenge",
+            "type": "string"
           }
         },
         "required": [
@@ -222364,11 +223770,13 @@ export const schemas = {
           "profiles",
           "canManage",
           "capabilities",
-          "challenge"
+          "challenge",
+          "variant"
         ],
         "type": "object"
       }
-    ]
+    ],
+    "x-discriminator": "variant"
   },
   "PostAdminAccessInvitationLinkRequest": {
     "properties": {
@@ -230776,6 +232184,10 @@ export const schemas = {
           },
           "twoStepSetupRequired": {
             "type": "boolean"
+          },
+          "variant": {
+            "const": "password-change",
+            "type": "string"
           }
         },
         "required": [
@@ -230786,7 +232198,8 @@ export const schemas = {
           "canManage",
           "capabilities",
           "session",
-          "passwordChangeRequired"
+          "passwordChangeRequired",
+          "variant"
         ],
         "type": "object"
       },
@@ -231032,6 +232445,10 @@ export const schemas = {
           },
           "twoStepSetupRequired": {
             "type": "boolean"
+          },
+          "variant": {
+            "const": "owner-session",
+            "type": "string"
           }
         },
         "required": [
@@ -231042,11 +232459,13 @@ export const schemas = {
           "canManage",
           "capabilities",
           "session",
-          "resetFileOwnerSession"
+          "resetFileOwnerSession",
+          "variant"
         ],
         "type": "object"
       }
-    ]
+    ],
+    "x-discriminator": "variant"
   },
   "PostAuthPorticoReturnExchangeRequest": {
     "oneOf": [
@@ -236313,16 +237732,16 @@ export const schemas = {
                               "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                               "type": "string"
                             },
-                            "kind": {
-                              "const": "lossless"
-                            },
                             "sampleRate": {
                               "minimum": 1,
                               "type": "integer"
+                            },
+                            "variant": {
+                              "const": "lossless"
                             }
                           },
                           "required": [
-                            "kind",
+                            "variant",
                             "codec",
                             "bitDepth",
                             "sampleRate"
@@ -236332,38 +237751,48 @@ export const schemas = {
                         {
                           "additionalProperties": false,
                           "properties": {
-                            "kind": {
-                              "enum": [
-                                "atmos",
-                                "dsd"
-                              ]
+                            "variant": {
+                              "const": "atmos"
                             }
                           },
                           "required": [
-                            "kind"
+                            "variant"
                           ],
                           "type": "object"
                         },
                         {
                           "additionalProperties": false,
                           "properties": {
-                            "kind": {
-                              "const": "surround"
-                            },
+                            "variant": {
+                              "const": "dsd"
+                            }
+                          },
+                          "required": [
+                            "variant"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
                             "layout": {
                               "enum": [
                                 "5.1",
                                 "7.1"
                               ]
+                            },
+                            "variant": {
+                              "const": "surround"
                             }
                           },
                           "required": [
-                            "kind",
+                            "variant",
                             "layout"
                           ],
                           "type": "object"
                         }
-                      ]
+                      ],
+                      "x-discriminator": "variant"
                     },
                     "maxItems": 2,
                     "type": "array"
@@ -236845,16 +238274,16 @@ export const schemas = {
                                   "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                   "type": "string"
                                 },
-                                "kind": {
-                                  "const": "lossless"
-                                },
                                 "sampleRate": {
                                   "minimum": 1,
                                   "type": "integer"
+                                },
+                                "variant": {
+                                  "const": "lossless"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "codec",
                                 "bitDepth",
                                 "sampleRate"
@@ -236864,38 +238293,48 @@ export const schemas = {
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "enum": [
-                                    "atmos",
-                                    "dsd"
-                                  ]
+                                "variant": {
+                                  "const": "atmos"
                                 }
                               },
                               "required": [
-                                "kind"
+                                "variant"
                               ],
                               "type": "object"
                             },
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "const": "surround"
-                                },
+                                "variant": {
+                                  "const": "dsd"
+                                }
+                              },
+                              "required": [
+                                "variant"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
                                 "layout": {
                                   "enum": [
                                     "5.1",
                                     "7.1"
                                   ]
+                                },
+                                "variant": {
+                                  "const": "surround"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "layout"
                               ],
                               "type": "object"
                             }
-                          ]
+                          ],
+                          "x-discriminator": "variant"
                         },
                         "maxItems": 2,
                         "type": "array"
@@ -238091,16 +239530,16 @@ export const schemas = {
                         "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                         "type": "string"
                       },
-                      "kind": {
-                        "const": "lossless"
-                      },
                       "sampleRate": {
                         "minimum": 1,
                         "type": "integer"
+                      },
+                      "variant": {
+                        "const": "lossless"
                       }
                     },
                     "required": [
-                      "kind",
+                      "variant",
                       "codec",
                       "bitDepth",
                       "sampleRate"
@@ -238110,38 +239549,48 @@ export const schemas = {
                   {
                     "additionalProperties": false,
                     "properties": {
-                      "kind": {
-                        "enum": [
-                          "atmos",
-                          "dsd"
-                        ]
+                      "variant": {
+                        "const": "atmos"
                       }
                     },
                     "required": [
-                      "kind"
+                      "variant"
                     ],
                     "type": "object"
                   },
                   {
                     "additionalProperties": false,
                     "properties": {
-                      "kind": {
-                        "const": "surround"
-                      },
+                      "variant": {
+                        "const": "dsd"
+                      }
+                    },
+                    "required": [
+                      "variant"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
                       "layout": {
                         "enum": [
                           "5.1",
                           "7.1"
                         ]
+                      },
+                      "variant": {
+                        "const": "surround"
                       }
                     },
                     "required": [
-                      "kind",
+                      "variant",
                       "layout"
                     ],
                     "type": "object"
                   }
-                ]
+                ],
+                "x-discriminator": "variant"
               },
               "maxItems": 2,
               "type": "array"
@@ -238623,16 +240072,16 @@ export const schemas = {
                             "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                             "type": "string"
                           },
-                          "kind": {
-                            "const": "lossless"
-                          },
                           "sampleRate": {
                             "minimum": 1,
                             "type": "integer"
+                          },
+                          "variant": {
+                            "const": "lossless"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "codec",
                           "bitDepth",
                           "sampleRate"
@@ -238642,38 +240091,48 @@ export const schemas = {
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "enum": [
-                              "atmos",
-                              "dsd"
-                            ]
+                          "variant": {
+                            "const": "atmos"
                           }
                         },
                         "required": [
-                          "kind"
+                          "variant"
                         ],
                         "type": "object"
                       },
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "kind": {
-                            "const": "surround"
-                          },
+                          "variant": {
+                            "const": "dsd"
+                          }
+                        },
+                        "required": [
+                          "variant"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
                           "layout": {
                             "enum": [
                               "5.1",
                               "7.1"
                             ]
+                          },
+                          "variant": {
+                            "const": "surround"
                           }
                         },
                         "required": [
-                          "kind",
+                          "variant",
                           "layout"
                         ],
                         "type": "object"
                       }
-                    ]
+                    ],
+                    "x-discriminator": "variant"
                   },
                   "maxItems": 2,
                   "type": "array"
@@ -249940,6 +251399,10 @@ export const schemas = {
           "tokenGeneration": {
             "type": "string"
           },
+          "variant": {
+            "const": "session",
+            "type": "string"
+          },
           "viewer": {
             "properties": {
               "accountId": {
@@ -249976,7 +251439,8 @@ export const schemas = {
           "viewer",
           "sessionFamilyId",
           "tokenGeneration",
-          "authorizationHorizon"
+          "authorizationHorizon",
+          "variant"
         ],
         "type": "object"
       },
@@ -250000,6 +251464,10 @@ export const schemas = {
           },
           "serverId": {
             "type": "string"
+          },
+          "variant": {
+            "const": "claim-required",
+            "type": "string"
           }
         },
         "required": [
@@ -250007,11 +251475,13 @@ export const schemas = {
           "requestId",
           "authMode",
           "claimRequired",
-          "revision"
+          "revision",
+          "variant"
         ],
         "type": "object"
       }
-    ]
+    ],
+    "x-discriminator": "variant"
   },
   "PostShowsIdMetadataScreenRetryRequest": {
     "properties": {
@@ -273095,16 +274565,16 @@ export const schemas = {
                               "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                               "type": "string"
                             },
-                            "kind": {
-                              "const": "lossless"
-                            },
                             "sampleRate": {
                               "minimum": 1,
                               "type": "integer"
+                            },
+                            "variant": {
+                              "const": "lossless"
                             }
                           },
                           "required": [
-                            "kind",
+                            "variant",
                             "codec",
                             "bitDepth",
                             "sampleRate"
@@ -273114,38 +274584,48 @@ export const schemas = {
                         {
                           "additionalProperties": false,
                           "properties": {
-                            "kind": {
-                              "enum": [
-                                "atmos",
-                                "dsd"
-                              ]
+                            "variant": {
+                              "const": "atmos"
                             }
                           },
                           "required": [
-                            "kind"
+                            "variant"
                           ],
                           "type": "object"
                         },
                         {
                           "additionalProperties": false,
                           "properties": {
-                            "kind": {
-                              "const": "surround"
-                            },
+                            "variant": {
+                              "const": "dsd"
+                            }
+                          },
+                          "required": [
+                            "variant"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
                             "layout": {
                               "enum": [
                                 "5.1",
                                 "7.1"
                               ]
+                            },
+                            "variant": {
+                              "const": "surround"
                             }
                           },
                           "required": [
-                            "kind",
+                            "variant",
                             "layout"
                           ],
                           "type": "object"
                         }
-                      ]
+                      ],
+                      "x-discriminator": "variant"
                     },
                     "maxItems": 2,
                     "type": "array"
@@ -273627,16 +275107,16 @@ export const schemas = {
                                   "pattern": "^[A-Za-z0-9_.+-]{1,64}$",
                                   "type": "string"
                                 },
-                                "kind": {
-                                  "const": "lossless"
-                                },
                                 "sampleRate": {
                                   "minimum": 1,
                                   "type": "integer"
+                                },
+                                "variant": {
+                                  "const": "lossless"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "codec",
                                 "bitDepth",
                                 "sampleRate"
@@ -273646,38 +275126,48 @@ export const schemas = {
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "enum": [
-                                    "atmos",
-                                    "dsd"
-                                  ]
+                                "variant": {
+                                  "const": "atmos"
                                 }
                               },
                               "required": [
-                                "kind"
+                                "variant"
                               ],
                               "type": "object"
                             },
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "kind": {
-                                  "const": "surround"
-                                },
+                                "variant": {
+                                  "const": "dsd"
+                                }
+                              },
+                              "required": [
+                                "variant"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
                                 "layout": {
                                   "enum": [
                                     "5.1",
                                     "7.1"
                                   ]
+                                },
+                                "variant": {
+                                  "const": "surround"
                                 }
                               },
                               "required": [
-                                "kind",
+                                "variant",
                                 "layout"
                               ],
                               "type": "object"
                             }
-                          ]
+                          ],
+                          "x-discriminator": "variant"
                         },
                         "maxItems": 2,
                         "type": "array"
@@ -275828,6 +277318,10 @@ export const schemas = {
           "tokenGeneration": {
             "type": "string"
           },
+          "variant": {
+            "const": "session",
+            "type": "string"
+          },
           "viewer": {
             "properties": {
               "accountId": {
@@ -275864,7 +277358,8 @@ export const schemas = {
           "viewer",
           "sessionFamilyId",
           "tokenGeneration",
-          "authorizationHorizon"
+          "authorizationHorizon",
+          "variant"
         ],
         "type": "object"
       },
@@ -275888,6 +277383,10 @@ export const schemas = {
           },
           "serverId": {
             "type": "string"
+          },
+          "variant": {
+            "const": "claim-required",
+            "type": "string"
           }
         },
         "required": [
@@ -275895,11 +277394,13 @@ export const schemas = {
           "requestId",
           "authMode",
           "claimRequired",
-          "revision"
+          "revision",
+          "variant"
         ],
         "type": "object"
       }
-    ]
+    ],
+    "x-discriminator": "variant"
   },
   "SocialDeleteV1CastBootstrapIdRequest": {
     "properties": {},

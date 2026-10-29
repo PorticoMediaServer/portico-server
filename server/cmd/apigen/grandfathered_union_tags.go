@@ -25,12 +25,5 @@ var grandfatheredUnionTags = map[string]string{
 	"post_reading_offline_progress $.progress|anyOf0.location":                            "format",
 	"get_selection_action_preparation $":                                                  "kind",
 	"get_music_mixes $.data.mixes[items].nameSource":                                      "kind",
-	"get_items_id_file_info $":                                                            "kind",
-	"get_item_file_info_tracks $":                                                         "kind",
-	"get_item_file_info_sources $":                                                        "kind",
-	"get_item_file_info_members $":                                                        "kind",
-	"get_item_file_info_head_tracks $":                                                    "kind",
-	"get_item_file_info_groups $":                                                         "kind",
-	"get_item_file_info_disc_titles $":                                                    "kind",
-	"get_facet_query $":                                                                   "kind",
+	"get_facet_query $": "kind",
 }
