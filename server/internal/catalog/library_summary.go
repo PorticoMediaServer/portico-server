@@ -6,6 +6,8 @@ import (
 	"errors"
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/readingcap"
+	"strconv"
 	"strings"
 )
 
@@ -178,7 +180,7 @@ func (s *Service) computeLibrarySummaryCandidates(ctx context.Context, viewer Vi
 		// artwork must additionally belong to the same ready Reading membership
 		// and canonical publication/link/format choice as Browse. Availability
 		// does not exclude an otherwise eligible Reading title.
-		clause = "(" + clause + ") AND " + reading.eligibleSQL("e.id")
+		clause = "(" + clause + ") AND " + readingSummaryEligibleSQL(reading, "e.id")
 		if !partial {
 			clause += " AND EXISTS(SELECT 1 FROM reading_attribution_members m WHERE " + reading.memberScope() + " AND m.item_id=e.id)"
 		}
@@ -275,6 +277,25 @@ func (s *Service) computeLibrarySummaryCandidates(ctx context.Context, viewer Vi
 	}
 	out.Targets = targets
 	return out, nil
+}
+
+// A summary counts titles, not a selected version's availability. Every
+// reading_publications row has a cascading (item_id,asset_id) foreign key to
+// catalog_asset_links. Therefore a nonempty supported/local publication set
+// has a linked primary regardless of how availability ranks that set. Testing
+// existence preserves exactly the same eligibility without running the live
+// inventory availability sort once per title. Browse/version selection retains
+// its canonical ranking; restrictions and artwork remain checked separately.
+func readingSummaryEligibleSQL(r *readingBrowseScope, entity string) string {
+	kind := "20"
+	if r.kind == "comic" {
+		kind = "21"
+	}
+	return `EXISTS(SELECT 1 FROM catalog_entities reading_title
+ JOIN reading_publications reading_publication ON reading_publication.item_id=reading_title.id
+ JOIN catalog_asset_links reading_link ON reading_link.entity_id=reading_title.id AND reading_link.asset_id=reading_publication.asset_id
+ WHERE reading_title.id=` + entity + ` AND reading_title.library_id=` + strconv.FormatInt(r.library, 10) + `
+ AND reading_title.kind=` + kind + ` AND reading_title.retired=0 AND reading_publication.format IN(` + r.sourceFormatsSQL() + `) AND ` + readingcap.LocalComicArchiveSQL("reading_publication") + `)`
 }
 
 func libraryAudience(ctx context.Context, tx *sql.Tx, library string) (LibraryAudience, error) {
