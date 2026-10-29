@@ -201,7 +201,7 @@ func retainStateTx(ctx context.Context, tx *sql.Tx, entity int64) error {
 // their provider identities hang off the show's.
 func restoreRetainedTx(ctx context.Context, tx *sql.Tx, entity int64) error {
 	var any bool
-	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM retained_title_state)`).Scan(&any); err != nil || !any {
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM retained_title_state WHERE ready=1)`).Scan(&any); err != nil || !any {
 		return err
 	}
 	identities, kind, _, err := retentionIdentitiesTx(ctx, tx, entity)
@@ -244,7 +244,7 @@ func restoreIdentityTx(ctx context.Context, tx *sql.Tx, entity int64, identity s
 		plays, position, unit                         int64
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT s.id,s.profile_id,s.watched,s.watchlisted,s.favorite,s.not_interested,s.rating,s.last_played_at,s.plays,s.position,s.unit,s.completed,s.progress_at
- FROM retained_title_identities i JOIN retained_title_state s ON s.id=i.state_id WHERE i.identity=?`, identity)
+ FROM retained_title_identities i JOIN retained_title_state s ON s.id=i.state_id WHERE i.identity=? AND s.ready=1`, identity)
 	if err != nil {
 		return err
 	}
@@ -337,7 +337,7 @@ func PruneRetainedStateTx(ctx context.Context, tx *sql.Tx) error {
 		return err
 	}
 	for _, o := range all {
-		if _, err = tx.ExecContext(ctx, `DELETE FROM retained_title_state WHERE id IN(SELECT id FROM retained_title_state INDEXED BY retained_title_state_profile WHERE profile_id=? ORDER BY retained_ms,id LIMIT ?)`, o.profile, o.count-RetainedPerProfile); err != nil {
+		if _, err = tx.ExecContext(ctx, `DELETE FROM retained_title_state WHERE id IN(SELECT id FROM retained_title_state INDEXED BY retained_title_state_profile WHERE profile_id=? AND ready=1 ORDER BY retained_ms,id LIMIT ?)`, o.profile, o.count-RetainedPerProfile); err != nil {
 			return err
 		}
 	}
@@ -353,6 +353,6 @@ func pruneRetainedProfileTx(ctx context.Context, tx *sql.Tx, profile string) err
 	if err != nil || count <= RetainedPerProfile {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `DELETE FROM retained_title_state WHERE id IN(SELECT id FROM retained_title_state INDEXED BY retained_title_state_profile WHERE profile_id=? ORDER BY retained_ms,id LIMIT ?)`, profile, count-RetainedPerProfile)
+	_, err = tx.ExecContext(ctx, `DELETE FROM retained_title_state WHERE id IN(SELECT id FROM retained_title_state INDEXED BY retained_title_state_profile WHERE profile_id=? AND ready=1 ORDER BY retained_ms,id LIMIT ?)`, profile, count-RetainedPerProfile)
 	return err
 }

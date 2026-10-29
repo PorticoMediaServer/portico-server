@@ -34,14 +34,14 @@ import (
 )
 
 type captureFixture struct {
-	c                      *catalogtest.Catalog
-	m                      compactcatalog.EntityMutation
-	item                   int64
-	token                  string
-	owner                  string
-	account, profile       string
-	lifetime, membership   string
-	root                   string
+	c                    *catalogtest.Catalog
+	m                    compactcatalog.EntityMutation
+	item                 int64
+	token                string
+	owner                string
+	account, profile     string
+	lifetime, membership string
+	root                 string
 }
 
 // newCaptureFixture builds a real reading title and a real admitted removal
@@ -143,8 +143,8 @@ func captureSeedJob(t *testing.T, c *catalogtest.Catalog, mutation string, gener
 
 type captureChild struct {
 	token, revision string
-	observed       int64
-	progression    float64
+	observed        int64
+	progression     float64
 }
 
 func captureOldState(t *testing.T, c *catalogtest.Catalog, owner string, identities []string, children []captureChild) int64 {
@@ -693,19 +693,18 @@ func TestRetainedCaptureMissingHeaderIsNotCompletion(t *testing.T) {
 // TestRetainedCaptureRefusesMalformedPremises covers the caller-owned premises
 // and the zero-identity and opaque-owner shapes.
 func TestRetainedCaptureRefusesMalformedPremises(t *testing.T) {
-	t.Run("more than twelve identity facts", func(t *testing.T) {
+	t.Run("schema refuses more than twelve identity facts", func(t *testing.T) {
 		f := newCaptureFixture(t)
-		identities := make([]string, 0, 13)
-		for i := 0; i < 13; i++ {
-			identities = append(identities, "local:/reading|book:"+strconv.Itoa(i))
+		identities := make([]string, 12)
+		for i := range identities {
+			identities[i] = "local:/reading|book:" + strconv.Itoa(i)
 		}
 		captureSeedJob(t, f.c, f.m.Ref.ID, f.m.Ref.Generation, f.owner, identities, true, f.account, f.profile, f.lifetime, f.membership)
-		_, _, err := captureStepOnce(t, f.c, f.m)
-		if !errors.Is(err, errRetainedCaptureState) {
-			t.Fatalf("13 identities: %v", err)
+		if _, err := f.c.DB.Exec(`INSERT INTO catalog_purge_identities(mutation_id,ordinal,identity) VALUES(?,13,'overflow')`, f.m.Ref.ID); err == nil {
+			t.Fatal("thirteenth identity bypassed the installed ordinal constraint")
 		}
-		if n := captureCount(t, f.c, `SELECT count(*) FROM retained_title_state WHERE capture_mutation_id=?`, f.m.Ref.ID); n != 0 {
-			t.Fatal("private header allocated before the identity premise was refused")
+		if n := captureCount(t, f.c, `SELECT count(*) FROM catalog_purge_identities WHERE mutation_id=?`, f.m.Ref.ID); n != 12 {
+			t.Fatalf("identity facts=%d", n)
 		}
 	})
 
@@ -756,4 +755,54 @@ func TestRetainedCaptureRefusesMalformedPremises(t *testing.T) {
 			t.Fatal("opaque owner lost the reading position")
 		}
 	})
+}
+
+func TestRetainedCaptureResetsWitnessesBeforeSwitchingOwner(t *testing.T) {
+	f := newCaptureFixture(t)
+	captureCurrentPosition(t, f.c, f.owner, f.item, captureAssetID(t, f.c, f.token), "current", .4, 40)
+	identities := make([]string, 12)
+	for i := range identities {
+		identities[i] = "local:/reading|book:witness-" + strconv.Itoa(i)
+	}
+	captureSeedJob(t, f.c, f.m.Ref.ID, f.m.Ref.Generation, f.owner, identities, true, f.account, f.profile, f.lifetime, f.membership)
+	if published, _ := captureDrive(t, f.c, f.m, 64); !published {
+		t.Fatal("first owner did not publish")
+	}
+	if n := captureCount(t, f.c, `SELECT count(*) FROM catalog_purge_identities WHERE mutation_id=? AND mapping_captured=1`, f.m.Ref.ID); n != 12 {
+		t.Fatalf("captured witnesses=%d", n)
+	}
+	// The caller selects the next owner atomically. These are caller-owned
+	// frontier fields, not fabricated capture progress; child witnesses remain
+	// exactly as the previous production capture wrote them.
+	f.c.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id) VALUES('capture-next','capture-next',X'00','capture-next-profile')`)
+	next := persistence.PersonalOwnerKey("local", "capture-next", "capture-next-profile")
+	captureCurrentPosition(t, f.c, next, f.item, captureAssetID(t, f.c, f.token), "next", .7, 70)
+	f.c.Exec(`UPDATE catalog_purge_jobs SET owner_after=?,owner_value=?,owner_started=1,capture_arm=0,
+ local_account='capture-next',local_profile='capture-next-profile',
+ local_membership_incarnation=(SELECT incarnation FROM direct_memberships WHERE account_id='capture-next'),
+ local_profile_lifetime=(SELECT lifetime FROM direct_profiles WHERE id='capture-next-profile') WHERE mutation_id=?`, next, next, f.m.Ref.ID)
+	if _, _, err := captureStepOnce(t, f.c, f.m); err != nil {
+		t.Fatal(err)
+	}
+	arm, _, _, _, _, _, _, _ := captureJob(t, f.c, f.m.Ref.ID)
+	if arm != retainedCaptureArmReset {
+		t.Fatalf("dirty witnesses did not arm reset: %d", arm)
+	}
+	for i := 1; i <= 12; i++ {
+		if _, _, err := captureStepOnce(t, f.c, f.m); err != nil {
+			t.Fatal(err)
+		}
+		if n := captureCount(t, f.c, `SELECT count(*) FROM catalog_purge_identities WHERE mutation_id=? AND mapping_captured=1`, f.m.Ref.ID); n != 12-i {
+			t.Fatalf("turn%d witnesses=%d", i, n)
+		}
+		if n := captureCount(t, f.c, `SELECT count(*) FROM retained_title_state WHERE capture_mutation_id=?`, f.m.Ref.ID); n != 0 {
+			t.Fatal("next owner allocated before witness reset finished")
+		}
+	}
+	if published, _ := captureDrive(t, f.c, f.m, 64); !published {
+		t.Fatal("next owner did not publish after bounded reset")
+	}
+	if n := captureCount(t, f.c, `SELECT count(*) FROM retained_title_identities WHERE profile_id=?`, f.owner); n != 12 {
+		t.Fatal("next owner changed prior owner's mappings")
+	}
 }
