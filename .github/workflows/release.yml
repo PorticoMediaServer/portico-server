@@ -270,7 +270,7 @@ jobs:
             PORTICO_BUILT_AT=${{ needs.identity.outputs.built_at }}
           provenance: mode=max
           sbom: true
-      - uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
+      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
         with: {subject-name: 'ghcr.io/porticomediaserver/portico-server', subject-digest: '${{ steps.build.outputs.digest }}', push-to-registry: true}
 
   publish:
@@ -323,7 +323,7 @@ jobs:
       - name: Forget final release signing material
         if: always()
         run: rm -rf runtime/release-signing
-      - uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
+      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
         with: {subject-path: 'dist/artifacts/*'}
       - name: The release tag still names the tested revision
         env: {TAG: '${{ needs.identity.outputs.tag }}', SOURCE_SHA: '${{ needs.identity.outputs.sha }}'}
