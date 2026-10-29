@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"testing"
 
 	"portico.local/server/internal/catalogtest"
@@ -227,17 +226,33 @@ func TestReadingDiscoverSeriesHTTPOptInAndActualAuthority(t *testing.T) {
 	readingSeriesInputPending(t, r)
 	w = readingHTTP(t, h, "GET", path, r.f.owner.AccessToken, "", nil)
 	var published ReadingDiscoverResponse
-	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &published) != nil || len(published.Rows) != 2 || published.Rows[1].Key != "series" || len(published.Rows[1].Series) != 1 {
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &published) != nil || len(published.Rows) != 2 || published.Rows[0].Key != "recent" || len(published.Rows[0].Items) != 1 || published.Rows[1].Key != "series" || len(published.Rows[1].Series) != 1 {
 		t.Fatalf("pending input series %d %s", w.Code, w.Body.String())
 	}
-	if summary := published.Rows[1].Series[0]; summary.Name != "Actual series" || summary.Count != 1 || len(summary.Preview) != 1 || summary.Preview[0].ID != r.item {
-		t.Fatalf("pending input must keep the published summary %+v", summary)
+	ready := out.Rows[1].Series[0]
+	// Published membership, identity and count come from the ready image only;
+	// every served summary must be that exact series, so a pending summary or
+	// group cannot escape under another row.
+	for _, row := range published.Rows {
+		for _, summary := range row.Series {
+			if summary.ID != ready.ID || summary.LibraryID != r.library || summary.Name != "Actual series" || summary.Count != 1 || summary.ReadCount != ready.ReadCount || len(summary.Preview) != 1 || summary.Preview[0].ID != r.item {
+				t.Fatalf("pending input must keep the published summary %+v", summary)
+			}
+		}
+	}
+	if summary := published.Rows[1].Series[0]; summary.ID != compactcatalog.ReadingSeriesID(r.library, "Actual series") {
+		t.Fatalf("published series identity %+v", summary)
 	}
 	if !published.Importing || published.Revision == nil || *published.Revision != *out.Revision {
 		t.Fatalf("pending input facts %+v want revision %+v", published, out.Revision)
 	}
-	if strings.Contains(w.Body.String(), "Changed") {
-		t.Fatalf("pending input leaked into the published body %s", w.Body.String())
+	// Item-level descriptive metadata is live presentation, not published
+	// membership: both the recent row and the preview item carry the pending
+	// owner value while the summary membership and count stay frozen.
+	for _, item := range []ReadingItem{published.Rows[0].Items[0], published.Rows[1].Series[0].Preview[0]} {
+		if item.ID != r.item || item.Series == nil || item.Series.Name != "Changed" || item.Series.Source != compactcatalog.ReadingOwner {
+			t.Fatalf("live item detail %+v", item)
+		}
 	}
 	readingSeriesDrain(t, r)
 	if err := r.f.id.LogoutToken(context.Background(), r.f.owner.AccessToken); err != nil {
