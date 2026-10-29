@@ -99,6 +99,23 @@ test('Home-fence retirement runs first; the new admitted context can later prove
   next.start();fresh.confirm([]);assert.deepEqual(order, ['runtime-retire', 'new-navigate']);guard.dispose();next.dispose();old.proof.dispose();fresh.proof.dispose();
 });
 
+// H-11: a library added or removed changes only the viewer fence; the shell (and this proof) stays.
+test('a viewer-fence change re-proves under the new fence: kept libraries stay open, a removed one redirects once', async () => {
+  const f = fixture(), order: string[] = [];
+  const guard = (libraryId: string) => createLibraryRouteGuard({source: f.proof.source, opening: {}, isCurrent: f.current, canReplace: f.current,
+    libraryId, replace: () => {order.push(libraryId);}, reportError: error => {throw error;}});
+  const kept = guard('target'), removed = guard('music');kept.start();removed.start();
+  assert.ok(f.directory(rows(['target', 'music'])));assert.equal(f.accepted('before'), true);
+  const requests = f.requests();
+  f.proof.observeHome({serverId: 'server', viewerFence: 'after'});
+  assert.equal(f.proof.source.getSnapshot(), undefined);await turn();
+  assert.equal(f.requests(), requests + 1, 'the new fence asks for the directory again');
+  assert.ok(f.directory(rows(['target'])));assert.equal(f.accepted('after'), true);
+  assert.deepEqual(f.proof.source.getSnapshot()?.libraryIds, ['target']);assert.deepEqual(order, ['music']);
+  assert.equal(f.accepted('after'), true, 'the adopted fence never invalidates again');assert.deepEqual(order, ['music']);
+  kept.dispose();removed.dispose();f.proof.dispose();
+});
+
 test('scope change or retirement reentry preempts replacement and cannot revive old callbacks', () => {
   for (const scenario of ['family', 'retirement-reentry'] as const) {
     const f = fixture(), navigations: unknown[] = [], guard = createLibraryRouteGuard({source: f.proof.source, opening: {}, isCurrent: f.current, canReplace: f.current,

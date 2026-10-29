@@ -10,6 +10,7 @@ import {appearancePreferences, regionPreferences} from '@core/preference-effects
 import type {PreferenceSnapshot} from '@core/preferences.ts';
 import {parseDirectSnapshot, type DirectSnapshot} from '@core/profile-management.ts';
 import {HomeService} from '@core/home-service.ts';
+import {homeShellFence} from '@core/home.ts';
 import {createShellFactOwner, attachShellFactFeed, bindShellFactWake, shellAccount, type ShellFactWitnesses} from './facts';
 import type {ShellFactsSource} from './fact-source';
 import {InboxService} from '@core/inbox.ts';
@@ -88,16 +89,19 @@ export function shellArtworkAuthorityKey(session: LocalSession, epoch: number): 
   return JSON.stringify([session.viewer.serverId, session.sessionFamilyId, viewerId(session), session.viewer.role, epoch]);
 }
 /** Subscribe before the initial load. The first actual document establishes the
- * baseline without remounting Settings; a later missing/replaced fence retires it. */
+ * baseline without remounting Settings; a later missing/replaced privacy fence retires it.
+ * A library added or removed changes only the viewer fence: the shell stays, and
+ * `viewerFence` follows the current document (H-11). */
 export function watchHomeViewerFence(home: Pick<HomeService, 'getSnapshot' | 'subscribe'>, isCurrent: () => boolean, replaced: () => void) {
-  let fence: string | undefined, closed = false, off = () => {};
+  let shell: string | undefined, fence: string | undefined, closed = false, off = () => {};
   const dispose = () => {if (closed) return; closed = true; off();};
   const read = () => {
     if (closed) return;
     if (!isCurrent()) {dispose(); return;}
-    const next = home.getSnapshot().document?.viewerFence;
-    if (fence === undefined) {if (next) fence = next; return;}
-    if (next !== fence) {dispose(); replaced();}
+    const document = home.getSnapshot().document, next = document && homeShellFence(document);
+    if (shell === undefined) {if (next) {shell = next; fence = document!.viewerFence;} return;}
+    if (next !== shell) {dispose(); replaced(); return;}
+    fence = document!.viewerFence;
   };
   off = home.subscribe(read); read();
   return {get viewerFence() {return !closed && isCurrent() ? fence : undefined;}, dispose};
@@ -393,8 +397,10 @@ export class ShellBootstrap {
       mismatch: () => factOwner?.authority(),
       observe: observation => {
         if (!isCurrent()) return 'retire';
-        if (manifestFence === undefined) manifestFence = observation.viewerFence;
-        else if (manifestFence !== observation.viewerFence) {this.restart(); return 'retire';}
+        // The shell restarts on a privacy change only (H-11); a library added or removed refreshes Home.
+        const shellFence = observation.privacyFence ?? observation.viewerFence;
+        if (manifestFence === undefined) manifestFence = shellFence;
+        else if (manifestFence !== shellFence) {this.restart(); return 'retire';}
         // Home retirement is classified first; only accepted same-epoch manifests
         // reach the route proof observer, never custom-layout row membership.
         libraryRouteProof.observeHome(observation);

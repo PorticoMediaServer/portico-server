@@ -335,7 +335,7 @@ function CommittedLibrary({captured, library, search, readingMarkAll, frame, res
       const value = await resources.life.api.request<T>(path, method, body, input ? AbortSignal.any([signal, input]) : signal);
       if (!current()) throw new DOMException('Browse selection retired', 'AbortError');return value;
     }};
-    const viewer = captured.context.session().viewer, viewerFence = captured.context.viewerFence;
+    const viewer = captured.context.session().viewer;
     if (viewer.authority !== 'local' && viewer.authority !== 'hosted') throw new DOMException('Screen authority unavailable', 'AbortError');
     const playSelection = createLibraryPlaySelection({source: resources.controller, api, scope: context.scope,
       principal: {serverId: viewer.serverId, authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId},
@@ -362,7 +362,7 @@ function CommittedLibrary({captured, library, search, readingMarkAll, frame, res
       ...(context.identity?.viewer.role === 'owner' && context.identity.viewer.authority === 'local' ? {deletion: {api, serverId: context.scope.serverId, viewerId: context.scope.viewerId,
         requestId: async () => randomId(), signal, isCurrent: current}, editor: {
         api, events: context.events, requestId: async () => randomId(), serverId: context.scope.serverId, viewerId: context.scope.viewerId,
-        artwork: context.artwork, viewerFence: () => viewerFence, signal, isCurrent: current,
+        artwork: context.artwork, viewerFence: () => captured.context.viewerFence, signal, isCurrent: current,
       }} : {}),
       actions: {api, events: context.events, requestId: async () => randomId(),
         signal, isCurrent: current, reportError: context.effects.reportError},
