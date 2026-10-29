@@ -29,7 +29,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with: {ref: '${{ inputs.ref || github.sha }}', fetch-depth: 0}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with: {node-version-file: .node-version}
+        with: {node-version-file: .node-version, cache: npm}
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
         with: {go-version-file: server/go.mod, cache-dependency-path: server/go.sum}
       - name: Actual job toolchain
@@ -43,6 +43,13 @@ jobs:
         run: |
           python3 scripts/schema-sync.py > "$RUNNER_TEMP/schema-sync.log" 2>&1 || { tail -n 40 "$RUNNER_TEMP/schema-sync.log"; exit 1; }
           git diff --exit-code -- server/internal/persistence
+      - name: No external fonts or CDNs in web, Hosted web or the Cast receiver
+        # Privacy: shipped bundles, HTML and CSS load nothing from font services or
+        # public CDNs (only Google's Cast SDK), and the CSPs keep font-src local.
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          (cd web && npx --no-install vite build --outDir "$RUNNER_TEMP/web-dist" --emptyOutDir) > "$RUNNER_TEMP/web-build.log" 2>&1 || { tail -n 40 "$RUNNER_TEMP/web-build.log"; exit 1; }
+          node scripts/check-no-external-fonts.mjs --dist "$RUNNER_TEMP/web-dist"
       - name: Require the Python regression inventory
         if: ${{ always() }}
         env:
