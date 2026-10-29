@@ -3,6 +3,10 @@
 .poster > .primary, .square > .primary, .cover > .primary { height:100%; }
 .primary:focus-visible, .play:focus-visible, .more:focus-visible, .selection:focus-visible, .notInterested:focus-visible, .remind:focus-visible { outline:3px solid var(--color-focus); outline-offset:3px; }
 .primary:active, .primary:active + .artAligned { transform:scale(.97); }
+/* motion.html 3.2: keyboard focus lifts the art to 104.5%, which paints over the button's own
+   outline at the top and sides. Cards whose art lifts draw the same ring on a layer above it. */
+.card:not(.circle) > .primary:has(> .artShadow):focus-visible { outline:none; }
+.card:not(.circle) > .primary:has(> .artShadow):focus-visible::before { content:''; position:absolute; z-index:5; inset:-7px; border:3px solid var(--color-focus); border-radius:17px; pointer-events:none; }
 .primary, .artAligned { transition:transform 160ms var(--ease-out); }
 .art { display:block; position:relative; width:100%; aspect-ratio:2/3; border-radius:10px; overflow:hidden; background:var(--color-raised); transform:scale(var(--cards-art-scale)); transition:transform 260ms var(--ease-out); }
 .art::before { content:''; position:absolute; z-index:1; inset:0 0 auto; height:42%; background:linear-gradient(180deg,rgba(7,16,24,.62),transparent); opacity:0; transition:opacity 200ms var(--ease-out); pointer-events:none; }

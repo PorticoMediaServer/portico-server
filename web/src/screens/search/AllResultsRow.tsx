@@ -94,6 +94,6 @@ export function AllResultsRow({result, binding, selection, excluded, size, onSee
       cardWidth={cardWidth} artworkRatio={result.id === 'movies' || result.id === 'shows' ? 2 / 3 : result.id === 'episodes' || result.id === 'live-tv' ? 16 / 9 : result.id === 'songs' ? cardWidth / 58 : result.id === 'reading' ? part[0] && periodical(part[0].entry) ? 3 / 4 : 2 / 3 : 1}
       hasMore={more && index === parts.length - 1} continuation={result.nextCursor ?? ''} loading={page.loading || !!page.error || !nearEnd} onMore={next}
       onVisibleRange={(first, last) => setRanges(current => current[index]?.count === part.length && current[index].first === first && current[index].last === last ? current : {...current, [index]: {count: part.length, first, last}})} /></div>)}
-    {page.error && <ScreenProblem context={binding.context} error={page.error} retry={() => {void binding.results.retry(result).catch(binding.context.effects.reportError);}} />}
+    {page.error && <ScreenProblem embedded context={binding.context} error={page.error} retry={() => {void binding.results.retry(result).catch(binding.context.effects.reportError);}} />}
   </section>;
 }

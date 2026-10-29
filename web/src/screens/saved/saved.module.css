@@ -223,7 +223,7 @@
 .browserNote > svg { flex: none; color: var(--color-text-tertiary); }
 .request { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 20px; align-items: center; min-height: 92px; padding: 12px 14px; }
 .showMore { display: flex; margin: 24px auto 0; }
-.removalToast { position: fixed; z-index: var(--layer-notice); left: 50%; bottom: 34px; transform: translateX(-50%); max-width: calc(100vw - 32px); }
+.removalToast { position: fixed; z-index: var(--layer-notice); left: 50%; bottom: var(--shell-toast-bottom, 34px); transform: translateX(-50%); max-width: calc(100vw - 32px); }
 .removeMenuLabel { display: flex; align-items: center; gap: 12px; }
 .removeMenuLabel > svg { flex: none; }
 @media (max-width: 1279px) {

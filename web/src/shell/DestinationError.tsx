@@ -2,6 +2,7 @@ import {Component, useCallback, useLayoutEffect, useMemo, useRef, useState, type
 import {useRouter, useRouterState, type ErrorComponentProps} from '@tanstack/react-router';
 import {defaultI18n} from '@i18n';
 import {StateLayout} from '../kit/states';
+import styles from './states.module.css';
 import {useWebScreenContext} from '../route-registry-view';
 import {router} from '../router';
 
@@ -87,7 +88,7 @@ function PageFailure({source, onRetry, onHome}: {source: 'child' | 'backstop'; o
   useLayoutEffect(() => {
     if (import.meta.env.DEV) destinationErrorActions.capture?.({source, retry: onRetry, home: onHome});
   }, [source, onRetry, onHome]);
-  return <StateLayout title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} icon="i-warn" tone="warning"
+  return <StateLayout className={styles.page} title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} icon="i-warn" tone="warning"
     primary={{id: 'retry', label: t('next.states.tryAgain'), icon: 'i-retry', onPress: onRetry}}
     secondary={{id: 'home', label: t('next.states.goHome'), onPress: onHome}} />;
 }

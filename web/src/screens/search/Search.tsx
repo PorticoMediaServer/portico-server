@@ -258,7 +258,7 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
       {clearFailed && <p role="alert">{t('web.search.clearFailed')}</p>}
       {problem && <p role="status">{t(problem === 'short' ? 'web.search.tooShort' : problem === 'words' ? 'web.search.tooManyWords' : 'web.search.tooLong')}</p>}
       {snapshot.phase === 'loading' && !showing && <SearchLoading key={snapshot.generation} />}
-      {(snapshot.phase === 'error' || snapshot.phase === 'refresh-required') && <ScreenProblem context={context} error={snapshot.error} retry={() => { if (binding.results.getSnapshot() === snapshot) void binding.results.retry().catch(context.effects.reportError); }} />}
+      {(snapshot.phase === 'error' || snapshot.phase === 'refresh-required') && <ScreenProblem embedded context={context} error={snapshot.error} retry={() => { if (binding.results.getSnapshot() === snapshot) void binding.results.retry().catch(context.effects.reportError); }} />}
       {failed.length > 0 && <div role="status" className={styles.partial}><Icon name="i-clock" size={22} /><span>{t('web.search.partial', {groups: new Intl.ListFormat(locale(), {style: 'long', type: 'conjunction'}).format(failed.map(value => t(searchGroupLabel(value.id))))})}</span><Button icon="i-retry" size="small" onClick={() => { void service.refresh(); }}>{t('next.states.tryAgain')}</Button></div>}
       {empty && <SearchEmpty title={t(group ? 'web.search.nothingIn' : 'web.search.noMatches', group ? {group: t(searchGroupLabel(group))} : {query: text.trim()})} body={group ? undefined : t('web.search.noMatchesBody')}
         action={group ? <Button variant="primary" size="compact" onClick={() => setChip('all')}>{t('web.search.everything')}</Button> : undefined} />}
