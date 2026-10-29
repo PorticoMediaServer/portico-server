@@ -23,8 +23,8 @@ export function claimApprovalCopy(reason: 'switch' | 'change-owner' | 'start-ove
 
 /** auth24e2. Facts and the other-people sentence come from the authenticated
  * lookup; an absent count is an absent sentence, never zero or a URL hint. */
-export function OwnerApprovalReview({display, requested, approved = false, busy = false, notice, onApprove, onDeny, onReturn}: {
-  display: OwnerApprovalDisplay; requested: string; approved?: boolean; busy?: boolean; notice?: ReactNode;
+export function OwnerApprovalReview({display, requested, approved = false, finishing = false, busy = false, notice, onApprove, onDeny, onReturn}: {
+  display: OwnerApprovalDisplay; requested: string; approved?: boolean; finishing?: boolean; busy?: boolean; notice?: ReactNode;
   onApprove: () => void; onDeny: () => void; onReturn: () => void;
 }) {
   const {t} = servicesI18n(), copy = claimApprovalCopy(display.reason);
@@ -52,8 +52,9 @@ export function OwnerApprovalReview({display, requested, approved = false, busy 
       <b>{t('services.claim.becomesOwner', {account: display.accountName})}</b>{consequence ? <>{' '}{consequence}</> : null}
     </ServicesNotice>
     {notice}
+    {finishing && <p role="status">{t('web.claim.finishingSecure')}</p>}
     <ServicesActions>{approved
-      ? <Button variant="primary" autoFocus loading={busy} disabled={busy} onClick={onReturn}>{t('web.claim.returnTo', {server: display.name})}</Button>
+      ? <Button variant="primary" autoFocus loading={busy} disabled={busy} onClick={onReturn}>{finishing ? t('web.claim.tryAgain') : t('web.claim.returnTo', {server: display.name})}</Button>
       : <><Button variant="primary" autoFocus loading={busy} disabled={busy} onClick={onApprove}>{t('web.claim.approve')}</Button>
         <Button disabled={busy} onClick={onDeny}>{t('web.claim.deny')}</Button></>}
     </ServicesActions>
@@ -100,6 +101,6 @@ export function OwnerApprovalPage({account, bootstrap}: {account: ServicesAccoun
   </ServicesAuthStage>;
   if (!state.display || state.phase === 'loading') return <ServicesAuthStage variant="ownerReview"><></></ServicesAuthStage>;
   const requested = Date.now() - Date.parse(state.display.requestedAt) < 45000 ? t('services.claim.justNow') : servicesRelativeTime(servicesI18n(), state.display.requestedAt);
-  return <OwnerApprovalReview display={state.display} requested={requested} approved={state.phase !== 'review'} busy={state.busy || state.phase === 'returning'}
+  return <OwnerApprovalReview display={state.display} requested={requested} approved={state.phase !== 'review'} finishing={state.phase === 'finishing'} busy={state.busy || state.phase === 'returning'}
     onApprove={() => {void flow?.decide('approve');}} onDeny={() => {void flow?.decide('deny');}} onReturn={() => {void flow?.complete();}} />;
 }

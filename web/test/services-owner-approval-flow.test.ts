@@ -48,12 +48,12 @@ test('owner review is inert until started and publishes display facts without th
   f.flow.dispose();
 });
 
-test('approval is a gesture and unready Return stays without polling or a second approval', async () => {
+test('approval is a gesture and unready Return says it is finishing, without polling or a second approval', async () => {
   const f = fixture(); await f.flow.start(); await f.flow.complete(); assert.deepEqual(f.calls, ['review']);
   await f.flow.decide('approve'); assert.equal(f.flow.getSnapshot().phase, 'approved');
   assert.deepEqual(f.calls, ['review', 'approve']); assert.deepEqual(f.navigations, []);
   await f.flow.decide('approve'); await f.flow.complete();
-  assert.deepEqual(f.calls, ['review', 'approve', 'complete']); assert.equal(f.flow.getSnapshot().phase, 'approved');
+  assert.deepEqual(f.calls, ['review', 'approve', 'complete']); assert.equal(f.flow.getSnapshot().phase, 'finishing');
   f.installed(); await f.flow.complete();
   assert.deepEqual(f.navigations, ['https://original.test/auth/portico-return#transaction=private-transaction']);
   await f.flow.complete(); assert.deepEqual(f.calls, ['review', 'approve', 'complete', 'complete']);
@@ -109,5 +109,14 @@ test('signed expiry retires decisions and explicit expiry retires pending view e
   assert.deepEqual(f.calls, ['review']); assert.equal(f.flow.getSnapshot().phase, 'error');
   f.flow.expire(); await f.flow.start(); await f.flow.complete();
   assert.equal(f.flow.getSnapshot().phase, 'expired'); assert.deepEqual(f.calls, ['review', 'dispose']);
+  f.flow.dispose();
+});
+
+test('owner Return before the secure return is ready says so and retries, never a silent no-op', async () => {
+  const f = fixture(); await f.flow.start(); await f.flow.decide('approve');
+  await f.flow.complete();
+  assert.equal(f.flow.getSnapshot().phase, 'finishing'); assert.equal(f.flow.getSnapshot().busy, false); assert.deepEqual(f.navigations, []);
+  f.installed(); await f.flow.complete();
+  assert.deepEqual(f.navigations, ['https://original.test/auth/portico-return#transaction=private-transaction']);
   f.flow.dispose();
 });

@@ -8,7 +8,7 @@ export type SetupApprovalDisplay = Readonly<{
   name: string; address: string; accountName: string; requestedAt: string; expiresAt: string;
 }>;
 export type SetupApprovalSnapshot = Readonly<{
-  phase: 'loading' | 'review' | 'approved' | 'denied' | 'returning' | 'error' | 'expired';
+  phase: 'loading' | 'review' | 'approved' | 'finishing' | 'denied' | 'returning' | 'error' | 'expired';
   busy: boolean; approved?: true; display?: SetupApprovalDisplay; error?: unknown;
 }>;
 const changed = () => new ApiError(409, 'claim_stale', 'claim_stale', false);
@@ -97,11 +97,13 @@ export class SetupApprovalFlow {
     }
   }
   async complete() {
-    if (!this.state.approved || !['approved', 'error'].includes(this.state.phase) || !this.review) return;
+    if (!this.state.approved || !['approved', 'finishing', 'error'].includes(this.state.phase) || !this.review) return;
     return this.run(async (generation, identity) => {
       const location = await this.controller.complete();
       this.current(generation, identity);
-      if (!location) return; // Not installed yet: stay put, with no polling.
+      // Approved, but the server's secure return isn't ready yet. Say so, and let the same
+      // Return try again: never a silent no-op.
+      if (!location) {this.publish({phase: 'finishing', busy: false, approved: true, display: this.state.display}); return;}
       // The protected controller already performs the final authenticated check
       // before spending this attempt. Do not add fallible I/O after that spend.
       this.publish({phase: 'returning', busy: false, approved: true, display: this.state.display});

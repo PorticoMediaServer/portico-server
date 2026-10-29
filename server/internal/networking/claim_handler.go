@@ -295,6 +295,9 @@ func (h *ClaimHandler) handle(ctx context.Context, w http.ResponseWriter, r *htt
 			if e == nil && expected.Stage == Installed && expected.InstallationAcknowledged && actor.ResolveSetupReturn != nil {
 				if err := actor.ResolveSetupReturn(ctx); err != nil && !errors.Is(err, ErrUnavailable) {
 					e = stepFailure("setup return registration", err)
+				} else if err != nil {
+					// Not ready yet is not a refusal, but it must never be silent.
+					h.failures.report(routeLabel(r, "networking claim route"), 200, ctx, err)
 				}
 			}
 		} else if expected.Purpose == "switch" && expected.CurrentOwnerAccountID == "" {
@@ -376,6 +379,8 @@ func (h *ClaimHandler) handle(ctx context.Context, w http.ResponseWriter, r *htt
 			if e = h.store.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM identity_setup_completions WHERE operation_id=? AND phase IN('prepared','installed'))`, next.OperationID).Scan(&captured); e == nil && captured {
 				e = actor.ResolveSetupReturn(ctx)
 				if errors.Is(e, ErrUnavailable) {
+					// Not ready yet is not a refusal, but it must never be silent.
+					h.failures.report(routeLabel(r, "networking claim route"), 200, ctx, e)
 					e = nil
 				}
 			}

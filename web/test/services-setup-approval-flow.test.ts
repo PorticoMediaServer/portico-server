@@ -65,3 +65,17 @@ test('a late protected completion cannot navigate after the original approval ex
   assert.deepEqual(f.navigations, []); assert.equal(f.disposed(), true); assert.equal(f.flow.getSnapshot().phase, 'expired');
   f.flow.dispose();
 });
+
+test('Return before the secure return is ready says so and retries, never a silent no-op', async () => {
+  const f = fixture(); await f.flow.start(); await f.flow.decide('approve');
+  f.completion(async () => undefined as unknown as string);
+  await f.flow.complete();
+  assert.equal(f.flow.getSnapshot().phase, 'finishing'); assert.equal(f.flow.getSnapshot().approved, true); assert.equal(f.flow.getSnapshot().busy, false);
+  assert.deepEqual(f.navigations, []);
+  // Try again uses the same protected completion; once ready, it returns.
+  f.completion(async () => 'https://original.example/auth/portico-return#transaction=original-transaction');
+  await f.flow.complete();
+  assert.equal(f.completeCalls(), 2);
+  assert.deepEqual(f.navigations, ['https://original.example/auth/portico-return#transaction=original-transaction']);
+  f.flow.dispose();
+});

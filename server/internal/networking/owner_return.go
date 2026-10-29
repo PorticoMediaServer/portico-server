@@ -44,12 +44,12 @@ func (h *ClaimHandler) cancelOwnerReturn(ctx context.Context, expected Intent, a
 // its ID from the actual installed-server-authenticated Hosted resolver.
 func (h *ClaimHandler) ownerReturnRouteTx(ctx context.Context, tx *sql.Tx, v Intent) (serverreturn.Registration, int64, error) {
 	var none serverreturn.Registration
-	origin, err := h.currentManagedHTTPSTx(ctx, tx)
+	origin, reason, err := h.managedHTTPSTx(ctx, tx)
 	if err != nil {
 		return none, 0, err
 	}
 	if origin == "" {
-		return none, 0, ErrUnavailable
+		return none, 0, stepFailure("owner return route: "+reason, ErrUnavailable)
 	}
 	var generation int64
 	if err = tx.QueryRowContext(ctx, `SELECT generation FROM networking_remote_state WHERE singleton=1`).Scan(&generation); err != nil {
