@@ -35,3 +35,11 @@ export function queueEntrySubject(entry: Readonly<{itemId: string; kind: string;
     ...(entry.artist ? {artist: entry.artist} : {})};
   return {kind: music ? 'music' : 'audiobook', item};
 }
+
+/** O-159: the pressed card's own facts for the starting dock; undefined when it can't name one. */
+export function entryStartDisplay(entry: ContentEntry): Readonly<{subject: PlaybackSubject; posterUrl?: string}> | undefined {
+  try {
+    const posterUrl = entry.posterUrl ?? entry.backdropUrl;
+    return {subject: entrySubject(entry), ...(posterUrl ? {posterUrl} : {})};
+  } catch {return undefined;}
+}

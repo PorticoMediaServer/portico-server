@@ -1,4 +1,5 @@
 import {useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
+import {entryStartDisplay} from '../../platform/playback/subject';
 import {useLocation, useParams, useSearch} from '@tanstack/react-router';
 import {defaultI18n} from '@i18n';
 import {fetchHomeRow, type HomeRow} from '@core/home.ts';
@@ -156,7 +157,7 @@ function CommittedHomeRow({captured, context, row, owner, continuity, presentati
         onPlay: member.entry.playback && member.entry.libraryId && member.entry.available !== false && !member.entry.missing ? () => {
           if (!current()) return;
           const entry = member.entry;
-          void context.effects.play({libraryId: entry.libraryId!, itemId: entry.playback!.itemId, startSeconds: entry.playback!.startSeconds ?? 0}, owner.life.signal(), current).catch(context.effects.reportError);
+          void context.effects.play({libraryId: entry.libraryId!, itemId: entry.playback!.itemId, startSeconds: entry.playback!.startSeconds ?? 0, display: entryStartDisplay(entry)}, owner.life.signal(), current).catch(context.effects.reportError);
         } : undefined};
     }}};
   // Capture the rendered query and runtime now, never query a successor from a retained click.

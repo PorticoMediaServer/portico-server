@@ -38,7 +38,7 @@ async function fixture(kind:'owner'|'setup'|'ambiguous'='owner', admittedSetupOw
   const api = new HttpLocalApi(origin, '');api.getRouteConnection = () => ({pin, getSnapshot: () => ({phase: 'ready'}), dispose() {}}) as never;
   api.request = (async path => {
     events.push('read:' + path);
-    if (path === '/v1/system') return {id: serverId, name: 'Actual server', version: '1', signIn: portico ? 'portico' : 'local', move: null, setupRequired: false, hostedConfigured: portico, hostedAttached: portico, apiLevel: 1};
+    if (path === '/v1/system') return {id: serverId, name: 'Actual server', version: '1', signIn: portico ? 'portico' : 'local', move: null, setupRequired: false, hostedConfigured: portico, hostedAttached: portico, apiLevel: 1, apiVersion: '1.0', apiMajors: [1], capabilities: []};
     if (path === '/v1/direct') return snapshot(true);
     throw new Error('Entry must not exchange, probe me, or admit again: ' + path);
   }) as HttpLocalApi['request'];

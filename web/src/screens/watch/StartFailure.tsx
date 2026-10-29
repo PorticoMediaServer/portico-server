@@ -3,6 +3,7 @@ import {useLayoutEffect, useRef} from 'react';
 import {defaultI18n} from '@i18n';
 import {playbackUserMessage} from '@core/playback-messages.ts';
 import type {WebPlaybackStartFailure} from '../../platform/playback/start-failure';
+import type {WebPlaybackStartTimedOut} from '../../platform/playback/types';
 import type {WebPlaybackAuthority} from '../../platform/playback/types';
 import type {WatchPlaybackContext} from './play-on-binding';
 import {router} from '../../router';
@@ -53,5 +54,17 @@ export function WatchStartFailure({failure, authority, context, reportError}: {f
       closeLabel={configure ? t('web.player.error.turnOnConverting') : undefined} onError={reportError}>
       {failure.scope === 'account' && <WatchStreamLimitSessions failure={failure} isCurrent={failure.isCurrent} reportError={reportError}/>}
     </PlaybackFailure>
+  </div>;
+}
+
+/** O-159: an accepted start that never became drawable. The runtime already stopped it and
+ * wrote the diagnostic; this says so plainly and offers it again. */
+export function WatchStartTimedOut({timedOut, reportError}: {timedOut: WebPlaybackStartTimedOut; reportError: (error: unknown) => void}) {
+  const root = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {root.current?.querySelector<HTMLButtonElement>('button')?.focus({preventScroll: true});}, [timedOut]);
+  return <div ref={root} className={styles.cover} role="dialog" aria-modal="true" aria-label={t('web.player.error.startTitle')}
+    onKeyDown={event => {if (event.key === 'Escape') {event.preventDefault();timedOut.close();}}}>
+    <PlaybackFailure error="playback_start_timeout" heading={t('web.player.error.startTitle')} sentence={t('web.player.error.startBody')}
+      onRetry={timedOut.retry} onClose={timedOut.close} onError={reportError}/>
   </div>;
 }

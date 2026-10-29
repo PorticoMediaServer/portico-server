@@ -11,7 +11,7 @@ function environment(options:{wrongProof?:boolean;key?:unknown;abort?:AbortContr
  const calls:string[]=[];let writes=0;
  const env:ConnectionEnvironment={storage:{read:async()=>undefined,change:async()=>{writes++;}},fetcher:async(input,init)=>{
   const url=String(input);calls.push(url);
-  if(url==='https://server.example/v1/system')return json({id:pin.serverId,name:'Server',version:'test',signIn:options.signIn??'portico',move:options.signIn==='local'?null:'to_portico',setupRequired:false,hostedConfigured:true,hostedAttached:true, apiLevel: 1});
+  if(url==='https://server.example/v1/system')return json({id:pin.serverId,name:'Server',version:'test',signIn:options.signIn??'portico',move:options.signIn==='local'?null:'to_portico',setupRequired:false,hostedConfigured:true,hostedAttached:true, apiLevel: 1, apiVersion: '1.0', apiMajors: [1], capabilities: []});
   if(url==='https://account.example/v1/keys'){
    assert.equal(init?.redirect,'error');assert.equal(init?.credentials,'omit');assert.equal(new Headers(init?.headers).get('Authorization'),null);
    if(options.abort)options.abort.abort();return json(options.key??{keyId:'route_key',publicKey:pin.publicKey});

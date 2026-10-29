@@ -98,7 +98,7 @@ export class PreparingStartCustody {
       const current = () => live && !flight.done && this.current() && valid(continuation);
       const acquire = (resource: PreparingResource, ownerCurrent: () => boolean, stop: PreparingStop) => {
         if (flight.resource) return flight.resource.id === resource.id && flight.resource.generation === resource.generation ? flight.cleanup : undefined;
-        if (flight.done || typeof resource.id !== 'string' || !resource.id || !Number.isSafeInteger(resource.generation) || resource.generation < 1) return undefined;
+        if (flight.done || typeof resource.id !== 'string' || !resource.id || !Number.isSafeInteger(resource.generation) || resource.generation < 0) return undefined;
         const original = flight.resource = Object.freeze({id: resource.id, generation: resource.generation});
         let spent = false;
         const owned = () => !flight.denied && this.flights.has(flight) && flight.resource === original && !flight.seen.has(original.id);
