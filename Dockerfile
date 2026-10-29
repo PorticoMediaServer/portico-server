@@ -52,7 +52,7 @@ RUN test -z "$(env | grep '^VITE_')" && test -z "$(find . -maxdepth 1 -name '.en
  && test -f /out/web/vendor/libass-wasm-4.2.4/subtitles-octopus-worker.js && test -d /out/web/vendor/subtitle-fonts-1
 RUN cp /out/portico-build.json /out/web/portico-build.json
 
-FROM golang:1.26.10-bookworm@sha256:632dff7351799a5a9954a48dc06670ade72ee44e8c351cdc0e5a57af2fea21af AS build
+FROM golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61 AS build
 WORKDIR /src/server
 # Official Go build tags, from scripts/release-build-tags.py. The default is the
 # release argument for the same list; a CI guard (scripts/test-official-build-tags.py)
