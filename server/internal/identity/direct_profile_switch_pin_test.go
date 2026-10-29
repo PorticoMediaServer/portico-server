@@ -8,9 +8,11 @@ import (
 )
 
 // P2-59: switching to any profile is governed by the destination's own PIN.
-// Remembered trust belongs to a profile and may spare a same-profile selection;
-// it never covers an actual switch from another profile, whether the
-// destination is the main profile or an ordinary Guest/Kids one.
+// Remembered trust belongs to a profile and may spare a same-profile selection
+// or a launch from an account-scoped sign-in; it never covers an actual switch
+// from a profile being viewed to another one, whether the destination is the
+// main profile or an ordinary Guest/Kids one. Every source session here is a
+// real viewing session: an account-scoped sign-in is a launch, not a source.
 
 type switchProfileKind int
 
@@ -84,14 +86,13 @@ func switchPINFixture(t *testing.T, pins map[switchProfileKind]string) (*Service
 	return s, db, login, profiles
 }
 
-// switchSourceSession leaves the fixture's account-scoped family on the main
-// profile, or selects a Guest/Kids source with its own PIN (never needed by the
-// table below, which protects only destinations) and returns its bearer.
+// switchSourceSession returns a session that is really viewing `from`. The
+// fixture's account-scoped sign-in is not a viewing session at all: its profile
+// id is the primary placeholder, so even the main profile is selected through
+// the real selection path first. Only the destination is protected in this
+// table, so the source never needs a PIN.
 func switchSourceSession(t *testing.T, s *Service, login DirectSignIn, from switchProfileKind, profiles map[switchProfileKind]DirectProfile, pins map[switchProfileKind]string) (string, string) {
 	t.Helper()
-	if from == switchMain {
-		return login.AccountToken, login.Session.SessionFamilyID
-	}
 	q := DirectSelection{}
 	if pin, protected := pins[from]; protected {
 		q.PIN = pin
@@ -199,10 +200,8 @@ func TestDirectProfileSwitchRequiresTheDestinationPIN(t *testing.T) {
 						if err := db.QueryRow(`SELECT COALESCE(sum(failed_attempts),0) FROM direct_profile_pin_attempts WHERE profile_id=?`, target.ID).Scan(&charged); err != nil || charged != 1 {
 							t.Fatalf("the refused attempt was not charged once: %d %v", charged, err)
 						}
-						if pair.from != switchMain {
-							if viewer, err := s.Authenticate(source); err != nil || viewer.ProfileID != profiles[pair.from].ID {
-								t.Fatalf("the %s source session changed: %+v %v", pair.from, viewer, err)
-							}
+						if viewer, err := s.Authenticate(source); err != nil || viewer.ProfileID != profiles[pair.from].ID {
+							t.Fatalf("the %s source session changed: %+v %v", pair.from, viewer, err)
 						}
 						return
 					}
