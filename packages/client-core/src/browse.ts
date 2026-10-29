@@ -240,6 +240,7 @@ export function parseBrowseResult(raw:unknown):BrowseResult{
  // An anchor is proof that at least index+1 canonical members exist, even
  // past a capped count. Preserve every Unicode key and grow the virtual bound.
  if(lowerBound&&positionIndex.length)total=Math.max(total,...positionIndex.map(anchor=>anchor.index+1));
+ // Reaching the end of an importing Reading image is only the end so far: it stays a lower bound.
  const reachedEnd=sent.length>0&&!more;
  const duration=info.durationMs===undefined?{}:count(info.durationMs)&&typeof info.durationIsLowerBound==='boolean'?{durationMs:info.durationMs,durationIsLowerBound:info.durationIsLowerBound}:bad();
  const applied=raw.applied;
@@ -259,7 +260,7 @@ export function parseBrowseResult(raw:unknown):BrowseResult{
    seek:applied.seek===undefined||applied.seek===null?null:(obj(applied.seek)&&str(applied.seek.prefix,8)&&applied.seek.prefix?{prefix:applied.seek.prefix}:bad()),
   },
   entries,
-  pageInfo:{start:info.start,total,totalIsLowerBound:lowerBound&&!reachedEnd,revision:info.revision,hasMore:lowerBound?more:info.start+sent.length<total,nextCursor:(info.nextCursor??'') as string,...duration},
+  pageInfo:{start:info.start,total,totalIsLowerBound:lowerBound&&(!reachedEnd||raw.importing===true),revision:info.revision,hasMore:lowerBound?more:info.start+sent.length<total,nextCursor:(info.nextCursor??'') as string,...duration},
   positionIndex,...(displayTargets?{displayTargets}:{}),
   ...(wholeSelection?{wholeSelection}:{}),...(wholeSelectionUnavailable?{wholeSelectionUnavailable}:{}),
  });

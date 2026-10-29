@@ -16,6 +16,7 @@ import {BrowseResults} from './BrowseResults';
 import {BrowseFilters} from './Filters';
 import {BrowseFilteredEmpty} from './FilteredEmpty';
 import {BrowseScopeChips} from './ScopeChips';
+import {browseImporting, browseResultCount} from './importing';
 import {useLibraryCardMenu} from './use-card-menu';
 import type {BrowseController, BrowseMember} from './controller';
 import type {BrowseItemActions} from './EntryCard';
@@ -124,7 +125,7 @@ export function LibraryBrowse(bindings: LibraryBrowseBindings) {
   const setPredicates = (nodes: readonly BrowseNode[]) => {try {controller.setQuery(nodes, undefined, state);} catch (error) {bindings.reportError(error);}};
   // The retained count describes the same accepted generation still painted by
   // the collection. A pending replacement cannot use it as its new match count.
-  const resultCount = snapshot.total === undefined ? undefined : t(snapshot.totalIsLowerBound ? 'lib.countAtLeast' : 'lib.count', {count: snapshot.total, pivot: controller.source.pivot});
+  const resultCount = browseResultCount(snapshot, browseImporting(state), (key, count) => t(key, {count, pivot: controller.source.pivot}));
   const filterCount = snapshot.refreshing || snapshot.status !== 'ready' ? undefined : resultCount;
   const shape = bindings.shape ?? (bindings.pivot === 'collections' ? 'collection' : ['music', 'audiobook'].includes(library.kind) ? 'square' : 'poster');
   return <>

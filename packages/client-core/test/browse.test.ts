@@ -387,3 +387,17 @@ test('Reading facets preserve full accepted values and only server-issued series
  const malformed=parseBrowseFacets({field:'series',total:1,values:[{value,label:value,count:2,seriesId:'invented'}]},'series');
  assert.equal(malformed.values[0].seriesId,undefined);assert.equal(malformed.values[0].value,value);
 });
+
+test('P2-59: an importing page is open-ended even at its last page so far, has no anchors, and continues normally', () => {
+  const entries = (start: number, n: number) => Array.from({length: n}, (_, i) => ({id: `b${start + i}`, kind: 'movie', title: `Book ${start + i}`, navigation: {view: 'item', entityId: `b${start + i}`}}));
+  const first = parseBrowseResult(resultPayload({importing: true, entries: entries(0, 2), pageInfo: {start: 0, total: 2, totalIsLowerBound: true, revision: 'browse_abc', hasMore: true, nextCursor: 'c'}, positionIndex: []}));
+  assert.equal(first.importing, true);
+  assert.equal(first.pageInfo.totalIsLowerBound, true);
+  assert.equal(first.pageInfo.hasMore, true, 'scrolling continues through the continuation');
+  assert.deepEqual(first.positionIndex, [], 'no letter anchors while importing');
+  const soFar = parseBrowseResult(resultPayload({importing: true, entries: entries(2, 2), pageInfo: {start: 2, total: 4, totalIsLowerBound: true, revision: 'browse_abc', hasMore: false, nextCursor: ''}, positionIndex: []}));
+  assert.equal(soFar.pageInfo.hasMore, false);
+  assert.equal(soFar.pageInfo.totalIsLowerBound, true, 'the end of an importing image is only the end so far, never an exact count');
+  const done = parseBrowseResult(resultPayload({entries: entries(2, 2), pageInfo: {start: 2, total: 4, totalIsLowerBound: true, revision: 'browse_abc', hasMore: false, nextCursor: ''}, positionIndex: []}));
+  assert.equal(done.pageInfo.totalIsLowerBound, false, 'once imported, the last page knows the exact count again');
+});

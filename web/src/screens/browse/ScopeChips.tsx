@@ -1,4 +1,5 @@
 import {useRef, useLayoutEffect, useState, useSyncExternalStore} from 'react';
+import {browseImporting} from './importing';
 import {defaultI18n} from '@i18n';
 import type {Library} from '@core/index.ts';
 import type {BrowseCount, BrowseNode} from '@core/browse.ts';
@@ -41,7 +42,8 @@ export function BrowseScopeChips({controller, libraries, reportError, labelFor}:
   const selected = state.predicates.find(node => 'field' in node && node.field === 'library');
   const values = selected && 'field' in selected && selected.operator === 'in' ? Array.isArray(selected.value) ? selected.value : [selected.value] : [];
   const checked = (group: ScopeType) => group.libraryIds.length === values.length && group.libraryIds.every(id => values.includes(id));
-  const label = (count: BrowseCount) => count.totalIsLowerBound ? defaultI18n.t('next.browse.countAtLeast', {count: count.total}) : defaultI18n.number(count.total);
+  const importing = browseImporting(state);
+  const label = (count: BrowseCount) => importing ? undefined : count.totalIsLowerBound ? defaultI18n.t('next.browse.countAtLeast', {count: count.total}) : defaultI18n.number(count.total);
   const change = (libraryIds?: readonly string[]) => {
     try {controller.setQuery([...state.predicates.filter(node => !('field' in node) || node.field !== 'library'),
       ...(libraryIds ? [controller.parseNode({field: 'library', operator: 'in', value: libraryIds})] : [])], undefined, state);}

@@ -1,4 +1,5 @@
 import {createBrowserQueryActions, type BrowserQueryActionHost} from './selection-action-host';
+import {browseImporting} from './importing';
 import {createSelectionActionHostBridge} from './selection-action-lifetime';
 import type {BrowseSelectionContext} from '@core/selection-model/types.ts';
 import {subscribeFacts} from '../../shell/fact-source';
@@ -430,7 +431,9 @@ function CommittedLibrary({captured, library, search, readingMarkAll, frame, res
   } : undefined;
   const readingHeader = useReadLibrarySummary({context: captured.context, libraryId: library.id, artwork: context.artwork,
     api: resources.life.api, signal: resources.life.signal, isCurrent: resources.life.current, reportError: context.effects.reportError, enabled: isReadingLibrary(library.kind)});
-  const libraryChoices = (context.identity?.libraries ?? []).map(choice => ({...choice, count: readingHeader.libraryCounts.find(row => row.id === choice.id)?.text}));
+  // While this library is importing its page counts nothing, the header included.
+  const importing = browseImporting(state);
+  const libraryChoices = (context.identity?.libraries ?? []).map(choice => ({...choice, count: importing && choice.id === library.id ? undefined : readingHeader.libraryCounts.find(row => row.id === choice.id)?.text}));
   /** The drawn view summary is the presentation this screen is showing, not the stored default. */
   const shownView = choice?.defaultView === appearance.libraryView ? choice.view : appearance.libraryView;
   const save = () => {
@@ -445,7 +448,7 @@ function CommittedLibrary({captured, library, search, readingMarkAll, frame, res
     text: t(count.atLeast ? 'lib.countAtLeast' : 'lib.count', {count: count.count, pivot: ({album: 'albums', song: 'songs', artist: 'artists'} as Record<string, string>)[count.kind] ?? count.kind})}));
   const header = {library: musicSummary ? {...library, name: musicSummary.name, latestArtwork: musicSummary.summary.latestArtwork} : library,
     libraries: musicLibraries?.map(value => ({id: value.id, name: value.name})) ?? libraryChoices, pivot: requested?.id ?? 'discover', tabs: tabs.map(tab => ({value: tab.id, label: t(tab.label)})),
-    wash: readingHeader.wash, counts: library.kind === 'music' ? musicCounts : readingHeader.counts,
+    wash: readingHeader.wash, counts: library.kind === 'music' ? musicCounts : importing ? undefined : readingHeader.counts,
     appearance: appearanceBase, preferences: appearance, libraryViewOverride: choice?.defaultView === appearance.libraryView ? choice.view : undefined,
     artwork: context.artwork,
     // A Reading library's ⋯ draws only the rows this surface can really perform: saving the
@@ -460,7 +463,7 @@ function CommittedLibrary({captured, library, search, readingMarkAll, frame, res
       if (tab.shows === 'playlists') {void router.navigate({to: '/saved', search: {view: 'playlists'}}).catch(context.effects.reportError);return;}
       navigate({view: tab.id === 'discover' ? 'discover' : 'browse', ...(tab.pivot ? {pivot: tab.pivot} : {}), ...(tab.defaultSort ? {sort: [tab.defaultSort]} : {})});}};
   const empty = <LibraryEmpty api={resources.life.api} scope={context.scope} libraryId={library.id} libraryName={library.name}
-    importing={state.capabilities?.importing === true || state.importing === true}
+    importing={importing}
     owner={context.identity?.viewer.role === 'owner'} onActivity={() => {if (context.isCurrent()) void router.navigate({to: '/dashboard'}).catch(context.effects.reportError);}}/>;
   const bindings: LibraryBindings = {...header, controller: resources.controller,
     unmatchedHelp: context.effects.editMetadata ? t('metadata.attention.browseHelp') : undefined,
