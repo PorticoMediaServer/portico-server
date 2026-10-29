@@ -25,6 +25,7 @@ export const browseMessages = {
   'next.browse.server': 'Server',
   'next.browse.ownerOnly': 'Owner only',
   'next.browse.filters': 'Filters',
+  'next.browse.closeFilters': 'Close filters',
   'next.browse.filterCount': '{count, plural, one {# active filter} other {# active filters}}',
   'next.browse.sort': 'Sort',
   'next.browse.sortBy': 'Sort by',

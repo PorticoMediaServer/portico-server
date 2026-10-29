@@ -25,6 +25,7 @@ export const overlaysMessages = {
   'next.overlays.pictureInPicture': 'Picture in Picture',
 
   'next.overlays.close': 'Close',
+  'next.overlays.closeFileInfo': 'Close file info',
   'next.overlays.done': 'Done',
   'next.overlays.resizeSheet': 'Resize sheet',
   'next.overlays.cancel': 'Cancel',
