@@ -17,6 +17,17 @@ import (
 // for this current prepared, initial setup. No caller gets a generic
 // identity-key signing capability or a Local identity grant.
 func (k *ProtectedKeys) SignSetupStart(ctx context.Context, binding Binding, original claimweb.Signed, start claimweb.SetupStart) (claimweb.Signed, error) {
+	return k.signSetupStart(ctx, binding, original, start, false)
+}
+
+// SignRenewedSetupStart signs a fresh start for the same setup once its claim has INSTALLED
+// (a slow certificate outlived the original start). The binding is the claim's original,
+// unbound one; the installed operation must be this one, now bound to a real account.
+func (k *ProtectedKeys) SignRenewedSetupStart(ctx context.Context, binding Binding, original claimweb.Signed, start claimweb.SetupStart) (claimweb.Signed, error) {
+	return k.signSetupStart(ctx, binding, original, start, true)
+}
+
+func (k *ProtectedKeys) signSetupStart(ctx context.Context, binding Binding, original claimweb.Signed, start claimweb.SetupStart, renewal bool) (claimweb.Signed, error) {
 	var none claimweb.Signed
 	if k == nil || k.db == nil || k.root == nil || !validBinding(binding) || binding.AccountID != UnboundAccount {
 		return none, ErrInvalid
@@ -45,7 +56,14 @@ func (k *ProtectedKeys) SignSetupStart(ctx context.Context, binding Binding, ori
 	if err != nil {
 		return none, err
 	}
-	if current.ServerID != binding.ServerID || current.ResetGeneration != binding.LocalGeneration || !bytes.Equal(current.PublicKey, binding.PublicKey) || !active.Valid || active.String != binding.OperationID || installed.Valid || pending != "" || !sameBinding(intent.Binding, binding) || intent.Stage != Prepared || intent.Purpose != "setup" || intent.CurrentOwnerAccountID != "" || intent.PreviousOwnerRole != "" || intent.ReturnRegistrationID != "" || intent.owner.SetupOperationID != start.SetupRequestID || intent.owner.Epoch != start.SetupRevision {
+	// A renewal's intent is installed and bound to its approver; it is otherwise the same binding.
+	unbound := intent.Binding
+	if renewal {
+		unbound.AccountID = UnboundAccount
+	}
+	stage := (!renewal && !installed.Valid && intent.Stage == Prepared) ||
+		(renewal && installed.Valid && installed.String == binding.OperationID && intent.Stage == Installed && validID(intent.AccountID) && intent.AccountID != UnboundAccount)
+	if current.ServerID != binding.ServerID || current.ResetGeneration != binding.LocalGeneration || !bytes.Equal(current.PublicKey, binding.PublicKey) || !active.Valid || active.String != binding.OperationID || !stage || pending != "" || !sameBinding(unbound, binding) || intent.Purpose != "setup" || intent.CurrentOwnerAccountID != "" || intent.PreviousOwnerRole != "" || intent.ReturnRegistrationID != "" || intent.owner.SetupOperationID != start.SetupRequestID || intent.owner.Epoch != start.SetupRevision {
 		return none, ErrStale
 	}
 	key, err := k.read(current.KeyIncarnation)

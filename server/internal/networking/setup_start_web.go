@@ -27,6 +27,7 @@ type SetupStartAuthority struct {
 }
 type setupStartSigner interface {
 	SignSetupStart(context.Context, Binding, claimweb.Signed, claimweb.SetupStart) (claimweb.Signed, error)
+	SignRenewedSetupStart(context.Context, Binding, claimweb.Signed, claimweb.SetupStart) (claimweb.Signed, error)
 }
 
 // beginSetupWebClaim is the private initiation producer. Its public action
@@ -94,7 +95,13 @@ func (h *ClaimHandler) beginSetupWebClaim(ctx context.Context, v Intent, address
 		if err != nil {
 			return out, ErrInvalid
 		}
-		claimSignature, err = h.signer.Sign(ctx, v.Binding, claimPayload)
+		// The claim and its start are signed with the claim's original, unbound binding; a
+		// renewal's intent is now bound to its approver (the claim itself never names one).
+		signing := v.Binding
+		if renewal {
+			signing.AccountID = UnboundAccount
+		}
+		claimSignature, err = h.signer.Sign(ctx, signing, claimPayload)
 		if err != nil {
 			return out, err
 		}
@@ -105,7 +112,11 @@ func (h *ClaimHandler) beginSetupWebClaim(ctx context.Context, v Intent, address
 		}
 		digest := sha256.Sum256(claimPayload)
 		start = claimweb.SetupStart{SetupRequestID: authority.RequestID, SetupRevision: authority.Revision, Kind: claimweb.SetupStartKind, Audience: transport.origin, ClaimHash: base64.RawURLEncoding.EncodeToString(digest[:]), OperationID: v.OperationID, ServerID: v.ServerID, PublicKey: original.PublicKey, LocalGeneration: v.LocalGeneration, Address: address, Purpose: "setup", State: state, CodeChallenge: codeChallenge, InstallationID: installation, ServerChallenge: base64.RawURLEncoding.EncodeToString(challenge), IssuedAt: now, ExpiresAt: expires}
-		proof, err := signer.SignSetupStart(ctx, v.Binding, out.Signed, start)
+		sign := signer.SignSetupStart
+		if renewal {
+			sign = signer.SignRenewedSetupStart
+		}
+		proof, err := sign(ctx, signing, out.Signed, start)
 		if err != nil {
 			return out, err
 		}
