@@ -276,7 +276,7 @@ export const schemas = {
                     "type": "string"
                   },
                   "query": {
-                    "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
+                    "description": "A predicate, a relative-date predicate or an all/any/not group, each tagged with its variant. The parser enforces recursive vocabulary and published depth/clause bounds.",
                     "oneOf": [
                       {
                         "additionalProperties": false,
@@ -300,9 +300,54 @@ export const schemas = {
                             "maximum": 36500,
                             "minimum": 1,
                             "type": "integer"
+                          },
+                          "variant": {
+                            "const": "relative",
+                            "type": "string"
                           }
                         },
                         "required": [
+                          "variant",
+                          "field",
+                          "operator",
+                          "value"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "operator": {
+                            "enum": [
+                              "equals",
+                              "not-equals",
+                              "in",
+                              "not-in",
+                              "contains",
+                              "starts-with",
+                              "is-present",
+                              "is-missing",
+                              "less-than",
+                              "at-most",
+                              "greater-than",
+                              "at-least",
+                              "between",
+                              "contains-any",
+                              "contains-all"
+                            ],
+                            "type": "string"
+                          },
+                          "value": {},
+                          "variant": {
+                            "const": "predicate",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "variant",
                           "field",
                           "operator",
                           "value"
@@ -334,38 +379,20 @@ export const schemas = {
                             "minItems": 1,
                             "type": "array"
                           },
-                          "field": {
-                            "type": "string"
-                          },
                           "not": {
                             "additionalProperties": {},
                             "properties": {},
                             "required": [],
                             "type": "object"
                           },
-                          "operator": {
-                            "enum": [
-                              "equals",
-                              "not-equals",
-                              "in",
-                              "not-in",
-                              "contains",
-                              "starts-with",
-                              "is-present",
-                              "is-missing",
-                              "less-than",
-                              "at-most",
-                              "greater-than",
-                              "at-least",
-                              "between",
-                              "contains-any",
-                              "contains-all"
-                            ],
+                          "variant": {
+                            "const": "group",
                             "type": "string"
-                          },
-                          "value": {}
+                          }
                         },
-                        "required": [],
+                        "required": [
+                          "variant"
+                        ],
                         "type": "object"
                       }
                     ]
@@ -3655,7 +3682,7 @@ export const schemas = {
                     "type": "string"
                   },
                   "query": {
-                    "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
+                    "description": "A predicate, a relative-date predicate or an all/any/not group, each tagged with its variant. The parser enforces recursive vocabulary and published depth/clause bounds.",
                     "oneOf": [
                       {
                         "additionalProperties": false,
@@ -3679,9 +3706,54 @@ export const schemas = {
                             "maximum": 36500,
                             "minimum": 1,
                             "type": "integer"
+                          },
+                          "variant": {
+                            "const": "relative",
+                            "type": "string"
                           }
                         },
                         "required": [
+                          "variant",
+                          "field",
+                          "operator",
+                          "value"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "operator": {
+                            "enum": [
+                              "equals",
+                              "not-equals",
+                              "in",
+                              "not-in",
+                              "contains",
+                              "starts-with",
+                              "is-present",
+                              "is-missing",
+                              "less-than",
+                              "at-most",
+                              "greater-than",
+                              "at-least",
+                              "between",
+                              "contains-any",
+                              "contains-all"
+                            ],
+                            "type": "string"
+                          },
+                          "value": {},
+                          "variant": {
+                            "const": "predicate",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "variant",
                           "field",
                           "operator",
                           "value"
@@ -3713,38 +3785,20 @@ export const schemas = {
                             "minItems": 1,
                             "type": "array"
                           },
-                          "field": {
-                            "type": "string"
-                          },
                           "not": {
                             "additionalProperties": {},
                             "properties": {},
                             "required": [],
                             "type": "object"
                           },
-                          "operator": {
-                            "enum": [
-                              "equals",
-                              "not-equals",
-                              "in",
-                              "not-in",
-                              "contains",
-                              "starts-with",
-                              "is-present",
-                              "is-missing",
-                              "less-than",
-                              "at-most",
-                              "greater-than",
-                              "at-least",
-                              "between",
-                              "contains-any",
-                              "contains-all"
-                            ],
+                          "variant": {
+                            "const": "group",
                             "type": "string"
-                          },
-                          "value": {}
+                          }
                         },
-                        "required": [],
+                        "required": [
+                          "variant"
+                        ],
                         "type": "object"
                       }
                     ]
@@ -5437,7 +5491,7 @@ export const schemas = {
               "type": "string"
             },
             "query": {
-              "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
+              "description": "A predicate, a relative-date predicate or an all/any/not group, each tagged with its variant. The parser enforces recursive vocabulary and published depth/clause bounds.",
               "nullable": true,
               "oneOf": [
                 {
@@ -5462,9 +5516,54 @@ export const schemas = {
                       "maximum": 36500,
                       "minimum": 1,
                       "type": "integer"
+                    },
+                    "variant": {
+                      "const": "relative",
+                      "type": "string"
                     }
                   },
                   "required": [
+                    "variant",
+                    "field",
+                    "operator",
+                    "value"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "field": {
+                      "type": "string"
+                    },
+                    "operator": {
+                      "enum": [
+                        "equals",
+                        "not-equals",
+                        "in",
+                        "not-in",
+                        "contains",
+                        "starts-with",
+                        "is-present",
+                        "is-missing",
+                        "less-than",
+                        "at-most",
+                        "greater-than",
+                        "at-least",
+                        "between",
+                        "contains-any",
+                        "contains-all"
+                      ],
+                      "type": "string"
+                    },
+                    "value": {},
+                    "variant": {
+                      "const": "predicate",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "variant",
                     "field",
                     "operator",
                     "value"
@@ -5496,38 +5595,20 @@ export const schemas = {
                       "minItems": 1,
                       "type": "array"
                     },
-                    "field": {
-                      "type": "string"
-                    },
                     "not": {
                       "additionalProperties": {},
                       "properties": {},
                       "required": [],
                       "type": "object"
                     },
-                    "operator": {
-                      "enum": [
-                        "equals",
-                        "not-equals",
-                        "in",
-                        "not-in",
-                        "contains",
-                        "starts-with",
-                        "is-present",
-                        "is-missing",
-                        "less-than",
-                        "at-most",
-                        "greater-than",
-                        "at-least",
-                        "between",
-                        "contains-any",
-                        "contains-all"
-                      ],
+                    "variant": {
+                      "const": "group",
                       "type": "string"
-                    },
-                    "value": {}
+                    }
                   },
-                  "required": [],
+                  "required": [
+                    "variant"
+                  ],
                   "type": "object"
                 }
               ]
@@ -5677,7 +5758,7 @@ export const schemas = {
       "applied": {
         "properties": {
           "query": {
-            "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
+            "description": "A predicate, a relative-date predicate or an all/any/not group, each tagged with its variant. The parser enforces recursive vocabulary and published depth/clause bounds.",
             "nullable": true,
             "oneOf": [
               {
@@ -5702,9 +5783,54 @@ export const schemas = {
                     "maximum": 36500,
                     "minimum": 1,
                     "type": "integer"
+                  },
+                  "variant": {
+                    "const": "relative",
+                    "type": "string"
                   }
                 },
                 "required": [
+                  "variant",
+                  "field",
+                  "operator",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "field": {
+                    "type": "string"
+                  },
+                  "operator": {
+                    "enum": [
+                      "equals",
+                      "not-equals",
+                      "in",
+                      "not-in",
+                      "contains",
+                      "starts-with",
+                      "is-present",
+                      "is-missing",
+                      "less-than",
+                      "at-most",
+                      "greater-than",
+                      "at-least",
+                      "between",
+                      "contains-any",
+                      "contains-all"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {},
+                  "variant": {
+                    "const": "predicate",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "variant",
                   "field",
                   "operator",
                   "value"
@@ -5736,41 +5862,24 @@ export const schemas = {
                     "minItems": 1,
                     "type": "array"
                   },
-                  "field": {
-                    "type": "string"
-                  },
                   "not": {
                     "additionalProperties": {},
                     "properties": {},
                     "required": [],
                     "type": "object"
                   },
-                  "operator": {
-                    "enum": [
-                      "equals",
-                      "not-equals",
-                      "in",
-                      "not-in",
-                      "contains",
-                      "starts-with",
-                      "is-present",
-                      "is-missing",
-                      "less-than",
-                      "at-most",
-                      "greater-than",
-                      "at-least",
-                      "between",
-                      "contains-any",
-                      "contains-all"
-                    ],
+                  "variant": {
+                    "const": "group",
                     "type": "string"
-                  },
-                  "value": {}
+                  }
                 },
-                "required": [],
+                "required": [
+                  "variant"
+                ],
                 "type": "object"
               }
-            ]
+            ],
+            "x-discriminator": "variant"
           },
           "seek": {
             "properties": {
@@ -7842,9 +7951,14 @@ export const schemas = {
               "preparing"
             ],
             "type": "string"
+          },
+          "variant": {
+            "const": "preparing",
+            "type": "string"
           }
         },
         "required": [
+          "variant",
           "kind",
           "state",
           "queryId",
@@ -7889,7 +8003,7 @@ export const schemas = {
               "type": "string"
             },
             "query": {
-              "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
+              "description": "A predicate, a relative-date predicate or an all/any/not group, each tagged with its variant. The parser enforces recursive vocabulary and published depth/clause bounds.",
               "nullable": true,
               "oneOf": [
                 {
@@ -7914,9 +8028,54 @@ export const schemas = {
                       "maximum": 36500,
                       "minimum": 1,
                       "type": "integer"
+                    },
+                    "variant": {
+                      "const": "relative",
+                      "type": "string"
                     }
                   },
                   "required": [
+                    "variant",
+                    "field",
+                    "operator",
+                    "value"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "field": {
+                      "type": "string"
+                    },
+                    "operator": {
+                      "enum": [
+                        "equals",
+                        "not-equals",
+                        "in",
+                        "not-in",
+                        "contains",
+                        "starts-with",
+                        "is-present",
+                        "is-missing",
+                        "less-than",
+                        "at-most",
+                        "greater-than",
+                        "at-least",
+                        "between",
+                        "contains-any",
+                        "contains-all"
+                      ],
+                      "type": "string"
+                    },
+                    "value": {},
+                    "variant": {
+                      "const": "predicate",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "variant",
                     "field",
                     "operator",
                     "value"
@@ -7948,38 +8107,20 @@ export const schemas = {
                       "minItems": 1,
                       "type": "array"
                     },
-                    "field": {
-                      "type": "string"
-                    },
                     "not": {
                       "additionalProperties": {},
                       "properties": {},
                       "required": [],
                       "type": "object"
                     },
-                    "operator": {
-                      "enum": [
-                        "equals",
-                        "not-equals",
-                        "in",
-                        "not-in",
-                        "contains",
-                        "starts-with",
-                        "is-present",
-                        "is-missing",
-                        "less-than",
-                        "at-most",
-                        "greater-than",
-                        "at-least",
-                        "between",
-                        "contains-any",
-                        "contains-all"
-                      ],
+                    "variant": {
+                      "const": "group",
                       "type": "string"
-                    },
-                    "value": {}
+                    }
                   },
-                  "required": [],
+                  "required": [
+                    "variant"
+                  ],
                   "type": "object"
                 }
               ]
@@ -8131,7 +8272,7 @@ export const schemas = {
           "applied": {
             "properties": {
               "query": {
-                "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
+                "description": "A predicate, a relative-date predicate or an all/any/not group, each tagged with its variant. The parser enforces recursive vocabulary and published depth/clause bounds.",
                 "nullable": true,
                 "oneOf": [
                   {
@@ -8156,9 +8297,54 @@ export const schemas = {
                         "maximum": 36500,
                         "minimum": 1,
                         "type": "integer"
+                      },
+                      "variant": {
+                        "const": "relative",
+                        "type": "string"
                       }
                     },
                     "required": [
+                      "variant",
+                      "field",
+                      "operator",
+                      "value"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "field": {
+                        "type": "string"
+                      },
+                      "operator": {
+                        "enum": [
+                          "equals",
+                          "not-equals",
+                          "in",
+                          "not-in",
+                          "contains",
+                          "starts-with",
+                          "is-present",
+                          "is-missing",
+                          "less-than",
+                          "at-most",
+                          "greater-than",
+                          "at-least",
+                          "between",
+                          "contains-any",
+                          "contains-all"
+                        ],
+                        "type": "string"
+                      },
+                      "value": {},
+                      "variant": {
+                        "const": "predicate",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "variant",
                       "field",
                       "operator",
                       "value"
@@ -8190,41 +8376,24 @@ export const schemas = {
                         "minItems": 1,
                         "type": "array"
                       },
-                      "field": {
-                        "type": "string"
-                      },
                       "not": {
                         "additionalProperties": {},
                         "properties": {},
                         "required": [],
                         "type": "object"
                       },
-                      "operator": {
-                        "enum": [
-                          "equals",
-                          "not-equals",
-                          "in",
-                          "not-in",
-                          "contains",
-                          "starts-with",
-                          "is-present",
-                          "is-missing",
-                          "less-than",
-                          "at-most",
-                          "greater-than",
-                          "at-least",
-                          "between",
-                          "contains-any",
-                          "contains-all"
-                        ],
+                      "variant": {
+                        "const": "group",
                         "type": "string"
-                      },
-                      "value": {}
+                      }
                     },
-                    "required": [],
+                    "required": [
+                      "variant"
+                    ],
                     "type": "object"
                   }
-                ]
+                ],
+                "x-discriminator": "variant"
               },
               "seek": {
                 "properties": {
@@ -10052,6 +10221,10 @@ export const schemas = {
             },
             "type": "array"
           },
+          "variant": {
+            "const": "ready",
+            "type": "string"
+          },
           "wholeSelection": {
             "properties": {
               "catalogRevision": {
@@ -10296,9 +10469,14 @@ export const schemas = {
                   "preparing"
                 ],
                 "type": "string"
+              },
+              "variant": {
+                "const": "preparing",
+                "type": "string"
               }
             },
             "required": [
+              "variant",
               "kind",
               "state",
               "queryId",
@@ -10327,7 +10505,8 @@ export const schemas = {
           "applied",
           "entries",
           "pageInfo",
-          "positionIndex"
+          "positionIndex",
+          "variant"
         ],
         "type": "object"
       },
@@ -10352,17 +10531,23 @@ export const schemas = {
           "state": {
             "const": "preparing",
             "type": "string"
+          },
+          "variant": {
+            "const": "preparing",
+            "type": "string"
           }
         },
         "required": [
           "state",
           "kind",
           "queryId",
-          "retryAfterMs"
+          "retryAfterMs",
+          "variant"
         ],
         "type": "object"
       }
-    ]
+    ],
+    "x-discriminator": "variant"
   },
   "CancelFacetQueryRequest": {
     "properties": {},
@@ -17301,7 +17486,7 @@ export const schemas = {
                           "type": "string"
                         },
                         "query": {
-                          "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
+                          "description": "A predicate, a relative-date predicate or an all/any/not group, each tagged with its variant. The parser enforces recursive vocabulary and published depth/clause bounds.",
                           "oneOf": [
                             {
                               "additionalProperties": false,
@@ -17325,9 +17510,54 @@ export const schemas = {
                                   "maximum": 36500,
                                   "minimum": 1,
                                   "type": "integer"
+                                },
+                                "variant": {
+                                  "const": "relative",
+                                  "type": "string"
                                 }
                               },
                               "required": [
+                                "variant",
+                                "field",
+                                "operator",
+                                "value"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "field": {
+                                  "type": "string"
+                                },
+                                "operator": {
+                                  "enum": [
+                                    "equals",
+                                    "not-equals",
+                                    "in",
+                                    "not-in",
+                                    "contains",
+                                    "starts-with",
+                                    "is-present",
+                                    "is-missing",
+                                    "less-than",
+                                    "at-most",
+                                    "greater-than",
+                                    "at-least",
+                                    "between",
+                                    "contains-any",
+                                    "contains-all"
+                                  ],
+                                  "type": "string"
+                                },
+                                "value": {},
+                                "variant": {
+                                  "const": "predicate",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "variant",
                                 "field",
                                 "operator",
                                 "value"
@@ -17359,38 +17589,20 @@ export const schemas = {
                                   "minItems": 1,
                                   "type": "array"
                                 },
-                                "field": {
-                                  "type": "string"
-                                },
                                 "not": {
                                   "additionalProperties": {},
                                   "properties": {},
                                   "required": [],
                                   "type": "object"
                                 },
-                                "operator": {
-                                  "enum": [
-                                    "equals",
-                                    "not-equals",
-                                    "in",
-                                    "not-in",
-                                    "contains",
-                                    "starts-with",
-                                    "is-present",
-                                    "is-missing",
-                                    "less-than",
-                                    "at-most",
-                                    "greater-than",
-                                    "at-least",
-                                    "between",
-                                    "contains-any",
-                                    "contains-all"
-                                  ],
+                                "variant": {
+                                  "const": "group",
                                   "type": "string"
-                                },
-                                "value": {}
+                                }
                               },
-                              "required": [],
+                              "required": [
+                                "variant"
+                              ],
                               "type": "object"
                             }
                           ]
@@ -17566,7 +17778,7 @@ export const schemas = {
                     "type": "string"
                   },
                   "query": {
-                    "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
+                    "description": "A predicate, a relative-date predicate or an all/any/not group, each tagged with its variant. The parser enforces recursive vocabulary and published depth/clause bounds.",
                     "oneOf": [
                       {
                         "additionalProperties": false,
@@ -17590,9 +17802,54 @@ export const schemas = {
                             "maximum": 36500,
                             "minimum": 1,
                             "type": "integer"
+                          },
+                          "variant": {
+                            "const": "relative",
+                            "type": "string"
                           }
                         },
                         "required": [
+                          "variant",
+                          "field",
+                          "operator",
+                          "value"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "operator": {
+                            "enum": [
+                              "equals",
+                              "not-equals",
+                              "in",
+                              "not-in",
+                              "contains",
+                              "starts-with",
+                              "is-present",
+                              "is-missing",
+                              "less-than",
+                              "at-most",
+                              "greater-than",
+                              "at-least",
+                              "between",
+                              "contains-any",
+                              "contains-all"
+                            ],
+                            "type": "string"
+                          },
+                          "value": {},
+                          "variant": {
+                            "const": "predicate",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "variant",
                           "field",
                           "operator",
                           "value"
@@ -17624,38 +17881,20 @@ export const schemas = {
                             "minItems": 1,
                             "type": "array"
                           },
-                          "field": {
-                            "type": "string"
-                          },
                           "not": {
                             "additionalProperties": {},
                             "properties": {},
                             "required": [],
                             "type": "object"
                           },
-                          "operator": {
-                            "enum": [
-                              "equals",
-                              "not-equals",
-                              "in",
-                              "not-in",
-                              "contains",
-                              "starts-with",
-                              "is-present",
-                              "is-missing",
-                              "less-than",
-                              "at-most",
-                              "greater-than",
-                              "at-least",
-                              "between",
-                              "contains-any",
-                              "contains-all"
-                            ],
+                          "variant": {
+                            "const": "group",
                             "type": "string"
-                          },
-                          "value": {}
+                          }
                         },
-                        "required": [],
+                        "required": [
+                          "variant"
+                        ],
                         "type": "object"
                       }
                     ]
@@ -22213,7 +22452,7 @@ export const schemas = {
             "type": "string"
           },
           "query": {
-            "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
+            "description": "A predicate, a relative-date predicate or an all/any/not group, each tagged with its variant. The parser enforces recursive vocabulary and published depth/clause bounds.",
             "nullable": true,
             "oneOf": [
               {
@@ -22238,9 +22477,54 @@ export const schemas = {
                     "maximum": 36500,
                     "minimum": 1,
                     "type": "integer"
+                  },
+                  "variant": {
+                    "const": "relative",
+                    "type": "string"
                   }
                 },
                 "required": [
+                  "variant",
+                  "field",
+                  "operator",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "field": {
+                    "type": "string"
+                  },
+                  "operator": {
+                    "enum": [
+                      "equals",
+                      "not-equals",
+                      "in",
+                      "not-in",
+                      "contains",
+                      "starts-with",
+                      "is-present",
+                      "is-missing",
+                      "less-than",
+                      "at-most",
+                      "greater-than",
+                      "at-least",
+                      "between",
+                      "contains-any",
+                      "contains-all"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {},
+                  "variant": {
+                    "const": "predicate",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "variant",
                   "field",
                   "operator",
                   "value"
@@ -22272,38 +22556,20 @@ export const schemas = {
                     "minItems": 1,
                     "type": "array"
                   },
-                  "field": {
-                    "type": "string"
-                  },
                   "not": {
                     "additionalProperties": {},
                     "properties": {},
                     "required": [],
                     "type": "object"
                   },
-                  "operator": {
-                    "enum": [
-                      "equals",
-                      "not-equals",
-                      "in",
-                      "not-in",
-                      "contains",
-                      "starts-with",
-                      "is-present",
-                      "is-missing",
-                      "less-than",
-                      "at-most",
-                      "greater-than",
-                      "at-least",
-                      "between",
-                      "contains-any",
-                      "contains-all"
-                    ],
+                  "variant": {
+                    "const": "group",
                     "type": "string"
-                  },
-                  "value": {}
+                  }
                 },
-                "required": [],
+                "required": [
+                  "variant"
+                ],
                 "type": "object"
               }
             ]
@@ -22539,7 +22805,7 @@ export const schemas = {
             "type": "string"
           },
           "query": {
-            "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
+            "description": "A predicate, a relative-date predicate or an all/any/not group, each tagged with its variant. The parser enforces recursive vocabulary and published depth/clause bounds.",
             "nullable": true,
             "oneOf": [
               {
@@ -22564,9 +22830,54 @@ export const schemas = {
                     "maximum": 36500,
                     "minimum": 1,
                     "type": "integer"
+                  },
+                  "variant": {
+                    "const": "relative",
+                    "type": "string"
                   }
                 },
                 "required": [
+                  "variant",
+                  "field",
+                  "operator",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "field": {
+                    "type": "string"
+                  },
+                  "operator": {
+                    "enum": [
+                      "equals",
+                      "not-equals",
+                      "in",
+                      "not-in",
+                      "contains",
+                      "starts-with",
+                      "is-present",
+                      "is-missing",
+                      "less-than",
+                      "at-most",
+                      "greater-than",
+                      "at-least",
+                      "between",
+                      "contains-any",
+                      "contains-all"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {},
+                  "variant": {
+                    "const": "predicate",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "variant",
                   "field",
                   "operator",
                   "value"
@@ -22598,38 +22909,20 @@ export const schemas = {
                     "minItems": 1,
                     "type": "array"
                   },
-                  "field": {
-                    "type": "string"
-                  },
                   "not": {
                     "additionalProperties": {},
                     "properties": {},
                     "required": [],
                     "type": "object"
                   },
-                  "operator": {
-                    "enum": [
-                      "equals",
-                      "not-equals",
-                      "in",
-                      "not-in",
-                      "contains",
-                      "starts-with",
-                      "is-present",
-                      "is-missing",
-                      "less-than",
-                      "at-most",
-                      "greater-than",
-                      "at-least",
-                      "between",
-                      "contains-any",
-                      "contains-all"
-                    ],
+                  "variant": {
+                    "const": "group",
                     "type": "string"
-                  },
-                  "value": {}
+                  }
                 },
-                "required": [],
+                "required": [
+                  "variant"
+                ],
                 "type": "object"
               }
             ]
@@ -38254,811 +38547,410 @@ export const schemas = {
       },
       "songs": {
         "items": {
-          "anyOf": [
-            {
+          "properties": {
+            "addedAt": {
+              "nullable": true,
+              "type": "string"
+            },
+            "audioFacts": {
               "properties": {
-                "addedAt": {
-                  "nullable": true,
-                  "type": "string"
-                },
-                "audioFacts": {
-                  "properties": {
-                    "atmos": {
-                      "type": "boolean"
-                    },
-                    "bitDepth": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "channels": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "codec": {
-                      "type": "string"
-                    },
-                    "layout": {
-                      "type": "string"
-                    },
-                    "lossless": {
-                      "type": "boolean"
-                    },
-                    "sampleRate": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "codec"
-                  ],
-                  "type": "object"
-                },
-                "available": {
+                "atmos": {
                   "type": "boolean"
                 },
-                "backdropUrl": {
-                  "type": "string"
-                },
-                "bookFile": {
-                  "properties": {
-                    "bookId": {
-                      "type": "string"
-                    },
-                    "bookTitle": {
-                      "type": "string"
-                    },
-                    "discNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "localMetadata": {
-                      "properties": {
-                        "authors": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "description": {
-                          "type": "string"
-                        },
-                        "edition": {
-                          "type": "string"
-                        },
-                        "identifiers": {
-                          "items": {
-                            "properties": {
-                              "scheme": {
-                                "type": "string"
-                              },
-                              "value": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "scheme",
-                              "value"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        },
-                        "language": {
-                          "type": "string"
-                        },
-                        "narrators": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "publishedYear": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        },
-                        "publisher": {
-                          "type": "string"
-                        },
-                        "series": {
-                          "items": {
-                            "properties": {
-                              "name": {
-                                "type": "string"
-                              },
-                              "position": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "name"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        },
-                        "sources": {
-                          "additionalProperties": {
-                            "type": "string"
-                          },
-                          "type": "object"
-                        }
-                      },
-                      "required": [
-                        "authors",
-                        "narrators",
-                        "series",
-                        "identifiers",
-                        "sources"
-                      ],
-                      "type": "object"
-                    },
-                    "localMetadataIssue": {
-                      "type": "string"
-                    },
-                    "localPolicy": {
-                      "properties": {
-                        "localMode": {
-                          "type": "string"
-                        },
-                        "revision": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "revision",
-                        "localMode"
-                      ],
-                      "type": "object"
-                    },
-                    "partNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "sourceBoundary": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "bookId",
-                    "bookTitle",
-                    "sourceBoundary"
-                  ],
-                  "type": "object"
-                },
-                "durationMs": {
+                "bitDepth": {
                   "maximum": 9007199254740991,
-                  "minimum": 0,
+                  "minimum": -9007199254740991,
                   "type": "integer"
                 },
-                "episode": {
-                  "properties": {
-                    "airDate": {
-                      "type": "string"
-                    },
-                    "localIdentityStatus": {
-                      "type": "string"
-                    },
-                    "number": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "numbering": {
-                      "type": "string"
-                    },
-                    "orderingBasis": {
-                      "type": "string"
-                    },
-                    "providerMatchStatus": {
-                      "type": "string"
-                    },
-                    "seasonId": {
-                      "type": "string"
-                    },
-                    "seasonNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "showId": {
-                      "type": "string"
-                    },
-                    "showTitle": {
-                      "type": "string"
-                    },
-                    "sourceBoundary": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "showId",
-                    "showTitle",
-                    "numbering",
-                    "number",
-                    "localIdentityStatus",
-                    "providerMatchStatus",
-                    "orderingBasis",
-                    "sourceBoundary"
-                  ],
-                  "type": "object"
-                },
-                "fileInfoOpening": {
-                  "type": "string"
-                },
-                "id": {
-                  "type": "string"
-                },
-                "kind": {
-                  "type": "string"
-                },
-                "libraryId": {
-                  "type": "string"
-                },
-                "missing": {
-                  "type": "boolean"
-                },
-                "overview": {
-                  "type": "string"
-                },
-                "posterUrl": {
-                  "type": "string"
-                },
-                "progressMs": {
+                "channels": {
                   "maximum": 9007199254740991,
-                  "minimum": 0,
+                  "minimum": -9007199254740991,
                   "type": "integer"
                 },
-                "song": {
-                  "properties": {
-                    "albumArtist": {
-                      "type": "string"
-                    },
-                    "albumId": {
-                      "type": "string"
-                    },
-                    "albumTitle": {
-                      "type": "string"
-                    },
-                    "artist": {
-                      "type": "string"
-                    },
-                    "discNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "localMetadataIssue": {
-                      "type": "string"
-                    },
-                    "providerArtist": {
-                      "type": "string"
-                    },
-                    "providerMatchStatus": {
-                      "type": "string"
-                    },
-                    "providerObservedAt": {
-                      "type": "string"
-                    },
-                    "providerRecordingId": {
-                      "type": "string"
-                    },
-                    "providerReleaseGroupId": {
-                      "type": "string"
-                    },
-                    "providerReleaseId": {
-                      "type": "string"
-                    },
-                    "providerReleaseStatus": {
-                      "type": "string"
-                    },
-                    "providerSourceUrl": {
-                      "type": "string"
-                    },
-                    "providerTitle": {
-                      "type": "string"
-                    },
-                    "providerTrackId": {
-                      "type": "string"
-                    },
-                    "trackNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "providerReleaseStatus",
-                    "albumId",
-                    "albumTitle",
-                    "albumArtist",
-                    "artist",
-                    "providerMatchStatus"
-                  ],
-                  "type": "object"
-                },
-                "sources": {
-                  "items": {
-                    "properties": {
-                      "audioCodec": {
-                        "type": "string"
-                      },
-                      "container": {
-                        "type": "string"
-                      },
-                      "durationMs": {
-                        "maximum": 9007199254740991,
-                        "minimum": 0,
-                        "type": "integer"
-                      },
-                      "height": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "id": {
-                        "type": "string"
-                      },
-                      "videoCodec": {
-                        "type": "string"
-                      },
-                      "width": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "id",
-                      "container",
-                      "videoCodec",
-                      "audioCodec",
-                      "width",
-                      "height",
-                      "durationMs"
-                    ],
-                    "type": "object"
-                  },
-                  "type": "array"
-                },
-                "stillUrl": {
+                "codec": {
                   "type": "string"
                 },
-                "title": {
+                "layout": {
                   "type": "string"
                 },
-                "watched": {
+                "lossless": {
                   "type": "boolean"
                 },
-                "year": {
+                "sampleRate": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
                 }
               },
               "required": [
-                "missing",
-                "addedAt",
-                "id",
-                "libraryId",
-                "title",
-                "kind",
-                "durationMs",
-                "progressMs",
-                "available"
+                "codec"
               ],
               "type": "object"
             },
-            {
+            "available": {
+              "type": "boolean"
+            },
+            "backdropUrl": {
+              "type": "string"
+            },
+            "bookFile": {
               "properties": {
-                "addedAt": {
-                  "nullable": true,
+                "bookId": {
                   "type": "string"
                 },
-                "audioFacts": {
-                  "properties": {
-                    "atmos": {
-                      "type": "boolean"
-                    },
-                    "bitDepth": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "channels": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "codec": {
-                      "type": "string"
-                    },
-                    "layout": {
-                      "type": "string"
-                    },
-                    "lossless": {
-                      "type": "boolean"
-                    },
-                    "sampleRate": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "codec"
-                  ],
-                  "type": "object"
-                },
-                "available": {
-                  "type": "boolean"
-                },
-                "backdropUrl": {
+                "bookTitle": {
                   "type": "string"
                 },
-                "bookFile": {
-                  "properties": {
-                    "bookId": {
-                      "type": "string"
-                    },
-                    "bookTitle": {
-                      "type": "string"
-                    },
-                    "discNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "localMetadata": {
-                      "properties": {
-                        "authors": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "description": {
-                          "type": "string"
-                        },
-                        "edition": {
-                          "type": "string"
-                        },
-                        "identifiers": {
-                          "items": {
-                            "properties": {
-                              "scheme": {
-                                "type": "string"
-                              },
-                              "value": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "scheme",
-                              "value"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        },
-                        "language": {
-                          "type": "string"
-                        },
-                        "narrators": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "publishedYear": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        },
-                        "publisher": {
-                          "type": "string"
-                        },
-                        "series": {
-                          "items": {
-                            "properties": {
-                              "name": {
-                                "type": "string"
-                              },
-                              "position": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "name"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        },
-                        "sources": {
-                          "additionalProperties": {
-                            "type": "string"
-                          },
-                          "type": "object"
-                        }
-                      },
-                      "required": [
-                        "authors",
-                        "narrators",
-                        "series",
-                        "identifiers",
-                        "sources"
-                      ],
-                      "type": "object"
-                    },
-                    "localMetadataIssue": {
-                      "type": "string"
-                    },
-                    "localPolicy": {
-                      "properties": {
-                        "localMode": {
-                          "type": "string"
-                        },
-                        "revision": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "revision",
-                        "localMode"
-                      ],
-                      "type": "object"
-                    },
-                    "partNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "sourceBoundary": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "bookId",
-                    "bookTitle",
-                    "sourceBoundary"
-                  ],
-                  "type": "object"
-                },
-                "durationState": {
-                  "enum": [
-                    "unrepresentable"
-                  ],
-                  "type": "string"
-                },
-                "episode": {
-                  "properties": {
-                    "airDate": {
-                      "type": "string"
-                    },
-                    "localIdentityStatus": {
-                      "type": "string"
-                    },
-                    "number": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "numbering": {
-                      "type": "string"
-                    },
-                    "orderingBasis": {
-                      "type": "string"
-                    },
-                    "providerMatchStatus": {
-                      "type": "string"
-                    },
-                    "seasonId": {
-                      "type": "string"
-                    },
-                    "seasonNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "showId": {
-                      "type": "string"
-                    },
-                    "showTitle": {
-                      "type": "string"
-                    },
-                    "sourceBoundary": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "showId",
-                    "showTitle",
-                    "numbering",
-                    "number",
-                    "localIdentityStatus",
-                    "providerMatchStatus",
-                    "orderingBasis",
-                    "sourceBoundary"
-                  ],
-                  "type": "object"
-                },
-                "fileInfoOpening": {
-                  "type": "string"
-                },
-                "id": {
-                  "type": "string"
-                },
-                "kind": {
-                  "type": "string"
-                },
-                "libraryId": {
-                  "type": "string"
-                },
-                "missing": {
-                  "type": "boolean"
-                },
-                "overview": {
-                  "type": "string"
-                },
-                "posterUrl": {
-                  "type": "string"
-                },
-                "progressMs": {
+                "discNumber": {
                   "maximum": 9007199254740991,
-                  "minimum": 0,
+                  "minimum": -9007199254740991,
                   "type": "integer"
                 },
-                "song": {
+                "localMetadata": {
                   "properties": {
-                    "albumArtist": {
+                    "authors": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "description": {
                       "type": "string"
                     },
-                    "albumId": {
+                    "edition": {
                       "type": "string"
                     },
-                    "albumTitle": {
+                    "identifiers": {
+                      "items": {
+                        "properties": {
+                          "scheme": {
+                            "type": "string"
+                          },
+                          "value": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "scheme",
+                          "value"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "language": {
                       "type": "string"
                     },
-                    "artist": {
-                      "type": "string"
+                    "narrators": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
                     },
-                    "discNumber": {
+                    "publishedYear": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
-                    "localMetadataIssue": {
+                    "publisher": {
                       "type": "string"
                     },
-                    "providerArtist": {
+                    "series": {
+                      "items": {
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "position": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "sources": {
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "authors",
+                    "narrators",
+                    "series",
+                    "identifiers",
+                    "sources"
+                  ],
+                  "type": "object"
+                },
+                "localMetadataIssue": {
+                  "type": "string"
+                },
+                "localPolicy": {
+                  "properties": {
+                    "localMode": {
                       "type": "string"
                     },
-                    "providerMatchStatus": {
-                      "type": "string"
-                    },
-                    "providerObservedAt": {
-                      "type": "string"
-                    },
-                    "providerRecordingId": {
-                      "type": "string"
-                    },
-                    "providerReleaseGroupId": {
-                      "type": "string"
-                    },
-                    "providerReleaseId": {
-                      "type": "string"
-                    },
-                    "providerReleaseStatus": {
-                      "type": "string"
-                    },
-                    "providerSourceUrl": {
-                      "type": "string"
-                    },
-                    "providerTitle": {
-                      "type": "string"
-                    },
-                    "providerTrackId": {
-                      "type": "string"
-                    },
-                    "trackNumber": {
+                    "revision": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
                     }
                   },
                   "required": [
-                    "providerReleaseStatus",
-                    "albumId",
-                    "albumTitle",
-                    "albumArtist",
-                    "artist",
-                    "providerMatchStatus"
+                    "revision",
+                    "localMode"
                   ],
                   "type": "object"
                 },
-                "sources": {
-                  "items": {
-                    "properties": {
-                      "audioCodec": {
-                        "type": "string"
-                      },
-                      "container": {
-                        "type": "string"
-                      },
-                      "durationMs": {
-                        "maximum": 9007199254740991,
-                        "minimum": 0,
-                        "type": "integer"
-                      },
-                      "height": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "id": {
-                        "type": "string"
-                      },
-                      "videoCodec": {
-                        "type": "string"
-                      },
-                      "width": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "id",
-                      "container",
-                      "videoCodec",
-                      "audioCodec",
-                      "width",
-                      "height",
-                      "durationMs"
-                    ],
-                    "type": "object"
-                  },
-                  "type": "array"
+                "partNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 },
-                "stillUrl": {
+                "sourceBoundary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "bookId",
+                "bookTitle",
+                "sourceBoundary"
+              ],
+              "type": "object"
+            },
+            "durationMs": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "durationState": {
+              "enum": [
+                "unrepresentable"
+              ],
+              "type": "string"
+            },
+            "episode": {
+              "properties": {
+                "airDate": {
                   "type": "string"
                 },
-                "title": {
+                "localIdentityStatus": {
                   "type": "string"
                 },
-                "watched": {
-                  "type": "boolean"
+                "number": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 },
-                "year": {
+                "numbering": {
+                  "type": "string"
+                },
+                "orderingBasis": {
+                  "type": "string"
+                },
+                "providerMatchStatus": {
+                  "type": "string"
+                },
+                "seasonId": {
+                  "type": "string"
+                },
+                "seasonNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "showId": {
+                  "type": "string"
+                },
+                "showTitle": {
+                  "type": "string"
+                },
+                "sourceBoundary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "showId",
+                "showTitle",
+                "numbering",
+                "number",
+                "localIdentityStatus",
+                "providerMatchStatus",
+                "orderingBasis",
+                "sourceBoundary"
+              ],
+              "type": "object"
+            },
+            "fileInfoOpening": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "libraryId": {
+              "type": "string"
+            },
+            "missing": {
+              "type": "boolean"
+            },
+            "overview": {
+              "type": "string"
+            },
+            "posterUrl": {
+              "type": "string"
+            },
+            "progressMs": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "song": {
+              "properties": {
+                "albumArtist": {
+                  "type": "string"
+                },
+                "albumId": {
+                  "type": "string"
+                },
+                "albumTitle": {
+                  "type": "string"
+                },
+                "artist": {
+                  "type": "string"
+                },
+                "discNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "localMetadataIssue": {
+                  "type": "string"
+                },
+                "providerArtist": {
+                  "type": "string"
+                },
+                "providerMatchStatus": {
+                  "type": "string"
+                },
+                "providerObservedAt": {
+                  "type": "string"
+                },
+                "providerRecordingId": {
+                  "type": "string"
+                },
+                "providerReleaseGroupId": {
+                  "type": "string"
+                },
+                "providerReleaseId": {
+                  "type": "string"
+                },
+                "providerReleaseStatus": {
+                  "type": "string"
+                },
+                "providerSourceUrl": {
+                  "type": "string"
+                },
+                "providerTitle": {
+                  "type": "string"
+                },
+                "providerTrackId": {
+                  "type": "string"
+                },
+                "trackNumber": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
                 }
               },
               "required": [
-                "missing",
-                "addedAt",
-                "id",
-                "libraryId",
-                "title",
-                "kind",
-                "progressMs",
-                "available",
-                "durationState"
+                "providerReleaseStatus",
+                "albumId",
+                "albumTitle",
+                "albumArtist",
+                "artist",
+                "providerMatchStatus"
               ],
               "type": "object"
+            },
+            "sources": {
+              "items": {
+                "properties": {
+                  "audioCodec": {
+                    "type": "string"
+                  },
+                  "container": {
+                    "type": "string"
+                  },
+                  "durationMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "height": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "videoCodec": {
+                    "type": "string"
+                  },
+                  "width": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "id",
+                  "container",
+                  "videoCodec",
+                  "audioCodec",
+                  "width",
+                  "height",
+                  "durationMs"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "stillUrl": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "watched": {
+              "type": "boolean"
+            },
+            "year": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
             }
-          ]
+          },
+          "required": [
+            "missing",
+            "addedAt",
+            "id",
+            "libraryId",
+            "title",
+            "kind",
+            "progressMs",
+            "available"
+          ],
+          "type": "object"
         },
         "type": "array"
       }
@@ -39614,811 +39506,410 @@ export const schemas = {
     "properties": {
       "files": {
         "items": {
-          "anyOf": [
-            {
+          "properties": {
+            "addedAt": {
+              "nullable": true,
+              "type": "string"
+            },
+            "audioFacts": {
               "properties": {
-                "addedAt": {
-                  "nullable": true,
-                  "type": "string"
-                },
-                "audioFacts": {
-                  "properties": {
-                    "atmos": {
-                      "type": "boolean"
-                    },
-                    "bitDepth": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "channels": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "codec": {
-                      "type": "string"
-                    },
-                    "layout": {
-                      "type": "string"
-                    },
-                    "lossless": {
-                      "type": "boolean"
-                    },
-                    "sampleRate": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "codec"
-                  ],
-                  "type": "object"
-                },
-                "available": {
+                "atmos": {
                   "type": "boolean"
                 },
-                "backdropUrl": {
-                  "type": "string"
-                },
-                "bookFile": {
-                  "properties": {
-                    "bookId": {
-                      "type": "string"
-                    },
-                    "bookTitle": {
-                      "type": "string"
-                    },
-                    "discNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "localMetadata": {
-                      "properties": {
-                        "authors": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "description": {
-                          "type": "string"
-                        },
-                        "edition": {
-                          "type": "string"
-                        },
-                        "identifiers": {
-                          "items": {
-                            "properties": {
-                              "scheme": {
-                                "type": "string"
-                              },
-                              "value": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "scheme",
-                              "value"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        },
-                        "language": {
-                          "type": "string"
-                        },
-                        "narrators": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "publishedYear": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        },
-                        "publisher": {
-                          "type": "string"
-                        },
-                        "series": {
-                          "items": {
-                            "properties": {
-                              "name": {
-                                "type": "string"
-                              },
-                              "position": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "name"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        },
-                        "sources": {
-                          "additionalProperties": {
-                            "type": "string"
-                          },
-                          "type": "object"
-                        }
-                      },
-                      "required": [
-                        "authors",
-                        "narrators",
-                        "series",
-                        "identifiers",
-                        "sources"
-                      ],
-                      "type": "object"
-                    },
-                    "localMetadataIssue": {
-                      "type": "string"
-                    },
-                    "localPolicy": {
-                      "properties": {
-                        "localMode": {
-                          "type": "string"
-                        },
-                        "revision": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "revision",
-                        "localMode"
-                      ],
-                      "type": "object"
-                    },
-                    "partNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "sourceBoundary": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "bookId",
-                    "bookTitle",
-                    "sourceBoundary"
-                  ],
-                  "type": "object"
-                },
-                "durationMs": {
+                "bitDepth": {
                   "maximum": 9007199254740991,
-                  "minimum": 0,
+                  "minimum": -9007199254740991,
                   "type": "integer"
                 },
-                "episode": {
-                  "properties": {
-                    "airDate": {
-                      "type": "string"
-                    },
-                    "localIdentityStatus": {
-                      "type": "string"
-                    },
-                    "number": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "numbering": {
-                      "type": "string"
-                    },
-                    "orderingBasis": {
-                      "type": "string"
-                    },
-                    "providerMatchStatus": {
-                      "type": "string"
-                    },
-                    "seasonId": {
-                      "type": "string"
-                    },
-                    "seasonNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "showId": {
-                      "type": "string"
-                    },
-                    "showTitle": {
-                      "type": "string"
-                    },
-                    "sourceBoundary": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "showId",
-                    "showTitle",
-                    "numbering",
-                    "number",
-                    "localIdentityStatus",
-                    "providerMatchStatus",
-                    "orderingBasis",
-                    "sourceBoundary"
-                  ],
-                  "type": "object"
-                },
-                "fileInfoOpening": {
-                  "type": "string"
-                },
-                "id": {
-                  "type": "string"
-                },
-                "kind": {
-                  "type": "string"
-                },
-                "libraryId": {
-                  "type": "string"
-                },
-                "missing": {
-                  "type": "boolean"
-                },
-                "overview": {
-                  "type": "string"
-                },
-                "posterUrl": {
-                  "type": "string"
-                },
-                "progressMs": {
+                "channels": {
                   "maximum": 9007199254740991,
-                  "minimum": 0,
+                  "minimum": -9007199254740991,
                   "type": "integer"
                 },
-                "song": {
-                  "properties": {
-                    "albumArtist": {
-                      "type": "string"
-                    },
-                    "albumId": {
-                      "type": "string"
-                    },
-                    "albumTitle": {
-                      "type": "string"
-                    },
-                    "artist": {
-                      "type": "string"
-                    },
-                    "discNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "localMetadataIssue": {
-                      "type": "string"
-                    },
-                    "providerArtist": {
-                      "type": "string"
-                    },
-                    "providerMatchStatus": {
-                      "type": "string"
-                    },
-                    "providerObservedAt": {
-                      "type": "string"
-                    },
-                    "providerRecordingId": {
-                      "type": "string"
-                    },
-                    "providerReleaseGroupId": {
-                      "type": "string"
-                    },
-                    "providerReleaseId": {
-                      "type": "string"
-                    },
-                    "providerReleaseStatus": {
-                      "type": "string"
-                    },
-                    "providerSourceUrl": {
-                      "type": "string"
-                    },
-                    "providerTitle": {
-                      "type": "string"
-                    },
-                    "providerTrackId": {
-                      "type": "string"
-                    },
-                    "trackNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "providerReleaseStatus",
-                    "albumId",
-                    "albumTitle",
-                    "albumArtist",
-                    "artist",
-                    "providerMatchStatus"
-                  ],
-                  "type": "object"
-                },
-                "sources": {
-                  "items": {
-                    "properties": {
-                      "audioCodec": {
-                        "type": "string"
-                      },
-                      "container": {
-                        "type": "string"
-                      },
-                      "durationMs": {
-                        "maximum": 9007199254740991,
-                        "minimum": 0,
-                        "type": "integer"
-                      },
-                      "height": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "id": {
-                        "type": "string"
-                      },
-                      "videoCodec": {
-                        "type": "string"
-                      },
-                      "width": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "id",
-                      "container",
-                      "videoCodec",
-                      "audioCodec",
-                      "width",
-                      "height",
-                      "durationMs"
-                    ],
-                    "type": "object"
-                  },
-                  "type": "array"
-                },
-                "stillUrl": {
+                "codec": {
                   "type": "string"
                 },
-                "title": {
+                "layout": {
                   "type": "string"
                 },
-                "watched": {
+                "lossless": {
                   "type": "boolean"
                 },
-                "year": {
+                "sampleRate": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
                 }
               },
               "required": [
-                "missing",
-                "addedAt",
-                "id",
-                "libraryId",
-                "title",
-                "kind",
-                "durationMs",
-                "progressMs",
-                "available"
+                "codec"
               ],
               "type": "object"
             },
-            {
+            "available": {
+              "type": "boolean"
+            },
+            "backdropUrl": {
+              "type": "string"
+            },
+            "bookFile": {
               "properties": {
-                "addedAt": {
-                  "nullable": true,
+                "bookId": {
                   "type": "string"
                 },
-                "audioFacts": {
-                  "properties": {
-                    "atmos": {
-                      "type": "boolean"
-                    },
-                    "bitDepth": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "channels": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "codec": {
-                      "type": "string"
-                    },
-                    "layout": {
-                      "type": "string"
-                    },
-                    "lossless": {
-                      "type": "boolean"
-                    },
-                    "sampleRate": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "codec"
-                  ],
-                  "type": "object"
-                },
-                "available": {
-                  "type": "boolean"
-                },
-                "backdropUrl": {
+                "bookTitle": {
                   "type": "string"
                 },
-                "bookFile": {
-                  "properties": {
-                    "bookId": {
-                      "type": "string"
-                    },
-                    "bookTitle": {
-                      "type": "string"
-                    },
-                    "discNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "localMetadata": {
-                      "properties": {
-                        "authors": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "description": {
-                          "type": "string"
-                        },
-                        "edition": {
-                          "type": "string"
-                        },
-                        "identifiers": {
-                          "items": {
-                            "properties": {
-                              "scheme": {
-                                "type": "string"
-                              },
-                              "value": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "scheme",
-                              "value"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        },
-                        "language": {
-                          "type": "string"
-                        },
-                        "narrators": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "publishedYear": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        },
-                        "publisher": {
-                          "type": "string"
-                        },
-                        "series": {
-                          "items": {
-                            "properties": {
-                              "name": {
-                                "type": "string"
-                              },
-                              "position": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "name"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        },
-                        "sources": {
-                          "additionalProperties": {
-                            "type": "string"
-                          },
-                          "type": "object"
-                        }
-                      },
-                      "required": [
-                        "authors",
-                        "narrators",
-                        "series",
-                        "identifiers",
-                        "sources"
-                      ],
-                      "type": "object"
-                    },
-                    "localMetadataIssue": {
-                      "type": "string"
-                    },
-                    "localPolicy": {
-                      "properties": {
-                        "localMode": {
-                          "type": "string"
-                        },
-                        "revision": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "revision",
-                        "localMode"
-                      ],
-                      "type": "object"
-                    },
-                    "partNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "sourceBoundary": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "bookId",
-                    "bookTitle",
-                    "sourceBoundary"
-                  ],
-                  "type": "object"
-                },
-                "durationState": {
-                  "enum": [
-                    "unrepresentable"
-                  ],
-                  "type": "string"
-                },
-                "episode": {
-                  "properties": {
-                    "airDate": {
-                      "type": "string"
-                    },
-                    "localIdentityStatus": {
-                      "type": "string"
-                    },
-                    "number": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "numbering": {
-                      "type": "string"
-                    },
-                    "orderingBasis": {
-                      "type": "string"
-                    },
-                    "providerMatchStatus": {
-                      "type": "string"
-                    },
-                    "seasonId": {
-                      "type": "string"
-                    },
-                    "seasonNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "showId": {
-                      "type": "string"
-                    },
-                    "showTitle": {
-                      "type": "string"
-                    },
-                    "sourceBoundary": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "showId",
-                    "showTitle",
-                    "numbering",
-                    "number",
-                    "localIdentityStatus",
-                    "providerMatchStatus",
-                    "orderingBasis",
-                    "sourceBoundary"
-                  ],
-                  "type": "object"
-                },
-                "fileInfoOpening": {
-                  "type": "string"
-                },
-                "id": {
-                  "type": "string"
-                },
-                "kind": {
-                  "type": "string"
-                },
-                "libraryId": {
-                  "type": "string"
-                },
-                "missing": {
-                  "type": "boolean"
-                },
-                "overview": {
-                  "type": "string"
-                },
-                "posterUrl": {
-                  "type": "string"
-                },
-                "progressMs": {
+                "discNumber": {
                   "maximum": 9007199254740991,
-                  "minimum": 0,
+                  "minimum": -9007199254740991,
                   "type": "integer"
                 },
-                "song": {
+                "localMetadata": {
                   "properties": {
-                    "albumArtist": {
+                    "authors": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "description": {
                       "type": "string"
                     },
-                    "albumId": {
+                    "edition": {
                       "type": "string"
                     },
-                    "albumTitle": {
+                    "identifiers": {
+                      "items": {
+                        "properties": {
+                          "scheme": {
+                            "type": "string"
+                          },
+                          "value": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "scheme",
+                          "value"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "language": {
                       "type": "string"
                     },
-                    "artist": {
-                      "type": "string"
+                    "narrators": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
                     },
-                    "discNumber": {
+                    "publishedYear": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
-                    "localMetadataIssue": {
+                    "publisher": {
                       "type": "string"
                     },
-                    "providerArtist": {
+                    "series": {
+                      "items": {
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "position": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "sources": {
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "authors",
+                    "narrators",
+                    "series",
+                    "identifiers",
+                    "sources"
+                  ],
+                  "type": "object"
+                },
+                "localMetadataIssue": {
+                  "type": "string"
+                },
+                "localPolicy": {
+                  "properties": {
+                    "localMode": {
                       "type": "string"
                     },
-                    "providerMatchStatus": {
-                      "type": "string"
-                    },
-                    "providerObservedAt": {
-                      "type": "string"
-                    },
-                    "providerRecordingId": {
-                      "type": "string"
-                    },
-                    "providerReleaseGroupId": {
-                      "type": "string"
-                    },
-                    "providerReleaseId": {
-                      "type": "string"
-                    },
-                    "providerReleaseStatus": {
-                      "type": "string"
-                    },
-                    "providerSourceUrl": {
-                      "type": "string"
-                    },
-                    "providerTitle": {
-                      "type": "string"
-                    },
-                    "providerTrackId": {
-                      "type": "string"
-                    },
-                    "trackNumber": {
+                    "revision": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
                     }
                   },
                   "required": [
-                    "providerReleaseStatus",
-                    "albumId",
-                    "albumTitle",
-                    "albumArtist",
-                    "artist",
-                    "providerMatchStatus"
+                    "revision",
+                    "localMode"
                   ],
                   "type": "object"
                 },
-                "sources": {
-                  "items": {
-                    "properties": {
-                      "audioCodec": {
-                        "type": "string"
-                      },
-                      "container": {
-                        "type": "string"
-                      },
-                      "durationMs": {
-                        "maximum": 9007199254740991,
-                        "minimum": 0,
-                        "type": "integer"
-                      },
-                      "height": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "id": {
-                        "type": "string"
-                      },
-                      "videoCodec": {
-                        "type": "string"
-                      },
-                      "width": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "id",
-                      "container",
-                      "videoCodec",
-                      "audioCodec",
-                      "width",
-                      "height",
-                      "durationMs"
-                    ],
-                    "type": "object"
-                  },
-                  "type": "array"
+                "partNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 },
-                "stillUrl": {
+                "sourceBoundary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "bookId",
+                "bookTitle",
+                "sourceBoundary"
+              ],
+              "type": "object"
+            },
+            "durationMs": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "durationState": {
+              "enum": [
+                "unrepresentable"
+              ],
+              "type": "string"
+            },
+            "episode": {
+              "properties": {
+                "airDate": {
                   "type": "string"
                 },
-                "title": {
+                "localIdentityStatus": {
                   "type": "string"
                 },
-                "watched": {
-                  "type": "boolean"
+                "number": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 },
-                "year": {
+                "numbering": {
+                  "type": "string"
+                },
+                "orderingBasis": {
+                  "type": "string"
+                },
+                "providerMatchStatus": {
+                  "type": "string"
+                },
+                "seasonId": {
+                  "type": "string"
+                },
+                "seasonNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "showId": {
+                  "type": "string"
+                },
+                "showTitle": {
+                  "type": "string"
+                },
+                "sourceBoundary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "showId",
+                "showTitle",
+                "numbering",
+                "number",
+                "localIdentityStatus",
+                "providerMatchStatus",
+                "orderingBasis",
+                "sourceBoundary"
+              ],
+              "type": "object"
+            },
+            "fileInfoOpening": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "libraryId": {
+              "type": "string"
+            },
+            "missing": {
+              "type": "boolean"
+            },
+            "overview": {
+              "type": "string"
+            },
+            "posterUrl": {
+              "type": "string"
+            },
+            "progressMs": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "song": {
+              "properties": {
+                "albumArtist": {
+                  "type": "string"
+                },
+                "albumId": {
+                  "type": "string"
+                },
+                "albumTitle": {
+                  "type": "string"
+                },
+                "artist": {
+                  "type": "string"
+                },
+                "discNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "localMetadataIssue": {
+                  "type": "string"
+                },
+                "providerArtist": {
+                  "type": "string"
+                },
+                "providerMatchStatus": {
+                  "type": "string"
+                },
+                "providerObservedAt": {
+                  "type": "string"
+                },
+                "providerRecordingId": {
+                  "type": "string"
+                },
+                "providerReleaseGroupId": {
+                  "type": "string"
+                },
+                "providerReleaseId": {
+                  "type": "string"
+                },
+                "providerReleaseStatus": {
+                  "type": "string"
+                },
+                "providerSourceUrl": {
+                  "type": "string"
+                },
+                "providerTitle": {
+                  "type": "string"
+                },
+                "providerTrackId": {
+                  "type": "string"
+                },
+                "trackNumber": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
                 }
               },
               "required": [
-                "missing",
-                "addedAt",
-                "id",
-                "libraryId",
-                "title",
-                "kind",
-                "progressMs",
-                "available",
-                "durationState"
+                "providerReleaseStatus",
+                "albumId",
+                "albumTitle",
+                "albumArtist",
+                "artist",
+                "providerMatchStatus"
               ],
               "type": "object"
+            },
+            "sources": {
+              "items": {
+                "properties": {
+                  "audioCodec": {
+                    "type": "string"
+                  },
+                  "container": {
+                    "type": "string"
+                  },
+                  "durationMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "height": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "videoCodec": {
+                    "type": "string"
+                  },
+                  "width": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "id",
+                  "container",
+                  "videoCodec",
+                  "audioCodec",
+                  "width",
+                  "height",
+                  "durationMs"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "stillUrl": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "watched": {
+              "type": "boolean"
+            },
+            "year": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
             }
-          ]
+          },
+          "required": [
+            "missing",
+            "addedAt",
+            "id",
+            "libraryId",
+            "title",
+            "kind",
+            "progressMs",
+            "available"
+          ],
+          "type": "object"
         },
         "type": "array"
       },
@@ -41438,7 +40929,7 @@ export const schemas = {
               "type": "string"
             },
             "query": {
-              "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
+              "description": "A predicate, a relative-date predicate or an all/any/not group, each tagged with its variant. The parser enforces recursive vocabulary and published depth/clause bounds.",
               "nullable": true,
               "oneOf": [
                 {
@@ -41463,9 +40954,54 @@ export const schemas = {
                       "maximum": 36500,
                       "minimum": 1,
                       "type": "integer"
+                    },
+                    "variant": {
+                      "const": "relative",
+                      "type": "string"
                     }
                   },
                   "required": [
+                    "variant",
+                    "field",
+                    "operator",
+                    "value"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "field": {
+                      "type": "string"
+                    },
+                    "operator": {
+                      "enum": [
+                        "equals",
+                        "not-equals",
+                        "in",
+                        "not-in",
+                        "contains",
+                        "starts-with",
+                        "is-present",
+                        "is-missing",
+                        "less-than",
+                        "at-most",
+                        "greater-than",
+                        "at-least",
+                        "between",
+                        "contains-any",
+                        "contains-all"
+                      ],
+                      "type": "string"
+                    },
+                    "value": {},
+                    "variant": {
+                      "const": "predicate",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "variant",
                     "field",
                     "operator",
                     "value"
@@ -41497,41 +41033,24 @@ export const schemas = {
                       "minItems": 1,
                       "type": "array"
                     },
-                    "field": {
-                      "type": "string"
-                    },
                     "not": {
                       "additionalProperties": {},
                       "properties": {},
                       "required": [],
                       "type": "object"
                     },
-                    "operator": {
-                      "enum": [
-                        "equals",
-                        "not-equals",
-                        "in",
-                        "not-in",
-                        "contains",
-                        "starts-with",
-                        "is-present",
-                        "is-missing",
-                        "less-than",
-                        "at-most",
-                        "greater-than",
-                        "at-least",
-                        "between",
-                        "contains-any",
-                        "contains-all"
-                      ],
+                    "variant": {
+                      "const": "group",
                       "type": "string"
-                    },
-                    "value": {}
+                    }
                   },
-                  "required": [],
+                  "required": [
+                    "variant"
+                  ],
                   "type": "object"
                 }
-              ]
+              ],
+              "x-discriminator": "variant"
             }
           },
           "required": [
@@ -42080,811 +41599,410 @@ export const schemas = {
     "properties": {
       "items": {
         "items": {
-          "anyOf": [
-            {
+          "properties": {
+            "addedAt": {
+              "nullable": true,
+              "type": "string"
+            },
+            "audioFacts": {
               "properties": {
-                "addedAt": {
-                  "nullable": true,
-                  "type": "string"
-                },
-                "audioFacts": {
-                  "properties": {
-                    "atmos": {
-                      "type": "boolean"
-                    },
-                    "bitDepth": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "channels": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "codec": {
-                      "type": "string"
-                    },
-                    "layout": {
-                      "type": "string"
-                    },
-                    "lossless": {
-                      "type": "boolean"
-                    },
-                    "sampleRate": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "codec"
-                  ],
-                  "type": "object"
-                },
-                "available": {
+                "atmos": {
                   "type": "boolean"
                 },
-                "backdropUrl": {
-                  "type": "string"
-                },
-                "bookFile": {
-                  "properties": {
-                    "bookId": {
-                      "type": "string"
-                    },
-                    "bookTitle": {
-                      "type": "string"
-                    },
-                    "discNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "localMetadata": {
-                      "properties": {
-                        "authors": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "description": {
-                          "type": "string"
-                        },
-                        "edition": {
-                          "type": "string"
-                        },
-                        "identifiers": {
-                          "items": {
-                            "properties": {
-                              "scheme": {
-                                "type": "string"
-                              },
-                              "value": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "scheme",
-                              "value"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        },
-                        "language": {
-                          "type": "string"
-                        },
-                        "narrators": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "publishedYear": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        },
-                        "publisher": {
-                          "type": "string"
-                        },
-                        "series": {
-                          "items": {
-                            "properties": {
-                              "name": {
-                                "type": "string"
-                              },
-                              "position": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "name"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        },
-                        "sources": {
-                          "additionalProperties": {
-                            "type": "string"
-                          },
-                          "type": "object"
-                        }
-                      },
-                      "required": [
-                        "authors",
-                        "narrators",
-                        "series",
-                        "identifiers",
-                        "sources"
-                      ],
-                      "type": "object"
-                    },
-                    "localMetadataIssue": {
-                      "type": "string"
-                    },
-                    "localPolicy": {
-                      "properties": {
-                        "localMode": {
-                          "type": "string"
-                        },
-                        "revision": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "revision",
-                        "localMode"
-                      ],
-                      "type": "object"
-                    },
-                    "partNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "sourceBoundary": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "bookId",
-                    "bookTitle",
-                    "sourceBoundary"
-                  ],
-                  "type": "object"
-                },
-                "durationMs": {
+                "bitDepth": {
                   "maximum": 9007199254740991,
-                  "minimum": 0,
+                  "minimum": -9007199254740991,
                   "type": "integer"
                 },
-                "episode": {
-                  "properties": {
-                    "airDate": {
-                      "type": "string"
-                    },
-                    "localIdentityStatus": {
-                      "type": "string"
-                    },
-                    "number": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "numbering": {
-                      "type": "string"
-                    },
-                    "orderingBasis": {
-                      "type": "string"
-                    },
-                    "providerMatchStatus": {
-                      "type": "string"
-                    },
-                    "seasonId": {
-                      "type": "string"
-                    },
-                    "seasonNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "showId": {
-                      "type": "string"
-                    },
-                    "showTitle": {
-                      "type": "string"
-                    },
-                    "sourceBoundary": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "showId",
-                    "showTitle",
-                    "numbering",
-                    "number",
-                    "localIdentityStatus",
-                    "providerMatchStatus",
-                    "orderingBasis",
-                    "sourceBoundary"
-                  ],
-                  "type": "object"
-                },
-                "fileInfoOpening": {
-                  "type": "string"
-                },
-                "id": {
-                  "type": "string"
-                },
-                "kind": {
-                  "type": "string"
-                },
-                "libraryId": {
-                  "type": "string"
-                },
-                "missing": {
-                  "type": "boolean"
-                },
-                "overview": {
-                  "type": "string"
-                },
-                "posterUrl": {
-                  "type": "string"
-                },
-                "progressMs": {
+                "channels": {
                   "maximum": 9007199254740991,
-                  "minimum": 0,
+                  "minimum": -9007199254740991,
                   "type": "integer"
                 },
-                "song": {
-                  "properties": {
-                    "albumArtist": {
-                      "type": "string"
-                    },
-                    "albumId": {
-                      "type": "string"
-                    },
-                    "albumTitle": {
-                      "type": "string"
-                    },
-                    "artist": {
-                      "type": "string"
-                    },
-                    "discNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "localMetadataIssue": {
-                      "type": "string"
-                    },
-                    "providerArtist": {
-                      "type": "string"
-                    },
-                    "providerMatchStatus": {
-                      "type": "string"
-                    },
-                    "providerObservedAt": {
-                      "type": "string"
-                    },
-                    "providerRecordingId": {
-                      "type": "string"
-                    },
-                    "providerReleaseGroupId": {
-                      "type": "string"
-                    },
-                    "providerReleaseId": {
-                      "type": "string"
-                    },
-                    "providerReleaseStatus": {
-                      "type": "string"
-                    },
-                    "providerSourceUrl": {
-                      "type": "string"
-                    },
-                    "providerTitle": {
-                      "type": "string"
-                    },
-                    "providerTrackId": {
-                      "type": "string"
-                    },
-                    "trackNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "providerReleaseStatus",
-                    "albumId",
-                    "albumTitle",
-                    "albumArtist",
-                    "artist",
-                    "providerMatchStatus"
-                  ],
-                  "type": "object"
-                },
-                "sources": {
-                  "items": {
-                    "properties": {
-                      "audioCodec": {
-                        "type": "string"
-                      },
-                      "container": {
-                        "type": "string"
-                      },
-                      "durationMs": {
-                        "maximum": 9007199254740991,
-                        "minimum": 0,
-                        "type": "integer"
-                      },
-                      "height": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "id": {
-                        "type": "string"
-                      },
-                      "videoCodec": {
-                        "type": "string"
-                      },
-                      "width": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "id",
-                      "container",
-                      "videoCodec",
-                      "audioCodec",
-                      "width",
-                      "height",
-                      "durationMs"
-                    ],
-                    "type": "object"
-                  },
-                  "type": "array"
-                },
-                "stillUrl": {
+                "codec": {
                   "type": "string"
                 },
-                "title": {
+                "layout": {
                   "type": "string"
                 },
-                "watched": {
+                "lossless": {
                   "type": "boolean"
                 },
-                "year": {
+                "sampleRate": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
                 }
               },
               "required": [
-                "missing",
-                "addedAt",
-                "id",
-                "libraryId",
-                "title",
-                "kind",
-                "durationMs",
-                "progressMs",
-                "available"
+                "codec"
               ],
               "type": "object"
             },
-            {
+            "available": {
+              "type": "boolean"
+            },
+            "backdropUrl": {
+              "type": "string"
+            },
+            "bookFile": {
               "properties": {
-                "addedAt": {
-                  "nullable": true,
+                "bookId": {
                   "type": "string"
                 },
-                "audioFacts": {
-                  "properties": {
-                    "atmos": {
-                      "type": "boolean"
-                    },
-                    "bitDepth": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "channels": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "codec": {
-                      "type": "string"
-                    },
-                    "layout": {
-                      "type": "string"
-                    },
-                    "lossless": {
-                      "type": "boolean"
-                    },
-                    "sampleRate": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "codec"
-                  ],
-                  "type": "object"
-                },
-                "available": {
-                  "type": "boolean"
-                },
-                "backdropUrl": {
+                "bookTitle": {
                   "type": "string"
                 },
-                "bookFile": {
-                  "properties": {
-                    "bookId": {
-                      "type": "string"
-                    },
-                    "bookTitle": {
-                      "type": "string"
-                    },
-                    "discNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "localMetadata": {
-                      "properties": {
-                        "authors": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "description": {
-                          "type": "string"
-                        },
-                        "edition": {
-                          "type": "string"
-                        },
-                        "identifiers": {
-                          "items": {
-                            "properties": {
-                              "scheme": {
-                                "type": "string"
-                              },
-                              "value": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "scheme",
-                              "value"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        },
-                        "language": {
-                          "type": "string"
-                        },
-                        "narrators": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "publishedYear": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        },
-                        "publisher": {
-                          "type": "string"
-                        },
-                        "series": {
-                          "items": {
-                            "properties": {
-                              "name": {
-                                "type": "string"
-                              },
-                              "position": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "name"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        },
-                        "sources": {
-                          "additionalProperties": {
-                            "type": "string"
-                          },
-                          "type": "object"
-                        }
-                      },
-                      "required": [
-                        "authors",
-                        "narrators",
-                        "series",
-                        "identifiers",
-                        "sources"
-                      ],
-                      "type": "object"
-                    },
-                    "localMetadataIssue": {
-                      "type": "string"
-                    },
-                    "localPolicy": {
-                      "properties": {
-                        "localMode": {
-                          "type": "string"
-                        },
-                        "revision": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "revision",
-                        "localMode"
-                      ],
-                      "type": "object"
-                    },
-                    "partNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "sourceBoundary": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "bookId",
-                    "bookTitle",
-                    "sourceBoundary"
-                  ],
-                  "type": "object"
-                },
-                "durationState": {
-                  "enum": [
-                    "unrepresentable"
-                  ],
-                  "type": "string"
-                },
-                "episode": {
-                  "properties": {
-                    "airDate": {
-                      "type": "string"
-                    },
-                    "localIdentityStatus": {
-                      "type": "string"
-                    },
-                    "number": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "numbering": {
-                      "type": "string"
-                    },
-                    "orderingBasis": {
-                      "type": "string"
-                    },
-                    "providerMatchStatus": {
-                      "type": "string"
-                    },
-                    "seasonId": {
-                      "type": "string"
-                    },
-                    "seasonNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "showId": {
-                      "type": "string"
-                    },
-                    "showTitle": {
-                      "type": "string"
-                    },
-                    "sourceBoundary": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "showId",
-                    "showTitle",
-                    "numbering",
-                    "number",
-                    "localIdentityStatus",
-                    "providerMatchStatus",
-                    "orderingBasis",
-                    "sourceBoundary"
-                  ],
-                  "type": "object"
-                },
-                "fileInfoOpening": {
-                  "type": "string"
-                },
-                "id": {
-                  "type": "string"
-                },
-                "kind": {
-                  "type": "string"
-                },
-                "libraryId": {
-                  "type": "string"
-                },
-                "missing": {
-                  "type": "boolean"
-                },
-                "overview": {
-                  "type": "string"
-                },
-                "posterUrl": {
-                  "type": "string"
-                },
-                "progressMs": {
+                "discNumber": {
                   "maximum": 9007199254740991,
-                  "minimum": 0,
+                  "minimum": -9007199254740991,
                   "type": "integer"
                 },
-                "song": {
+                "localMetadata": {
                   "properties": {
-                    "albumArtist": {
+                    "authors": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "description": {
                       "type": "string"
                     },
-                    "albumId": {
+                    "edition": {
                       "type": "string"
                     },
-                    "albumTitle": {
+                    "identifiers": {
+                      "items": {
+                        "properties": {
+                          "scheme": {
+                            "type": "string"
+                          },
+                          "value": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "scheme",
+                          "value"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "language": {
                       "type": "string"
                     },
-                    "artist": {
-                      "type": "string"
+                    "narrators": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
                     },
-                    "discNumber": {
+                    "publishedYear": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
-                    "localMetadataIssue": {
+                    "publisher": {
                       "type": "string"
                     },
-                    "providerArtist": {
+                    "series": {
+                      "items": {
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "position": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "sources": {
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "authors",
+                    "narrators",
+                    "series",
+                    "identifiers",
+                    "sources"
+                  ],
+                  "type": "object"
+                },
+                "localMetadataIssue": {
+                  "type": "string"
+                },
+                "localPolicy": {
+                  "properties": {
+                    "localMode": {
                       "type": "string"
                     },
-                    "providerMatchStatus": {
-                      "type": "string"
-                    },
-                    "providerObservedAt": {
-                      "type": "string"
-                    },
-                    "providerRecordingId": {
-                      "type": "string"
-                    },
-                    "providerReleaseGroupId": {
-                      "type": "string"
-                    },
-                    "providerReleaseId": {
-                      "type": "string"
-                    },
-                    "providerReleaseStatus": {
-                      "type": "string"
-                    },
-                    "providerSourceUrl": {
-                      "type": "string"
-                    },
-                    "providerTitle": {
-                      "type": "string"
-                    },
-                    "providerTrackId": {
-                      "type": "string"
-                    },
-                    "trackNumber": {
+                    "revision": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
                     }
                   },
                   "required": [
-                    "providerReleaseStatus",
-                    "albumId",
-                    "albumTitle",
-                    "albumArtist",
-                    "artist",
-                    "providerMatchStatus"
+                    "revision",
+                    "localMode"
                   ],
                   "type": "object"
                 },
-                "sources": {
-                  "items": {
-                    "properties": {
-                      "audioCodec": {
-                        "type": "string"
-                      },
-                      "container": {
-                        "type": "string"
-                      },
-                      "durationMs": {
-                        "maximum": 9007199254740991,
-                        "minimum": 0,
-                        "type": "integer"
-                      },
-                      "height": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "id": {
-                        "type": "string"
-                      },
-                      "videoCodec": {
-                        "type": "string"
-                      },
-                      "width": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "id",
-                      "container",
-                      "videoCodec",
-                      "audioCodec",
-                      "width",
-                      "height",
-                      "durationMs"
-                    ],
-                    "type": "object"
-                  },
-                  "type": "array"
+                "partNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 },
-                "stillUrl": {
+                "sourceBoundary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "bookId",
+                "bookTitle",
+                "sourceBoundary"
+              ],
+              "type": "object"
+            },
+            "durationMs": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "durationState": {
+              "enum": [
+                "unrepresentable"
+              ],
+              "type": "string"
+            },
+            "episode": {
+              "properties": {
+                "airDate": {
                   "type": "string"
                 },
-                "title": {
+                "localIdentityStatus": {
                   "type": "string"
                 },
-                "watched": {
-                  "type": "boolean"
+                "number": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 },
-                "year": {
+                "numbering": {
+                  "type": "string"
+                },
+                "orderingBasis": {
+                  "type": "string"
+                },
+                "providerMatchStatus": {
+                  "type": "string"
+                },
+                "seasonId": {
+                  "type": "string"
+                },
+                "seasonNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "showId": {
+                  "type": "string"
+                },
+                "showTitle": {
+                  "type": "string"
+                },
+                "sourceBoundary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "showId",
+                "showTitle",
+                "numbering",
+                "number",
+                "localIdentityStatus",
+                "providerMatchStatus",
+                "orderingBasis",
+                "sourceBoundary"
+              ],
+              "type": "object"
+            },
+            "fileInfoOpening": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "libraryId": {
+              "type": "string"
+            },
+            "missing": {
+              "type": "boolean"
+            },
+            "overview": {
+              "type": "string"
+            },
+            "posterUrl": {
+              "type": "string"
+            },
+            "progressMs": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "song": {
+              "properties": {
+                "albumArtist": {
+                  "type": "string"
+                },
+                "albumId": {
+                  "type": "string"
+                },
+                "albumTitle": {
+                  "type": "string"
+                },
+                "artist": {
+                  "type": "string"
+                },
+                "discNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "localMetadataIssue": {
+                  "type": "string"
+                },
+                "providerArtist": {
+                  "type": "string"
+                },
+                "providerMatchStatus": {
+                  "type": "string"
+                },
+                "providerObservedAt": {
+                  "type": "string"
+                },
+                "providerRecordingId": {
+                  "type": "string"
+                },
+                "providerReleaseGroupId": {
+                  "type": "string"
+                },
+                "providerReleaseId": {
+                  "type": "string"
+                },
+                "providerReleaseStatus": {
+                  "type": "string"
+                },
+                "providerSourceUrl": {
+                  "type": "string"
+                },
+                "providerTitle": {
+                  "type": "string"
+                },
+                "providerTrackId": {
+                  "type": "string"
+                },
+                "trackNumber": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
                 }
               },
               "required": [
-                "missing",
-                "addedAt",
-                "id",
-                "libraryId",
-                "title",
-                "kind",
-                "progressMs",
-                "available",
-                "durationState"
+                "providerReleaseStatus",
+                "albumId",
+                "albumTitle",
+                "albumArtist",
+                "artist",
+                "providerMatchStatus"
               ],
               "type": "object"
+            },
+            "sources": {
+              "items": {
+                "properties": {
+                  "audioCodec": {
+                    "type": "string"
+                  },
+                  "container": {
+                    "type": "string"
+                  },
+                  "durationMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "height": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "videoCodec": {
+                    "type": "string"
+                  },
+                  "width": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "id",
+                  "container",
+                  "videoCodec",
+                  "audioCodec",
+                  "width",
+                  "height",
+                  "durationMs"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "stillUrl": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "watched": {
+              "type": "boolean"
+            },
+            "year": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
             }
-          ]
+          },
+          "required": [
+            "missing",
+            "addedAt",
+            "id",
+            "libraryId",
+            "title",
+            "kind",
+            "progressMs",
+            "available"
+          ],
+          "type": "object"
         },
         "type": "array"
       },
@@ -50169,9 +49287,14 @@ export const schemas = {
                 "type": {
                   "const": "capacity.changed",
                   "type": "string"
+                },
+                "variant": {
+                  "const": "capacity",
+                  "type": "string"
                 }
               },
               "required": [
+                "variant",
                 "id",
                 "type",
                 "at"
@@ -50208,6 +49331,10 @@ export const schemas = {
                 "type": {
                   "pattern": "^(?!capacity\\.changed$)[\\s\\S]*$",
                   "type": "string"
+                },
+                "variant": {
+                  "const": "change",
+                  "type": "string"
                 }
               },
               "required": [
@@ -50215,11 +49342,13 @@ export const schemas = {
                 "type",
                 "at",
                 "resource",
-                "revision"
+                "revision",
+                "variant"
               ],
               "type": "object"
             }
-          ]
+          ],
+          "x-discriminator": "variant"
         },
         "type": "array"
       },
@@ -50298,6 +49427,10 @@ export const schemas = {
             "maxItems": 200,
             "type": "array"
           },
+          "variant": {
+            "const": "window",
+            "type": "string"
+          },
           "window": {
             "properties": {
               "basis": {
@@ -50354,7 +49487,8 @@ export const schemas = {
           "total",
           "totalIsLowerBound",
           "values",
-          "window"
+          "window",
+          "variant"
         ],
         "type": "object"
       },
@@ -50442,6 +49576,10 @@ export const schemas = {
             },
             "maxItems": 200,
             "type": "array"
+          },
+          "variant": {
+            "const": "fallback",
+            "type": "string"
           }
         },
         "required": [
@@ -50450,7 +49588,8 @@ export const schemas = {
           "totalIsLowerBound",
           "total",
           "values",
-          "preparation"
+          "preparation",
+          "variant"
         ],
         "type": "object"
       },
@@ -50474,18 +49613,23 @@ export const schemas = {
           "state": {
             "const": "preparing",
             "type": "string"
+          },
+          "variant": {
+            "const": "preparing",
+            "type": "string"
           }
         },
         "required": [
           "kind",
           "state",
           "queryId",
-          "retryAfterMs"
+          "retryAfterMs",
+          "variant"
         ],
         "type": "object"
       }
     ],
-    "x-discriminator": "kind"
+    "x-discriminator": "variant"
   },
   "GetFeedbackCapabilitiesRequest": {
     "properties": {},
@@ -52981,811 +52125,410 @@ export const schemas = {
             "type": "string"
           },
           "item": {
-            "anyOf": [
-              {
+            "properties": {
+              "addedAt": {
+                "nullable": true,
+                "type": "string"
+              },
+              "audioFacts": {
                 "properties": {
-                  "addedAt": {
-                    "nullable": true,
-                    "type": "string"
-                  },
-                  "audioFacts": {
-                    "properties": {
-                      "atmos": {
-                        "type": "boolean"
-                      },
-                      "bitDepth": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "channels": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "codec": {
-                        "type": "string"
-                      },
-                      "layout": {
-                        "type": "string"
-                      },
-                      "lossless": {
-                        "type": "boolean"
-                      },
-                      "sampleRate": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "codec"
-                    ],
-                    "type": "object"
-                  },
-                  "available": {
+                  "atmos": {
                     "type": "boolean"
                   },
-                  "backdropUrl": {
-                    "type": "string"
-                  },
-                  "bookFile": {
-                    "properties": {
-                      "bookId": {
-                        "type": "string"
-                      },
-                      "bookTitle": {
-                        "type": "string"
-                      },
-                      "discNumber": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "localMetadata": {
-                        "properties": {
-                          "authors": {
-                            "items": {
-                              "type": "string"
-                            },
-                            "type": "array"
-                          },
-                          "description": {
-                            "type": "string"
-                          },
-                          "edition": {
-                            "type": "string"
-                          },
-                          "identifiers": {
-                            "items": {
-                              "properties": {
-                                "scheme": {
-                                  "type": "string"
-                                },
-                                "value": {
-                                  "type": "string"
-                                }
-                              },
-                              "required": [
-                                "scheme",
-                                "value"
-                              ],
-                              "type": "object"
-                            },
-                            "type": "array"
-                          },
-                          "language": {
-                            "type": "string"
-                          },
-                          "narrators": {
-                            "items": {
-                              "type": "string"
-                            },
-                            "type": "array"
-                          },
-                          "publishedYear": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          },
-                          "publisher": {
-                            "type": "string"
-                          },
-                          "series": {
-                            "items": {
-                              "properties": {
-                                "name": {
-                                  "type": "string"
-                                },
-                                "position": {
-                                  "type": "string"
-                                }
-                              },
-                              "required": [
-                                "name"
-                              ],
-                              "type": "object"
-                            },
-                            "type": "array"
-                          },
-                          "sources": {
-                            "additionalProperties": {
-                              "type": "string"
-                            },
-                            "type": "object"
-                          }
-                        },
-                        "required": [
-                          "authors",
-                          "narrators",
-                          "series",
-                          "identifiers",
-                          "sources"
-                        ],
-                        "type": "object"
-                      },
-                      "localMetadataIssue": {
-                        "type": "string"
-                      },
-                      "localPolicy": {
-                        "properties": {
-                          "localMode": {
-                            "type": "string"
-                          },
-                          "revision": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          }
-                        },
-                        "required": [
-                          "revision",
-                          "localMode"
-                        ],
-                        "type": "object"
-                      },
-                      "partNumber": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "sourceBoundary": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "bookId",
-                      "bookTitle",
-                      "sourceBoundary"
-                    ],
-                    "type": "object"
-                  },
-                  "durationMs": {
+                  "bitDepth": {
                     "maximum": 9007199254740991,
-                    "minimum": 0,
+                    "minimum": -9007199254740991,
                     "type": "integer"
                   },
-                  "episode": {
-                    "properties": {
-                      "airDate": {
-                        "type": "string"
-                      },
-                      "localIdentityStatus": {
-                        "type": "string"
-                      },
-                      "number": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "numbering": {
-                        "type": "string"
-                      },
-                      "orderingBasis": {
-                        "type": "string"
-                      },
-                      "providerMatchStatus": {
-                        "type": "string"
-                      },
-                      "seasonId": {
-                        "type": "string"
-                      },
-                      "seasonNumber": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "showId": {
-                        "type": "string"
-                      },
-                      "showTitle": {
-                        "type": "string"
-                      },
-                      "sourceBoundary": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "showId",
-                      "showTitle",
-                      "numbering",
-                      "number",
-                      "localIdentityStatus",
-                      "providerMatchStatus",
-                      "orderingBasis",
-                      "sourceBoundary"
-                    ],
-                    "type": "object"
-                  },
-                  "fileInfoOpening": {
-                    "type": "string"
-                  },
-                  "id": {
-                    "type": "string"
-                  },
-                  "kind": {
-                    "type": "string"
-                  },
-                  "libraryId": {
-                    "type": "string"
-                  },
-                  "missing": {
-                    "type": "boolean"
-                  },
-                  "overview": {
-                    "type": "string"
-                  },
-                  "posterUrl": {
-                    "type": "string"
-                  },
-                  "progressMs": {
+                  "channels": {
                     "maximum": 9007199254740991,
-                    "minimum": 0,
+                    "minimum": -9007199254740991,
                     "type": "integer"
                   },
-                  "song": {
-                    "properties": {
-                      "albumArtist": {
-                        "type": "string"
-                      },
-                      "albumId": {
-                        "type": "string"
-                      },
-                      "albumTitle": {
-                        "type": "string"
-                      },
-                      "artist": {
-                        "type": "string"
-                      },
-                      "discNumber": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "localMetadataIssue": {
-                        "type": "string"
-                      },
-                      "providerArtist": {
-                        "type": "string"
-                      },
-                      "providerMatchStatus": {
-                        "type": "string"
-                      },
-                      "providerObservedAt": {
-                        "type": "string"
-                      },
-                      "providerRecordingId": {
-                        "type": "string"
-                      },
-                      "providerReleaseGroupId": {
-                        "type": "string"
-                      },
-                      "providerReleaseId": {
-                        "type": "string"
-                      },
-                      "providerReleaseStatus": {
-                        "type": "string"
-                      },
-                      "providerSourceUrl": {
-                        "type": "string"
-                      },
-                      "providerTitle": {
-                        "type": "string"
-                      },
-                      "providerTrackId": {
-                        "type": "string"
-                      },
-                      "trackNumber": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "providerReleaseStatus",
-                      "albumId",
-                      "albumTitle",
-                      "albumArtist",
-                      "artist",
-                      "providerMatchStatus"
-                    ],
-                    "type": "object"
-                  },
-                  "sources": {
-                    "items": {
-                      "properties": {
-                        "audioCodec": {
-                          "type": "string"
-                        },
-                        "container": {
-                          "type": "string"
-                        },
-                        "durationMs": {
-                          "maximum": 9007199254740991,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "height": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        },
-                        "id": {
-                          "type": "string"
-                        },
-                        "videoCodec": {
-                          "type": "string"
-                        },
-                        "width": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "id",
-                        "container",
-                        "videoCodec",
-                        "audioCodec",
-                        "width",
-                        "height",
-                        "durationMs"
-                      ],
-                      "type": "object"
-                    },
-                    "type": "array"
-                  },
-                  "stillUrl": {
+                  "codec": {
                     "type": "string"
                   },
-                  "title": {
+                  "layout": {
                     "type": "string"
                   },
-                  "watched": {
+                  "lossless": {
                     "type": "boolean"
                   },
-                  "year": {
+                  "sampleRate": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
                   }
                 },
                 "required": [
-                  "missing",
-                  "addedAt",
-                  "id",
-                  "libraryId",
-                  "title",
-                  "kind",
-                  "durationMs",
-                  "progressMs",
-                  "available"
+                  "codec"
                 ],
                 "type": "object"
               },
-              {
+              "available": {
+                "type": "boolean"
+              },
+              "backdropUrl": {
+                "type": "string"
+              },
+              "bookFile": {
                 "properties": {
-                  "addedAt": {
-                    "nullable": true,
+                  "bookId": {
                     "type": "string"
                   },
-                  "audioFacts": {
-                    "properties": {
-                      "atmos": {
-                        "type": "boolean"
-                      },
-                      "bitDepth": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "channels": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "codec": {
-                        "type": "string"
-                      },
-                      "layout": {
-                        "type": "string"
-                      },
-                      "lossless": {
-                        "type": "boolean"
-                      },
-                      "sampleRate": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "codec"
-                    ],
-                    "type": "object"
-                  },
-                  "available": {
-                    "type": "boolean"
-                  },
-                  "backdropUrl": {
+                  "bookTitle": {
                     "type": "string"
                   },
-                  "bookFile": {
-                    "properties": {
-                      "bookId": {
-                        "type": "string"
-                      },
-                      "bookTitle": {
-                        "type": "string"
-                      },
-                      "discNumber": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "localMetadata": {
-                        "properties": {
-                          "authors": {
-                            "items": {
-                              "type": "string"
-                            },
-                            "type": "array"
-                          },
-                          "description": {
-                            "type": "string"
-                          },
-                          "edition": {
-                            "type": "string"
-                          },
-                          "identifiers": {
-                            "items": {
-                              "properties": {
-                                "scheme": {
-                                  "type": "string"
-                                },
-                                "value": {
-                                  "type": "string"
-                                }
-                              },
-                              "required": [
-                                "scheme",
-                                "value"
-                              ],
-                              "type": "object"
-                            },
-                            "type": "array"
-                          },
-                          "language": {
-                            "type": "string"
-                          },
-                          "narrators": {
-                            "items": {
-                              "type": "string"
-                            },
-                            "type": "array"
-                          },
-                          "publishedYear": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          },
-                          "publisher": {
-                            "type": "string"
-                          },
-                          "series": {
-                            "items": {
-                              "properties": {
-                                "name": {
-                                  "type": "string"
-                                },
-                                "position": {
-                                  "type": "string"
-                                }
-                              },
-                              "required": [
-                                "name"
-                              ],
-                              "type": "object"
-                            },
-                            "type": "array"
-                          },
-                          "sources": {
-                            "additionalProperties": {
-                              "type": "string"
-                            },
-                            "type": "object"
-                          }
-                        },
-                        "required": [
-                          "authors",
-                          "narrators",
-                          "series",
-                          "identifiers",
-                          "sources"
-                        ],
-                        "type": "object"
-                      },
-                      "localMetadataIssue": {
-                        "type": "string"
-                      },
-                      "localPolicy": {
-                        "properties": {
-                          "localMode": {
-                            "type": "string"
-                          },
-                          "revision": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          }
-                        },
-                        "required": [
-                          "revision",
-                          "localMode"
-                        ],
-                        "type": "object"
-                      },
-                      "partNumber": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "sourceBoundary": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "bookId",
-                      "bookTitle",
-                      "sourceBoundary"
-                    ],
-                    "type": "object"
-                  },
-                  "durationState": {
-                    "enum": [
-                      "unrepresentable"
-                    ],
-                    "type": "string"
-                  },
-                  "episode": {
-                    "properties": {
-                      "airDate": {
-                        "type": "string"
-                      },
-                      "localIdentityStatus": {
-                        "type": "string"
-                      },
-                      "number": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "numbering": {
-                        "type": "string"
-                      },
-                      "orderingBasis": {
-                        "type": "string"
-                      },
-                      "providerMatchStatus": {
-                        "type": "string"
-                      },
-                      "seasonId": {
-                        "type": "string"
-                      },
-                      "seasonNumber": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "showId": {
-                        "type": "string"
-                      },
-                      "showTitle": {
-                        "type": "string"
-                      },
-                      "sourceBoundary": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "showId",
-                      "showTitle",
-                      "numbering",
-                      "number",
-                      "localIdentityStatus",
-                      "providerMatchStatus",
-                      "orderingBasis",
-                      "sourceBoundary"
-                    ],
-                    "type": "object"
-                  },
-                  "fileInfoOpening": {
-                    "type": "string"
-                  },
-                  "id": {
-                    "type": "string"
-                  },
-                  "kind": {
-                    "type": "string"
-                  },
-                  "libraryId": {
-                    "type": "string"
-                  },
-                  "missing": {
-                    "type": "boolean"
-                  },
-                  "overview": {
-                    "type": "string"
-                  },
-                  "posterUrl": {
-                    "type": "string"
-                  },
-                  "progressMs": {
+                  "discNumber": {
                     "maximum": 9007199254740991,
-                    "minimum": 0,
+                    "minimum": -9007199254740991,
                     "type": "integer"
                   },
-                  "song": {
+                  "localMetadata": {
                     "properties": {
-                      "albumArtist": {
+                      "authors": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "description": {
                         "type": "string"
                       },
-                      "albumId": {
+                      "edition": {
                         "type": "string"
                       },
-                      "albumTitle": {
+                      "identifiers": {
+                        "items": {
+                          "properties": {
+                            "scheme": {
+                              "type": "string"
+                            },
+                            "value": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "scheme",
+                            "value"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
+                      },
+                      "language": {
                         "type": "string"
                       },
-                      "artist": {
-                        "type": "string"
+                      "narrators": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
                       },
-                      "discNumber": {
+                      "publishedYear": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
-                      "localMetadataIssue": {
+                      "publisher": {
                         "type": "string"
                       },
-                      "providerArtist": {
+                      "series": {
+                        "items": {
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "position": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
+                      },
+                      "sources": {
+                        "additionalProperties": {
+                          "type": "string"
+                        },
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "authors",
+                      "narrators",
+                      "series",
+                      "identifiers",
+                      "sources"
+                    ],
+                    "type": "object"
+                  },
+                  "localMetadataIssue": {
+                    "type": "string"
+                  },
+                  "localPolicy": {
+                    "properties": {
+                      "localMode": {
                         "type": "string"
                       },
-                      "providerMatchStatus": {
-                        "type": "string"
-                      },
-                      "providerObservedAt": {
-                        "type": "string"
-                      },
-                      "providerRecordingId": {
-                        "type": "string"
-                      },
-                      "providerReleaseGroupId": {
-                        "type": "string"
-                      },
-                      "providerReleaseId": {
-                        "type": "string"
-                      },
-                      "providerReleaseStatus": {
-                        "type": "string"
-                      },
-                      "providerSourceUrl": {
-                        "type": "string"
-                      },
-                      "providerTitle": {
-                        "type": "string"
-                      },
-                      "providerTrackId": {
-                        "type": "string"
-                      },
-                      "trackNumber": {
+                      "revision": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
                       }
                     },
                     "required": [
-                      "providerReleaseStatus",
-                      "albumId",
-                      "albumTitle",
-                      "albumArtist",
-                      "artist",
-                      "providerMatchStatus"
+                      "revision",
+                      "localMode"
                     ],
                     "type": "object"
                   },
-                  "sources": {
-                    "items": {
-                      "properties": {
-                        "audioCodec": {
-                          "type": "string"
-                        },
-                        "container": {
-                          "type": "string"
-                        },
-                        "durationMs": {
-                          "maximum": 9007199254740991,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "height": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        },
-                        "id": {
-                          "type": "string"
-                        },
-                        "videoCodec": {
-                          "type": "string"
-                        },
-                        "width": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "id",
-                        "container",
-                        "videoCodec",
-                        "audioCodec",
-                        "width",
-                        "height",
-                        "durationMs"
-                      ],
-                      "type": "object"
-                    },
-                    "type": "array"
+                  "partNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
-                  "stillUrl": {
+                  "sourceBoundary": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "bookId",
+                  "bookTitle",
+                  "sourceBoundary"
+                ],
+                "type": "object"
+              },
+              "durationMs": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "durationState": {
+                "enum": [
+                  "unrepresentable"
+                ],
+                "type": "string"
+              },
+              "episode": {
+                "properties": {
+                  "airDate": {
                     "type": "string"
                   },
-                  "title": {
+                  "localIdentityStatus": {
                     "type": "string"
                   },
-                  "watched": {
-                    "type": "boolean"
+                  "number": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
-                  "year": {
+                  "numbering": {
+                    "type": "string"
+                  },
+                  "orderingBasis": {
+                    "type": "string"
+                  },
+                  "providerMatchStatus": {
+                    "type": "string"
+                  },
+                  "seasonId": {
+                    "type": "string"
+                  },
+                  "seasonNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "showId": {
+                    "type": "string"
+                  },
+                  "showTitle": {
+                    "type": "string"
+                  },
+                  "sourceBoundary": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "showId",
+                  "showTitle",
+                  "numbering",
+                  "number",
+                  "localIdentityStatus",
+                  "providerMatchStatus",
+                  "orderingBasis",
+                  "sourceBoundary"
+                ],
+                "type": "object"
+              },
+              "fileInfoOpening": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "libraryId": {
+                "type": "string"
+              },
+              "missing": {
+                "type": "boolean"
+              },
+              "overview": {
+                "type": "string"
+              },
+              "posterUrl": {
+                "type": "string"
+              },
+              "progressMs": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "song": {
+                "properties": {
+                  "albumArtist": {
+                    "type": "string"
+                  },
+                  "albumId": {
+                    "type": "string"
+                  },
+                  "albumTitle": {
+                    "type": "string"
+                  },
+                  "artist": {
+                    "type": "string"
+                  },
+                  "discNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "localMetadataIssue": {
+                    "type": "string"
+                  },
+                  "providerArtist": {
+                    "type": "string"
+                  },
+                  "providerMatchStatus": {
+                    "type": "string"
+                  },
+                  "providerObservedAt": {
+                    "type": "string"
+                  },
+                  "providerRecordingId": {
+                    "type": "string"
+                  },
+                  "providerReleaseGroupId": {
+                    "type": "string"
+                  },
+                  "providerReleaseId": {
+                    "type": "string"
+                  },
+                  "providerReleaseStatus": {
+                    "type": "string"
+                  },
+                  "providerSourceUrl": {
+                    "type": "string"
+                  },
+                  "providerTitle": {
+                    "type": "string"
+                  },
+                  "providerTrackId": {
+                    "type": "string"
+                  },
+                  "trackNumber": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
                   }
                 },
                 "required": [
-                  "missing",
-                  "addedAt",
-                  "id",
-                  "libraryId",
-                  "title",
-                  "kind",
-                  "progressMs",
-                  "available",
-                  "durationState"
+                  "providerReleaseStatus",
+                  "albumId",
+                  "albumTitle",
+                  "albumArtist",
+                  "artist",
+                  "providerMatchStatus"
                 ],
                 "type": "object"
+              },
+              "sources": {
+                "items": {
+                  "properties": {
+                    "audioCodec": {
+                      "type": "string"
+                    },
+                    "container": {
+                      "type": "string"
+                    },
+                    "durationMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "height": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "videoCodec": {
+                      "type": "string"
+                    },
+                    "width": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "container",
+                    "videoCodec",
+                    "audioCodec",
+                    "width",
+                    "height",
+                    "durationMs"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "stillUrl": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "watched": {
+                "type": "boolean"
+              },
+              "year": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
               }
-            ]
+            },
+            "required": [
+              "missing",
+              "addedAt",
+              "id",
+              "libraryId",
+              "title",
+              "kind",
+              "progressMs",
+              "available"
+            ],
+            "type": "object"
           },
           "languages": {
             "properties": {
@@ -56130,6 +54873,12 @@ export const schemas = {
             "minimum": 0,
             "type": "integer"
           },
+          "durationState": {
+            "enum": [
+              "unrepresentable"
+            ],
+            "type": "string"
+          },
           "episode": {
             "properties": {
               "airDate": {
@@ -56346,416 +55095,8 @@ export const schemas = {
           "libraryId",
           "title",
           "kind",
-          "durationMs",
           "progressMs",
           "available",
-          "variant"
-        ],
-        "type": "object"
-      },
-      {
-        "properties": {
-          "addedAt": {
-            "nullable": true,
-            "type": "string"
-          },
-          "audioFacts": {
-            "properties": {
-              "atmos": {
-                "type": "boolean"
-              },
-              "bitDepth": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "channels": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "codec": {
-                "type": "string"
-              },
-              "layout": {
-                "type": "string"
-              },
-              "lossless": {
-                "type": "boolean"
-              },
-              "sampleRate": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              }
-            },
-            "required": [
-              "codec"
-            ],
-            "type": "object"
-          },
-          "available": {
-            "type": "boolean"
-          },
-          "backdropUrl": {
-            "type": "string"
-          },
-          "bookFile": {
-            "properties": {
-              "bookId": {
-                "type": "string"
-              },
-              "bookTitle": {
-                "type": "string"
-              },
-              "discNumber": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "localMetadata": {
-                "properties": {
-                  "authors": {
-                    "items": {
-                      "type": "string"
-                    },
-                    "type": "array"
-                  },
-                  "description": {
-                    "type": "string"
-                  },
-                  "edition": {
-                    "type": "string"
-                  },
-                  "identifiers": {
-                    "items": {
-                      "properties": {
-                        "scheme": {
-                          "type": "string"
-                        },
-                        "value": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "scheme",
-                        "value"
-                      ],
-                      "type": "object"
-                    },
-                    "type": "array"
-                  },
-                  "language": {
-                    "type": "string"
-                  },
-                  "narrators": {
-                    "items": {
-                      "type": "string"
-                    },
-                    "type": "array"
-                  },
-                  "publishedYear": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "publisher": {
-                    "type": "string"
-                  },
-                  "series": {
-                    "items": {
-                      "properties": {
-                        "name": {
-                          "type": "string"
-                        },
-                        "position": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "name"
-                      ],
-                      "type": "object"
-                    },
-                    "type": "array"
-                  },
-                  "sources": {
-                    "additionalProperties": {
-                      "type": "string"
-                    },
-                    "type": "object"
-                  }
-                },
-                "required": [
-                  "authors",
-                  "narrators",
-                  "series",
-                  "identifiers",
-                  "sources"
-                ],
-                "type": "object"
-              },
-              "localMetadataIssue": {
-                "type": "string"
-              },
-              "localPolicy": {
-                "properties": {
-                  "localMode": {
-                    "type": "string"
-                  },
-                  "revision": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "revision",
-                  "localMode"
-                ],
-                "type": "object"
-              },
-              "partNumber": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "sourceBoundary": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "bookId",
-              "bookTitle",
-              "sourceBoundary"
-            ],
-            "type": "object"
-          },
-          "durationState": {
-            "enum": [
-              "unrepresentable"
-            ],
-            "type": "string"
-          },
-          "episode": {
-            "properties": {
-              "airDate": {
-                "type": "string"
-              },
-              "localIdentityStatus": {
-                "type": "string"
-              },
-              "number": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "numbering": {
-                "type": "string"
-              },
-              "orderingBasis": {
-                "type": "string"
-              },
-              "providerMatchStatus": {
-                "type": "string"
-              },
-              "seasonId": {
-                "type": "string"
-              },
-              "seasonNumber": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "showId": {
-                "type": "string"
-              },
-              "showTitle": {
-                "type": "string"
-              },
-              "sourceBoundary": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "showId",
-              "showTitle",
-              "numbering",
-              "number",
-              "localIdentityStatus",
-              "providerMatchStatus",
-              "orderingBasis",
-              "sourceBoundary"
-            ],
-            "type": "object"
-          },
-          "fileInfoOpening": {
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          },
-          "kind": {
-            "type": "string"
-          },
-          "libraryId": {
-            "type": "string"
-          },
-          "missing": {
-            "type": "boolean"
-          },
-          "overview": {
-            "type": "string"
-          },
-          "posterUrl": {
-            "type": "string"
-          },
-          "progressMs": {
-            "maximum": 9007199254740991,
-            "minimum": 0,
-            "type": "integer"
-          },
-          "song": {
-            "properties": {
-              "albumArtist": {
-                "type": "string"
-              },
-              "albumId": {
-                "type": "string"
-              },
-              "albumTitle": {
-                "type": "string"
-              },
-              "artist": {
-                "type": "string"
-              },
-              "discNumber": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "localMetadataIssue": {
-                "type": "string"
-              },
-              "providerArtist": {
-                "type": "string"
-              },
-              "providerMatchStatus": {
-                "type": "string"
-              },
-              "providerObservedAt": {
-                "type": "string"
-              },
-              "providerRecordingId": {
-                "type": "string"
-              },
-              "providerReleaseGroupId": {
-                "type": "string"
-              },
-              "providerReleaseId": {
-                "type": "string"
-              },
-              "providerReleaseStatus": {
-                "type": "string"
-              },
-              "providerSourceUrl": {
-                "type": "string"
-              },
-              "providerTitle": {
-                "type": "string"
-              },
-              "providerTrackId": {
-                "type": "string"
-              },
-              "trackNumber": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              }
-            },
-            "required": [
-              "providerReleaseStatus",
-              "albumId",
-              "albumTitle",
-              "albumArtist",
-              "artist",
-              "providerMatchStatus"
-            ],
-            "type": "object"
-          },
-          "sources": {
-            "items": {
-              "properties": {
-                "audioCodec": {
-                  "type": "string"
-                },
-                "container": {
-                  "type": "string"
-                },
-                "durationMs": {
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "height": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "id": {
-                  "type": "string"
-                },
-                "videoCodec": {
-                  "type": "string"
-                },
-                "width": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                }
-              },
-              "required": [
-                "id",
-                "container",
-                "videoCodec",
-                "audioCodec",
-                "width",
-                "height",
-                "durationMs"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "stillUrl": {
-            "type": "string"
-          },
-          "title": {
-            "type": "string"
-          },
-          "variant": {
-            "const": "item-unrepresentable",
-            "type": "string"
-          },
-          "watched": {
-            "type": "boolean"
-          },
-          "year": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "missing",
-          "addedAt",
-          "id",
-          "libraryId",
-          "title",
-          "kind",
-          "progressMs",
-          "available",
-          "durationState",
           "variant"
         ],
         "type": "object"
@@ -58894,12 +57235,17 @@ export const schemas = {
           },
           "revision": {
             "type": "string"
+          },
+          "variant": {
+            "const": "ready",
+            "type": "string"
           }
         },
         "required": [
           "queryId",
           "revision",
-          "genres"
+          "genres",
+          "variant"
         ],
         "type": "object"
       },
@@ -59032,6 +57378,10 @@ export const schemas = {
           "totalIsLowerBound": {
             "const": true,
             "type": "boolean"
+          },
+          "variant": {
+            "const": "fallback",
+            "type": "string"
           }
         },
         "required": [
@@ -59041,7 +57391,8 @@ export const schemas = {
           "revision",
           "genres",
           "hasGenresKnown",
-          "preparation"
+          "preparation",
+          "variant"
         ],
         "type": "object"
       },
@@ -59065,17 +57416,23 @@ export const schemas = {
           "state": {
             "const": "preparing",
             "type": "string"
+          },
+          "variant": {
+            "const": "preparing",
+            "type": "string"
           }
         },
         "required": [
           "kind",
           "state",
           "queryId",
-          "retryAfterMs"
+          "retryAfterMs",
+          "variant"
         ],
         "type": "object"
       }
-    ]
+    ],
+    "x-discriminator": "variant"
   },
   "GetGuideAiringsRequest": {
     "properties": {},
@@ -94896,811 +93253,410 @@ export const schemas = {
             "type": "string"
           },
           "item": {
-            "anyOf": [
-              {
+            "properties": {
+              "addedAt": {
+                "nullable": true,
+                "type": "string"
+              },
+              "audioFacts": {
                 "properties": {
-                  "addedAt": {
-                    "nullable": true,
-                    "type": "string"
-                  },
-                  "audioFacts": {
-                    "properties": {
-                      "atmos": {
-                        "type": "boolean"
-                      },
-                      "bitDepth": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "channels": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "codec": {
-                        "type": "string"
-                      },
-                      "layout": {
-                        "type": "string"
-                      },
-                      "lossless": {
-                        "type": "boolean"
-                      },
-                      "sampleRate": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "codec"
-                    ],
-                    "type": "object"
-                  },
-                  "available": {
+                  "atmos": {
                     "type": "boolean"
                   },
-                  "backdropUrl": {
-                    "type": "string"
-                  },
-                  "bookFile": {
-                    "properties": {
-                      "bookId": {
-                        "type": "string"
-                      },
-                      "bookTitle": {
-                        "type": "string"
-                      },
-                      "discNumber": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "localMetadata": {
-                        "properties": {
-                          "authors": {
-                            "items": {
-                              "type": "string"
-                            },
-                            "type": "array"
-                          },
-                          "description": {
-                            "type": "string"
-                          },
-                          "edition": {
-                            "type": "string"
-                          },
-                          "identifiers": {
-                            "items": {
-                              "properties": {
-                                "scheme": {
-                                  "type": "string"
-                                },
-                                "value": {
-                                  "type": "string"
-                                }
-                              },
-                              "required": [
-                                "scheme",
-                                "value"
-                              ],
-                              "type": "object"
-                            },
-                            "type": "array"
-                          },
-                          "language": {
-                            "type": "string"
-                          },
-                          "narrators": {
-                            "items": {
-                              "type": "string"
-                            },
-                            "type": "array"
-                          },
-                          "publishedYear": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          },
-                          "publisher": {
-                            "type": "string"
-                          },
-                          "series": {
-                            "items": {
-                              "properties": {
-                                "name": {
-                                  "type": "string"
-                                },
-                                "position": {
-                                  "type": "string"
-                                }
-                              },
-                              "required": [
-                                "name"
-                              ],
-                              "type": "object"
-                            },
-                            "type": "array"
-                          },
-                          "sources": {
-                            "additionalProperties": {
-                              "type": "string"
-                            },
-                            "type": "object"
-                          }
-                        },
-                        "required": [
-                          "authors",
-                          "narrators",
-                          "series",
-                          "identifiers",
-                          "sources"
-                        ],
-                        "type": "object"
-                      },
-                      "localMetadataIssue": {
-                        "type": "string"
-                      },
-                      "localPolicy": {
-                        "properties": {
-                          "localMode": {
-                            "type": "string"
-                          },
-                          "revision": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          }
-                        },
-                        "required": [
-                          "revision",
-                          "localMode"
-                        ],
-                        "type": "object"
-                      },
-                      "partNumber": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "sourceBoundary": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "bookId",
-                      "bookTitle",
-                      "sourceBoundary"
-                    ],
-                    "type": "object"
-                  },
-                  "durationMs": {
+                  "bitDepth": {
                     "maximum": 9007199254740991,
-                    "minimum": 0,
+                    "minimum": -9007199254740991,
                     "type": "integer"
                   },
-                  "episode": {
-                    "properties": {
-                      "airDate": {
-                        "type": "string"
-                      },
-                      "localIdentityStatus": {
-                        "type": "string"
-                      },
-                      "number": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "numbering": {
-                        "type": "string"
-                      },
-                      "orderingBasis": {
-                        "type": "string"
-                      },
-                      "providerMatchStatus": {
-                        "type": "string"
-                      },
-                      "seasonId": {
-                        "type": "string"
-                      },
-                      "seasonNumber": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "showId": {
-                        "type": "string"
-                      },
-                      "showTitle": {
-                        "type": "string"
-                      },
-                      "sourceBoundary": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "showId",
-                      "showTitle",
-                      "numbering",
-                      "number",
-                      "localIdentityStatus",
-                      "providerMatchStatus",
-                      "orderingBasis",
-                      "sourceBoundary"
-                    ],
-                    "type": "object"
-                  },
-                  "fileInfoOpening": {
-                    "type": "string"
-                  },
-                  "id": {
-                    "type": "string"
-                  },
-                  "kind": {
-                    "type": "string"
-                  },
-                  "libraryId": {
-                    "type": "string"
-                  },
-                  "missing": {
-                    "type": "boolean"
-                  },
-                  "overview": {
-                    "type": "string"
-                  },
-                  "posterUrl": {
-                    "type": "string"
-                  },
-                  "progressMs": {
+                  "channels": {
                     "maximum": 9007199254740991,
-                    "minimum": 0,
+                    "minimum": -9007199254740991,
                     "type": "integer"
                   },
-                  "song": {
-                    "properties": {
-                      "albumArtist": {
-                        "type": "string"
-                      },
-                      "albumId": {
-                        "type": "string"
-                      },
-                      "albumTitle": {
-                        "type": "string"
-                      },
-                      "artist": {
-                        "type": "string"
-                      },
-                      "discNumber": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "localMetadataIssue": {
-                        "type": "string"
-                      },
-                      "providerArtist": {
-                        "type": "string"
-                      },
-                      "providerMatchStatus": {
-                        "type": "string"
-                      },
-                      "providerObservedAt": {
-                        "type": "string"
-                      },
-                      "providerRecordingId": {
-                        "type": "string"
-                      },
-                      "providerReleaseGroupId": {
-                        "type": "string"
-                      },
-                      "providerReleaseId": {
-                        "type": "string"
-                      },
-                      "providerReleaseStatus": {
-                        "type": "string"
-                      },
-                      "providerSourceUrl": {
-                        "type": "string"
-                      },
-                      "providerTitle": {
-                        "type": "string"
-                      },
-                      "providerTrackId": {
-                        "type": "string"
-                      },
-                      "trackNumber": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "providerReleaseStatus",
-                      "albumId",
-                      "albumTitle",
-                      "albumArtist",
-                      "artist",
-                      "providerMatchStatus"
-                    ],
-                    "type": "object"
-                  },
-                  "sources": {
-                    "items": {
-                      "properties": {
-                        "audioCodec": {
-                          "type": "string"
-                        },
-                        "container": {
-                          "type": "string"
-                        },
-                        "durationMs": {
-                          "maximum": 9007199254740991,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "height": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        },
-                        "id": {
-                          "type": "string"
-                        },
-                        "videoCodec": {
-                          "type": "string"
-                        },
-                        "width": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "id",
-                        "container",
-                        "videoCodec",
-                        "audioCodec",
-                        "width",
-                        "height",
-                        "durationMs"
-                      ],
-                      "type": "object"
-                    },
-                    "type": "array"
-                  },
-                  "stillUrl": {
+                  "codec": {
                     "type": "string"
                   },
-                  "title": {
+                  "layout": {
                     "type": "string"
                   },
-                  "watched": {
+                  "lossless": {
                     "type": "boolean"
                   },
-                  "year": {
+                  "sampleRate": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
                   }
                 },
                 "required": [
-                  "missing",
-                  "addedAt",
-                  "id",
-                  "libraryId",
-                  "title",
-                  "kind",
-                  "durationMs",
-                  "progressMs",
-                  "available"
+                  "codec"
                 ],
                 "type": "object"
               },
-              {
+              "available": {
+                "type": "boolean"
+              },
+              "backdropUrl": {
+                "type": "string"
+              },
+              "bookFile": {
                 "properties": {
-                  "addedAt": {
-                    "nullable": true,
+                  "bookId": {
                     "type": "string"
                   },
-                  "audioFacts": {
-                    "properties": {
-                      "atmos": {
-                        "type": "boolean"
-                      },
-                      "bitDepth": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "channels": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "codec": {
-                        "type": "string"
-                      },
-                      "layout": {
-                        "type": "string"
-                      },
-                      "lossless": {
-                        "type": "boolean"
-                      },
-                      "sampleRate": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "codec"
-                    ],
-                    "type": "object"
-                  },
-                  "available": {
-                    "type": "boolean"
-                  },
-                  "backdropUrl": {
+                  "bookTitle": {
                     "type": "string"
                   },
-                  "bookFile": {
-                    "properties": {
-                      "bookId": {
-                        "type": "string"
-                      },
-                      "bookTitle": {
-                        "type": "string"
-                      },
-                      "discNumber": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "localMetadata": {
-                        "properties": {
-                          "authors": {
-                            "items": {
-                              "type": "string"
-                            },
-                            "type": "array"
-                          },
-                          "description": {
-                            "type": "string"
-                          },
-                          "edition": {
-                            "type": "string"
-                          },
-                          "identifiers": {
-                            "items": {
-                              "properties": {
-                                "scheme": {
-                                  "type": "string"
-                                },
-                                "value": {
-                                  "type": "string"
-                                }
-                              },
-                              "required": [
-                                "scheme",
-                                "value"
-                              ],
-                              "type": "object"
-                            },
-                            "type": "array"
-                          },
-                          "language": {
-                            "type": "string"
-                          },
-                          "narrators": {
-                            "items": {
-                              "type": "string"
-                            },
-                            "type": "array"
-                          },
-                          "publishedYear": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          },
-                          "publisher": {
-                            "type": "string"
-                          },
-                          "series": {
-                            "items": {
-                              "properties": {
-                                "name": {
-                                  "type": "string"
-                                },
-                                "position": {
-                                  "type": "string"
-                                }
-                              },
-                              "required": [
-                                "name"
-                              ],
-                              "type": "object"
-                            },
-                            "type": "array"
-                          },
-                          "sources": {
-                            "additionalProperties": {
-                              "type": "string"
-                            },
-                            "type": "object"
-                          }
-                        },
-                        "required": [
-                          "authors",
-                          "narrators",
-                          "series",
-                          "identifiers",
-                          "sources"
-                        ],
-                        "type": "object"
-                      },
-                      "localMetadataIssue": {
-                        "type": "string"
-                      },
-                      "localPolicy": {
-                        "properties": {
-                          "localMode": {
-                            "type": "string"
-                          },
-                          "revision": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          }
-                        },
-                        "required": [
-                          "revision",
-                          "localMode"
-                        ],
-                        "type": "object"
-                      },
-                      "partNumber": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "sourceBoundary": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "bookId",
-                      "bookTitle",
-                      "sourceBoundary"
-                    ],
-                    "type": "object"
-                  },
-                  "durationState": {
-                    "enum": [
-                      "unrepresentable"
-                    ],
-                    "type": "string"
-                  },
-                  "episode": {
-                    "properties": {
-                      "airDate": {
-                        "type": "string"
-                      },
-                      "localIdentityStatus": {
-                        "type": "string"
-                      },
-                      "number": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "numbering": {
-                        "type": "string"
-                      },
-                      "orderingBasis": {
-                        "type": "string"
-                      },
-                      "providerMatchStatus": {
-                        "type": "string"
-                      },
-                      "seasonId": {
-                        "type": "string"
-                      },
-                      "seasonNumber": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "showId": {
-                        "type": "string"
-                      },
-                      "showTitle": {
-                        "type": "string"
-                      },
-                      "sourceBoundary": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "showId",
-                      "showTitle",
-                      "numbering",
-                      "number",
-                      "localIdentityStatus",
-                      "providerMatchStatus",
-                      "orderingBasis",
-                      "sourceBoundary"
-                    ],
-                    "type": "object"
-                  },
-                  "fileInfoOpening": {
-                    "type": "string"
-                  },
-                  "id": {
-                    "type": "string"
-                  },
-                  "kind": {
-                    "type": "string"
-                  },
-                  "libraryId": {
-                    "type": "string"
-                  },
-                  "missing": {
-                    "type": "boolean"
-                  },
-                  "overview": {
-                    "type": "string"
-                  },
-                  "posterUrl": {
-                    "type": "string"
-                  },
-                  "progressMs": {
+                  "discNumber": {
                     "maximum": 9007199254740991,
-                    "minimum": 0,
+                    "minimum": -9007199254740991,
                     "type": "integer"
                   },
-                  "song": {
+                  "localMetadata": {
                     "properties": {
-                      "albumArtist": {
+                      "authors": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "description": {
                         "type": "string"
                       },
-                      "albumId": {
+                      "edition": {
                         "type": "string"
                       },
-                      "albumTitle": {
+                      "identifiers": {
+                        "items": {
+                          "properties": {
+                            "scheme": {
+                              "type": "string"
+                            },
+                            "value": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "scheme",
+                            "value"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
+                      },
+                      "language": {
                         "type": "string"
                       },
-                      "artist": {
-                        "type": "string"
+                      "narrators": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
                       },
-                      "discNumber": {
+                      "publishedYear": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
-                      "localMetadataIssue": {
+                      "publisher": {
                         "type": "string"
                       },
-                      "providerArtist": {
+                      "series": {
+                        "items": {
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "position": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
+                      },
+                      "sources": {
+                        "additionalProperties": {
+                          "type": "string"
+                        },
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "authors",
+                      "narrators",
+                      "series",
+                      "identifiers",
+                      "sources"
+                    ],
+                    "type": "object"
+                  },
+                  "localMetadataIssue": {
+                    "type": "string"
+                  },
+                  "localPolicy": {
+                    "properties": {
+                      "localMode": {
                         "type": "string"
                       },
-                      "providerMatchStatus": {
-                        "type": "string"
-                      },
-                      "providerObservedAt": {
-                        "type": "string"
-                      },
-                      "providerRecordingId": {
-                        "type": "string"
-                      },
-                      "providerReleaseGroupId": {
-                        "type": "string"
-                      },
-                      "providerReleaseId": {
-                        "type": "string"
-                      },
-                      "providerReleaseStatus": {
-                        "type": "string"
-                      },
-                      "providerSourceUrl": {
-                        "type": "string"
-                      },
-                      "providerTitle": {
-                        "type": "string"
-                      },
-                      "providerTrackId": {
-                        "type": "string"
-                      },
-                      "trackNumber": {
+                      "revision": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
                       }
                     },
                     "required": [
-                      "providerReleaseStatus",
-                      "albumId",
-                      "albumTitle",
-                      "albumArtist",
-                      "artist",
-                      "providerMatchStatus"
+                      "revision",
+                      "localMode"
                     ],
                     "type": "object"
                   },
-                  "sources": {
-                    "items": {
-                      "properties": {
-                        "audioCodec": {
-                          "type": "string"
-                        },
-                        "container": {
-                          "type": "string"
-                        },
-                        "durationMs": {
-                          "maximum": 9007199254740991,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "height": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        },
-                        "id": {
-                          "type": "string"
-                        },
-                        "videoCodec": {
-                          "type": "string"
-                        },
-                        "width": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "id",
-                        "container",
-                        "videoCodec",
-                        "audioCodec",
-                        "width",
-                        "height",
-                        "durationMs"
-                      ],
-                      "type": "object"
-                    },
-                    "type": "array"
+                  "partNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
-                  "stillUrl": {
+                  "sourceBoundary": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "bookId",
+                  "bookTitle",
+                  "sourceBoundary"
+                ],
+                "type": "object"
+              },
+              "durationMs": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "durationState": {
+                "enum": [
+                  "unrepresentable"
+                ],
+                "type": "string"
+              },
+              "episode": {
+                "properties": {
+                  "airDate": {
                     "type": "string"
                   },
-                  "title": {
+                  "localIdentityStatus": {
                     "type": "string"
                   },
-                  "watched": {
-                    "type": "boolean"
+                  "number": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
-                  "year": {
+                  "numbering": {
+                    "type": "string"
+                  },
+                  "orderingBasis": {
+                    "type": "string"
+                  },
+                  "providerMatchStatus": {
+                    "type": "string"
+                  },
+                  "seasonId": {
+                    "type": "string"
+                  },
+                  "seasonNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "showId": {
+                    "type": "string"
+                  },
+                  "showTitle": {
+                    "type": "string"
+                  },
+                  "sourceBoundary": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "showId",
+                  "showTitle",
+                  "numbering",
+                  "number",
+                  "localIdentityStatus",
+                  "providerMatchStatus",
+                  "orderingBasis",
+                  "sourceBoundary"
+                ],
+                "type": "object"
+              },
+              "fileInfoOpening": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "libraryId": {
+                "type": "string"
+              },
+              "missing": {
+                "type": "boolean"
+              },
+              "overview": {
+                "type": "string"
+              },
+              "posterUrl": {
+                "type": "string"
+              },
+              "progressMs": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "song": {
+                "properties": {
+                  "albumArtist": {
+                    "type": "string"
+                  },
+                  "albumId": {
+                    "type": "string"
+                  },
+                  "albumTitle": {
+                    "type": "string"
+                  },
+                  "artist": {
+                    "type": "string"
+                  },
+                  "discNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "localMetadataIssue": {
+                    "type": "string"
+                  },
+                  "providerArtist": {
+                    "type": "string"
+                  },
+                  "providerMatchStatus": {
+                    "type": "string"
+                  },
+                  "providerObservedAt": {
+                    "type": "string"
+                  },
+                  "providerRecordingId": {
+                    "type": "string"
+                  },
+                  "providerReleaseGroupId": {
+                    "type": "string"
+                  },
+                  "providerReleaseId": {
+                    "type": "string"
+                  },
+                  "providerReleaseStatus": {
+                    "type": "string"
+                  },
+                  "providerSourceUrl": {
+                    "type": "string"
+                  },
+                  "providerTitle": {
+                    "type": "string"
+                  },
+                  "providerTrackId": {
+                    "type": "string"
+                  },
+                  "trackNumber": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
                   }
                 },
                 "required": [
-                  "missing",
-                  "addedAt",
-                  "id",
-                  "libraryId",
-                  "title",
-                  "kind",
-                  "progressMs",
-                  "available",
-                  "durationState"
+                  "providerReleaseStatus",
+                  "albumId",
+                  "albumTitle",
+                  "albumArtist",
+                  "artist",
+                  "providerMatchStatus"
                 ],
                 "type": "object"
+              },
+              "sources": {
+                "items": {
+                  "properties": {
+                    "audioCodec": {
+                      "type": "string"
+                    },
+                    "container": {
+                      "type": "string"
+                    },
+                    "durationMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "height": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "videoCodec": {
+                      "type": "string"
+                    },
+                    "width": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "container",
+                    "videoCodec",
+                    "audioCodec",
+                    "width",
+                    "height",
+                    "durationMs"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "stillUrl": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "watched": {
+                "type": "boolean"
+              },
+              "year": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
               }
-            ]
+            },
+            "required": [
+              "missing",
+              "addedAt",
+              "id",
+              "libraryId",
+              "title",
+              "kind",
+              "progressMs",
+              "available"
+            ],
+            "type": "object"
           },
           "languages": {
             "properties": {
@@ -97842,6 +95798,10 @@ export const schemas = {
               "viewerFence"
             ],
             "type": "object"
+          },
+          "variant": {
+            "const": "detail",
+            "type": "string"
           }
         },
         "required": [
@@ -97853,7 +95813,8 @@ export const schemas = {
           "personal",
           "actions",
           "metadata",
-          "markers"
+          "markers",
+          "variant"
         ],
         "type": "object"
       },
@@ -97942,7 +95903,8 @@ export const schemas = {
         ],
         "type": "object"
       }
-    ]
+    ],
+    "x-discriminator": "variant"
   },
   "GetItemsIdFileInfoRequest": {
     "properties": {},
@@ -126847,811 +124809,415 @@ export const schemas = {
   "GetItemsIdResponse": {
     "anyOf": [
       {
-        "anyOf": [
-          {
+        "properties": {
+          "addedAt": {
+            "nullable": true,
+            "type": "string"
+          },
+          "audioFacts": {
             "properties": {
-              "addedAt": {
-                "nullable": true,
-                "type": "string"
-              },
-              "audioFacts": {
-                "properties": {
-                  "atmos": {
-                    "type": "boolean"
-                  },
-                  "bitDepth": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "channels": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "codec": {
-                    "type": "string"
-                  },
-                  "layout": {
-                    "type": "string"
-                  },
-                  "lossless": {
-                    "type": "boolean"
-                  },
-                  "sampleRate": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "codec"
-                ],
-                "type": "object"
-              },
-              "available": {
+              "atmos": {
                 "type": "boolean"
               },
-              "backdropUrl": {
-                "type": "string"
-              },
-              "bookFile": {
-                "properties": {
-                  "bookId": {
-                    "type": "string"
-                  },
-                  "bookTitle": {
-                    "type": "string"
-                  },
-                  "discNumber": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "localMetadata": {
-                    "properties": {
-                      "authors": {
-                        "items": {
-                          "type": "string"
-                        },
-                        "type": "array"
-                      },
-                      "description": {
-                        "type": "string"
-                      },
-                      "edition": {
-                        "type": "string"
-                      },
-                      "identifiers": {
-                        "items": {
-                          "properties": {
-                            "scheme": {
-                              "type": "string"
-                            },
-                            "value": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "scheme",
-                            "value"
-                          ],
-                          "type": "object"
-                        },
-                        "type": "array"
-                      },
-                      "language": {
-                        "type": "string"
-                      },
-                      "narrators": {
-                        "items": {
-                          "type": "string"
-                        },
-                        "type": "array"
-                      },
-                      "publishedYear": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "publisher": {
-                        "type": "string"
-                      },
-                      "series": {
-                        "items": {
-                          "properties": {
-                            "name": {
-                              "type": "string"
-                            },
-                            "position": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "name"
-                          ],
-                          "type": "object"
-                        },
-                        "type": "array"
-                      },
-                      "sources": {
-                        "additionalProperties": {
-                          "type": "string"
-                        },
-                        "type": "object"
-                      }
-                    },
-                    "required": [
-                      "authors",
-                      "narrators",
-                      "series",
-                      "identifiers",
-                      "sources"
-                    ],
-                    "type": "object"
-                  },
-                  "localMetadataIssue": {
-                    "type": "string"
-                  },
-                  "localPolicy": {
-                    "properties": {
-                      "localMode": {
-                        "type": "string"
-                      },
-                      "revision": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "revision",
-                      "localMode"
-                    ],
-                    "type": "object"
-                  },
-                  "partNumber": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "sourceBoundary": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "bookId",
-                  "bookTitle",
-                  "sourceBoundary"
-                ],
-                "type": "object"
-              },
-              "durationMs": {
+              "bitDepth": {
                 "maximum": 9007199254740991,
-                "minimum": 0,
+                "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "episode": {
-                "properties": {
-                  "airDate": {
-                    "type": "string"
-                  },
-                  "localIdentityStatus": {
-                    "type": "string"
-                  },
-                  "number": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "numbering": {
-                    "type": "string"
-                  },
-                  "orderingBasis": {
-                    "type": "string"
-                  },
-                  "providerMatchStatus": {
-                    "type": "string"
-                  },
-                  "seasonId": {
-                    "type": "string"
-                  },
-                  "seasonNumber": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "showId": {
-                    "type": "string"
-                  },
-                  "showTitle": {
-                    "type": "string"
-                  },
-                  "sourceBoundary": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "showId",
-                  "showTitle",
-                  "numbering",
-                  "number",
-                  "localIdentityStatus",
-                  "providerMatchStatus",
-                  "orderingBasis",
-                  "sourceBoundary"
-                ],
-                "type": "object"
-              },
-              "fileInfoOpening": {
-                "type": "string"
-              },
-              "id": {
-                "type": "string"
-              },
-              "kind": {
-                "type": "string"
-              },
-              "libraryId": {
-                "type": "string"
-              },
-              "missing": {
-                "type": "boolean"
-              },
-              "overview": {
-                "type": "string"
-              },
-              "posterUrl": {
-                "type": "string"
-              },
-              "progressMs": {
+              "channels": {
                 "maximum": 9007199254740991,
-                "minimum": 0,
+                "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "song": {
-                "properties": {
-                  "albumArtist": {
-                    "type": "string"
-                  },
-                  "albumId": {
-                    "type": "string"
-                  },
-                  "albumTitle": {
-                    "type": "string"
-                  },
-                  "artist": {
-                    "type": "string"
-                  },
-                  "discNumber": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "localMetadataIssue": {
-                    "type": "string"
-                  },
-                  "providerArtist": {
-                    "type": "string"
-                  },
-                  "providerMatchStatus": {
-                    "type": "string"
-                  },
-                  "providerObservedAt": {
-                    "type": "string"
-                  },
-                  "providerRecordingId": {
-                    "type": "string"
-                  },
-                  "providerReleaseGroupId": {
-                    "type": "string"
-                  },
-                  "providerReleaseId": {
-                    "type": "string"
-                  },
-                  "providerReleaseStatus": {
-                    "type": "string"
-                  },
-                  "providerSourceUrl": {
-                    "type": "string"
-                  },
-                  "providerTitle": {
-                    "type": "string"
-                  },
-                  "providerTrackId": {
-                    "type": "string"
-                  },
-                  "trackNumber": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "providerReleaseStatus",
-                  "albumId",
-                  "albumTitle",
-                  "albumArtist",
-                  "artist",
-                  "providerMatchStatus"
-                ],
-                "type": "object"
-              },
-              "sources": {
-                "items": {
-                  "properties": {
-                    "audioCodec": {
-                      "type": "string"
-                    },
-                    "container": {
-                      "type": "string"
-                    },
-                    "durationMs": {
-                      "maximum": 9007199254740991,
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    "height": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "id": {
-                      "type": "string"
-                    },
-                    "videoCodec": {
-                      "type": "string"
-                    },
-                    "width": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "container",
-                    "videoCodec",
-                    "audioCodec",
-                    "width",
-                    "height",
-                    "durationMs"
-                  ],
-                  "type": "object"
-                },
-                "type": "array"
-              },
-              "stillUrl": {
+              "codec": {
                 "type": "string"
               },
-              "title": {
+              "layout": {
                 "type": "string"
               },
-              "watched": {
+              "lossless": {
                 "type": "boolean"
               },
-              "year": {
+              "sampleRate": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
               }
             },
             "required": [
-              "missing",
-              "addedAt",
-              "id",
-              "libraryId",
-              "title",
-              "kind",
-              "durationMs",
-              "progressMs",
-              "available"
+              "codec"
             ],
             "type": "object"
           },
-          {
+          "available": {
+            "type": "boolean"
+          },
+          "backdropUrl": {
+            "type": "string"
+          },
+          "bookFile": {
             "properties": {
-              "addedAt": {
-                "nullable": true,
+              "bookId": {
                 "type": "string"
               },
-              "audioFacts": {
-                "properties": {
-                  "atmos": {
-                    "type": "boolean"
-                  },
-                  "bitDepth": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "channels": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "codec": {
-                    "type": "string"
-                  },
-                  "layout": {
-                    "type": "string"
-                  },
-                  "lossless": {
-                    "type": "boolean"
-                  },
-                  "sampleRate": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "codec"
-                ],
-                "type": "object"
-              },
-              "available": {
-                "type": "boolean"
-              },
-              "backdropUrl": {
+              "bookTitle": {
                 "type": "string"
               },
-              "bookFile": {
-                "properties": {
-                  "bookId": {
-                    "type": "string"
-                  },
-                  "bookTitle": {
-                    "type": "string"
-                  },
-                  "discNumber": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "localMetadata": {
-                    "properties": {
-                      "authors": {
-                        "items": {
-                          "type": "string"
-                        },
-                        "type": "array"
-                      },
-                      "description": {
-                        "type": "string"
-                      },
-                      "edition": {
-                        "type": "string"
-                      },
-                      "identifiers": {
-                        "items": {
-                          "properties": {
-                            "scheme": {
-                              "type": "string"
-                            },
-                            "value": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "scheme",
-                            "value"
-                          ],
-                          "type": "object"
-                        },
-                        "type": "array"
-                      },
-                      "language": {
-                        "type": "string"
-                      },
-                      "narrators": {
-                        "items": {
-                          "type": "string"
-                        },
-                        "type": "array"
-                      },
-                      "publishedYear": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "publisher": {
-                        "type": "string"
-                      },
-                      "series": {
-                        "items": {
-                          "properties": {
-                            "name": {
-                              "type": "string"
-                            },
-                            "position": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "name"
-                          ],
-                          "type": "object"
-                        },
-                        "type": "array"
-                      },
-                      "sources": {
-                        "additionalProperties": {
-                          "type": "string"
-                        },
-                        "type": "object"
-                      }
-                    },
-                    "required": [
-                      "authors",
-                      "narrators",
-                      "series",
-                      "identifiers",
-                      "sources"
-                    ],
-                    "type": "object"
-                  },
-                  "localMetadataIssue": {
-                    "type": "string"
-                  },
-                  "localPolicy": {
-                    "properties": {
-                      "localMode": {
-                        "type": "string"
-                      },
-                      "revision": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "revision",
-                      "localMode"
-                    ],
-                    "type": "object"
-                  },
-                  "partNumber": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "sourceBoundary": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "bookId",
-                  "bookTitle",
-                  "sourceBoundary"
-                ],
-                "type": "object"
-              },
-              "durationState": {
-                "enum": [
-                  "unrepresentable"
-                ],
-                "type": "string"
-              },
-              "episode": {
-                "properties": {
-                  "airDate": {
-                    "type": "string"
-                  },
-                  "localIdentityStatus": {
-                    "type": "string"
-                  },
-                  "number": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "numbering": {
-                    "type": "string"
-                  },
-                  "orderingBasis": {
-                    "type": "string"
-                  },
-                  "providerMatchStatus": {
-                    "type": "string"
-                  },
-                  "seasonId": {
-                    "type": "string"
-                  },
-                  "seasonNumber": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "showId": {
-                    "type": "string"
-                  },
-                  "showTitle": {
-                    "type": "string"
-                  },
-                  "sourceBoundary": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "showId",
-                  "showTitle",
-                  "numbering",
-                  "number",
-                  "localIdentityStatus",
-                  "providerMatchStatus",
-                  "orderingBasis",
-                  "sourceBoundary"
-                ],
-                "type": "object"
-              },
-              "fileInfoOpening": {
-                "type": "string"
-              },
-              "id": {
-                "type": "string"
-              },
-              "kind": {
-                "type": "string"
-              },
-              "libraryId": {
-                "type": "string"
-              },
-              "missing": {
-                "type": "boolean"
-              },
-              "overview": {
-                "type": "string"
-              },
-              "posterUrl": {
-                "type": "string"
-              },
-              "progressMs": {
+              "discNumber": {
                 "maximum": 9007199254740991,
-                "minimum": 0,
+                "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "song": {
+              "localMetadata": {
                 "properties": {
-                  "albumArtist": {
+                  "authors": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "description": {
                     "type": "string"
                   },
-                  "albumId": {
+                  "edition": {
                     "type": "string"
                   },
-                  "albumTitle": {
+                  "identifiers": {
+                    "items": {
+                      "properties": {
+                        "scheme": {
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "scheme",
+                        "value"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "language": {
                     "type": "string"
                   },
-                  "artist": {
-                    "type": "string"
+                  "narrators": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
                   },
-                  "discNumber": {
+                  "publishedYear": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
-                  "localMetadataIssue": {
+                  "publisher": {
                     "type": "string"
                   },
-                  "providerArtist": {
+                  "series": {
+                    "items": {
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "position": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "sources": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "authors",
+                  "narrators",
+                  "series",
+                  "identifiers",
+                  "sources"
+                ],
+                "type": "object"
+              },
+              "localMetadataIssue": {
+                "type": "string"
+              },
+              "localPolicy": {
+                "properties": {
+                  "localMode": {
                     "type": "string"
                   },
-                  "providerMatchStatus": {
-                    "type": "string"
-                  },
-                  "providerObservedAt": {
-                    "type": "string"
-                  },
-                  "providerRecordingId": {
-                    "type": "string"
-                  },
-                  "providerReleaseGroupId": {
-                    "type": "string"
-                  },
-                  "providerReleaseId": {
-                    "type": "string"
-                  },
-                  "providerReleaseStatus": {
-                    "type": "string"
-                  },
-                  "providerSourceUrl": {
-                    "type": "string"
-                  },
-                  "providerTitle": {
-                    "type": "string"
-                  },
-                  "providerTrackId": {
-                    "type": "string"
-                  },
-                  "trackNumber": {
+                  "revision": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
                   }
                 },
                 "required": [
-                  "providerReleaseStatus",
-                  "albumId",
-                  "albumTitle",
-                  "albumArtist",
-                  "artist",
-                  "providerMatchStatus"
+                  "revision",
+                  "localMode"
                 ],
                 "type": "object"
               },
-              "sources": {
-                "items": {
-                  "properties": {
-                    "audioCodec": {
-                      "type": "string"
-                    },
-                    "container": {
-                      "type": "string"
-                    },
-                    "durationMs": {
-                      "maximum": 9007199254740991,
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    "height": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "id": {
-                      "type": "string"
-                    },
-                    "videoCodec": {
-                      "type": "string"
-                    },
-                    "width": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "container",
-                    "videoCodec",
-                    "audioCodec",
-                    "width",
-                    "height",
-                    "durationMs"
-                  ],
-                  "type": "object"
-                },
-                "type": "array"
+              "partNumber": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
               },
-              "stillUrl": {
+              "sourceBoundary": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "bookId",
+              "bookTitle",
+              "sourceBoundary"
+            ],
+            "type": "object"
+          },
+          "durationMs": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "durationState": {
+            "enum": [
+              "unrepresentable"
+            ],
+            "type": "string"
+          },
+          "episode": {
+            "properties": {
+              "airDate": {
                 "type": "string"
               },
-              "title": {
+              "localIdentityStatus": {
                 "type": "string"
               },
-              "watched": {
-                "type": "boolean"
+              "number": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
               },
-              "year": {
+              "numbering": {
+                "type": "string"
+              },
+              "orderingBasis": {
+                "type": "string"
+              },
+              "providerMatchStatus": {
+                "type": "string"
+              },
+              "seasonId": {
+                "type": "string"
+              },
+              "seasonNumber": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "showId": {
+                "type": "string"
+              },
+              "showTitle": {
+                "type": "string"
+              },
+              "sourceBoundary": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "showId",
+              "showTitle",
+              "numbering",
+              "number",
+              "localIdentityStatus",
+              "providerMatchStatus",
+              "orderingBasis",
+              "sourceBoundary"
+            ],
+            "type": "object"
+          },
+          "fileInfoOpening": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "libraryId": {
+            "type": "string"
+          },
+          "missing": {
+            "type": "boolean"
+          },
+          "overview": {
+            "type": "string"
+          },
+          "posterUrl": {
+            "type": "string"
+          },
+          "progressMs": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "song": {
+            "properties": {
+              "albumArtist": {
+                "type": "string"
+              },
+              "albumId": {
+                "type": "string"
+              },
+              "albumTitle": {
+                "type": "string"
+              },
+              "artist": {
+                "type": "string"
+              },
+              "discNumber": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "localMetadataIssue": {
+                "type": "string"
+              },
+              "providerArtist": {
+                "type": "string"
+              },
+              "providerMatchStatus": {
+                "type": "string"
+              },
+              "providerObservedAt": {
+                "type": "string"
+              },
+              "providerRecordingId": {
+                "type": "string"
+              },
+              "providerReleaseGroupId": {
+                "type": "string"
+              },
+              "providerReleaseId": {
+                "type": "string"
+              },
+              "providerReleaseStatus": {
+                "type": "string"
+              },
+              "providerSourceUrl": {
+                "type": "string"
+              },
+              "providerTitle": {
+                "type": "string"
+              },
+              "providerTrackId": {
+                "type": "string"
+              },
+              "trackNumber": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
               }
             },
             "required": [
-              "missing",
-              "addedAt",
-              "id",
-              "libraryId",
-              "title",
-              "kind",
-              "progressMs",
-              "available",
-              "durationState"
+              "providerReleaseStatus",
+              "albumId",
+              "albumTitle",
+              "albumArtist",
+              "artist",
+              "providerMatchStatus"
             ],
             "type": "object"
+          },
+          "sources": {
+            "items": {
+              "properties": {
+                "audioCodec": {
+                  "type": "string"
+                },
+                "container": {
+                  "type": "string"
+                },
+                "durationMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "height": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "videoCodec": {
+                  "type": "string"
+                },
+                "width": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "container",
+                "videoCodec",
+                "audioCodec",
+                "width",
+                "height",
+                "durationMs"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "stillUrl": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "variant": {
+            "const": "item",
+            "type": "string"
+          },
+          "watched": {
+            "type": "boolean"
+          },
+          "year": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           }
-        ]
+        },
+        "required": [
+          "missing",
+          "addedAt",
+          "id",
+          "libraryId",
+          "title",
+          "kind",
+          "progressMs",
+          "available",
+          "variant"
+        ],
+        "type": "object"
       },
       {
         "properties": {
@@ -127738,7 +125304,8 @@ export const schemas = {
         ],
         "type": "object"
       }
-    ]
+    ],
+    "x-discriminator": "variant"
   },
   "GetItemsIdSimilarRequest": {
     "properties": {},
@@ -129906,811 +127473,410 @@ export const schemas = {
     "properties": {
       "items": {
         "items": {
-          "anyOf": [
-            {
+          "properties": {
+            "addedAt": {
+              "nullable": true,
+              "type": "string"
+            },
+            "audioFacts": {
               "properties": {
-                "addedAt": {
-                  "nullable": true,
-                  "type": "string"
-                },
-                "audioFacts": {
-                  "properties": {
-                    "atmos": {
-                      "type": "boolean"
-                    },
-                    "bitDepth": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "channels": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "codec": {
-                      "type": "string"
-                    },
-                    "layout": {
-                      "type": "string"
-                    },
-                    "lossless": {
-                      "type": "boolean"
-                    },
-                    "sampleRate": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "codec"
-                  ],
-                  "type": "object"
-                },
-                "available": {
+                "atmos": {
                   "type": "boolean"
                 },
-                "backdropUrl": {
-                  "type": "string"
-                },
-                "bookFile": {
-                  "properties": {
-                    "bookId": {
-                      "type": "string"
-                    },
-                    "bookTitle": {
-                      "type": "string"
-                    },
-                    "discNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "localMetadata": {
-                      "properties": {
-                        "authors": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "description": {
-                          "type": "string"
-                        },
-                        "edition": {
-                          "type": "string"
-                        },
-                        "identifiers": {
-                          "items": {
-                            "properties": {
-                              "scheme": {
-                                "type": "string"
-                              },
-                              "value": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "scheme",
-                              "value"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        },
-                        "language": {
-                          "type": "string"
-                        },
-                        "narrators": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "publishedYear": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        },
-                        "publisher": {
-                          "type": "string"
-                        },
-                        "series": {
-                          "items": {
-                            "properties": {
-                              "name": {
-                                "type": "string"
-                              },
-                              "position": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "name"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        },
-                        "sources": {
-                          "additionalProperties": {
-                            "type": "string"
-                          },
-                          "type": "object"
-                        }
-                      },
-                      "required": [
-                        "authors",
-                        "narrators",
-                        "series",
-                        "identifiers",
-                        "sources"
-                      ],
-                      "type": "object"
-                    },
-                    "localMetadataIssue": {
-                      "type": "string"
-                    },
-                    "localPolicy": {
-                      "properties": {
-                        "localMode": {
-                          "type": "string"
-                        },
-                        "revision": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "revision",
-                        "localMode"
-                      ],
-                      "type": "object"
-                    },
-                    "partNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "sourceBoundary": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "bookId",
-                    "bookTitle",
-                    "sourceBoundary"
-                  ],
-                  "type": "object"
-                },
-                "durationMs": {
+                "bitDepth": {
                   "maximum": 9007199254740991,
-                  "minimum": 0,
+                  "minimum": -9007199254740991,
                   "type": "integer"
                 },
-                "episode": {
-                  "properties": {
-                    "airDate": {
-                      "type": "string"
-                    },
-                    "localIdentityStatus": {
-                      "type": "string"
-                    },
-                    "number": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "numbering": {
-                      "type": "string"
-                    },
-                    "orderingBasis": {
-                      "type": "string"
-                    },
-                    "providerMatchStatus": {
-                      "type": "string"
-                    },
-                    "seasonId": {
-                      "type": "string"
-                    },
-                    "seasonNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "showId": {
-                      "type": "string"
-                    },
-                    "showTitle": {
-                      "type": "string"
-                    },
-                    "sourceBoundary": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "showId",
-                    "showTitle",
-                    "numbering",
-                    "number",
-                    "localIdentityStatus",
-                    "providerMatchStatus",
-                    "orderingBasis",
-                    "sourceBoundary"
-                  ],
-                  "type": "object"
-                },
-                "fileInfoOpening": {
-                  "type": "string"
-                },
-                "id": {
-                  "type": "string"
-                },
-                "kind": {
-                  "type": "string"
-                },
-                "libraryId": {
-                  "type": "string"
-                },
-                "missing": {
-                  "type": "boolean"
-                },
-                "overview": {
-                  "type": "string"
-                },
-                "posterUrl": {
-                  "type": "string"
-                },
-                "progressMs": {
+                "channels": {
                   "maximum": 9007199254740991,
-                  "minimum": 0,
+                  "minimum": -9007199254740991,
                   "type": "integer"
                 },
-                "song": {
-                  "properties": {
-                    "albumArtist": {
-                      "type": "string"
-                    },
-                    "albumId": {
-                      "type": "string"
-                    },
-                    "albumTitle": {
-                      "type": "string"
-                    },
-                    "artist": {
-                      "type": "string"
-                    },
-                    "discNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "localMetadataIssue": {
-                      "type": "string"
-                    },
-                    "providerArtist": {
-                      "type": "string"
-                    },
-                    "providerMatchStatus": {
-                      "type": "string"
-                    },
-                    "providerObservedAt": {
-                      "type": "string"
-                    },
-                    "providerRecordingId": {
-                      "type": "string"
-                    },
-                    "providerReleaseGroupId": {
-                      "type": "string"
-                    },
-                    "providerReleaseId": {
-                      "type": "string"
-                    },
-                    "providerReleaseStatus": {
-                      "type": "string"
-                    },
-                    "providerSourceUrl": {
-                      "type": "string"
-                    },
-                    "providerTitle": {
-                      "type": "string"
-                    },
-                    "providerTrackId": {
-                      "type": "string"
-                    },
-                    "trackNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "providerReleaseStatus",
-                    "albumId",
-                    "albumTitle",
-                    "albumArtist",
-                    "artist",
-                    "providerMatchStatus"
-                  ],
-                  "type": "object"
-                },
-                "sources": {
-                  "items": {
-                    "properties": {
-                      "audioCodec": {
-                        "type": "string"
-                      },
-                      "container": {
-                        "type": "string"
-                      },
-                      "durationMs": {
-                        "maximum": 9007199254740991,
-                        "minimum": 0,
-                        "type": "integer"
-                      },
-                      "height": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "id": {
-                        "type": "string"
-                      },
-                      "videoCodec": {
-                        "type": "string"
-                      },
-                      "width": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "id",
-                      "container",
-                      "videoCodec",
-                      "audioCodec",
-                      "width",
-                      "height",
-                      "durationMs"
-                    ],
-                    "type": "object"
-                  },
-                  "type": "array"
-                },
-                "stillUrl": {
+                "codec": {
                   "type": "string"
                 },
-                "title": {
+                "layout": {
                   "type": "string"
                 },
-                "watched": {
+                "lossless": {
                   "type": "boolean"
                 },
-                "year": {
+                "sampleRate": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
                 }
               },
               "required": [
-                "missing",
-                "addedAt",
-                "id",
-                "libraryId",
-                "title",
-                "kind",
-                "durationMs",
-                "progressMs",
-                "available"
+                "codec"
               ],
               "type": "object"
             },
-            {
+            "available": {
+              "type": "boolean"
+            },
+            "backdropUrl": {
+              "type": "string"
+            },
+            "bookFile": {
               "properties": {
-                "addedAt": {
-                  "nullable": true,
+                "bookId": {
                   "type": "string"
                 },
-                "audioFacts": {
-                  "properties": {
-                    "atmos": {
-                      "type": "boolean"
-                    },
-                    "bitDepth": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "channels": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "codec": {
-                      "type": "string"
-                    },
-                    "layout": {
-                      "type": "string"
-                    },
-                    "lossless": {
-                      "type": "boolean"
-                    },
-                    "sampleRate": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "codec"
-                  ],
-                  "type": "object"
-                },
-                "available": {
-                  "type": "boolean"
-                },
-                "backdropUrl": {
+                "bookTitle": {
                   "type": "string"
                 },
-                "bookFile": {
-                  "properties": {
-                    "bookId": {
-                      "type": "string"
-                    },
-                    "bookTitle": {
-                      "type": "string"
-                    },
-                    "discNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "localMetadata": {
-                      "properties": {
-                        "authors": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "description": {
-                          "type": "string"
-                        },
-                        "edition": {
-                          "type": "string"
-                        },
-                        "identifiers": {
-                          "items": {
-                            "properties": {
-                              "scheme": {
-                                "type": "string"
-                              },
-                              "value": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "scheme",
-                              "value"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        },
-                        "language": {
-                          "type": "string"
-                        },
-                        "narrators": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "publishedYear": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        },
-                        "publisher": {
-                          "type": "string"
-                        },
-                        "series": {
-                          "items": {
-                            "properties": {
-                              "name": {
-                                "type": "string"
-                              },
-                              "position": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "name"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        },
-                        "sources": {
-                          "additionalProperties": {
-                            "type": "string"
-                          },
-                          "type": "object"
-                        }
-                      },
-                      "required": [
-                        "authors",
-                        "narrators",
-                        "series",
-                        "identifiers",
-                        "sources"
-                      ],
-                      "type": "object"
-                    },
-                    "localMetadataIssue": {
-                      "type": "string"
-                    },
-                    "localPolicy": {
-                      "properties": {
-                        "localMode": {
-                          "type": "string"
-                        },
-                        "revision": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "revision",
-                        "localMode"
-                      ],
-                      "type": "object"
-                    },
-                    "partNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "sourceBoundary": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "bookId",
-                    "bookTitle",
-                    "sourceBoundary"
-                  ],
-                  "type": "object"
-                },
-                "durationState": {
-                  "enum": [
-                    "unrepresentable"
-                  ],
-                  "type": "string"
-                },
-                "episode": {
-                  "properties": {
-                    "airDate": {
-                      "type": "string"
-                    },
-                    "localIdentityStatus": {
-                      "type": "string"
-                    },
-                    "number": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "numbering": {
-                      "type": "string"
-                    },
-                    "orderingBasis": {
-                      "type": "string"
-                    },
-                    "providerMatchStatus": {
-                      "type": "string"
-                    },
-                    "seasonId": {
-                      "type": "string"
-                    },
-                    "seasonNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "showId": {
-                      "type": "string"
-                    },
-                    "showTitle": {
-                      "type": "string"
-                    },
-                    "sourceBoundary": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "showId",
-                    "showTitle",
-                    "numbering",
-                    "number",
-                    "localIdentityStatus",
-                    "providerMatchStatus",
-                    "orderingBasis",
-                    "sourceBoundary"
-                  ],
-                  "type": "object"
-                },
-                "fileInfoOpening": {
-                  "type": "string"
-                },
-                "id": {
-                  "type": "string"
-                },
-                "kind": {
-                  "type": "string"
-                },
-                "libraryId": {
-                  "type": "string"
-                },
-                "missing": {
-                  "type": "boolean"
-                },
-                "overview": {
-                  "type": "string"
-                },
-                "posterUrl": {
-                  "type": "string"
-                },
-                "progressMs": {
+                "discNumber": {
                   "maximum": 9007199254740991,
-                  "minimum": 0,
+                  "minimum": -9007199254740991,
                   "type": "integer"
                 },
-                "song": {
+                "localMetadata": {
                   "properties": {
-                    "albumArtist": {
+                    "authors": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "description": {
                       "type": "string"
                     },
-                    "albumId": {
+                    "edition": {
                       "type": "string"
                     },
-                    "albumTitle": {
+                    "identifiers": {
+                      "items": {
+                        "properties": {
+                          "scheme": {
+                            "type": "string"
+                          },
+                          "value": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "scheme",
+                          "value"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "language": {
                       "type": "string"
                     },
-                    "artist": {
-                      "type": "string"
+                    "narrators": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
                     },
-                    "discNumber": {
+                    "publishedYear": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
-                    "localMetadataIssue": {
+                    "publisher": {
                       "type": "string"
                     },
-                    "providerArtist": {
+                    "series": {
+                      "items": {
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "position": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "sources": {
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "authors",
+                    "narrators",
+                    "series",
+                    "identifiers",
+                    "sources"
+                  ],
+                  "type": "object"
+                },
+                "localMetadataIssue": {
+                  "type": "string"
+                },
+                "localPolicy": {
+                  "properties": {
+                    "localMode": {
                       "type": "string"
                     },
-                    "providerMatchStatus": {
-                      "type": "string"
-                    },
-                    "providerObservedAt": {
-                      "type": "string"
-                    },
-                    "providerRecordingId": {
-                      "type": "string"
-                    },
-                    "providerReleaseGroupId": {
-                      "type": "string"
-                    },
-                    "providerReleaseId": {
-                      "type": "string"
-                    },
-                    "providerReleaseStatus": {
-                      "type": "string"
-                    },
-                    "providerSourceUrl": {
-                      "type": "string"
-                    },
-                    "providerTitle": {
-                      "type": "string"
-                    },
-                    "providerTrackId": {
-                      "type": "string"
-                    },
-                    "trackNumber": {
+                    "revision": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
                     }
                   },
                   "required": [
-                    "providerReleaseStatus",
-                    "albumId",
-                    "albumTitle",
-                    "albumArtist",
-                    "artist",
-                    "providerMatchStatus"
+                    "revision",
+                    "localMode"
                   ],
                   "type": "object"
                 },
-                "sources": {
-                  "items": {
-                    "properties": {
-                      "audioCodec": {
-                        "type": "string"
-                      },
-                      "container": {
-                        "type": "string"
-                      },
-                      "durationMs": {
-                        "maximum": 9007199254740991,
-                        "minimum": 0,
-                        "type": "integer"
-                      },
-                      "height": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "id": {
-                        "type": "string"
-                      },
-                      "videoCodec": {
-                        "type": "string"
-                      },
-                      "width": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "id",
-                      "container",
-                      "videoCodec",
-                      "audioCodec",
-                      "width",
-                      "height",
-                      "durationMs"
-                    ],
-                    "type": "object"
-                  },
-                  "type": "array"
+                "partNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 },
-                "stillUrl": {
+                "sourceBoundary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "bookId",
+                "bookTitle",
+                "sourceBoundary"
+              ],
+              "type": "object"
+            },
+            "durationMs": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "durationState": {
+              "enum": [
+                "unrepresentable"
+              ],
+              "type": "string"
+            },
+            "episode": {
+              "properties": {
+                "airDate": {
                   "type": "string"
                 },
-                "title": {
+                "localIdentityStatus": {
                   "type": "string"
                 },
-                "watched": {
-                  "type": "boolean"
+                "number": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 },
-                "year": {
+                "numbering": {
+                  "type": "string"
+                },
+                "orderingBasis": {
+                  "type": "string"
+                },
+                "providerMatchStatus": {
+                  "type": "string"
+                },
+                "seasonId": {
+                  "type": "string"
+                },
+                "seasonNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "showId": {
+                  "type": "string"
+                },
+                "showTitle": {
+                  "type": "string"
+                },
+                "sourceBoundary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "showId",
+                "showTitle",
+                "numbering",
+                "number",
+                "localIdentityStatus",
+                "providerMatchStatus",
+                "orderingBasis",
+                "sourceBoundary"
+              ],
+              "type": "object"
+            },
+            "fileInfoOpening": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "libraryId": {
+              "type": "string"
+            },
+            "missing": {
+              "type": "boolean"
+            },
+            "overview": {
+              "type": "string"
+            },
+            "posterUrl": {
+              "type": "string"
+            },
+            "progressMs": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "song": {
+              "properties": {
+                "albumArtist": {
+                  "type": "string"
+                },
+                "albumId": {
+                  "type": "string"
+                },
+                "albumTitle": {
+                  "type": "string"
+                },
+                "artist": {
+                  "type": "string"
+                },
+                "discNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "localMetadataIssue": {
+                  "type": "string"
+                },
+                "providerArtist": {
+                  "type": "string"
+                },
+                "providerMatchStatus": {
+                  "type": "string"
+                },
+                "providerObservedAt": {
+                  "type": "string"
+                },
+                "providerRecordingId": {
+                  "type": "string"
+                },
+                "providerReleaseGroupId": {
+                  "type": "string"
+                },
+                "providerReleaseId": {
+                  "type": "string"
+                },
+                "providerReleaseStatus": {
+                  "type": "string"
+                },
+                "providerSourceUrl": {
+                  "type": "string"
+                },
+                "providerTitle": {
+                  "type": "string"
+                },
+                "providerTrackId": {
+                  "type": "string"
+                },
+                "trackNumber": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
                 }
               },
               "required": [
-                "missing",
-                "addedAt",
-                "id",
-                "libraryId",
-                "title",
-                "kind",
-                "progressMs",
-                "available",
-                "durationState"
+                "providerReleaseStatus",
+                "albumId",
+                "albumTitle",
+                "albumArtist",
+                "artist",
+                "providerMatchStatus"
               ],
               "type": "object"
+            },
+            "sources": {
+              "items": {
+                "properties": {
+                  "audioCodec": {
+                    "type": "string"
+                  },
+                  "container": {
+                    "type": "string"
+                  },
+                  "durationMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "height": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "videoCodec": {
+                    "type": "string"
+                  },
+                  "width": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "id",
+                  "container",
+                  "videoCodec",
+                  "audioCodec",
+                  "width",
+                  "height",
+                  "durationMs"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "stillUrl": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "watched": {
+              "type": "boolean"
+            },
+            "year": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
             }
-          ]
+          },
+          "required": [
+            "missing",
+            "addedAt",
+            "id",
+            "libraryId",
+            "title",
+            "kind",
+            "progressMs",
+            "available"
+          ],
+          "type": "object"
         },
         "type": "array"
       },
@@ -131995,7 +129161,7 @@ export const schemas = {
               "type": "string"
             },
             "query": {
-              "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
+              "description": "A predicate, a relative-date predicate or an all/any/not group, each tagged with its variant. The parser enforces recursive vocabulary and published depth/clause bounds.",
               "nullable": true,
               "oneOf": [
                 {
@@ -132020,9 +129186,54 @@ export const schemas = {
                       "maximum": 36500,
                       "minimum": 1,
                       "type": "integer"
+                    },
+                    "variant": {
+                      "const": "relative",
+                      "type": "string"
                     }
                   },
                   "required": [
+                    "variant",
+                    "field",
+                    "operator",
+                    "value"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "field": {
+                      "type": "string"
+                    },
+                    "operator": {
+                      "enum": [
+                        "equals",
+                        "not-equals",
+                        "in",
+                        "not-in",
+                        "contains",
+                        "starts-with",
+                        "is-present",
+                        "is-missing",
+                        "less-than",
+                        "at-most",
+                        "greater-than",
+                        "at-least",
+                        "between",
+                        "contains-any",
+                        "contains-all"
+                      ],
+                      "type": "string"
+                    },
+                    "value": {},
+                    "variant": {
+                      "const": "predicate",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "variant",
                     "field",
                     "operator",
                     "value"
@@ -132054,41 +129265,24 @@ export const schemas = {
                       "minItems": 1,
                       "type": "array"
                     },
-                    "field": {
-                      "type": "string"
-                    },
                     "not": {
                       "additionalProperties": {},
                       "properties": {},
                       "required": [],
                       "type": "object"
                     },
-                    "operator": {
-                      "enum": [
-                        "equals",
-                        "not-equals",
-                        "in",
-                        "not-in",
-                        "contains",
-                        "starts-with",
-                        "is-present",
-                        "is-missing",
-                        "less-than",
-                        "at-most",
-                        "greater-than",
-                        "at-least",
-                        "between",
-                        "contains-any",
-                        "contains-all"
-                      ],
+                    "variant": {
+                      "const": "group",
                       "type": "string"
-                    },
-                    "value": {}
+                    }
                   },
-                  "required": [],
+                  "required": [
+                    "variant"
+                  ],
                   "type": "object"
                 }
-              ]
+              ],
+              "x-discriminator": "variant"
             }
           },
           "required": [
@@ -132308,811 +129502,410 @@ export const schemas = {
     "properties": {
       "items": {
         "items": {
-          "anyOf": [
-            {
+          "properties": {
+            "addedAt": {
+              "nullable": true,
+              "type": "string"
+            },
+            "audioFacts": {
               "properties": {
-                "addedAt": {
-                  "nullable": true,
-                  "type": "string"
-                },
-                "audioFacts": {
-                  "properties": {
-                    "atmos": {
-                      "type": "boolean"
-                    },
-                    "bitDepth": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "channels": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "codec": {
-                      "type": "string"
-                    },
-                    "layout": {
-                      "type": "string"
-                    },
-                    "lossless": {
-                      "type": "boolean"
-                    },
-                    "sampleRate": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "codec"
-                  ],
-                  "type": "object"
-                },
-                "available": {
+                "atmos": {
                   "type": "boolean"
                 },
-                "backdropUrl": {
-                  "type": "string"
-                },
-                "bookFile": {
-                  "properties": {
-                    "bookId": {
-                      "type": "string"
-                    },
-                    "bookTitle": {
-                      "type": "string"
-                    },
-                    "discNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "localMetadata": {
-                      "properties": {
-                        "authors": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "description": {
-                          "type": "string"
-                        },
-                        "edition": {
-                          "type": "string"
-                        },
-                        "identifiers": {
-                          "items": {
-                            "properties": {
-                              "scheme": {
-                                "type": "string"
-                              },
-                              "value": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "scheme",
-                              "value"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        },
-                        "language": {
-                          "type": "string"
-                        },
-                        "narrators": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "publishedYear": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        },
-                        "publisher": {
-                          "type": "string"
-                        },
-                        "series": {
-                          "items": {
-                            "properties": {
-                              "name": {
-                                "type": "string"
-                              },
-                              "position": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "name"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        },
-                        "sources": {
-                          "additionalProperties": {
-                            "type": "string"
-                          },
-                          "type": "object"
-                        }
-                      },
-                      "required": [
-                        "authors",
-                        "narrators",
-                        "series",
-                        "identifiers",
-                        "sources"
-                      ],
-                      "type": "object"
-                    },
-                    "localMetadataIssue": {
-                      "type": "string"
-                    },
-                    "localPolicy": {
-                      "properties": {
-                        "localMode": {
-                          "type": "string"
-                        },
-                        "revision": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "revision",
-                        "localMode"
-                      ],
-                      "type": "object"
-                    },
-                    "partNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "sourceBoundary": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "bookId",
-                    "bookTitle",
-                    "sourceBoundary"
-                  ],
-                  "type": "object"
-                },
-                "durationMs": {
+                "bitDepth": {
                   "maximum": 9007199254740991,
-                  "minimum": 0,
+                  "minimum": -9007199254740991,
                   "type": "integer"
                 },
-                "episode": {
-                  "properties": {
-                    "airDate": {
-                      "type": "string"
-                    },
-                    "localIdentityStatus": {
-                      "type": "string"
-                    },
-                    "number": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "numbering": {
-                      "type": "string"
-                    },
-                    "orderingBasis": {
-                      "type": "string"
-                    },
-                    "providerMatchStatus": {
-                      "type": "string"
-                    },
-                    "seasonId": {
-                      "type": "string"
-                    },
-                    "seasonNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "showId": {
-                      "type": "string"
-                    },
-                    "showTitle": {
-                      "type": "string"
-                    },
-                    "sourceBoundary": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "showId",
-                    "showTitle",
-                    "numbering",
-                    "number",
-                    "localIdentityStatus",
-                    "providerMatchStatus",
-                    "orderingBasis",
-                    "sourceBoundary"
-                  ],
-                  "type": "object"
-                },
-                "fileInfoOpening": {
-                  "type": "string"
-                },
-                "id": {
-                  "type": "string"
-                },
-                "kind": {
-                  "type": "string"
-                },
-                "libraryId": {
-                  "type": "string"
-                },
-                "missing": {
-                  "type": "boolean"
-                },
-                "overview": {
-                  "type": "string"
-                },
-                "posterUrl": {
-                  "type": "string"
-                },
-                "progressMs": {
+                "channels": {
                   "maximum": 9007199254740991,
-                  "minimum": 0,
+                  "minimum": -9007199254740991,
                   "type": "integer"
                 },
-                "song": {
-                  "properties": {
-                    "albumArtist": {
-                      "type": "string"
-                    },
-                    "albumId": {
-                      "type": "string"
-                    },
-                    "albumTitle": {
-                      "type": "string"
-                    },
-                    "artist": {
-                      "type": "string"
-                    },
-                    "discNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "localMetadataIssue": {
-                      "type": "string"
-                    },
-                    "providerArtist": {
-                      "type": "string"
-                    },
-                    "providerMatchStatus": {
-                      "type": "string"
-                    },
-                    "providerObservedAt": {
-                      "type": "string"
-                    },
-                    "providerRecordingId": {
-                      "type": "string"
-                    },
-                    "providerReleaseGroupId": {
-                      "type": "string"
-                    },
-                    "providerReleaseId": {
-                      "type": "string"
-                    },
-                    "providerReleaseStatus": {
-                      "type": "string"
-                    },
-                    "providerSourceUrl": {
-                      "type": "string"
-                    },
-                    "providerTitle": {
-                      "type": "string"
-                    },
-                    "providerTrackId": {
-                      "type": "string"
-                    },
-                    "trackNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "providerReleaseStatus",
-                    "albumId",
-                    "albumTitle",
-                    "albumArtist",
-                    "artist",
-                    "providerMatchStatus"
-                  ],
-                  "type": "object"
-                },
-                "sources": {
-                  "items": {
-                    "properties": {
-                      "audioCodec": {
-                        "type": "string"
-                      },
-                      "container": {
-                        "type": "string"
-                      },
-                      "durationMs": {
-                        "maximum": 9007199254740991,
-                        "minimum": 0,
-                        "type": "integer"
-                      },
-                      "height": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "id": {
-                        "type": "string"
-                      },
-                      "videoCodec": {
-                        "type": "string"
-                      },
-                      "width": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "id",
-                      "container",
-                      "videoCodec",
-                      "audioCodec",
-                      "width",
-                      "height",
-                      "durationMs"
-                    ],
-                    "type": "object"
-                  },
-                  "type": "array"
-                },
-                "stillUrl": {
+                "codec": {
                   "type": "string"
                 },
-                "title": {
+                "layout": {
                   "type": "string"
                 },
-                "watched": {
+                "lossless": {
                   "type": "boolean"
                 },
-                "year": {
+                "sampleRate": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
                 }
               },
               "required": [
-                "missing",
-                "addedAt",
-                "id",
-                "libraryId",
-                "title",
-                "kind",
-                "durationMs",
-                "progressMs",
-                "available"
+                "codec"
               ],
               "type": "object"
             },
-            {
+            "available": {
+              "type": "boolean"
+            },
+            "backdropUrl": {
+              "type": "string"
+            },
+            "bookFile": {
               "properties": {
-                "addedAt": {
-                  "nullable": true,
+                "bookId": {
                   "type": "string"
                 },
-                "audioFacts": {
-                  "properties": {
-                    "atmos": {
-                      "type": "boolean"
-                    },
-                    "bitDepth": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "channels": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "codec": {
-                      "type": "string"
-                    },
-                    "layout": {
-                      "type": "string"
-                    },
-                    "lossless": {
-                      "type": "boolean"
-                    },
-                    "sampleRate": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "codec"
-                  ],
-                  "type": "object"
-                },
-                "available": {
-                  "type": "boolean"
-                },
-                "backdropUrl": {
+                "bookTitle": {
                   "type": "string"
                 },
-                "bookFile": {
-                  "properties": {
-                    "bookId": {
-                      "type": "string"
-                    },
-                    "bookTitle": {
-                      "type": "string"
-                    },
-                    "discNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "localMetadata": {
-                      "properties": {
-                        "authors": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "description": {
-                          "type": "string"
-                        },
-                        "edition": {
-                          "type": "string"
-                        },
-                        "identifiers": {
-                          "items": {
-                            "properties": {
-                              "scheme": {
-                                "type": "string"
-                              },
-                              "value": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "scheme",
-                              "value"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        },
-                        "language": {
-                          "type": "string"
-                        },
-                        "narrators": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "publishedYear": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        },
-                        "publisher": {
-                          "type": "string"
-                        },
-                        "series": {
-                          "items": {
-                            "properties": {
-                              "name": {
-                                "type": "string"
-                              },
-                              "position": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "name"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        },
-                        "sources": {
-                          "additionalProperties": {
-                            "type": "string"
-                          },
-                          "type": "object"
-                        }
-                      },
-                      "required": [
-                        "authors",
-                        "narrators",
-                        "series",
-                        "identifiers",
-                        "sources"
-                      ],
-                      "type": "object"
-                    },
-                    "localMetadataIssue": {
-                      "type": "string"
-                    },
-                    "localPolicy": {
-                      "properties": {
-                        "localMode": {
-                          "type": "string"
-                        },
-                        "revision": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "revision",
-                        "localMode"
-                      ],
-                      "type": "object"
-                    },
-                    "partNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "sourceBoundary": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "bookId",
-                    "bookTitle",
-                    "sourceBoundary"
-                  ],
-                  "type": "object"
-                },
-                "durationState": {
-                  "enum": [
-                    "unrepresentable"
-                  ],
-                  "type": "string"
-                },
-                "episode": {
-                  "properties": {
-                    "airDate": {
-                      "type": "string"
-                    },
-                    "localIdentityStatus": {
-                      "type": "string"
-                    },
-                    "number": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "numbering": {
-                      "type": "string"
-                    },
-                    "orderingBasis": {
-                      "type": "string"
-                    },
-                    "providerMatchStatus": {
-                      "type": "string"
-                    },
-                    "seasonId": {
-                      "type": "string"
-                    },
-                    "seasonNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "showId": {
-                      "type": "string"
-                    },
-                    "showTitle": {
-                      "type": "string"
-                    },
-                    "sourceBoundary": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "showId",
-                    "showTitle",
-                    "numbering",
-                    "number",
-                    "localIdentityStatus",
-                    "providerMatchStatus",
-                    "orderingBasis",
-                    "sourceBoundary"
-                  ],
-                  "type": "object"
-                },
-                "fileInfoOpening": {
-                  "type": "string"
-                },
-                "id": {
-                  "type": "string"
-                },
-                "kind": {
-                  "type": "string"
-                },
-                "libraryId": {
-                  "type": "string"
-                },
-                "missing": {
-                  "type": "boolean"
-                },
-                "overview": {
-                  "type": "string"
-                },
-                "posterUrl": {
-                  "type": "string"
-                },
-                "progressMs": {
+                "discNumber": {
                   "maximum": 9007199254740991,
-                  "minimum": 0,
+                  "minimum": -9007199254740991,
                   "type": "integer"
                 },
-                "song": {
+                "localMetadata": {
                   "properties": {
-                    "albumArtist": {
+                    "authors": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "description": {
                       "type": "string"
                     },
-                    "albumId": {
+                    "edition": {
                       "type": "string"
                     },
-                    "albumTitle": {
+                    "identifiers": {
+                      "items": {
+                        "properties": {
+                          "scheme": {
+                            "type": "string"
+                          },
+                          "value": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "scheme",
+                          "value"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "language": {
                       "type": "string"
                     },
-                    "artist": {
-                      "type": "string"
+                    "narrators": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
                     },
-                    "discNumber": {
+                    "publishedYear": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
-                    "localMetadataIssue": {
+                    "publisher": {
                       "type": "string"
                     },
-                    "providerArtist": {
+                    "series": {
+                      "items": {
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "position": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "sources": {
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "authors",
+                    "narrators",
+                    "series",
+                    "identifiers",
+                    "sources"
+                  ],
+                  "type": "object"
+                },
+                "localMetadataIssue": {
+                  "type": "string"
+                },
+                "localPolicy": {
+                  "properties": {
+                    "localMode": {
                       "type": "string"
                     },
-                    "providerMatchStatus": {
-                      "type": "string"
-                    },
-                    "providerObservedAt": {
-                      "type": "string"
-                    },
-                    "providerRecordingId": {
-                      "type": "string"
-                    },
-                    "providerReleaseGroupId": {
-                      "type": "string"
-                    },
-                    "providerReleaseId": {
-                      "type": "string"
-                    },
-                    "providerReleaseStatus": {
-                      "type": "string"
-                    },
-                    "providerSourceUrl": {
-                      "type": "string"
-                    },
-                    "providerTitle": {
-                      "type": "string"
-                    },
-                    "providerTrackId": {
-                      "type": "string"
-                    },
-                    "trackNumber": {
+                    "revision": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
                     }
                   },
                   "required": [
-                    "providerReleaseStatus",
-                    "albumId",
-                    "albumTitle",
-                    "albumArtist",
-                    "artist",
-                    "providerMatchStatus"
+                    "revision",
+                    "localMode"
                   ],
                   "type": "object"
                 },
-                "sources": {
-                  "items": {
-                    "properties": {
-                      "audioCodec": {
-                        "type": "string"
-                      },
-                      "container": {
-                        "type": "string"
-                      },
-                      "durationMs": {
-                        "maximum": 9007199254740991,
-                        "minimum": 0,
-                        "type": "integer"
-                      },
-                      "height": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "id": {
-                        "type": "string"
-                      },
-                      "videoCodec": {
-                        "type": "string"
-                      },
-                      "width": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "id",
-                      "container",
-                      "videoCodec",
-                      "audioCodec",
-                      "width",
-                      "height",
-                      "durationMs"
-                    ],
-                    "type": "object"
-                  },
-                  "type": "array"
+                "partNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 },
-                "stillUrl": {
+                "sourceBoundary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "bookId",
+                "bookTitle",
+                "sourceBoundary"
+              ],
+              "type": "object"
+            },
+            "durationMs": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "durationState": {
+              "enum": [
+                "unrepresentable"
+              ],
+              "type": "string"
+            },
+            "episode": {
+              "properties": {
+                "airDate": {
                   "type": "string"
                 },
-                "title": {
+                "localIdentityStatus": {
                   "type": "string"
                 },
-                "watched": {
-                  "type": "boolean"
+                "number": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 },
-                "year": {
+                "numbering": {
+                  "type": "string"
+                },
+                "orderingBasis": {
+                  "type": "string"
+                },
+                "providerMatchStatus": {
+                  "type": "string"
+                },
+                "seasonId": {
+                  "type": "string"
+                },
+                "seasonNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "showId": {
+                  "type": "string"
+                },
+                "showTitle": {
+                  "type": "string"
+                },
+                "sourceBoundary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "showId",
+                "showTitle",
+                "numbering",
+                "number",
+                "localIdentityStatus",
+                "providerMatchStatus",
+                "orderingBasis",
+                "sourceBoundary"
+              ],
+              "type": "object"
+            },
+            "fileInfoOpening": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "libraryId": {
+              "type": "string"
+            },
+            "missing": {
+              "type": "boolean"
+            },
+            "overview": {
+              "type": "string"
+            },
+            "posterUrl": {
+              "type": "string"
+            },
+            "progressMs": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "song": {
+              "properties": {
+                "albumArtist": {
+                  "type": "string"
+                },
+                "albumId": {
+                  "type": "string"
+                },
+                "albumTitle": {
+                  "type": "string"
+                },
+                "artist": {
+                  "type": "string"
+                },
+                "discNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "localMetadataIssue": {
+                  "type": "string"
+                },
+                "providerArtist": {
+                  "type": "string"
+                },
+                "providerMatchStatus": {
+                  "type": "string"
+                },
+                "providerObservedAt": {
+                  "type": "string"
+                },
+                "providerRecordingId": {
+                  "type": "string"
+                },
+                "providerReleaseGroupId": {
+                  "type": "string"
+                },
+                "providerReleaseId": {
+                  "type": "string"
+                },
+                "providerReleaseStatus": {
+                  "type": "string"
+                },
+                "providerSourceUrl": {
+                  "type": "string"
+                },
+                "providerTitle": {
+                  "type": "string"
+                },
+                "providerTrackId": {
+                  "type": "string"
+                },
+                "trackNumber": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
                 }
               },
               "required": [
-                "missing",
-                "addedAt",
-                "id",
-                "libraryId",
-                "title",
-                "kind",
-                "progressMs",
-                "available",
-                "durationState"
+                "providerReleaseStatus",
+                "albumId",
+                "albumTitle",
+                "albumArtist",
+                "artist",
+                "providerMatchStatus"
               ],
               "type": "object"
+            },
+            "sources": {
+              "items": {
+                "properties": {
+                  "audioCodec": {
+                    "type": "string"
+                  },
+                  "container": {
+                    "type": "string"
+                  },
+                  "durationMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "height": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "videoCodec": {
+                    "type": "string"
+                  },
+                  "width": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "id",
+                  "container",
+                  "videoCodec",
+                  "audioCodec",
+                  "width",
+                  "height",
+                  "durationMs"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "stillUrl": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "watched": {
+              "type": "boolean"
+            },
+            "year": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
             }
-          ]
+          },
+          "required": [
+            "missing",
+            "addedAt",
+            "id",
+            "libraryId",
+            "title",
+            "kind",
+            "progressMs",
+            "available"
+          ],
+          "type": "object"
         },
         "type": "array"
       },
@@ -145947,13 +142740,18 @@ export const schemas = {
               }
             },
             "type": "object"
+          },
+          "variant": {
+            "const": "ready",
+            "type": "string"
           }
         },
         "required": [
           "selector",
           "catalogRevision",
           "total",
-          "types"
+          "types",
+          "variant"
         ],
         "type": "object"
       },
@@ -145980,9 +142778,14 @@ export const schemas = {
               "preparing"
             ],
             "type": "string"
+          },
+          "variant": {
+            "const": "preparing",
+            "type": "string"
           }
         },
         "required": [
+          "variant",
           "kind",
           "state",
           "queryId",
@@ -145990,7 +142793,8 @@ export const schemas = {
         ],
         "type": "object"
       }
-    ]
+    ],
+    "x-discriminator": "variant"
   },
   "GetLibraryChannelsIdLogoRequest": {
     "properties": {},
@@ -146055,13 +142859,18 @@ export const schemas = {
               "type": "object"
             },
             "type": "array"
+          },
+          "variant": {
+            "const": "page",
+            "type": "string"
           }
         },
         "required": [
           "field",
           "totalIsLowerBound",
           "total",
-          "values"
+          "values",
+          "variant"
         ],
         "type": "object"
       },
@@ -146119,6 +142928,10 @@ export const schemas = {
             "maxItems": 200,
             "type": "array"
           },
+          "variant": {
+            "const": "window",
+            "type": "string"
+          },
           "window": {
             "properties": {
               "basis": {
@@ -146175,7 +142988,8 @@ export const schemas = {
           "total",
           "totalIsLowerBound",
           "values",
-          "window"
+          "window",
+          "variant"
         ],
         "type": "object"
       },
@@ -146263,6 +143077,10 @@ export const schemas = {
             },
             "maxItems": 200,
             "type": "array"
+          },
+          "variant": {
+            "const": "fallback",
+            "type": "string"
           }
         },
         "required": [
@@ -146271,7 +143089,8 @@ export const schemas = {
           "totalIsLowerBound",
           "total",
           "values",
-          "preparation"
+          "preparation",
+          "variant"
         ],
         "type": "object"
       },
@@ -146295,13 +143114,18 @@ export const schemas = {
           "state": {
             "const": "preparing",
             "type": "string"
+          },
+          "variant": {
+            "const": "preparing",
+            "type": "string"
           }
         },
         "required": [
           "kind",
           "state",
           "queryId",
-          "retryAfterMs"
+          "retryAfterMs",
+          "variant"
         ],
         "type": "object"
       },
@@ -146328,17 +143152,23 @@ export const schemas = {
               "preparing"
             ],
             "type": "string"
+          },
+          "variant": {
+            "const": "reading-preparing",
+            "type": "string"
           }
         },
         "required": [
           "kind",
           "state",
           "queryId",
-          "retryAfterMs"
+          "retryAfterMs",
+          "variant"
         ],
         "type": "object"
       }
-    ]
+    ],
+    "x-discriminator": "variant"
   },
   "GetLibraryInventoryRequest": {
     "properties": {},
@@ -146525,7 +143355,7 @@ export const schemas = {
           "applied": {
             "properties": {
               "query": {
-                "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
+                "description": "A predicate, a relative-date predicate or an all/any/not group, each tagged with its variant. The parser enforces recursive vocabulary and published depth/clause bounds.",
                 "nullable": true,
                 "oneOf": [
                   {
@@ -146550,9 +143380,54 @@ export const schemas = {
                         "maximum": 36500,
                         "minimum": 1,
                         "type": "integer"
+                      },
+                      "variant": {
+                        "const": "relative",
+                        "type": "string"
                       }
                     },
                     "required": [
+                      "variant",
+                      "field",
+                      "operator",
+                      "value"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "field": {
+                        "type": "string"
+                      },
+                      "operator": {
+                        "enum": [
+                          "equals",
+                          "not-equals",
+                          "in",
+                          "not-in",
+                          "contains",
+                          "starts-with",
+                          "is-present",
+                          "is-missing",
+                          "less-than",
+                          "at-most",
+                          "greater-than",
+                          "at-least",
+                          "between",
+                          "contains-any",
+                          "contains-all"
+                        ],
+                        "type": "string"
+                      },
+                      "value": {},
+                      "variant": {
+                        "const": "predicate",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "variant",
                       "field",
                       "operator",
                       "value"
@@ -146584,41 +143459,24 @@ export const schemas = {
                         "minItems": 1,
                         "type": "array"
                       },
-                      "field": {
-                        "type": "string"
-                      },
                       "not": {
                         "additionalProperties": {},
                         "properties": {},
                         "required": [],
                         "type": "object"
                       },
-                      "operator": {
-                        "enum": [
-                          "equals",
-                          "not-equals",
-                          "in",
-                          "not-in",
-                          "contains",
-                          "starts-with",
-                          "is-present",
-                          "is-missing",
-                          "less-than",
-                          "at-most",
-                          "greater-than",
-                          "at-least",
-                          "between",
-                          "contains-any",
-                          "contains-all"
-                        ],
+                      "variant": {
+                        "const": "group",
                         "type": "string"
-                      },
-                      "value": {}
+                      }
                     },
-                    "required": [],
+                    "required": [
+                      "variant"
+                    ],
                     "type": "object"
                   }
-                ]
+                ],
+                "x-discriminator": "variant"
               },
               "seek": {
                 "properties": {
@@ -148446,6 +145304,10 @@ export const schemas = {
             },
             "type": "array"
           },
+          "variant": {
+            "const": "ready",
+            "type": "string"
+          },
           "wholeSelection": {
             "properties": {
               "catalogRevision": {
@@ -148690,9 +145552,14 @@ export const schemas = {
                   "preparing"
                 ],
                 "type": "string"
+              },
+              "variant": {
+                "const": "preparing",
+                "type": "string"
               }
             },
             "required": [
+              "variant",
               "kind",
               "state",
               "queryId",
@@ -148721,7 +145588,8 @@ export const schemas = {
           "applied",
           "entries",
           "pageInfo",
-          "positionIndex"
+          "positionIndex",
+          "variant"
         ],
         "type": "object"
       },
@@ -148746,17 +145614,23 @@ export const schemas = {
           "state": {
             "const": "preparing",
             "type": "string"
+          },
+          "variant": {
+            "const": "preparing",
+            "type": "string"
           }
         },
         "required": [
           "state",
           "kind",
           "queryId",
-          "retryAfterMs"
+          "retryAfterMs",
+          "variant"
         ],
         "type": "object"
       }
-    ]
+    ],
+    "x-discriminator": "variant"
   },
   "GetLibraryReadingFacetQueryRequest": {
     "properties": {},
@@ -148812,13 +145686,18 @@ export const schemas = {
               "type": "object"
             },
             "type": "array"
+          },
+          "variant": {
+            "const": "page",
+            "type": "string"
           }
         },
         "required": [
           "field",
           "totalIsLowerBound",
           "total",
-          "values"
+          "values",
+          "variant"
         ],
         "type": "object"
       },
@@ -148845,17 +145724,23 @@ export const schemas = {
               "preparing"
             ],
             "type": "string"
+          },
+          "variant": {
+            "const": "reading-preparing",
+            "type": "string"
           }
         },
         "required": [
           "kind",
           "state",
           "queryId",
-          "retryAfterMs"
+          "retryAfterMs",
+          "variant"
         ],
         "type": "object"
       }
-    ]
+    ],
+    "x-discriminator": "variant"
   },
   "GetLibrarySettingsRequest": {
     "properties": {},
@@ -151273,6 +148158,10 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "variant": {
+            "const": "ready",
+            "type": "string"
+          },
           "viewerFence": {
             "type": "string"
           }
@@ -151288,7 +148177,8 @@ export const schemas = {
           "singleItemFields",
           "excludedFields",
           "fields",
-          "targets"
+          "targets",
+          "variant"
         ],
         "type": "object"
       },
@@ -151317,9 +148207,14 @@ export const schemas = {
               "preparing"
             ],
             "type": "string"
+          },
+          "variant": {
+            "const": "preparing",
+            "type": "string"
           }
         },
         "required": [
+          "variant",
           "kind",
           "state",
           "queryId",
@@ -151327,7 +148222,8 @@ export const schemas = {
         ],
         "type": "object"
       }
-    ]
+    ],
+    "x-discriminator": "variant"
   },
   "GetMetadataKindIdArtRoleRequest": {
     "properties": {},
@@ -168513,9 +165409,87 @@ export const schemas = {
                   "properties": {
                     "format": {
                       "enum": [
-                        "pdf",
-                        "cbz",
-                        "cb7",
+                        "pdf"
+                      ],
+                      "type": "string"
+                    },
+                    "pageIndex": {
+                      "maximum": 1000000,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "progression": {
+                      "maximum": 1,
+                      "minimum": 0,
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "format",
+                    "pageIndex",
+                    "progression"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "format": {
+                      "enum": [
+                        "cbz"
+                      ],
+                      "type": "string"
+                    },
+                    "pageIndex": {
+                      "maximum": 1000000,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "progression": {
+                      "maximum": 1,
+                      "minimum": 0,
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "format",
+                    "pageIndex",
+                    "progression"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "format": {
+                      "enum": [
+                        "cb7"
+                      ],
+                      "type": "string"
+                    },
+                    "pageIndex": {
+                      "maximum": 1000000,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "progression": {
+                      "maximum": 1,
+                      "minimum": 0,
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "format",
+                    "pageIndex",
+                    "progression"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "format": {
+                      "enum": [
                         "cbr"
                       ],
                       "type": "string"
@@ -168538,7 +165512,8 @@ export const schemas = {
                   ],
                   "type": "object"
                 }
-              ]
+              ],
+              "x-discriminator": "format"
             },
             "note": {
               "maxLength": 4096,
@@ -172790,9 +169765,14 @@ export const schemas = {
                             "maximum": 9007199254740991,
                             "minimum": 1,
                             "type": "integer"
+                          },
+                          "variant": {
+                            "const": "hidden",
+                            "type": "string"
                           }
                         },
                         "required": [
+                          "variant",
                           "id",
                           "kind",
                           "hidden",
@@ -172901,9 +169881,14 @@ export const schemas = {
                             "maxLength": 4096,
                             "minLength": 1,
                             "type": "string"
+                          },
+                          "variant": {
+                            "const": "visible",
+                            "type": "string"
                           }
                         },
                         "required": [
+                          "variant",
                           "id",
                           "kind",
                           "hidden",
@@ -172917,7 +169902,8 @@ export const schemas = {
                         ],
                         "type": "object"
                       }
-                    ]
+                    ],
+                    "x-discriminator": "variant"
                   }
                 ]
               },
@@ -173159,7 +170145,7 @@ export const schemas = {
           "applied": {
             "properties": {
               "query": {
-                "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
+                "description": "A predicate, a relative-date predicate or an all/any/not group, each tagged with its variant. The parser enforces recursive vocabulary and published depth/clause bounds.",
                 "nullable": true,
                 "oneOf": [
                   {
@@ -173184,9 +170170,54 @@ export const schemas = {
                         "maximum": 36500,
                         "minimum": 1,
                         "type": "integer"
+                      },
+                      "variant": {
+                        "const": "relative",
+                        "type": "string"
                       }
                     },
                     "required": [
+                      "variant",
+                      "field",
+                      "operator",
+                      "value"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "field": {
+                        "type": "string"
+                      },
+                      "operator": {
+                        "enum": [
+                          "equals",
+                          "not-equals",
+                          "in",
+                          "not-in",
+                          "contains",
+                          "starts-with",
+                          "is-present",
+                          "is-missing",
+                          "less-than",
+                          "at-most",
+                          "greater-than",
+                          "at-least",
+                          "between",
+                          "contains-any",
+                          "contains-all"
+                        ],
+                        "type": "string"
+                      },
+                      "value": {},
+                      "variant": {
+                        "const": "predicate",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "variant",
                       "field",
                       "operator",
                       "value"
@@ -173218,41 +170249,24 @@ export const schemas = {
                         "minItems": 1,
                         "type": "array"
                       },
-                      "field": {
-                        "type": "string"
-                      },
                       "not": {
                         "additionalProperties": {},
                         "properties": {},
                         "required": [],
                         "type": "object"
                       },
-                      "operator": {
-                        "enum": [
-                          "equals",
-                          "not-equals",
-                          "in",
-                          "not-in",
-                          "contains",
-                          "starts-with",
-                          "is-present",
-                          "is-missing",
-                          "less-than",
-                          "at-most",
-                          "greater-than",
-                          "at-least",
-                          "between",
-                          "contains-any",
-                          "contains-all"
-                        ],
+                      "variant": {
+                        "const": "group",
                         "type": "string"
-                      },
-                      "value": {}
+                      }
                     },
-                    "required": [],
+                    "required": [
+                      "variant"
+                    ],
                     "type": "object"
                   }
-                ]
+                ],
+                "x-discriminator": "variant"
               },
               "seek": {
                 "properties": {
@@ -175324,9 +172338,14 @@ export const schemas = {
                   "preparing"
                 ],
                 "type": "string"
+              },
+              "variant": {
+                "const": "preparing",
+                "type": "string"
               }
             },
             "required": [
+              "variant",
               "kind",
               "state",
               "queryId",
@@ -177187,7 +174206,7 @@ export const schemas = {
                 "type": "string"
               },
               "query": {
-                "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
+                "description": "A predicate, a relative-date predicate or an all/any/not group, each tagged with its variant. The parser enforces recursive vocabulary and published depth/clause bounds.",
                 "nullable": true,
                 "oneOf": [
                   {
@@ -177212,9 +174231,54 @@ export const schemas = {
                         "maximum": 36500,
                         "minimum": 1,
                         "type": "integer"
+                      },
+                      "variant": {
+                        "const": "relative",
+                        "type": "string"
                       }
                     },
                     "required": [
+                      "variant",
+                      "field",
+                      "operator",
+                      "value"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "field": {
+                        "type": "string"
+                      },
+                      "operator": {
+                        "enum": [
+                          "equals",
+                          "not-equals",
+                          "in",
+                          "not-in",
+                          "contains",
+                          "starts-with",
+                          "is-present",
+                          "is-missing",
+                          "less-than",
+                          "at-most",
+                          "greater-than",
+                          "at-least",
+                          "between",
+                          "contains-any",
+                          "contains-all"
+                        ],
+                        "type": "string"
+                      },
+                      "value": {},
+                      "variant": {
+                        "const": "predicate",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "variant",
                       "field",
                       "operator",
                       "value"
@@ -177246,41 +174310,24 @@ export const schemas = {
                         "minItems": 1,
                         "type": "array"
                       },
-                      "field": {
-                        "type": "string"
-                      },
                       "not": {
                         "additionalProperties": {},
                         "properties": {},
                         "required": [],
                         "type": "object"
                       },
-                      "operator": {
-                        "enum": [
-                          "equals",
-                          "not-equals",
-                          "in",
-                          "not-in",
-                          "contains",
-                          "starts-with",
-                          "is-present",
-                          "is-missing",
-                          "less-than",
-                          "at-most",
-                          "greater-than",
-                          "at-least",
-                          "between",
-                          "contains-any",
-                          "contains-all"
-                        ],
+                      "variant": {
+                        "const": "group",
                         "type": "string"
-                      },
-                      "value": {}
+                      }
                     },
-                    "required": [],
+                    "required": [
+                      "variant"
+                    ],
                     "type": "object"
                   }
-                ]
+                ],
+                "x-discriminator": "variant"
               },
               "sort": {
                 "items": {
@@ -177485,7 +174532,7 @@ export const schemas = {
             "type": "string"
           },
           "query": {
-            "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
+            "description": "A predicate, a relative-date predicate or an all/any/not group, each tagged with its variant. The parser enforces recursive vocabulary and published depth/clause bounds.",
             "nullable": true,
             "oneOf": [
               {
@@ -177510,9 +174557,54 @@ export const schemas = {
                     "maximum": 36500,
                     "minimum": 1,
                     "type": "integer"
+                  },
+                  "variant": {
+                    "const": "relative",
+                    "type": "string"
                   }
                 },
                 "required": [
+                  "variant",
+                  "field",
+                  "operator",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "field": {
+                    "type": "string"
+                  },
+                  "operator": {
+                    "enum": [
+                      "equals",
+                      "not-equals",
+                      "in",
+                      "not-in",
+                      "contains",
+                      "starts-with",
+                      "is-present",
+                      "is-missing",
+                      "less-than",
+                      "at-most",
+                      "greater-than",
+                      "at-least",
+                      "between",
+                      "contains-any",
+                      "contains-all"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {},
+                  "variant": {
+                    "const": "predicate",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "variant",
                   "field",
                   "operator",
                   "value"
@@ -177544,41 +174636,24 @@ export const schemas = {
                     "minItems": 1,
                     "type": "array"
                   },
-                  "field": {
-                    "type": "string"
-                  },
                   "not": {
                     "additionalProperties": {},
                     "properties": {},
                     "required": [],
                     "type": "object"
                   },
-                  "operator": {
-                    "enum": [
-                      "equals",
-                      "not-equals",
-                      "in",
-                      "not-in",
-                      "contains",
-                      "starts-with",
-                      "is-present",
-                      "is-missing",
-                      "less-than",
-                      "at-most",
-                      "greater-than",
-                      "at-least",
-                      "between",
-                      "contains-any",
-                      "contains-all"
-                    ],
+                  "variant": {
+                    "const": "group",
                     "type": "string"
-                  },
-                  "value": {}
+                  }
                 },
-                "required": [],
+                "required": [
+                  "variant"
+                ],
                 "type": "object"
               }
-            ]
+            ],
+            "x-discriminator": "variant"
           },
           "sort": {
             "items": {
@@ -177816,7 +174891,7 @@ export const schemas = {
                   "type": "string"
                 },
                 "query": {
-                  "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
+                  "description": "A predicate, a relative-date predicate or an all/any/not group, each tagged with its variant. The parser enforces recursive vocabulary and published depth/clause bounds.",
                   "nullable": true,
                   "oneOf": [
                     {
@@ -177841,9 +174916,54 @@ export const schemas = {
                           "maximum": 36500,
                           "minimum": 1,
                           "type": "integer"
+                        },
+                        "variant": {
+                          "const": "relative",
+                          "type": "string"
                         }
                       },
                       "required": [
+                        "variant",
+                        "field",
+                        "operator",
+                        "value"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "field": {
+                          "type": "string"
+                        },
+                        "operator": {
+                          "enum": [
+                            "equals",
+                            "not-equals",
+                            "in",
+                            "not-in",
+                            "contains",
+                            "starts-with",
+                            "is-present",
+                            "is-missing",
+                            "less-than",
+                            "at-most",
+                            "greater-than",
+                            "at-least",
+                            "between",
+                            "contains-any",
+                            "contains-all"
+                          ],
+                          "type": "string"
+                        },
+                        "value": {},
+                        "variant": {
+                          "const": "predicate",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "variant",
                         "field",
                         "operator",
                         "value"
@@ -177875,41 +174995,24 @@ export const schemas = {
                           "minItems": 1,
                           "type": "array"
                         },
-                        "field": {
-                          "type": "string"
-                        },
                         "not": {
                           "additionalProperties": {},
                           "properties": {},
                           "required": [],
                           "type": "object"
                         },
-                        "operator": {
-                          "enum": [
-                            "equals",
-                            "not-equals",
-                            "in",
-                            "not-in",
-                            "contains",
-                            "starts-with",
-                            "is-present",
-                            "is-missing",
-                            "less-than",
-                            "at-most",
-                            "greater-than",
-                            "at-least",
-                            "between",
-                            "contains-any",
-                            "contains-all"
-                          ],
+                        "variant": {
+                          "const": "group",
                           "type": "string"
-                        },
-                        "value": {}
+                        }
                       },
-                      "required": [],
+                      "required": [
+                        "variant"
+                      ],
                       "type": "object"
                     }
-                  ]
+                  ],
+                  "x-discriminator": "variant"
                 },
                 "sort": {
                   "items": {
@@ -179989,12 +177092,17 @@ export const schemas = {
           },
           "revision": {
             "type": "string"
+          },
+          "variant": {
+            "const": "ready",
+            "type": "string"
           }
         },
         "required": [
           "queryId",
           "revision",
-          "genres"
+          "genres",
+          "variant"
         ],
         "type": "object"
       },
@@ -180127,6 +177235,10 @@ export const schemas = {
           "totalIsLowerBound": {
             "const": true,
             "type": "boolean"
+          },
+          "variant": {
+            "const": "fallback",
+            "type": "string"
           }
         },
         "required": [
@@ -180136,7 +177248,8 @@ export const schemas = {
           "revision",
           "genres",
           "hasGenresKnown",
-          "preparation"
+          "preparation",
+          "variant"
         ],
         "type": "object"
       },
@@ -180160,17 +177273,23 @@ export const schemas = {
           "state": {
             "const": "preparing",
             "type": "string"
+          },
+          "variant": {
+            "const": "preparing",
+            "type": "string"
           }
         },
         "required": [
           "kind",
           "state",
           "queryId",
-          "retryAfterMs"
+          "retryAfterMs",
+          "variant"
         ],
         "type": "object"
       }
-    ]
+    ],
+    "x-discriminator": "variant"
   },
   "GetSearchHistoryRequest": {
     "properties": {},
@@ -180216,811 +177335,410 @@ export const schemas = {
     "properties": {
       "episodes": {
         "items": {
-          "anyOf": [
-            {
+          "properties": {
+            "addedAt": {
+              "nullable": true,
+              "type": "string"
+            },
+            "audioFacts": {
               "properties": {
-                "addedAt": {
-                  "nullable": true,
-                  "type": "string"
-                },
-                "audioFacts": {
-                  "properties": {
-                    "atmos": {
-                      "type": "boolean"
-                    },
-                    "bitDepth": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "channels": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "codec": {
-                      "type": "string"
-                    },
-                    "layout": {
-                      "type": "string"
-                    },
-                    "lossless": {
-                      "type": "boolean"
-                    },
-                    "sampleRate": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "codec"
-                  ],
-                  "type": "object"
-                },
-                "available": {
+                "atmos": {
                   "type": "boolean"
                 },
-                "backdropUrl": {
-                  "type": "string"
-                },
-                "bookFile": {
-                  "properties": {
-                    "bookId": {
-                      "type": "string"
-                    },
-                    "bookTitle": {
-                      "type": "string"
-                    },
-                    "discNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "localMetadata": {
-                      "properties": {
-                        "authors": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "description": {
-                          "type": "string"
-                        },
-                        "edition": {
-                          "type": "string"
-                        },
-                        "identifiers": {
-                          "items": {
-                            "properties": {
-                              "scheme": {
-                                "type": "string"
-                              },
-                              "value": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "scheme",
-                              "value"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        },
-                        "language": {
-                          "type": "string"
-                        },
-                        "narrators": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "publishedYear": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        },
-                        "publisher": {
-                          "type": "string"
-                        },
-                        "series": {
-                          "items": {
-                            "properties": {
-                              "name": {
-                                "type": "string"
-                              },
-                              "position": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "name"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        },
-                        "sources": {
-                          "additionalProperties": {
-                            "type": "string"
-                          },
-                          "type": "object"
-                        }
-                      },
-                      "required": [
-                        "authors",
-                        "narrators",
-                        "series",
-                        "identifiers",
-                        "sources"
-                      ],
-                      "type": "object"
-                    },
-                    "localMetadataIssue": {
-                      "type": "string"
-                    },
-                    "localPolicy": {
-                      "properties": {
-                        "localMode": {
-                          "type": "string"
-                        },
-                        "revision": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "revision",
-                        "localMode"
-                      ],
-                      "type": "object"
-                    },
-                    "partNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "sourceBoundary": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "bookId",
-                    "bookTitle",
-                    "sourceBoundary"
-                  ],
-                  "type": "object"
-                },
-                "durationMs": {
+                "bitDepth": {
                   "maximum": 9007199254740991,
-                  "minimum": 0,
+                  "minimum": -9007199254740991,
                   "type": "integer"
                 },
-                "episode": {
-                  "properties": {
-                    "airDate": {
-                      "type": "string"
-                    },
-                    "localIdentityStatus": {
-                      "type": "string"
-                    },
-                    "number": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "numbering": {
-                      "type": "string"
-                    },
-                    "orderingBasis": {
-                      "type": "string"
-                    },
-                    "providerMatchStatus": {
-                      "type": "string"
-                    },
-                    "seasonId": {
-                      "type": "string"
-                    },
-                    "seasonNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "showId": {
-                      "type": "string"
-                    },
-                    "showTitle": {
-                      "type": "string"
-                    },
-                    "sourceBoundary": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "showId",
-                    "showTitle",
-                    "numbering",
-                    "number",
-                    "localIdentityStatus",
-                    "providerMatchStatus",
-                    "orderingBasis",
-                    "sourceBoundary"
-                  ],
-                  "type": "object"
-                },
-                "fileInfoOpening": {
-                  "type": "string"
-                },
-                "id": {
-                  "type": "string"
-                },
-                "kind": {
-                  "type": "string"
-                },
-                "libraryId": {
-                  "type": "string"
-                },
-                "missing": {
-                  "type": "boolean"
-                },
-                "overview": {
-                  "type": "string"
-                },
-                "posterUrl": {
-                  "type": "string"
-                },
-                "progressMs": {
+                "channels": {
                   "maximum": 9007199254740991,
-                  "minimum": 0,
+                  "minimum": -9007199254740991,
                   "type": "integer"
                 },
-                "song": {
-                  "properties": {
-                    "albumArtist": {
-                      "type": "string"
-                    },
-                    "albumId": {
-                      "type": "string"
-                    },
-                    "albumTitle": {
-                      "type": "string"
-                    },
-                    "artist": {
-                      "type": "string"
-                    },
-                    "discNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "localMetadataIssue": {
-                      "type": "string"
-                    },
-                    "providerArtist": {
-                      "type": "string"
-                    },
-                    "providerMatchStatus": {
-                      "type": "string"
-                    },
-                    "providerObservedAt": {
-                      "type": "string"
-                    },
-                    "providerRecordingId": {
-                      "type": "string"
-                    },
-                    "providerReleaseGroupId": {
-                      "type": "string"
-                    },
-                    "providerReleaseId": {
-                      "type": "string"
-                    },
-                    "providerReleaseStatus": {
-                      "type": "string"
-                    },
-                    "providerSourceUrl": {
-                      "type": "string"
-                    },
-                    "providerTitle": {
-                      "type": "string"
-                    },
-                    "providerTrackId": {
-                      "type": "string"
-                    },
-                    "trackNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "providerReleaseStatus",
-                    "albumId",
-                    "albumTitle",
-                    "albumArtist",
-                    "artist",
-                    "providerMatchStatus"
-                  ],
-                  "type": "object"
-                },
-                "sources": {
-                  "items": {
-                    "properties": {
-                      "audioCodec": {
-                        "type": "string"
-                      },
-                      "container": {
-                        "type": "string"
-                      },
-                      "durationMs": {
-                        "maximum": 9007199254740991,
-                        "minimum": 0,
-                        "type": "integer"
-                      },
-                      "height": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "id": {
-                        "type": "string"
-                      },
-                      "videoCodec": {
-                        "type": "string"
-                      },
-                      "width": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "id",
-                      "container",
-                      "videoCodec",
-                      "audioCodec",
-                      "width",
-                      "height",
-                      "durationMs"
-                    ],
-                    "type": "object"
-                  },
-                  "type": "array"
-                },
-                "stillUrl": {
+                "codec": {
                   "type": "string"
                 },
-                "title": {
+                "layout": {
                   "type": "string"
                 },
-                "watched": {
+                "lossless": {
                   "type": "boolean"
                 },
-                "year": {
+                "sampleRate": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
                 }
               },
               "required": [
-                "missing",
-                "addedAt",
-                "id",
-                "libraryId",
-                "title",
-                "kind",
-                "durationMs",
-                "progressMs",
-                "available"
+                "codec"
               ],
               "type": "object"
             },
-            {
+            "available": {
+              "type": "boolean"
+            },
+            "backdropUrl": {
+              "type": "string"
+            },
+            "bookFile": {
               "properties": {
-                "addedAt": {
-                  "nullable": true,
+                "bookId": {
                   "type": "string"
                 },
-                "audioFacts": {
-                  "properties": {
-                    "atmos": {
-                      "type": "boolean"
-                    },
-                    "bitDepth": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "channels": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "codec": {
-                      "type": "string"
-                    },
-                    "layout": {
-                      "type": "string"
-                    },
-                    "lossless": {
-                      "type": "boolean"
-                    },
-                    "sampleRate": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "codec"
-                  ],
-                  "type": "object"
-                },
-                "available": {
-                  "type": "boolean"
-                },
-                "backdropUrl": {
+                "bookTitle": {
                   "type": "string"
                 },
-                "bookFile": {
-                  "properties": {
-                    "bookId": {
-                      "type": "string"
-                    },
-                    "bookTitle": {
-                      "type": "string"
-                    },
-                    "discNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "localMetadata": {
-                      "properties": {
-                        "authors": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "description": {
-                          "type": "string"
-                        },
-                        "edition": {
-                          "type": "string"
-                        },
-                        "identifiers": {
-                          "items": {
-                            "properties": {
-                              "scheme": {
-                                "type": "string"
-                              },
-                              "value": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "scheme",
-                              "value"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        },
-                        "language": {
-                          "type": "string"
-                        },
-                        "narrators": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "publishedYear": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        },
-                        "publisher": {
-                          "type": "string"
-                        },
-                        "series": {
-                          "items": {
-                            "properties": {
-                              "name": {
-                                "type": "string"
-                              },
-                              "position": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "name"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        },
-                        "sources": {
-                          "additionalProperties": {
-                            "type": "string"
-                          },
-                          "type": "object"
-                        }
-                      },
-                      "required": [
-                        "authors",
-                        "narrators",
-                        "series",
-                        "identifiers",
-                        "sources"
-                      ],
-                      "type": "object"
-                    },
-                    "localMetadataIssue": {
-                      "type": "string"
-                    },
-                    "localPolicy": {
-                      "properties": {
-                        "localMode": {
-                          "type": "string"
-                        },
-                        "revision": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "revision",
-                        "localMode"
-                      ],
-                      "type": "object"
-                    },
-                    "partNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "sourceBoundary": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "bookId",
-                    "bookTitle",
-                    "sourceBoundary"
-                  ],
-                  "type": "object"
-                },
-                "durationState": {
-                  "enum": [
-                    "unrepresentable"
-                  ],
-                  "type": "string"
-                },
-                "episode": {
-                  "properties": {
-                    "airDate": {
-                      "type": "string"
-                    },
-                    "localIdentityStatus": {
-                      "type": "string"
-                    },
-                    "number": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "numbering": {
-                      "type": "string"
-                    },
-                    "orderingBasis": {
-                      "type": "string"
-                    },
-                    "providerMatchStatus": {
-                      "type": "string"
-                    },
-                    "seasonId": {
-                      "type": "string"
-                    },
-                    "seasonNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "showId": {
-                      "type": "string"
-                    },
-                    "showTitle": {
-                      "type": "string"
-                    },
-                    "sourceBoundary": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "showId",
-                    "showTitle",
-                    "numbering",
-                    "number",
-                    "localIdentityStatus",
-                    "providerMatchStatus",
-                    "orderingBasis",
-                    "sourceBoundary"
-                  ],
-                  "type": "object"
-                },
-                "fileInfoOpening": {
-                  "type": "string"
-                },
-                "id": {
-                  "type": "string"
-                },
-                "kind": {
-                  "type": "string"
-                },
-                "libraryId": {
-                  "type": "string"
-                },
-                "missing": {
-                  "type": "boolean"
-                },
-                "overview": {
-                  "type": "string"
-                },
-                "posterUrl": {
-                  "type": "string"
-                },
-                "progressMs": {
+                "discNumber": {
                   "maximum": 9007199254740991,
-                  "minimum": 0,
+                  "minimum": -9007199254740991,
                   "type": "integer"
                 },
-                "song": {
+                "localMetadata": {
                   "properties": {
-                    "albumArtist": {
+                    "authors": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "description": {
                       "type": "string"
                     },
-                    "albumId": {
+                    "edition": {
                       "type": "string"
                     },
-                    "albumTitle": {
+                    "identifiers": {
+                      "items": {
+                        "properties": {
+                          "scheme": {
+                            "type": "string"
+                          },
+                          "value": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "scheme",
+                          "value"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "language": {
                       "type": "string"
                     },
-                    "artist": {
-                      "type": "string"
+                    "narrators": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
                     },
-                    "discNumber": {
+                    "publishedYear": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
-                    "localMetadataIssue": {
+                    "publisher": {
                       "type": "string"
                     },
-                    "providerArtist": {
+                    "series": {
+                      "items": {
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "position": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "sources": {
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "authors",
+                    "narrators",
+                    "series",
+                    "identifiers",
+                    "sources"
+                  ],
+                  "type": "object"
+                },
+                "localMetadataIssue": {
+                  "type": "string"
+                },
+                "localPolicy": {
+                  "properties": {
+                    "localMode": {
                       "type": "string"
                     },
-                    "providerMatchStatus": {
-                      "type": "string"
-                    },
-                    "providerObservedAt": {
-                      "type": "string"
-                    },
-                    "providerRecordingId": {
-                      "type": "string"
-                    },
-                    "providerReleaseGroupId": {
-                      "type": "string"
-                    },
-                    "providerReleaseId": {
-                      "type": "string"
-                    },
-                    "providerReleaseStatus": {
-                      "type": "string"
-                    },
-                    "providerSourceUrl": {
-                      "type": "string"
-                    },
-                    "providerTitle": {
-                      "type": "string"
-                    },
-                    "providerTrackId": {
-                      "type": "string"
-                    },
-                    "trackNumber": {
+                    "revision": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
                     }
                   },
                   "required": [
-                    "providerReleaseStatus",
-                    "albumId",
-                    "albumTitle",
-                    "albumArtist",
-                    "artist",
-                    "providerMatchStatus"
+                    "revision",
+                    "localMode"
                   ],
                   "type": "object"
                 },
-                "sources": {
-                  "items": {
-                    "properties": {
-                      "audioCodec": {
-                        "type": "string"
-                      },
-                      "container": {
-                        "type": "string"
-                      },
-                      "durationMs": {
-                        "maximum": 9007199254740991,
-                        "minimum": 0,
-                        "type": "integer"
-                      },
-                      "height": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "id": {
-                        "type": "string"
-                      },
-                      "videoCodec": {
-                        "type": "string"
-                      },
-                      "width": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "id",
-                      "container",
-                      "videoCodec",
-                      "audioCodec",
-                      "width",
-                      "height",
-                      "durationMs"
-                    ],
-                    "type": "object"
-                  },
-                  "type": "array"
+                "partNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 },
-                "stillUrl": {
+                "sourceBoundary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "bookId",
+                "bookTitle",
+                "sourceBoundary"
+              ],
+              "type": "object"
+            },
+            "durationMs": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "durationState": {
+              "enum": [
+                "unrepresentable"
+              ],
+              "type": "string"
+            },
+            "episode": {
+              "properties": {
+                "airDate": {
                   "type": "string"
                 },
-                "title": {
+                "localIdentityStatus": {
                   "type": "string"
                 },
-                "watched": {
-                  "type": "boolean"
+                "number": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 },
-                "year": {
+                "numbering": {
+                  "type": "string"
+                },
+                "orderingBasis": {
+                  "type": "string"
+                },
+                "providerMatchStatus": {
+                  "type": "string"
+                },
+                "seasonId": {
+                  "type": "string"
+                },
+                "seasonNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "showId": {
+                  "type": "string"
+                },
+                "showTitle": {
+                  "type": "string"
+                },
+                "sourceBoundary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "showId",
+                "showTitle",
+                "numbering",
+                "number",
+                "localIdentityStatus",
+                "providerMatchStatus",
+                "orderingBasis",
+                "sourceBoundary"
+              ],
+              "type": "object"
+            },
+            "fileInfoOpening": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "libraryId": {
+              "type": "string"
+            },
+            "missing": {
+              "type": "boolean"
+            },
+            "overview": {
+              "type": "string"
+            },
+            "posterUrl": {
+              "type": "string"
+            },
+            "progressMs": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "song": {
+              "properties": {
+                "albumArtist": {
+                  "type": "string"
+                },
+                "albumId": {
+                  "type": "string"
+                },
+                "albumTitle": {
+                  "type": "string"
+                },
+                "artist": {
+                  "type": "string"
+                },
+                "discNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "localMetadataIssue": {
+                  "type": "string"
+                },
+                "providerArtist": {
+                  "type": "string"
+                },
+                "providerMatchStatus": {
+                  "type": "string"
+                },
+                "providerObservedAt": {
+                  "type": "string"
+                },
+                "providerRecordingId": {
+                  "type": "string"
+                },
+                "providerReleaseGroupId": {
+                  "type": "string"
+                },
+                "providerReleaseId": {
+                  "type": "string"
+                },
+                "providerReleaseStatus": {
+                  "type": "string"
+                },
+                "providerSourceUrl": {
+                  "type": "string"
+                },
+                "providerTitle": {
+                  "type": "string"
+                },
+                "providerTrackId": {
+                  "type": "string"
+                },
+                "trackNumber": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
                 }
               },
               "required": [
-                "missing",
-                "addedAt",
-                "id",
-                "libraryId",
-                "title",
-                "kind",
-                "progressMs",
-                "available",
-                "durationState"
+                "providerReleaseStatus",
+                "albumId",
+                "albumTitle",
+                "albumArtist",
+                "artist",
+                "providerMatchStatus"
               ],
               "type": "object"
+            },
+            "sources": {
+              "items": {
+                "properties": {
+                  "audioCodec": {
+                    "type": "string"
+                  },
+                  "container": {
+                    "type": "string"
+                  },
+                  "durationMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "height": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "videoCodec": {
+                    "type": "string"
+                  },
+                  "width": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "id",
+                  "container",
+                  "videoCodec",
+                  "audioCodec",
+                  "width",
+                  "height",
+                  "durationMs"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "stillUrl": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "watched": {
+              "type": "boolean"
+            },
+            "year": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
             }
-          ]
+          },
+          "required": [
+            "missing",
+            "addedAt",
+            "id",
+            "libraryId",
+            "title",
+            "kind",
+            "progressMs",
+            "available"
+          ],
+          "type": "object"
         },
         "type": "array"
       },
@@ -181611,811 +178329,410 @@ export const schemas = {
     "properties": {
       "episodes": {
         "items": {
-          "anyOf": [
-            {
+          "properties": {
+            "addedAt": {
+              "nullable": true,
+              "type": "string"
+            },
+            "audioFacts": {
               "properties": {
-                "addedAt": {
-                  "nullable": true,
-                  "type": "string"
-                },
-                "audioFacts": {
-                  "properties": {
-                    "atmos": {
-                      "type": "boolean"
-                    },
-                    "bitDepth": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "channels": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "codec": {
-                      "type": "string"
-                    },
-                    "layout": {
-                      "type": "string"
-                    },
-                    "lossless": {
-                      "type": "boolean"
-                    },
-                    "sampleRate": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "codec"
-                  ],
-                  "type": "object"
-                },
-                "available": {
+                "atmos": {
                   "type": "boolean"
                 },
-                "backdropUrl": {
-                  "type": "string"
-                },
-                "bookFile": {
-                  "properties": {
-                    "bookId": {
-                      "type": "string"
-                    },
-                    "bookTitle": {
-                      "type": "string"
-                    },
-                    "discNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "localMetadata": {
-                      "properties": {
-                        "authors": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "description": {
-                          "type": "string"
-                        },
-                        "edition": {
-                          "type": "string"
-                        },
-                        "identifiers": {
-                          "items": {
-                            "properties": {
-                              "scheme": {
-                                "type": "string"
-                              },
-                              "value": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "scheme",
-                              "value"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        },
-                        "language": {
-                          "type": "string"
-                        },
-                        "narrators": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "publishedYear": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        },
-                        "publisher": {
-                          "type": "string"
-                        },
-                        "series": {
-                          "items": {
-                            "properties": {
-                              "name": {
-                                "type": "string"
-                              },
-                              "position": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "name"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        },
-                        "sources": {
-                          "additionalProperties": {
-                            "type": "string"
-                          },
-                          "type": "object"
-                        }
-                      },
-                      "required": [
-                        "authors",
-                        "narrators",
-                        "series",
-                        "identifiers",
-                        "sources"
-                      ],
-                      "type": "object"
-                    },
-                    "localMetadataIssue": {
-                      "type": "string"
-                    },
-                    "localPolicy": {
-                      "properties": {
-                        "localMode": {
-                          "type": "string"
-                        },
-                        "revision": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "revision",
-                        "localMode"
-                      ],
-                      "type": "object"
-                    },
-                    "partNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "sourceBoundary": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "bookId",
-                    "bookTitle",
-                    "sourceBoundary"
-                  ],
-                  "type": "object"
-                },
-                "durationMs": {
+                "bitDepth": {
                   "maximum": 9007199254740991,
-                  "minimum": 0,
+                  "minimum": -9007199254740991,
                   "type": "integer"
                 },
-                "episode": {
-                  "properties": {
-                    "airDate": {
-                      "type": "string"
-                    },
-                    "localIdentityStatus": {
-                      "type": "string"
-                    },
-                    "number": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "numbering": {
-                      "type": "string"
-                    },
-                    "orderingBasis": {
-                      "type": "string"
-                    },
-                    "providerMatchStatus": {
-                      "type": "string"
-                    },
-                    "seasonId": {
-                      "type": "string"
-                    },
-                    "seasonNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "showId": {
-                      "type": "string"
-                    },
-                    "showTitle": {
-                      "type": "string"
-                    },
-                    "sourceBoundary": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "showId",
-                    "showTitle",
-                    "numbering",
-                    "number",
-                    "localIdentityStatus",
-                    "providerMatchStatus",
-                    "orderingBasis",
-                    "sourceBoundary"
-                  ],
-                  "type": "object"
-                },
-                "fileInfoOpening": {
-                  "type": "string"
-                },
-                "id": {
-                  "type": "string"
-                },
-                "kind": {
-                  "type": "string"
-                },
-                "libraryId": {
-                  "type": "string"
-                },
-                "missing": {
-                  "type": "boolean"
-                },
-                "overview": {
-                  "type": "string"
-                },
-                "posterUrl": {
-                  "type": "string"
-                },
-                "progressMs": {
+                "channels": {
                   "maximum": 9007199254740991,
-                  "minimum": 0,
+                  "minimum": -9007199254740991,
                   "type": "integer"
                 },
-                "song": {
-                  "properties": {
-                    "albumArtist": {
-                      "type": "string"
-                    },
-                    "albumId": {
-                      "type": "string"
-                    },
-                    "albumTitle": {
-                      "type": "string"
-                    },
-                    "artist": {
-                      "type": "string"
-                    },
-                    "discNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "localMetadataIssue": {
-                      "type": "string"
-                    },
-                    "providerArtist": {
-                      "type": "string"
-                    },
-                    "providerMatchStatus": {
-                      "type": "string"
-                    },
-                    "providerObservedAt": {
-                      "type": "string"
-                    },
-                    "providerRecordingId": {
-                      "type": "string"
-                    },
-                    "providerReleaseGroupId": {
-                      "type": "string"
-                    },
-                    "providerReleaseId": {
-                      "type": "string"
-                    },
-                    "providerReleaseStatus": {
-                      "type": "string"
-                    },
-                    "providerSourceUrl": {
-                      "type": "string"
-                    },
-                    "providerTitle": {
-                      "type": "string"
-                    },
-                    "providerTrackId": {
-                      "type": "string"
-                    },
-                    "trackNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "providerReleaseStatus",
-                    "albumId",
-                    "albumTitle",
-                    "albumArtist",
-                    "artist",
-                    "providerMatchStatus"
-                  ],
-                  "type": "object"
-                },
-                "sources": {
-                  "items": {
-                    "properties": {
-                      "audioCodec": {
-                        "type": "string"
-                      },
-                      "container": {
-                        "type": "string"
-                      },
-                      "durationMs": {
-                        "maximum": 9007199254740991,
-                        "minimum": 0,
-                        "type": "integer"
-                      },
-                      "height": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "id": {
-                        "type": "string"
-                      },
-                      "videoCodec": {
-                        "type": "string"
-                      },
-                      "width": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "id",
-                      "container",
-                      "videoCodec",
-                      "audioCodec",
-                      "width",
-                      "height",
-                      "durationMs"
-                    ],
-                    "type": "object"
-                  },
-                  "type": "array"
-                },
-                "stillUrl": {
+                "codec": {
                   "type": "string"
                 },
-                "title": {
+                "layout": {
                   "type": "string"
                 },
-                "watched": {
+                "lossless": {
                   "type": "boolean"
                 },
-                "year": {
+                "sampleRate": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
                 }
               },
               "required": [
-                "missing",
-                "addedAt",
-                "id",
-                "libraryId",
-                "title",
-                "kind",
-                "durationMs",
-                "progressMs",
-                "available"
+                "codec"
               ],
               "type": "object"
             },
-            {
+            "available": {
+              "type": "boolean"
+            },
+            "backdropUrl": {
+              "type": "string"
+            },
+            "bookFile": {
               "properties": {
-                "addedAt": {
-                  "nullable": true,
+                "bookId": {
                   "type": "string"
                 },
-                "audioFacts": {
-                  "properties": {
-                    "atmos": {
-                      "type": "boolean"
-                    },
-                    "bitDepth": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "channels": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "codec": {
-                      "type": "string"
-                    },
-                    "layout": {
-                      "type": "string"
-                    },
-                    "lossless": {
-                      "type": "boolean"
-                    },
-                    "sampleRate": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "codec"
-                  ],
-                  "type": "object"
-                },
-                "available": {
-                  "type": "boolean"
-                },
-                "backdropUrl": {
+                "bookTitle": {
                   "type": "string"
                 },
-                "bookFile": {
-                  "properties": {
-                    "bookId": {
-                      "type": "string"
-                    },
-                    "bookTitle": {
-                      "type": "string"
-                    },
-                    "discNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "localMetadata": {
-                      "properties": {
-                        "authors": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "description": {
-                          "type": "string"
-                        },
-                        "edition": {
-                          "type": "string"
-                        },
-                        "identifiers": {
-                          "items": {
-                            "properties": {
-                              "scheme": {
-                                "type": "string"
-                              },
-                              "value": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "scheme",
-                              "value"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        },
-                        "language": {
-                          "type": "string"
-                        },
-                        "narrators": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "publishedYear": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        },
-                        "publisher": {
-                          "type": "string"
-                        },
-                        "series": {
-                          "items": {
-                            "properties": {
-                              "name": {
-                                "type": "string"
-                              },
-                              "position": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "name"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        },
-                        "sources": {
-                          "additionalProperties": {
-                            "type": "string"
-                          },
-                          "type": "object"
-                        }
-                      },
-                      "required": [
-                        "authors",
-                        "narrators",
-                        "series",
-                        "identifiers",
-                        "sources"
-                      ],
-                      "type": "object"
-                    },
-                    "localMetadataIssue": {
-                      "type": "string"
-                    },
-                    "localPolicy": {
-                      "properties": {
-                        "localMode": {
-                          "type": "string"
-                        },
-                        "revision": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "revision",
-                        "localMode"
-                      ],
-                      "type": "object"
-                    },
-                    "partNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "sourceBoundary": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "bookId",
-                    "bookTitle",
-                    "sourceBoundary"
-                  ],
-                  "type": "object"
-                },
-                "durationState": {
-                  "enum": [
-                    "unrepresentable"
-                  ],
-                  "type": "string"
-                },
-                "episode": {
-                  "properties": {
-                    "airDate": {
-                      "type": "string"
-                    },
-                    "localIdentityStatus": {
-                      "type": "string"
-                    },
-                    "number": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "numbering": {
-                      "type": "string"
-                    },
-                    "orderingBasis": {
-                      "type": "string"
-                    },
-                    "providerMatchStatus": {
-                      "type": "string"
-                    },
-                    "seasonId": {
-                      "type": "string"
-                    },
-                    "seasonNumber": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "showId": {
-                      "type": "string"
-                    },
-                    "showTitle": {
-                      "type": "string"
-                    },
-                    "sourceBoundary": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "showId",
-                    "showTitle",
-                    "numbering",
-                    "number",
-                    "localIdentityStatus",
-                    "providerMatchStatus",
-                    "orderingBasis",
-                    "sourceBoundary"
-                  ],
-                  "type": "object"
-                },
-                "fileInfoOpening": {
-                  "type": "string"
-                },
-                "id": {
-                  "type": "string"
-                },
-                "kind": {
-                  "type": "string"
-                },
-                "libraryId": {
-                  "type": "string"
-                },
-                "missing": {
-                  "type": "boolean"
-                },
-                "overview": {
-                  "type": "string"
-                },
-                "posterUrl": {
-                  "type": "string"
-                },
-                "progressMs": {
+                "discNumber": {
                   "maximum": 9007199254740991,
-                  "minimum": 0,
+                  "minimum": -9007199254740991,
                   "type": "integer"
                 },
-                "song": {
+                "localMetadata": {
                   "properties": {
-                    "albumArtist": {
+                    "authors": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "description": {
                       "type": "string"
                     },
-                    "albumId": {
+                    "edition": {
                       "type": "string"
                     },
-                    "albumTitle": {
+                    "identifiers": {
+                      "items": {
+                        "properties": {
+                          "scheme": {
+                            "type": "string"
+                          },
+                          "value": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "scheme",
+                          "value"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "language": {
                       "type": "string"
                     },
-                    "artist": {
-                      "type": "string"
+                    "narrators": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
                     },
-                    "discNumber": {
+                    "publishedYear": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
-                    "localMetadataIssue": {
+                    "publisher": {
                       "type": "string"
                     },
-                    "providerArtist": {
+                    "series": {
+                      "items": {
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "position": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "sources": {
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "authors",
+                    "narrators",
+                    "series",
+                    "identifiers",
+                    "sources"
+                  ],
+                  "type": "object"
+                },
+                "localMetadataIssue": {
+                  "type": "string"
+                },
+                "localPolicy": {
+                  "properties": {
+                    "localMode": {
                       "type": "string"
                     },
-                    "providerMatchStatus": {
-                      "type": "string"
-                    },
-                    "providerObservedAt": {
-                      "type": "string"
-                    },
-                    "providerRecordingId": {
-                      "type": "string"
-                    },
-                    "providerReleaseGroupId": {
-                      "type": "string"
-                    },
-                    "providerReleaseId": {
-                      "type": "string"
-                    },
-                    "providerReleaseStatus": {
-                      "type": "string"
-                    },
-                    "providerSourceUrl": {
-                      "type": "string"
-                    },
-                    "providerTitle": {
-                      "type": "string"
-                    },
-                    "providerTrackId": {
-                      "type": "string"
-                    },
-                    "trackNumber": {
+                    "revision": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
                     }
                   },
                   "required": [
-                    "providerReleaseStatus",
-                    "albumId",
-                    "albumTitle",
-                    "albumArtist",
-                    "artist",
-                    "providerMatchStatus"
+                    "revision",
+                    "localMode"
                   ],
                   "type": "object"
                 },
-                "sources": {
-                  "items": {
-                    "properties": {
-                      "audioCodec": {
-                        "type": "string"
-                      },
-                      "container": {
-                        "type": "string"
-                      },
-                      "durationMs": {
-                        "maximum": 9007199254740991,
-                        "minimum": 0,
-                        "type": "integer"
-                      },
-                      "height": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "id": {
-                        "type": "string"
-                      },
-                      "videoCodec": {
-                        "type": "string"
-                      },
-                      "width": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "id",
-                      "container",
-                      "videoCodec",
-                      "audioCodec",
-                      "width",
-                      "height",
-                      "durationMs"
-                    ],
-                    "type": "object"
-                  },
-                  "type": "array"
+                "partNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 },
-                "stillUrl": {
+                "sourceBoundary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "bookId",
+                "bookTitle",
+                "sourceBoundary"
+              ],
+              "type": "object"
+            },
+            "durationMs": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "durationState": {
+              "enum": [
+                "unrepresentable"
+              ],
+              "type": "string"
+            },
+            "episode": {
+              "properties": {
+                "airDate": {
                   "type": "string"
                 },
-                "title": {
+                "localIdentityStatus": {
                   "type": "string"
                 },
-                "watched": {
-                  "type": "boolean"
+                "number": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 },
-                "year": {
+                "numbering": {
+                  "type": "string"
+                },
+                "orderingBasis": {
+                  "type": "string"
+                },
+                "providerMatchStatus": {
+                  "type": "string"
+                },
+                "seasonId": {
+                  "type": "string"
+                },
+                "seasonNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "showId": {
+                  "type": "string"
+                },
+                "showTitle": {
+                  "type": "string"
+                },
+                "sourceBoundary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "showId",
+                "showTitle",
+                "numbering",
+                "number",
+                "localIdentityStatus",
+                "providerMatchStatus",
+                "orderingBasis",
+                "sourceBoundary"
+              ],
+              "type": "object"
+            },
+            "fileInfoOpening": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "libraryId": {
+              "type": "string"
+            },
+            "missing": {
+              "type": "boolean"
+            },
+            "overview": {
+              "type": "string"
+            },
+            "posterUrl": {
+              "type": "string"
+            },
+            "progressMs": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "song": {
+              "properties": {
+                "albumArtist": {
+                  "type": "string"
+                },
+                "albumId": {
+                  "type": "string"
+                },
+                "albumTitle": {
+                  "type": "string"
+                },
+                "artist": {
+                  "type": "string"
+                },
+                "discNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "localMetadataIssue": {
+                  "type": "string"
+                },
+                "providerArtist": {
+                  "type": "string"
+                },
+                "providerMatchStatus": {
+                  "type": "string"
+                },
+                "providerObservedAt": {
+                  "type": "string"
+                },
+                "providerRecordingId": {
+                  "type": "string"
+                },
+                "providerReleaseGroupId": {
+                  "type": "string"
+                },
+                "providerReleaseId": {
+                  "type": "string"
+                },
+                "providerReleaseStatus": {
+                  "type": "string"
+                },
+                "providerSourceUrl": {
+                  "type": "string"
+                },
+                "providerTitle": {
+                  "type": "string"
+                },
+                "providerTrackId": {
+                  "type": "string"
+                },
+                "trackNumber": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
                 }
               },
               "required": [
-                "missing",
-                "addedAt",
-                "id",
-                "libraryId",
-                "title",
-                "kind",
-                "progressMs",
-                "available",
-                "durationState"
+                "providerReleaseStatus",
+                "albumId",
+                "albumTitle",
+                "albumArtist",
+                "artist",
+                "providerMatchStatus"
               ],
               "type": "object"
+            },
+            "sources": {
+              "items": {
+                "properties": {
+                  "audioCodec": {
+                    "type": "string"
+                  },
+                  "container": {
+                    "type": "string"
+                  },
+                  "durationMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "height": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "videoCodec": {
+                    "type": "string"
+                  },
+                  "width": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "id",
+                  "container",
+                  "videoCodec",
+                  "audioCodec",
+                  "width",
+                  "height",
+                  "durationMs"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "stillUrl": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "watched": {
+              "type": "boolean"
+            },
+            "year": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
             }
-          ]
+          },
+          "required": [
+            "missing",
+            "addedAt",
+            "id",
+            "libraryId",
+            "title",
+            "kind",
+            "progressMs",
+            "available"
+          ],
+          "type": "object"
         },
         "type": "array"
       },
@@ -222661,7 +218978,7 @@ export const schemas = {
             "type": "string"
           },
           "query": {
-            "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
+            "description": "A predicate, a relative-date predicate or an all/any/not group, each tagged with its variant. The parser enforces recursive vocabulary and published depth/clause bounds.",
             "nullable": true,
             "oneOf": [
               {
@@ -222686,9 +219003,54 @@ export const schemas = {
                     "maximum": 36500,
                     "minimum": 1,
                     "type": "integer"
+                  },
+                  "variant": {
+                    "const": "relative",
+                    "type": "string"
                   }
                 },
                 "required": [
+                  "variant",
+                  "field",
+                  "operator",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "field": {
+                    "type": "string"
+                  },
+                  "operator": {
+                    "enum": [
+                      "equals",
+                      "not-equals",
+                      "in",
+                      "not-in",
+                      "contains",
+                      "starts-with",
+                      "is-present",
+                      "is-missing",
+                      "less-than",
+                      "at-most",
+                      "greater-than",
+                      "at-least",
+                      "between",
+                      "contains-any",
+                      "contains-all"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {},
+                  "variant": {
+                    "const": "predicate",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "variant",
                   "field",
                   "operator",
                   "value"
@@ -222720,38 +219082,20 @@ export const schemas = {
                     "minItems": 1,
                     "type": "array"
                   },
-                  "field": {
-                    "type": "string"
-                  },
                   "not": {
                     "additionalProperties": {},
                     "properties": {},
                     "required": [],
                     "type": "object"
                   },
-                  "operator": {
-                    "enum": [
-                      "equals",
-                      "not-equals",
-                      "in",
-                      "not-in",
-                      "contains",
-                      "starts-with",
-                      "is-present",
-                      "is-missing",
-                      "less-than",
-                      "at-most",
-                      "greater-than",
-                      "at-least",
-                      "between",
-                      "contains-any",
-                      "contains-all"
-                    ],
+                  "variant": {
+                    "const": "group",
                     "type": "string"
-                  },
-                  "value": {}
+                  }
                 },
-                "required": [],
+                "required": [
+                  "variant"
+                ],
                 "type": "object"
               }
             ]
@@ -241422,6 +237766,10 @@ export const schemas = {
           "status": {
             "type": "string"
           },
+          "variant": {
+            "const": "job",
+            "type": "string"
+          },
           "warnings": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -241433,7 +237781,8 @@ export const schemas = {
           "status",
           "processed",
           "analyzed",
-          "warnings"
+          "warnings",
+          "variant"
         ],
         "type": "object"
       },
@@ -241441,14 +237790,20 @@ export const schemas = {
         "properties": {
           "status": {
             "type": "string"
+          },
+          "variant": {
+            "const": "acknowledgement",
+            "type": "string"
           }
         },
         "required": [
+          "variant",
           "status"
         ],
         "type": "object"
       }
-    ]
+    ],
+    "x-discriminator": "variant"
   },
   "PostItemsIdAnalysisJobsRequest": {
     "properties": {
@@ -244037,6 +240392,10 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "variant": {
+            "const": "ready",
+            "type": "string"
+          },
           "viewerFence": {
             "type": "string"
           }
@@ -244052,7 +240411,8 @@ export const schemas = {
           "singleItemFields",
           "excludedFields",
           "fields",
-          "targets"
+          "targets",
+          "variant"
         ],
         "type": "object"
       },
@@ -244081,9 +240441,14 @@ export const schemas = {
               "preparing"
             ],
             "type": "string"
+          },
+          "variant": {
+            "const": "preparing",
+            "type": "string"
           }
         },
         "required": [
+          "variant",
           "kind",
           "state",
           "queryId",
@@ -244091,7 +240456,8 @@ export const schemas = {
         ],
         "type": "object"
       }
-    ]
+    ],
+    "x-discriminator": "variant"
   },
   "PostMetadataBulkRequest": {
     "properties": {
@@ -250657,7 +247023,7 @@ export const schemas = {
             "type": "string"
           },
           "query": {
-            "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
+            "description": "A predicate, a relative-date predicate or an all/any/not group, each tagged with its variant. The parser enforces recursive vocabulary and published depth/clause bounds.",
             "nullable": true,
             "oneOf": [
               {
@@ -250682,9 +247048,54 @@ export const schemas = {
                     "maximum": 36500,
                     "minimum": 1,
                     "type": "integer"
+                  },
+                  "variant": {
+                    "const": "relative",
+                    "type": "string"
                   }
                 },
                 "required": [
+                  "variant",
+                  "field",
+                  "operator",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "field": {
+                    "type": "string"
+                  },
+                  "operator": {
+                    "enum": [
+                      "equals",
+                      "not-equals",
+                      "in",
+                      "not-in",
+                      "contains",
+                      "starts-with",
+                      "is-present",
+                      "is-missing",
+                      "less-than",
+                      "at-most",
+                      "greater-than",
+                      "at-least",
+                      "between",
+                      "contains-any",
+                      "contains-all"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {},
+                  "variant": {
+                    "const": "predicate",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "variant",
                   "field",
                   "operator",
                   "value"
@@ -250716,38 +247127,20 @@ export const schemas = {
                     "minItems": 1,
                     "type": "array"
                   },
-                  "field": {
-                    "type": "string"
-                  },
                   "not": {
                     "additionalProperties": {},
                     "properties": {},
                     "required": [],
                     "type": "object"
                   },
-                  "operator": {
-                    "enum": [
-                      "equals",
-                      "not-equals",
-                      "in",
-                      "not-in",
-                      "contains",
-                      "starts-with",
-                      "is-present",
-                      "is-missing",
-                      "less-than",
-                      "at-most",
-                      "greater-than",
-                      "at-least",
-                      "between",
-                      "contains-any",
-                      "contains-all"
-                    ],
+                  "variant": {
+                    "const": "group",
                     "type": "string"
-                  },
-                  "value": {}
+                  }
                 },
-                "required": [],
+                "required": [
+                  "variant"
+                ],
                 "type": "object"
               }
             ]
@@ -267066,9 +263459,87 @@ export const schemas = {
                 "properties": {
                   "format": {
                     "enum": [
-                      "pdf",
-                      "cbz",
-                      "cb7",
+                      "pdf"
+                    ],
+                    "type": "string"
+                  },
+                  "pageIndex": {
+                    "maximum": 1000000,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "progression": {
+                    "maximum": 1,
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "format",
+                  "pageIndex",
+                  "progression"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "format": {
+                    "enum": [
+                      "cbz"
+                    ],
+                    "type": "string"
+                  },
+                  "pageIndex": {
+                    "maximum": 1000000,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "progression": {
+                    "maximum": 1,
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "format",
+                  "pageIndex",
+                  "progression"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "format": {
+                    "enum": [
+                      "cb7"
+                    ],
+                    "type": "string"
+                  },
+                  "pageIndex": {
+                    "maximum": 1000000,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "progression": {
+                    "maximum": 1,
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "format",
+                  "pageIndex",
+                  "progression"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "format": {
+                    "enum": [
                       "cbr"
                     ],
                     "type": "string"
@@ -267465,7 +263936,7 @@ export const schemas = {
             "type": "string"
           },
           "query": {
-            "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
+            "description": "A predicate, a relative-date predicate or an all/any/not group, each tagged with its variant. The parser enforces recursive vocabulary and published depth/clause bounds.",
             "nullable": true,
             "oneOf": [
               {
@@ -267490,9 +263961,54 @@ export const schemas = {
                     "maximum": 36500,
                     "minimum": 1,
                     "type": "integer"
+                  },
+                  "variant": {
+                    "const": "relative",
+                    "type": "string"
                   }
                 },
                 "required": [
+                  "variant",
+                  "field",
+                  "operator",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "field": {
+                    "type": "string"
+                  },
+                  "operator": {
+                    "enum": [
+                      "equals",
+                      "not-equals",
+                      "in",
+                      "not-in",
+                      "contains",
+                      "starts-with",
+                      "is-present",
+                      "is-missing",
+                      "less-than",
+                      "at-most",
+                      "greater-than",
+                      "at-least",
+                      "between",
+                      "contains-any",
+                      "contains-all"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {},
+                  "variant": {
+                    "const": "predicate",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "variant",
                   "field",
                   "operator",
                   "value"
@@ -267524,38 +264040,20 @@ export const schemas = {
                     "minItems": 1,
                     "type": "array"
                   },
-                  "field": {
-                    "type": "string"
-                  },
                   "not": {
                     "additionalProperties": {},
                     "properties": {},
                     "required": [],
                     "type": "object"
                   },
-                  "operator": {
-                    "enum": [
-                      "equals",
-                      "not-equals",
-                      "in",
-                      "not-in",
-                      "contains",
-                      "starts-with",
-                      "is-present",
-                      "is-missing",
-                      "less-than",
-                      "at-most",
-                      "greater-than",
-                      "at-least",
-                      "between",
-                      "contains-any",
-                      "contains-all"
-                    ],
+                  "variant": {
+                    "const": "group",
                     "type": "string"
-                  },
-                  "value": {}
+                  }
                 },
-                "required": [],
+                "required": [
+                  "variant"
+                ],
                 "type": "object"
               }
             ]
@@ -267791,7 +264289,7 @@ export const schemas = {
             "type": "string"
           },
           "query": {
-            "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
+            "description": "A predicate, a relative-date predicate or an all/any/not group, each tagged with its variant. The parser enforces recursive vocabulary and published depth/clause bounds.",
             "nullable": true,
             "oneOf": [
               {
@@ -267816,9 +264314,54 @@ export const schemas = {
                     "maximum": 36500,
                     "minimum": 1,
                     "type": "integer"
+                  },
+                  "variant": {
+                    "const": "relative",
+                    "type": "string"
                   }
                 },
                 "required": [
+                  "variant",
+                  "field",
+                  "operator",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "field": {
+                    "type": "string"
+                  },
+                  "operator": {
+                    "enum": [
+                      "equals",
+                      "not-equals",
+                      "in",
+                      "not-in",
+                      "contains",
+                      "starts-with",
+                      "is-present",
+                      "is-missing",
+                      "less-than",
+                      "at-most",
+                      "greater-than",
+                      "at-least",
+                      "between",
+                      "contains-any",
+                      "contains-all"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {},
+                  "variant": {
+                    "const": "predicate",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "variant",
                   "field",
                   "operator",
                   "value"
@@ -267850,38 +264393,20 @@ export const schemas = {
                     "minItems": 1,
                     "type": "array"
                   },
-                  "field": {
-                    "type": "string"
-                  },
                   "not": {
                     "additionalProperties": {},
                     "properties": {},
                     "required": [],
                     "type": "object"
                   },
-                  "operator": {
-                    "enum": [
-                      "equals",
-                      "not-equals",
-                      "in",
-                      "not-in",
-                      "contains",
-                      "starts-with",
-                      "is-present",
-                      "is-missing",
-                      "less-than",
-                      "at-most",
-                      "greater-than",
-                      "at-least",
-                      "between",
-                      "contains-any",
-                      "contains-all"
-                    ],
+                  "variant": {
+                    "const": "group",
                     "type": "string"
-                  },
-                  "value": {}
+                  }
                 },
-                "required": [],
+                "required": [
+                  "variant"
+                ],
                 "type": "object"
               }
             ]
@@ -272854,7 +269379,7 @@ export const schemas = {
             "type": "string"
           },
           "query": {
-            "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
+            "description": "A predicate, a relative-date predicate or an all/any/not group, each tagged with its variant. The parser enforces recursive vocabulary and published depth/clause bounds.",
             "nullable": true,
             "oneOf": [
               {
@@ -272879,9 +269404,54 @@ export const schemas = {
                     "maximum": 36500,
                     "minimum": 1,
                     "type": "integer"
+                  },
+                  "variant": {
+                    "const": "relative",
+                    "type": "string"
                   }
                 },
                 "required": [
+                  "variant",
+                  "field",
+                  "operator",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "field": {
+                    "type": "string"
+                  },
+                  "operator": {
+                    "enum": [
+                      "equals",
+                      "not-equals",
+                      "in",
+                      "not-in",
+                      "contains",
+                      "starts-with",
+                      "is-present",
+                      "is-missing",
+                      "less-than",
+                      "at-most",
+                      "greater-than",
+                      "at-least",
+                      "between",
+                      "contains-any",
+                      "contains-all"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {},
+                  "variant": {
+                    "const": "predicate",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "variant",
                   "field",
                   "operator",
                   "value"
@@ -272913,38 +269483,20 @@ export const schemas = {
                     "minItems": 1,
                     "type": "array"
                   },
-                  "field": {
-                    "type": "string"
-                  },
                   "not": {
                     "additionalProperties": {},
                     "properties": {},
                     "required": [],
                     "type": "object"
                   },
-                  "operator": {
-                    "enum": [
-                      "equals",
-                      "not-equals",
-                      "in",
-                      "not-in",
-                      "contains",
-                      "starts-with",
-                      "is-present",
-                      "is-missing",
-                      "less-than",
-                      "at-most",
-                      "greater-than",
-                      "at-least",
-                      "between",
-                      "contains-any",
-                      "contains-all"
-                    ],
+                  "variant": {
+                    "const": "group",
                     "type": "string"
-                  },
-                  "value": {}
+                  }
                 },
-                "required": [],
+                "required": [
+                  "variant"
+                ],
                 "type": "object"
               }
             ]

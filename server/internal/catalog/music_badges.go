@@ -3,7 +3,7 @@ package catalog
 // MusicFormatBadge is a notable, measured format, never a source locator or a
 // playback capability. Album headers receive at most two distinct descriptors.
 type MusicFormatBadge struct {
-	Kind       string `json:"variant"` // the badge kind, tagged as variant (R-09b)
+	Variant    string `json:"variant"`
 	Codec      string `json:"codec,omitempty"`
 	BitDepth   int    `json:"bitDepth,omitempty"`
 	SampleRate int    `json:"sampleRate,omitempty"`
@@ -54,7 +54,7 @@ func (s *Service) albumMusicBadges(r ContentRequest, album string) (MusicFormatB
 	badges := MusicFormatBadges{}
 	for rows.Next() {
 		var badge MusicFormatBadge
-		if err := rows.Scan(&badge.Kind, &badge.Codec, &badge.BitDepth, &badge.SampleRate, &badge.Layout); err != nil {
+		if err := rows.Scan(&badge.Variant, &badge.Codec, &badge.BitDepth, &badge.SampleRate, &badge.Layout); err != nil {
 			return nil, err
 		}
 		badges = append(badges, badge)

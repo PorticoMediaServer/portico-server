@@ -6,7 +6,7 @@ import {requireTag} from './needs-newer-app.ts';
 
 /** The required const `variant` of every get_file_info_query alternative (R-09b). A tag outside it is a newer
  * server (`NeedsNewerAppError`); one inside it that this lane did not ask for is an invalid window. */
-const FILE_INFO_VARIANTS = ['detail', 'item', 'item-unrepresentable', 'files', 'groups', 'members', 'tracks', 'head-tracks', 'sources', 'disc-titles', 'preparing'] as const;
+const FILE_INFO_VARIANTS = ['detail', 'item', 'files', 'groups', 'members', 'tracks', 'head-tracks', 'sources', 'disc-titles', 'preparing'] as const;
 const variantOf = (kind: string) => kind.replace(/^file-info-/, '');
 function requireVariant(raw: unknown, expected: string, response?: PreparationResponse): void {
   if (requireTag(raw, 'variant', FILE_INFO_VARIANTS, () => invalid(response)) !== expected) invalid(response);

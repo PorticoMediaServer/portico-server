@@ -659,16 +659,9 @@ func (r fileInfoDiscResponse) JSONSchemaForStatus(status int) map[string]any {
 type fileInfoQueryResponse struct{}
 
 func fileInfoReadySchemas() []any {
-	// An item's own schema is two alternatives (a known duration, or an
-	// unrepresentable one); each becomes a member of this union.
-	item, _ := facetSchema[catalog.Item]()["anyOf"].([]any)
-	if len(item) != 2 {
-		panic("item schema is not its two duration alternatives")
-	}
 	return []any{
 		withFileInfoVariant(facetSchema[catalog.Detail](), "detail"),
-		withFileInfoVariant(item[0].(map[string]any), "item"),
-		withFileInfoVariant(item[1].(map[string]any), "item-unrepresentable"),
+		withFileInfoVariant(facetSchema[catalog.Item](), "item"),
 		fileInfoFilesResponse{}.page(),
 		fileInfoGroupsResponse{}.page(),
 		fileInfoMembersResponse{}.page(),

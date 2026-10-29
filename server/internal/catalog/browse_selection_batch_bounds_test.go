@@ -27,7 +27,7 @@ func TestSelectionBatchCumulativeSourceBytes(t *testing.T) {
 	c.Drain()
 	s := New(c.DB)
 	v := Viewer{Profile: "p", Fence: "f", Libraries: []string{"m"}}
-	node, err := ParseBrowseQuery(json.RawMessage(`{"field":"tag","operator":"equals","value":"missing"}`), "query")
+	node, err := ParseBrowseQuery(json.RawMessage(`{"variant":"predicate","field":"tag","operator":"equals","value":"missing"}`), "query")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestSelectionBatchExceptionalScalarYieldsBeforeNextUnit(t *testing.T) {
 	c.Drain()
 	s := New(c.DB)
 	v := Viewer{Profile: "p", Fence: "f", Libraries: []string{"m"}}
-	node, err := ParseBrowseQuery(json.RawMessage(`{"field":"tag","operator":"equals","value":"missing"}`), "query")
+	node, err := ParseBrowseQuery(json.RawMessage(`{"variant":"predicate","field":"tag","operator":"equals","value":"missing"}`), "query")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +170,7 @@ func TestSelectionBatchSearchQualification(t *testing.T) {
 	}
 	_, s, names := browseFixture(t)
 	v := Viewer{Profile: "p", Fence: "f", Libraries: []string{"a"}}
-	node, err := ParseBrowseQuery(json.RawMessage(fmt.Sprintf(`{"all":[{"field":"memberOf","operator":"equals","value":%q},{"field":"search","operator":"contains","value":"alpha"}]}`, names["m1"].Public)), "query")
+	node, err := ParseBrowseQuery(json.RawMessage(fmt.Sprintf(`{"variant":"group","all":[{"variant":"predicate","field":"memberOf","operator":"equals","value":%q},{"variant":"predicate","field":"search","operator":"contains","value":"alpha"}]}`, names["m1"].Public)), "query")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +223,7 @@ func TestSelectionBatchPreviousTombstonesOneRowLimitOracle(t *testing.T) {
 	c.Exec(`INSERT INTO catalog_browse_memberships_previous(generation,present,entity_id,item_id,source) SELECT g.generation,1,m.entity_id,m.item_id,m.source FROM catalog_generations g CROSS JOIN catalog_browse_memberships m WHERE m.entity_id=? AND m.item_id=?`, target.ID, item.ID)
 	s := New(c.DB)
 	v := Viewer{Profile: "p", Fence: "f", Libraries: []string{"m"}}
-	node, err := ParseBrowseQuery(json.RawMessage(fmt.Sprintf(`{"field":"memberOf","operator":"equals","value":%q}`, target.Public)), "query")
+	node, err := ParseBrowseQuery(json.RawMessage(fmt.Sprintf(`{"variant":"predicate","field":"memberOf","operator":"equals","value":%q}`, target.Public)), "query")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -274,7 +274,7 @@ func TestSelectionBatchCreditGuardBytesAndYield(t *testing.T) {
 	v := Viewer{Profile: "p", Fence: "f", Libraries: []string{"m"}}
 	for _, field := range []string{"cast", "crew", "actor", "director", "writer"} {
 		t.Run(field, func(t *testing.T) {
-			node, err := ParseBrowseQuery(json.RawMessage(fmt.Sprintf(`{"field":%q,"operator":"equals","value":"missing"}`, field)), "query")
+			node, err := ParseBrowseQuery(json.RawMessage(fmt.Sprintf(`{"variant":"predicate","field":%q,"operator":"equals","value":"missing"}`, field)), "query")
 			if err != nil {
 				t.Fatal(err)
 			}

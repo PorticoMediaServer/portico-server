@@ -50,7 +50,7 @@ func TestFileInfoBodiesCarryTheirVariant(t *testing.T) {
 		want string
 	}{
 		{catalog.Item{ID: "i", Duration: 1}, "item"},
-		{catalog.Item{ID: "i", Duration: 1e300}, "item-unrepresentable"},
+		{catalog.Item{ID: "i", Duration: 1e300}, "item"},
 	} {
 		raw, err = json.Marshal(fileInfoPolledBody{variant: "item", body: c.body})
 		var tag struct{ Variant string }

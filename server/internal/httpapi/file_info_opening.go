@@ -85,11 +85,11 @@ func (d Dependencies) writeFileInfoOpening(w http.ResponseWriter, r *http.Reques
 // polledFileInfoDocument tags the Get/Detail body of a get_file_info_query poll
 // with its union `variant`. The same composers answer the plain item and detail
 // routes, whose bodies carry no tag.
-func polledFileInfoDocument(r *http.Request, variant string, body any) any {
-	if _, polled := r.Context().Value(fileInfoPreparedContextKey{}).(fileInfoPreparedDocument); polled {
-		return fileInfoPolledBody{variant: variant, body: body}
-	}
-	return body
+// polledFileInfoDocument tags an item or detail body (R-09b): its route also
+// answers with the tagged preparation carrier, so the ready body carries its
+// variant whether it is read directly or polled.
+func polledFileInfoDocument(_ *http.Request, variant string, body any) any {
+	return fileInfoPolledBody{variant: variant, body: body}
 }
 
 // fileInfoPolledBody is a polled document. An item whose duration the wire
@@ -104,14 +104,6 @@ func (v fileInfoPolledBody) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	variant := v.variant
-	if variant == "item" {
-		var head struct {
-			State string `json:"durationState"`
-		}
-		if json.Unmarshal(raw, &head) == nil && head.State != "" {
-			variant = "item-unrepresentable"
-		}
-	}
-	return spliceTag(raw, "variant", variant)
+	// An item is one object whatever its duration (durationMs or durationState).
+	return spliceTag(raw, "variant", v.variant)
 }
