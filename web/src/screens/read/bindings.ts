@@ -3,6 +3,7 @@ import {subscribePresentation} from '../../shell/fact-hooks';
 import {ReadingError, type HttpLocalApi, type LocalSession, type PreferenceSnapshot, type ReadingClient, type ReadingSession} from '@portico/client-core';
 import type {ReadPreferenceSource} from './preferences';
 import type {ReaderMountAuthority} from './mount';
+import {libraryAccessEnded} from '../../shell/library-route-proof';
 
 export type ReadBindingContext = Readonly<{
   api: Pick<HttpLocalApi, 'reading'>; session: () => Pick<LocalSession, 'viewer' | 'sessionFamilyId'>;
@@ -18,10 +19,7 @@ export type ReadBindings = Readonly<{
 /** Capture the admitted shell once. No constructor requests, route strings,
  * token access, preference projection or independent book state. */
 export function createReadBindings(context: ReadBindingContext): ReadBindings {
-  const captured = context.session(), viewer = captured.viewer, life = new AbortController();
-  const stopRoute = () => life.abort();
-  context.libraryRouteSignal?.addEventListener('abort', stopRoute, {once: true});
-  if (context.libraryRouteSignal?.aborted) stopRoute();
+  const captured = context.session(), viewer = captured.viewer, life = new AbortController(), routeLeft = new AbortController();
   let alive = true, retiring = false, client: ReadingClient | undefined;
   let pending: AbortController | undefined, session: ReadingSession | undefined;
   let closing = Promise.resolve(), disposal: Promise<void> | undefined;
@@ -34,7 +32,7 @@ export function createReadBindings(context: ReadBindingContext): ReadBindings {
       && current.viewer.authority === viewer.authority && current.viewer.accountId === viewer.accountId
       && current.viewer.profileId === viewer.profileId && current.viewer.role === viewer.role;
   };
-  const authorized = () => alive && !life.signal.aborted && context.isCurrent() && viewerMatches();
+  const authorized = () => alive && !life.signal.aborted && !routeLeft.signal.aborted && context.isCurrent() && viewerMatches();
   // Opens on their way and releases in progress keep the client usable for this same viewer only.
   let releasing = 0, inFlight = 0;
   const current = () => !retiring && authorized();
@@ -43,8 +41,8 @@ export function createReadBindings(context: ReadBindingContext): ReadBindings {
   const authority: ReaderMountAuthority = Object.freeze({isCurrent: current, subscribe(listener: () => void) {
     let notified = false;
     const retired = () => {if (!notified) {notified = true;listener();}};
-    owner.signal.addEventListener('abort', retired); life.signal.addEventListener('abort', retired);
-    return () => {owner.signal.removeEventListener('abort', retired); life.signal.removeEventListener('abort', retired);};
+    for (const signal of [owner.signal, life.signal, routeLeft.signal]) signal.addEventListener('abort', retired);
+    return () => {for (const signal of [owner.signal, life.signal, routeLeft.signal]) signal.removeEventListener('abort', retired);};
   }});
   // Each open holds one of the profile's few server reading sessions (P2-74 E-web-15): release it on
   // replacement and on leaving, including one that arrives after the reader has already gone.
@@ -82,6 +80,16 @@ export function createReadBindings(context: ReadBindingContext): ReadBindings {
     disposal = stopped.finally(() => {alive = false; context.libraryRouteSignal?.removeEventListener('abort', stopRoute);life.abort(); owner.dispose();});
     return disposal;
   };
+  // Leaving the route retires the reader at once, but the client lives until this binding's sessions are
+  // released: the route guard is disposed before the reader unmounts (P2-74 E-web-15). A library that is no
+  // longer the viewer's stops the client at once instead, releasing nothing.
+  const stopRoute = () => {
+    routeLeft.abort();
+    if (libraryAccessEnded(context.libraryRouteSignal)) life.abort();
+    else void dispose().catch(() => {});
+  };
+  context.libraryRouteSignal?.addEventListener('abort', stopRoute, {once: true});
+  if (context.libraryRouteSignal?.aborted) stopRoute();
   const preferences: ReadPreferenceSource = Object.freeze({
     getSnapshot: () => context.preferences?.getSnapshot() ?? context.facts.preferences,
     subscribe: listener => subscribePresentation(context, listener),

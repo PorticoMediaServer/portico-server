@@ -103,6 +103,11 @@ export function createLibraryRouteProof(o: Readonly<{
 export type LibraryRouteProofOwner = ReturnType<typeof createLibraryRouteProof>;
 export type LibraryRouteDestination = Readonly<{to: '/libraries' | '/'; replace: true}>;
 
+// The route's library is no longer this viewer's (or its proof retired): readers stop at once and release
+// nothing more. Any other end of the route (leaving it, unmounting) aborts with the default reason.
+const accessEndedReason = new DOMException('Library access ended', 'AbortError');
+export const libraryAccessEnded = (signal: AbortSignal | undefined): boolean => !!signal?.aborted && signal.reason === accessEndedReason;
+
 /** One original route's actions and requests. It can only lose authority.
  * An item/reader supplies a successful current document to identify its parent. */
 export function createLibraryRouteGuard(o: Readonly<{
@@ -117,14 +122,14 @@ export function createLibraryRouteGuard(o: Readonly<{
   let departure: LibraryRouteProofSnapshot | undefined, checkedLibrary: LibraryRouteProofSnapshot | undefined, failure: unknown;
   const originalCurrent = () => !closed && o.source?.isCurrent() !== false && o.isCurrent() && !closed && o.source?.isCurrent() !== false;
   const stopRead = () => {const old = pending;pending = undefined;old?.controller.abort();};
-  const retire = () => {if (retired) return;retired = true;stopRead();controller.abort();};
+  const retire = (reason?: unknown) => {if (retired) return;retired = true;stopRead();controller.abort(reason);};
   const isCurrent = () => {
     if (closed || retired) return false;
-    if (!originalCurrent()) {retire();return false;}
+    if (!originalCurrent()) {retire(o.source?.isCurrent() === false ? accessEndedReason : undefined);return false;}
     const proof = o.libraryId ? o.source?.getSnapshot() : undefined;
     if (proof && checkedLibrary !== proof) {
       checkedLibrary = proof;
-      if (!proof.libraryIds.includes(o.libraryId!) && originalCurrent() && o.source?.getSnapshot() === proof) {departure = proof;retire();}
+      if (!proof.libraryIds.includes(o.libraryId!) && originalCurrent() && o.source?.getSnapshot() === proof) {departure = proof;retire(accessEndedReason);}
     }
     return !retired && !closed;
   };
@@ -143,7 +148,7 @@ export function createLibraryRouteGuard(o: Readonly<{
     const libraryId = o.libraryId ?? (parent?.proof === proof ? parent.libraryId : undefined);
     if (libraryId) {
       if (!proof.libraryIds.includes(libraryId) && originalCurrent() && o.source?.getSnapshot() === proof && isCurrent()) {
-        departure = proof;retire();
+        departure = proof;retire(accessEndedReason);
       }
       return;
     }

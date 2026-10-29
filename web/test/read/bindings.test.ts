@@ -6,7 +6,7 @@ import {routePath} from '../../../packages/contracts/src/index.ts';
 import {createReadBindings} from '../../src/screens/read/bindings.ts';
 
 const preferences = parsePreferenceSnapshot(JSON.parse(readFileSync(new URL('../../../server/testdata/contracts/get-bootstrap.json', import.meta.url), 'utf8')).response.preferences);
-function fixture(options: {hold?: Promise<void>} = {}) {
+function fixture(options: {hold?: Promise<void>; route?: AbortSignal} = {}) {
   let routeCurrent = true;
   let selected = {sessionFamilyId: 'unit-family', viewer: {serverId: 'unit-server', accountId: 'unit-account', profileId: 'unit-profile', authority: 'local', role: 'member'}};
   const calls: {path: string; method: string}[] = [];
@@ -19,7 +19,7 @@ function fixture(options: {hold?: Promise<void>} = {}) {
     throw new Error('unexpected unit operation');
   });
   const source = {getSnapshot: () => preferences, subscribe: () => () => {}};
-  const bound = createReadBindings({api, session: () => selected, isCurrent: () => routeCurrent, preferences: source, facts: {preferences}});
+  const bound = createReadBindings({api, session: () => selected, isCurrent: () => routeCurrent, preferences: source, facts: {preferences}, ...(options.route ? {libraryRouteSignal: options.route} : {})});
   return {bound, calls, source, api, leaveRoute() {routeCurrent = false;}, switchProfile() {selected = {...selected, viewer: {...selected.viewer, profileId: 'different-profile'}};}};
 }
 
@@ -69,4 +69,28 @@ test('an open still on its way when the reader goes is released when it arrives,
   await assert.rejects(opening, error => error instanceof ReadingError && error.code === 'cancelled');
   await disposed;
   assert.deepEqual(f.calls.map(call => call.method), ['POST', 'DELETE'], 'the late session is deleted before the binding retires');
+});
+
+test('the library route guard aborting before the reader unmounts still releases its sessions (E-web-15, round 4)', async () => {
+  const route = new AbortController(), f = fixture({route: route.signal});
+  let retired = 0; f.bound.authority.subscribe(() => retired++);
+  const opened = await f.bound.open({itemId: 'unit-book', sourceId: 'unit-source'});
+  route.abort(); f.leaveRoute();
+  assert.equal(f.bound.authority.isCurrent(), false, 'the reader retires at once');
+  assert.equal(retired, 1, 'and is told so');
+  await f.bound.dispose();
+  assert.equal(opened.signal.aborted, true);
+  assert.deepEqual(f.calls.map(call => call.method), ['POST', 'DELETE'], 'the session is released before the client retires');
+  assert.equal(f.bound.client.signal.aborted, true);
+});
+
+test('an open on its way when the route guard aborts is released on arrival', async () => {
+  let arrive!: () => void;
+  const route = new AbortController(), f = fixture({route: route.signal, hold: new Promise<void>(resolve => {arrive = resolve;})});
+  const opening = f.bound.open({itemId: 'unit-book', sourceId: 'unit-source'});
+  await new Promise(resolve => setTimeout(resolve, 0));
+  route.abort(); f.leaveRoute(); arrive();
+  await assert.rejects(opening, error => error instanceof ReadingError && error.code === 'cancelled');
+  await f.bound.dispose();
+  assert.deepEqual(f.calls.map(call => call.method), ['POST', 'DELETE']);
 });
