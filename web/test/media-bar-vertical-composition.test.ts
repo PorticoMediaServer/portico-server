@@ -21,7 +21,7 @@ const loader = registerHooks({load(url, context, next) {
   if (url.endsWith('.module.css')) return module('export default new Proxy({}, {get:(_,key)=>String(key)});');
   if (url.endsWith('/kit/dock/use-motion.ts')) return module('export const useDockReducedMotion=()=>false,useDockHandover=()=>{};');
   if (url.endsWith('/kit/dock/parts.tsx')) return module(`const h=globalThis.__mediaBarComposition;
-    export const Control='control',Identity='identity',Progress='progress',TerminalActions='terminal',Transport='transport';
+    export const Control='control',Identity='identity',Progress='progress',StartingStop='starting-stop',TerminalActions='terminal',Transport='transport';
     export const useDockActions=({view,binding})=>action=>h.dispatchDockAction(binding,h.commandFor(view,action));`);
   if (url.endsWith('/kit/overlays/index.ts')) return module("export const Menu='menu';");
   if (url.endsWith('/kit/dock/MediaBar.tsx')) return module(transformTsx(url).replace(/from (['"])react\1/g, `from ${JSON.stringify('data:text/javascript,' + encodeURIComponent(hooks))}`));
