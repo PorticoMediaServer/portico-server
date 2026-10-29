@@ -176,11 +176,20 @@ func stepPersonalSortEntity(ctx context.Context, tx *sql.Tx, limit int) (int, er
 			return 0, err
 		}
 	}
+	// An item stream can run before its entity has a browse row and drop its
+	// job without a member; the row insert then arrives here. Rebuild those
+	// members from the personal source rather than only refreshing members
+	// that already exist, so the late row still gets the rating, last-played
+	// date and play count the item stream carried.
 	rows, err := tx.QueryContext(ctx, `WITH current AS (
-	 SELECT DISTINCT profile_id FROM catalog_personal_sort_members INDEXED BY catalog_personal_sort_member_entity WHERE entity_id=? AND profile_id>? ORDER BY profile_id LIMIT ?
-	), prior AS (
-	 SELECT profile_id FROM catalog_personal_sort_rows INDEXED BY catalog_personal_sort_row_entity WHERE entity_id=? AND profile_id>? ORDER BY profile_id LIMIT ?
-	) SELECT profile_id FROM current UNION SELECT profile_id FROM prior ORDER BY profile_id LIMIT ?`, entity, after, limit, entity, after, limit, limit)
+ SELECT DISTINCT profile_id FROM catalog_personal_sort_members INDEXED BY catalog_personal_sort_member_entity WHERE entity_id=?1 AND profile_id>?2 ORDER BY profile_id LIMIT ?3
+), prior AS (
+ SELECT profile_id FROM catalog_personal_sort_rows INDEXED BY catalog_personal_sort_row_entity WHERE entity_id=?1 AND profile_id>?2 ORDER BY profile_id LIMIT ?3
+), source_items AS (
+ SELECT profile_id FROM personal_items WHERE item_id=?1 AND profile_id>?2 ORDER BY profile_id LIMIT ?3
+), source_plays AS (
+ SELECT profile_id FROM personal_play_counts WHERE item_id=?1 AND profile_id>?2 ORDER BY profile_id LIMIT ?3
+) SELECT profile_id FROM current UNION SELECT profile_id FROM prior UNION SELECT profile_id FROM source_items UNION SELECT profile_id FROM source_plays ORDER BY profile_id LIMIT ?3`, entity, after, limit)
 	if err != nil {
 		return 0, err
 	}
@@ -200,7 +209,7 @@ func stepPersonalSortEntity(ctx context.Context, tx *sql.Tx, limit int) (int, er
 		return 0, err
 	}
 	for _, profile := range profiles {
-		if err = refreshPersonalSortEntity(ctx, tx, profile, entity); err != nil {
+		if err = reconcilePersonalSortMember(ctx, tx, profile, entity, entity); err != nil {
 			return 0, err
 		}
 	}
