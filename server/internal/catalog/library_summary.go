@@ -7,7 +7,6 @@ import (
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/readingcap"
-	"strconv"
 	"strings"
 )
 
@@ -168,6 +167,8 @@ func (s *Service) computeLibrarySummaryCandidates(ctx context.Context, viewer Vi
 	kinds := summaryKinds(library.Kind)
 	clause, args := EntityRestrictionSQL("e.id", viewer.Restrictions)
 	publicationTypeSQL := "NULL"
+	memberJoin := ""
+	var memberArgs []any
 	if isReadingLibrary(library.Kind) {
 		if reading == nil {
 			var err error
@@ -182,10 +183,15 @@ func (s *Service) computeLibrarySummaryCandidates(ctx context.Context, viewer Vi
 		// does not exclude an otherwise eligible Reading title.
 		clause = "(" + clause + ") AND " + readingSummaryEligibleSQL(reading, "e.id")
 		if !partial {
-			clause += " AND EXISTS(SELECT 1 FROM reading_attribution_members m WHERE " + reading.memberScope() + " AND m.item_id=e.id)"
+			// This primary-key join has at most one match. Reuse it for
+			// eligibility and classification instead of seeking the same member
+			// twice. Bind scope values so libraries share prepared bytecode.
+			memberJoin = " LEFT JOIN reading_attribution_members summary_member ON summary_member.library_id=? AND summary_member.generation=? AND summary_member.item_id=e.id"
+			memberArgs = []any{reading.library, reading.generation.Ready}
+			clause += " AND summary_member.item_id IS NOT NULL"
 		}
 		if library.Kind == "book" && !partial {
-			publicationTypeSQL = `(SELECT m.publication_type FROM reading_attribution_members m WHERE ` + reading.memberScope() + ` AND m.item_id=e.id)`
+			publicationTypeSQL = "summary_member.publication_type"
 		}
 	}
 	selections := []string{}
@@ -199,11 +205,12 @@ func (s *Service) computeLibrarySummaryCandidates(ctx context.Context, viewer Vi
 		values = append(values, library.ID, code)
 	}
 	values = append(values, args...)
+	values = append(values, memberArgs...)
 	// Each kind contributes at most 20,001 candidates through its ordered partial
 	// index. Sorting the union and applying live visibility is bounded even for
 	// a cold restriction class and a catalogue with millions of titles.
 	rows, err := s.read().QueryContext(ctx, `WITH candidates AS (`+strings.Join(selections, " UNION ALL ")+`)
- SELECT pid(e.public_id),k.name,(`+clause+`),`+publicationTypeSQL+` FROM candidates e JOIN catalog_kinds k ON k.id=e.kind ORDER BY e.added_ms DESC,e.id DESC`, values...)
+ SELECT pid(e.public_id),k.name,(`+clause+`),`+publicationTypeSQL+` FROM candidates e JOIN catalog_kinds k ON k.id=e.kind`+memberJoin+` ORDER BY e.added_ms DESC,e.id DESC`, values...)
 	if err != nil {
 		return out, err
 	}
@@ -287,15 +294,15 @@ func (s *Service) computeLibrarySummaryCandidates(ctx context.Context, viewer Vi
 // inventory availability sort once per title. Browse/version selection retains
 // its canonical ranking; restrictions and artwork remain checked separately.
 func readingSummaryEligibleSQL(r *readingBrowseScope, entity string) string {
-	kind := "20"
+	// The indexed candidate window already fixes library, leaf kind and
+	// retired=0. The publication FK proves its link. Repeat neither lookup.
+	local := ""
 	if r.kind == "comic" {
-		kind = "21"
+		local = " AND " + readingcap.LocalComicArchiveSQL("reading_publication")
 	}
-	return `EXISTS(SELECT 1 FROM catalog_entities reading_title
- JOIN reading_publications reading_publication ON reading_publication.item_id=reading_title.id
- JOIN catalog_asset_links reading_link ON reading_link.entity_id=reading_title.id AND reading_link.asset_id=reading_publication.asset_id
- WHERE reading_title.id=` + entity + ` AND reading_title.library_id=` + strconv.FormatInt(r.library, 10) + `
- AND reading_title.kind=` + kind + ` AND reading_title.retired=0 AND reading_publication.format IN(` + r.sourceFormatsSQL() + `) AND ` + readingcap.LocalComicArchiveSQL("reading_publication") + `)`
+	// Book formats never include CB7/CBR, so their local-archive branch is
+	// unreachable. Keep the full physical-source guard for comic archives.
+	return `EXISTS(SELECT 1 FROM reading_publications reading_publication WHERE reading_publication.item_id=` + entity + ` AND reading_publication.format IN(` + r.sourceFormatsSQL() + `)` + local + `)`
 }
 
 func libraryAudience(ctx context.Context, tx *sql.Tx, library string) (LibraryAudience, error) {

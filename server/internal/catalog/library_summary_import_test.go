@@ -52,6 +52,29 @@ func TestReadingSummaryDoesNotRankPublicationAvailability(t *testing.T) {
 	assertReadingSummaryPreparing(t, got["reading"], 0)
 }
 
+func TestReadingSummariesReuseMemberLookupAcrossLibraries(t *testing.T) {
+	c, s, viewer, _ := readingBrowseFixture(t, "book")
+	c.Drain()
+	viewer.Libraries = []string{"reading", "other"}
+	ctx, statements := dbwork.TraceQueryPlans(context.Background())
+	got, err := s.SummarizeLibraries(ctx, viewer, []Library{{ID: "reading", Kind: "book"}, {ID: "other", Kind: "book"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["reading"].Counts[0].Count != 4 || got["other"].Counts[0].Count != 0 || !got["other"].EmptyKnown {
+		t.Fatal("bound library/member scopes crossed", got)
+	}
+	var queries []string
+	for _, q := range statements() {
+		if strings.Contains(q, "WITH candidates AS") {
+			queries = append(queries, q)
+		}
+	}
+	if len(queries) != 2 || queries[0] != queries[1] {
+		t.Fatalf("library-scoped values forced separate prepared bytecode: %v", queries)
+	}
+}
+
 // The real eleven-library global composition, with a cold 6,000-title import
 // and no ready image. This is a read-cost receipt (the existing dbwork Measure
 // surface), not a scale/load campaign or a machine-dependent CI timeout gate.
