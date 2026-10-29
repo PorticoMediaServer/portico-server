@@ -126,7 +126,14 @@ func TestLibraryRemovalBoundsRetainedState(t *testing.T) {
 	film := attachMovie(t, c, "m", a, "/m/Film.mkv", "Film", 0)
 	c.Exec(`INSERT INTO personal_watched_intents VALUES('p',?,1,'2026-01-01T00:00:00.000000000Z')`, film)
 	c.Exec(`UPDATE catalog_libraries SET retired=1 WHERE library_id='m'`)
-	for i := 0; i < 10; i++ {
+	// The original ten title/removal turns are now followed by the explicit
+	// Reading lifetime rail, even for a movie library (its final source/root
+	// triggers enqueue Reading work). This fixture has no private scopes and
+	// one source: source, exhausted-source proof, and post-delete settle each
+	// need at most one turn per literal unit plus two verification transitions.
+	const legacyTurns = 10
+	turnLimit := legacyTurns + 3*(len(readingRemovalResidueUnits)+2)
+	for i := 0; i < turnLimit; i++ {
 		done := false
 		c.Write(func(ctx context.Context, tx *sql.Tx) error {
 			var e error
@@ -136,7 +143,7 @@ func TestLibraryRemovalBoundsRetainedState(t *testing.T) {
 		if done {
 			break
 		}
-		if i == 9 {
+		if i == turnLimit-1 {
 			t.Fatal("removal did not finish")
 		}
 	}
