@@ -41,7 +41,8 @@ test('an unavailable runtime refuses before starting and callback receivers rema
   const effect = createScreenPlayEffect(input);
   await effect(target, new AbortController().signal);assert.equal(calls, 1);
   input.active = false;await assert.rejects(effect(target, new AbortController().signal), {name: 'AbortError'});assert.equal(calls, 1);
-  await assert.rejects(createScreenPlayEffect({isCurrent: () => true, runtime: () => undefined})(target, new AbortController().signal), {name: 'AbortError'});
+  // P2-74 E-web-02: no player yet is a visible refusal, not a silent cancel.
+  await assert.rejects(createScreenPlayEffect({isCurrent: () => true, runtime: () => undefined})(target, new AbortController().signal), {code: 'operation_unavailable'});
 });
 
 
@@ -63,5 +64,5 @@ test('season effect refuses retired caller, authority, abort and replaced runtim
   if(change==='caller')caller=false;else if(change==='authority')authority=false;else if(change==='abort')abort.abort();else runtime=replacement;
   assert.equal(guard?.(),false);held.resolve();await assert.rejects(pending,{name:'AbortError'});assert.equal(replacementCalls,0);
  }
- await assert.rejects(createScreenSeasonPlayEffect({isCurrent:()=>true,runtime:()=>undefined})('season',new AbortController().signal,()=>true),{name:'AbortError'});
+ await assert.rejects(createScreenSeasonPlayEffect({isCurrent:()=>true,runtime:()=>undefined})('season',new AbortController().signal,()=>true),{code:'operation_unavailable'});
 });

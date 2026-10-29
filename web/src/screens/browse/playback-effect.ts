@@ -1,6 +1,13 @@
 import type {ShellBindings} from '../../shell/bindings';
 import type {ScreenContext} from '../detail/context';
 
+/** Play before this viewer's player exists (it is built from the Home document) is refused out
+ * loud: an AbortError would be presented as a cancel, and the press would silently do nothing
+ * (P2-74 E-web-02). */
+function playbackNotReady(): Error {
+  return Object.assign(new Error('Playback is still loading'), {code: 'operation_unavailable'});
+}
+
 type Runtime = Pick<NonNullable<ShellBindings['playback']>['runtime'], 'playFromScreen'>;
 
 /** The same real runtime owns admission and adoption. Capture its identity and
@@ -11,7 +18,7 @@ export function createScreenPlayEffect(input: Readonly<{isCurrent: () => boolean
     signal.throwIfAborted();
     if (!authorityCurrent() || !callerCurrent()) throw new DOMException('Screen playback changed', 'AbortError');
     const runtime = getRuntime();
-    if (!runtime) throw new DOMException('Playback is still loading', 'AbortError');
+    if (!runtime) throw playbackNotReady();
     const current = () => !signal.aborted && authorityCurrent() && callerCurrent() && getRuntime() === runtime;
     if (!current()) throw new DOMException('Screen playback changed', 'AbortError');
     await runtime.playFromScreen(target, {signal, isCurrent: current});
@@ -29,7 +36,7 @@ export function createScreenSeasonPlayEffect(input: Readonly<{isCurrent: () => b
   signal.throwIfAborted();
   if (!authorityCurrent() || !callerCurrent()) throw new DOMException('Screen playback changed', 'AbortError');
   const runtime = getRuntime();
-  if (!runtime) throw new DOMException('Playback is still loading', 'AbortError');
+  if (!runtime) throw playbackNotReady();
   const current = () => !signal.aborted && authorityCurrent() && callerCurrent() && getRuntime() === runtime;
   if (!current()) throw new DOMException('Screen playback changed', 'AbortError');
   await runtime.playFromQueue({container: {kind: 'season', id: capturedSeasonId}}, {signal, isCurrent: current});
@@ -47,7 +54,7 @@ export function createScreenArtistPlayEffect(input: Readonly<{isCurrent: () => b
     signal.throwIfAborted();
     if (!authorityCurrent() || !callerCurrent()) throw new DOMException('Search playback changed', 'AbortError');
     const runtime = getRuntime();
-    if (!runtime) throw new DOMException('Playback is still loading', 'AbortError');
+    if (!runtime) throw playbackNotReady();
     const current = () => !signal.aborted && authorityCurrent() && callerCurrent() && getRuntime() === runtime;
     if (!current()) throw new DOMException('Search playback changed', 'AbortError');
     await runtime.playFromQueue({container: {kind: 'artist', id: capturedArtistId}}, {signal, isCurrent: current}, {shuffle: capturedShuffle});
@@ -65,7 +72,7 @@ export function createScreenAlbumPlayEffect(input: Readonly<{isCurrent: () => bo
     signal.throwIfAborted();
     if (!authorityCurrent() || !callerCurrent()) throw new DOMException('Album playback changed', 'AbortError');
     const runtime = getRuntime();
-    if (!runtime) throw new DOMException('Playback is still loading', 'AbortError');
+    if (!runtime) throw playbackNotReady();
     const current = () => !signal.aborted && authorityCurrent() && callerCurrent() && getRuntime() === runtime;
     if (!current()) throw new DOMException('Album playback changed', 'AbortError');
     await runtime.playFromQueue({container: {kind: 'album', id: capturedAlbumId}}, {signal, isCurrent: current}, {shuffle: capturedShuffle});
@@ -83,7 +90,7 @@ export function createScreenRadioPlayEffect(input: Readonly<{isCurrent: () => bo
     signal.throwIfAborted();
     if (!authorityCurrent() || !callerCurrent()) throw new DOMException('Radio seed changed', 'AbortError');
     const runtime = getRuntime();
-    if (!runtime) throw new DOMException('Playback is still loading', 'AbortError');
+    if (!runtime) throw playbackNotReady();
     const current = () => !signal.aborted && authorityCurrent() && callerCurrent() && getRuntime() === runtime;
     if (!current()) throw new DOMException('Radio seed changed', 'AbortError');
     await runtime.playFromQueue({container: {kind: 'radio', id: capturedSeedId}}, {signal, isCurrent: current});
