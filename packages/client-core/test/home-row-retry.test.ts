@@ -41,6 +41,28 @@ test('a shelf that keeps failing is dropped after the last retry instead of stay
   home.dispose();
 });
 
+test('a dropped shelf is read again on the next return to Home, and nothing is read when none was dropped', async t => {
+  t.mock.timers.enable({apis: ['setTimeout']});
+  let documents = 0, reads = 0, failing = true;
+  const home = new HomeService({request: async path => {
+    if (!path.includes('/rows/')) {documents++; return JSON.parse(JSON.stringify(document([row('later', [], true)])));}
+    reads++; if (failing) throw Object.assign(new Error('down'), {code: 'request_timeout', retryable: true});
+    return JSON.parse(JSON.stringify(row('later', [entry('a')])));
+  }});
+  await home.load(); await settle();
+  for (const delay of homeRowRetryDelaysMs) {t.mock.timers.tick(delay); await settle();}
+  assert.equal(home.getSnapshot().document!.rows.length, 0, 'dropped after the last retry');
+  failing = false;
+  const before = documents;
+  await home.recoverDroppedRows(); await settle();
+  assert.equal(documents, before + 1, 'the document is read again');
+  assert.deepEqual(home.getSnapshot().document!.rows.map(value => value.id), ['later']);
+  assert.deepEqual(home.getSnapshot().document!.rows[0]!.entries.map(item => item.id), ['a'], 'the shelf is back with its cards');
+  await home.recoverDroppedRows(); await settle();
+  assert.equal(documents, before + 1, 'no read when nothing was dropped');
+  home.dispose();
+});
+
 test('a deferred shelf outside the declared demand waits, and loads once it is demanded', async t => {
   t.mock.timers.enable({apis: ['setTimeout']});
   let reads = 0;

@@ -147,6 +147,8 @@ export class HomeService {
   /** Deferred rows of the current document that wait for demand, each fetched at most once. */
   private waiting = new Map<string, () => void>();
   private readonly rowRetries = new Set<ReturnType<typeof setTimeout>>();
+  /** Shelves dropped after their last retry; the next return to Home reads them again. */
+  private readonly droppedRows = new Set<string>();
   private readonly api: () => HomeApi;
   private readonly timeoutMs: number;
   private readonly initialLimit: number | undefined;
@@ -461,7 +463,7 @@ export class HomeService {
           else if (mine === this.generation && epoch === this.hydrationGeneration && this.ownerCurrent() && (quiet === undefined || quiet === this.quiet) && !(error instanceof HomeAuthorityRetired)) {
             const attempt = (attempts.get(descriptor.id) ?? 0) + 1;
             attempts.set(descriptor.id, attempt);
-            if (attempt > homeRowRetryDelaysMs.length) this.removeRow(descriptor.id);
+            if (attempt > homeRowRetryDelaysMs.length) { this.droppedRows.add(descriptor.id); this.removeRow(descriptor.id); }
             else {
               const retry = setTimeout(() => {
                 this.rowRetries.delete(retry);
@@ -542,6 +544,17 @@ export class HomeService {
   retry = (): Promise<void> => this.load();
 
   /** The quiet read: merge the server's current Home into what is shown. Rejects when the read failed; nothing changes then. */
+  /**
+   * Coming back to Home: a shelf dropped after its last retry is read again with the document
+   * (there's no row-level error state in the mock-ups, so a failed shelf leaves rather than
+   * showing an error; this brings it back). Nothing is read when nothing was dropped.
+   */
+  async recoverDroppedRows(): Promise<void> {
+    if (!this.droppedRows.size || this.disposed || this.state.phase !== 'ready') return;
+    this.droppedRows.clear();
+    await this.revalidate();
+  }
+
   async revalidate(context?: {signal?: AbortSignal; settle?: () => Promise<void>}): Promise<void> {
     if (this.observation) { await this.refresh(context); return; }
     if (this.disposed || this.state.phase !== 'ready' || !this.state.document) return;
