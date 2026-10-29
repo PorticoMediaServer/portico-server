@@ -29,5 +29,6 @@ export const statesNativeMessages = {
   'next.states.native.updateServer': 'Your server needs an update',
   'next.states.native.updateServerBody': "This app needs {server} to be on version {minimum} or later, and it's on {version}. Update the server, then come back. Your downloads still play.",
   'next.states.native.updateServerMemberBody': '{server} needs an update before this app can use it. Ask the server owner.',
+  'next.states.native.updateServerAnyBody': '{server} needs an update to work with this app. Its owner can update Portico.',
   'next.states.native.updateServerHelp': 'How to update a server',
 } as const satisfies Record<`next.states.native.${string}`, string>;
