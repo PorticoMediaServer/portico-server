@@ -50,6 +50,12 @@ const (
 
 // deferredDomains wait until no other domain has work, or until they have
 // waited deferredWait since they were last served, whichever is first.
+// Facet and missing-title projections are consumers, not reasons to defer a
+// container refresh: its browse updates invalidate their source epoch. Waiting
+// on those consumers throttles every refresh quantum by deferredWait while
+// repeatedly restarting their private work. Both consumers capture the global
+// source epoch, so their turns wait for refreshes to settle, just as they wait
+// for the source fanouts that refreshes consume.
 var deferredDomains = map[int]bool{DomainContainerRefresh: true}
 
 const deferredWait = 10 * time.Second
@@ -76,9 +82,9 @@ var nextDomainSQL = func() string {
 	}
 	list := strings.Join(deferred, ",")
 	return `SELECT domain,rebuilding FROM catalog_derivations st WHERE (rebuilding=1 OR EXISTS(SELECT 1 FROM catalog_dirty d WHERE d.domain=st.domain))
- AND (st.domain<>33 OR (NOT EXISTS(SELECT 1 FROM catalog_dirty WHERE domain IN(36,37,38,39,40,41,42,43)) AND NOT EXISTS(SELECT 1 FROM catalog_derivations WHERE domain IN(36,37,38,39,40,41,42,43) AND rebuilding=1) AND NOT EXISTS(SELECT 1 FROM catalog_derivation_failures WHERE domain IN(36,37,38,39,40,41,42,43))))
- AND (st.domain<>44 OR (NOT EXISTS(SELECT 1 FROM catalog_dirty WHERE domain=41) AND NOT EXISTS(SELECT 1 FROM catalog_derivation_failures WHERE domain=41)))
- AND (domain NOT IN(` + list + `) OR served_ms<=?1 OR NOT EXISTS(SELECT 1 FROM catalog_derivations o WHERE o.domain NOT IN(` + list + `) AND (o.rebuilding=1 OR EXISTS(SELECT 1 FROM catalog_dirty d WHERE d.domain=o.domain))))
+ AND (st.domain<>33 OR (NOT EXISTS(SELECT 1 FROM catalog_dirty WHERE domain IN(35,36,37,38,39,40,41,42,43)) AND NOT EXISTS(SELECT 1 FROM catalog_derivations WHERE domain IN(35,36,37,38,39,40,41,42,43) AND rebuilding=1) AND NOT EXISTS(SELECT 1 FROM catalog_derivation_failures WHERE domain IN(35,36,37,38,39,40,41,42,43))))
+ AND (st.domain<>44 OR (NOT EXISTS(SELECT 1 FROM catalog_dirty WHERE domain IN(35,41)) AND NOT EXISTS(SELECT 1 FROM catalog_derivation_failures WHERE domain IN(35,41))))
+ AND (domain NOT IN(` + list + `) OR served_ms<=?1 OR NOT EXISTS(SELECT 1 FROM catalog_derivations o WHERE o.domain NOT IN(` + list + `,33,44) AND (o.rebuilding=1 OR EXISTS(SELECT 1 FROM catalog_dirty d WHERE d.domain=o.domain))))
  ORDER BY served_ms-CASE domain` + priority + ` ELSE 0 END,domain`
 }()
 
@@ -724,6 +730,18 @@ func (w *Worker) drainDomain(ctx context.Context, tx *sql.Tx, domain, rebuilding
 		skip = append(skip, id)
 	}
 	batch := limit
+	// These drains advance one durable holder/source cursor, even when the
+	// caller supplies many keys. Fetching the rest of that queue every turn
+	// makes a one-head walk quadratic and reports untouched keys as work.
+	// Keep the raw-row limit passed to Drain unchanged; only its key window is
+	// one, including rebuild enumeration and the covered-prefix proof.
+	switch domain {
+	case DomainBrowseRows, DomainBrowseEdges, DomainAvailability,
+		DomainItemMetrics, DomainAssetMetrics, DomainLibraryAvailability,
+		DomainFacetCounts, DomainContainerRefresh,
+		DomainAssetSources, DomainEntitySources, DomainLibrarySources, DomainMissingSources:
+		batch = 1
+	}
 	if w.isolate[domain] || retry {
 		batch = 1
 	}

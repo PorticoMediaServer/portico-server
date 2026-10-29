@@ -27,6 +27,9 @@ import (
 type Catalog struct {
 	T  testing.TB
 	DB *sql.DB
+
+	worker   *compactcatalog.Worker
+	workerDB *sql.DB
 }
 
 // Item is a created entity: its integer id, its public id and, for a playable
@@ -73,7 +76,13 @@ func (c *Catalog) Exec(query string, args ...any) {
 // Drain runs the derived-data worker until nothing is queued.
 func (c *Catalog) Drain() {
 	c.T.Helper()
-	w := compactcatalog.NewWorker(c.DB)
+	// Production keeps one derived worker for the open database. Recreating it
+	// for every fixture drain repeats startup read sampling, which cannot run
+	// while a deliberately retained queue capture owns the background connection.
+	if c.worker == nil || c.workerDB != c.DB {
+		c.worker, c.workerDB = compactcatalog.NewWorker(c.DB), c.DB
+	}
+	w := c.worker
 	// Facet staging spends at most eight raw rows per transaction and can
 	// revisit a holder after an upstream fence changes. A fixed 10,000-turn
 	// guard predates that protocol and is smaller than legitimate fixture work.
@@ -84,17 +93,56 @@ func (c *Catalog) Drain() {
 		c.T.Fatal(err)
 	}
 	maxSteps := 10000 + 32*entities
+	turns := make(map[int]int)
 	for i := 0; i < maxSteps; i++ {
 		n, err := w.Step(context.Background(), 500)
 		if err != nil {
 			c.T.Fatal(err)
 		}
+		domain, _, _ := w.LastBatch()
+		turns[domain]++
 		if n == 0 {
 			if i >= 10000 {
 				c.T.Logf("catalogue fixture drained in %d bounded turns (%d entities)", i+1, entities)
 			}
 			return
 		}
+	}
+	c.T.Logf("drain turns by domain: %v", turns)
+	// Failure-only diagnostics preserve the original finite guard and terminal
+	// requirement while identifying which bounded owner failed to advance.
+	for _, query := range []string{
+		`SELECT domain,count(*) FROM catalog_dirty GROUP BY domain ORDER BY domain`,
+		`SELECT domain,rebuilding,first_build,cleaning,active_slot FROM catalog_derivations WHERE rebuilding=1 OR first_build=1 OR cleaning=1`,
+		`SELECT domain,count(*) FROM catalog_derivation_failures GROUP BY domain ORDER BY domain`,
+	} {
+		rows, err := c.DB.Query(query)
+		if err != nil {
+			c.T.Logf("drain residue: %v", err)
+			continue
+		}
+		cols, err := rows.Columns()
+		if err != nil {
+			rows.Close()
+			c.T.Log(err)
+			continue
+		}
+		for rows.Next() {
+			values := make([]any, len(cols))
+			targets := make([]any, len(cols))
+			for i := range values {
+				targets[i] = &values[i]
+			}
+			if err = rows.Scan(targets...); err != nil {
+				c.T.Log(err)
+				break
+			}
+			c.T.Logf("drain residue %v: %v", cols, values)
+		}
+		if err = rows.Err(); err != nil {
+			c.T.Log(err)
+		}
+		rows.Close()
 	}
 	c.T.Fatal("catalogue worker did not drain")
 }
