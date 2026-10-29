@@ -152,7 +152,10 @@ export type PlaybackSession = {
   duration: number;
   resumeSeconds: number;
 };
-export type SystemInfo = Omit<RouteResponse<'get_system'>, 'signIn'|'move'> & {signIn: 'portico' | 'local';move:'to_portico'|'to_local'|null};
+/** O-159: `apiVersion`, `apiMajors` and `capabilities` are absent on servers older than 1.0's
+ * negotiation; `parseServerSignIn` fills them from `apiLevel`. */
+export type SystemInfo = Omit<RouteResponse<'get_system'>, 'signIn'|'move'|'apiVersion'|'apiMajors'|'capabilities'> & {signIn: 'portico' | 'local';move:'to_portico'|'to_local'|null;
+  apiVersion?: string; apiMajors?: readonly number[]; capabilities?: readonly string[]};
 /** A closed numeric rclone version (three numeric parts plus an optional suffix); never prose. */
 function errorProgramVersion(value:unknown):string|undefined{
   return typeof value==='string'&&/^\d{1,4}(?:\.\d{1,4}){2}(?:[-+][0-9A-Za-z.+-]{1,32})?$/.test(value)?value:undefined;
@@ -2699,7 +2702,7 @@ export {buildHostedSignInStartURL, parseHostedSignInStartURL} from './hosted-sig
 
 export * from './report-context.ts';
 export {AppSessionStore, parseAppSessionRecord, type AppSessionRecord, type AppSessionStorage, type AppServerSession, type NewServerConnection, type PorticoAccountScope, type SignInKind} from './app-sessions.ts';
-export {ServerSignInProbe, parseServerSignIn, assertSameApiLevel, API_LEVEL_MISMATCH, moveOfferDays, signInLabelKey, serverSignInSettingsURL, accountSignInKeys, type ServerSignIn, type ServerSignInSnapshot} from './sign-in.ts';
+export {ServerSignInProbe, parseServerSignIn, negotiateServer, CLIENT_API, APP_UPDATE_REQUIRED, type ServerAPI, API_LEVEL_MISMATCH, moveOfferDays, signInLabelKey, serverSignInSettingsURL, accountSignInKeys, type ServerSignIn, type ServerSignInSnapshot} from './sign-in.ts';
 export * from './account-move.ts';
 export {TVConsentApprover, type TVConsentAuthority, type TVConsentTransport} from './tv-consent.ts';
 

@@ -17,7 +17,18 @@ export function parseServerSignIn(raw: unknown): ServerSignIn {
   const moveEndsAt=raw.moveEndsAt===undefined||raw.moveEndsAt===null?null:typeof raw.moveEndsAt==='string'&&raw.moveEndsAt.length<=64&&raw.move==='to_portico'&&Number.isFinite(Date.parse(raw.moveEndsAt))?raw.moveEndsAt:undefined;
   if(moveEndsAt===undefined)throw new RouteError('invalid_system','The server reported an unreadable move window.');
   return Object.freeze({id: raw.id, name: raw.name, version: raw.version, signIn: raw.signIn as SignInKind,move:raw.move as ServerSignIn['move'],
-    setupRequired: raw.setupRequired, hostedConfigured: raw.hostedConfigured, hostedAttached: raw.hostedAttached, apiLevel: raw.apiLevel as number, moveEndsAt});
+    setupRequired: raw.setupRequired, hostedConfigured: raw.hostedConfigured, hostedAttached: raw.hostedAttached, apiLevel: raw.apiLevel as number, moveEndsAt,
+    ...serverAPI(raw)});
+}
+/** O-159: the negotiation facts. A server without them, or with a shape this client can't read,
+ * is pre-release: it carries none, and negotiation refuses it. Nothing is guessed from `apiLevel`. */
+function serverAPI(raw: Record<string, unknown>) {
+  const version = typeof raw.apiVersion === 'string' && /^\d{1,6}\.\d{1,6}$/.test(raw.apiVersion) ? raw.apiVersion : undefined;
+  const majors = Array.isArray(raw.apiMajors) && raw.apiMajors.length > 0 && raw.apiMajors.length <= 64 && raw.apiMajors.every(value => Number.isSafeInteger(value) && value >= 1)
+    ? [...new Set(raw.apiMajors as number[])].sort((a, b) => a - b) : undefined;
+  const capabilities = Array.isArray(raw.capabilities) && raw.capabilities.length <= 1024 && raw.capabilities.every(value => text(value, 128))
+    ? [...new Set(raw.capabilities as string[])].sort() : undefined;
+  return version && majors && capabilities ? {apiVersion: version, apiMajors: Object.freeze(majors), capabilities: Object.freeze(capabilities)} : {};
 }
 /** Whole calendar days left to use the old sign-in during a move, counted on this device's
  * calendar: 0 when it ends today, 1 when it ends tomorrow. Undefined when nothing is offered. */
@@ -27,12 +38,27 @@ export function moveOfferDays(endsAt: string | null | undefined, now: Date = new
   const day = (value: Date) => Date.UTC(value.getFullYear(), value.getMonth(), value.getDate());
   return Math.round((day(end) - day(now)) / 86_400_000);
 }
-/** Thrown before any sign-in when a server speaks another API level than this app. */
+/** Thrown before any sign-in when the server serves no API major this app speaks and is older. */
 export const API_LEVEL_MISMATCH = 'api_level_mismatch';
-/** Before release a client opens only a server of its own API level (P2-66 G-2). Older and
- * newer servers alike are refused here, before credentials are sent or a session is stored. */
-export function assertSameApiLevel(system: Pick<ServerSignIn, 'apiLevel'>): void {
-  if (system.apiLevel !== API_LEVEL) throw new RouteError(API_LEVEL_MISMATCH, 'This server needs an update to work with this app.');
+/** Thrown before any sign-in when the server serves only majors newer than this app speaks. */
+export const APP_UPDATE_REQUIRED = 'app_update_required';
+/** The API majors this client speaks (O-159). A server is opened when the ranges overlap. */
+export const CLIENT_API = Object.freeze({min: 1, max: API_LEVEL});
+export type ServerAPI = Readonly<{major: number; version: string; capabilities: readonly string[]; can: (capability: string) => boolean}>;
+/** O-159, Justin's rule: if a server and a client can talk, allow the connection. The refusals,
+ * decided before credentials are sent or a session is stored, are a pre-release server (no
+ * negotiation facts: it needs an update) and no shared API major. Features added after 1.0
+ * are gated on `can(id)`, never on version numbers; the 1.0 baseline is never gated. */
+export function negotiateServer(system: Pick<ServerSignIn, 'apiLevel' | 'apiVersion' | 'apiMajors' | 'capabilities'>, client: Readonly<{min: number; max: number}> = CLIENT_API): ServerAPI {
+  if (!system.apiVersion || !system.apiMajors?.length || !system.capabilities) throw new RouteError(API_LEVEL_MISMATCH, 'This server needs an update to work with this app.');
+  const majors = system.apiMajors;
+  const shared = majors.filter(major => major >= client.min && major <= client.max);
+  if (!shared.length) {
+    if (Math.max(...majors) < client.min) throw new RouteError(API_LEVEL_MISMATCH, 'This server needs an update to work with this app.');
+    throw new RouteError(APP_UPDATE_REQUIRED, 'This app needs an update to work with this server.');
+  }
+  const capabilities = Object.freeze([...system.capabilities]), known = new Set(capabilities);
+  return Object.freeze({major: Math.max(...shared), version: system.apiVersion, capabilities, can: (capability: string) => known.has(capability)});
 }
 export const accountSignInKeys = Object.freeze({
   portico: 'accounts.signIn.portico', local: 'accounts.signIn.local', usesPortico: 'accounts.signIn.usesPortico',
