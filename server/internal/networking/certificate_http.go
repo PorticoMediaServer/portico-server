@@ -8,7 +8,6 @@ import (
 	"io"
 	"mime"
 	"net/http"
-	"net/netip"
 	"strings"
 	"time"
 )
@@ -65,10 +64,6 @@ func (t *HTTPTransport) certificateCall(ctx context.Context, v Intent, operation
 		path += "/certificates/orders"
 	case "lookup":
 		path += "/certificates/orders/lookup"
-	case "route":
-		path += "/direct-route"
-	case "route_withdraw":
-		path += "/direct-route/withdraw"
 	case "status", "chain", "cancel":
 		if !validCertificateOrderID(id) {
 			return ErrInvalid
@@ -99,22 +94,6 @@ func (t *HTTPTransport) certificateCall(ctx context.Context, v Intent, operation
 	}
 	defer clear(raw)
 	client := t.client
-	if operation == "route" {
-		var publication struct {
-			Address string `json:"address"`
-		}
-		if json.Unmarshal(raw, &publication) != nil || publication.Address == "" || !validCertificateAddress(publication.Address) {
-			return ErrInvalid
-		}
-		address, e := netip.ParseAddr(publication.Address)
-		if e != nil {
-			return ErrInvalid
-		}
-		client = t.routeIPv6
-		if address.Is4() {
-			client = t.routeIPv4
-		}
-	}
 	callCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
 	req, e := http.NewRequestWithContext(callCtx, method, t.origin+path, bytes.NewReader(raw))

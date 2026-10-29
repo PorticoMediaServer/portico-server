@@ -53,13 +53,6 @@ func certificateFixtureOn(t *testing.T, f *sqlFixture) (*sqlFixture, *Certificat
 	if e != nil {
 		t.Fatal(e)
 	}
-	// Existing certificate fixtures replace the ordinary transport per scenario.
-	// Keep their synthetic route replies on that same isolated fixture.
-	routeFixture := claimRoundTrip(func(r *http.Request) (*http.Response, error) {
-		return transport.client.Transport.RoundTrip(r)
-	})
-	transport.routeIPv4.Transport = routeFixture
-	transport.routeIPv6.Transport = routeFixture
 	t.Cleanup(transport.CloseIdleConnections)
 	m, e := NewCertificateManager(ctx, f.store, runner, transport, f.dir, CertificateOptions{})
 	if e != nil || m.bootError != "" {
@@ -103,7 +96,7 @@ func installSyntheticCertificate(t *testing.T, m *CertificateManager, ctx contex
 		t.Fatal(e)
 	}
 	v := q.Scope.Intent
-	n := certificateNamespace{Namespace: fixtureCertificateNamespace, DNSName: "*." + fixtureCertificateNamespace + ".direct.getportico.tv", DNS01Target: fixtureCertificateNamespace + ".acme.getportico.tv", OperationID: v.OperationID, ClaimGeneration: v.ClaimGeneration, CredentialGeneration: v.CredentialGeneration, Issuer: "google", Environment: "production", Configured: true}
+	n := certificateNamespace{Namespace: fixtureCertificateNamespace, DNSName: "*." + fixtureCertificateNamespace + ".portico.direct", DNS01Target: fixtureCertificateNamespace + ".acme.getportico.tv", OperationID: v.OperationID, ClaimGeneration: v.ClaimGeneration, CredentialGeneration: v.CredentialGeneration, Issuer: "google", Environment: "production", Configured: true}
 	var chain []byte
 	id := "cert_" + base64.RawURLEncoding.EncodeToString(make([]byte, 32))
 	m.transport.client.Transport = claimRoundTrip(func(r *http.Request) (*http.Response, error) {
@@ -216,7 +209,7 @@ func TestCertificatePublicationUsesDurableTransactionOnProductionPool(t *testing
 func TestCertificateConnectedLifecycleRestartAndAuthorityFencing(t *testing.T) {
 	f, m, ctx := certificateFixture(t)
 	installSyntheticCertificate(t, m, ctx)
-	hello := &tls.ClientHelloInfo{ServerName: "current." + fixtureCertificateNamespace + ".direct.getportico.tv"}
+	hello := &tls.ClientHelloInfo{ServerName: "current." + fixtureCertificateNamespace + ".portico.direct"}
 	cert, e := m.GetCertificate(hello)
 	if e != nil {
 		t.Fatal(e)
@@ -248,7 +241,7 @@ func TestCertificateConnectedLifecycleRestartAndAuthorityFencing(t *testing.T) {
 func TestCertificateServingReadPathAndTLSResumption(t *testing.T) {
 	_, m, ctx := certificateFixture(t)
 	installSyntheticCertificate(t, m, ctx)
-	name := "current." + fixtureCertificateNamespace + ".direct.getportico.tv"
+	name := "current." + fixtureCertificateNamespace + ".portico.direct"
 	for range 1000 {
 		if _, err := m.GetCertificate(&tls.ClientHelloInfo{ServerName: name}); err != nil {
 			t.Fatal(err)
@@ -299,7 +292,7 @@ func TestCertificatePauseAndCurrentRevisionGuard(t *testing.T) {
 	if e != nil || result.TLSReady || result.PubliclyTrusted || result.State != "paused" {
 		t.Fatal(result, e)
 	}
-	if _, e = m.GetCertificate(&tls.ClientHelloInfo{ServerName: "probe." + fixtureCertificateNamespace + ".direct.getportico.tv"}); e == nil {
+	if _, e = m.GetCertificate(&tls.ClientHelloInfo{ServerName: "probe." + fixtureCertificateNamespace + ".portico.direct"}); e == nil {
 		t.Fatal("paused listener served a certificate")
 	}
 }
@@ -317,7 +310,7 @@ func TestCertificateKeyFilePlainAndStable(t *testing.T) {
 	if _, e = os.Stat(storagepaths.Path(f.dir, "networking-tls-seal.key")); !os.IsNotExist(e) {
 		t.Fatal("seal key file present")
 	}
-	hello := &tls.ClientHelloInfo{ServerName: "current." + fixtureCertificateNamespace + ".direct.getportico.tv"}
+	hello := &tls.ClientHelloInfo{ServerName: "current." + fixtureCertificateNamespace + ".portico.direct"}
 	before, e := m.GetCertificate(hello)
 	if e != nil {
 		t.Fatal(e)

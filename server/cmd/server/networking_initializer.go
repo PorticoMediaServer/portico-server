@@ -144,7 +144,8 @@ func initializeCurrentClaimControl(db *sql.DB, state string, id *identity.Servic
 	}
 	handler.UseSetupReturnResolver(httpapi.NetworkingSetupReturnResolver(id, control, handler))
 	if e = handler.ConfigureCertificates(context.Background(), state, networking.CertificateOptions{
-		Environment:      os.Getenv("PORTICO_CERTIFICATE_ENVIRONMENT"),
+		Environment:  os.Getenv("PORTICO_CERTIFICATE_ENVIRONMENT"),
+		DirectDomain: os.Getenv("PORTICO_DIRECT_DOMAIN"), ACMEDomain: os.Getenv("PORTICO_ACME_DOMAIN"),
 		StagingRootsFile: os.Getenv("PORTICO_CERTIFICATE_STAGING_ROOTS"),
 	}); e != nil {
 		return nil, e
@@ -160,7 +161,7 @@ func initializeCurrentClaimControl(db *sql.DB, state string, id *identity.Servic
 func accessURLsForPublication(v operations.Settings, publicPort int) []string {
 	out := make([]string, 0, len(v.AccessURLs)+1)
 	for _, u := range append([]string{v.AdvertiseURL}, v.AccessURLs...) {
-		if strings.HasPrefix(u, "https://") {
+		if strings.HasPrefix(u, "https://") || strings.HasPrefix(u, "http://") {
 			out = append(out, u)
 		}
 	}

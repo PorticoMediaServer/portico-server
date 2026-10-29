@@ -132,23 +132,6 @@ func (m *RemoteManager) accessURLs(ctx context.Context) []string {
 	return append([]string(nil), m.lastAccess...)
 }
 
-// RouteLabel is told the server's current members-only label (from Hosted's
-// presence answer). Cached route names under another label are forgotten and
-// the manager woken, so it asks Hosted for its name again and republishes its
-// routes (A86). The previous name keeps resolving for a grace period meanwhile.
-func (m *RemoteManager) RouteLabel(ctx context.Context, label string) error {
-	if m == nil || len(label) != 32 || strings.Trim(label, "0123456789abcdef") != "" {
-		return ErrInvalid
-	}
-	result, e := dbwork.ExecWrite(ctx, m.h.store.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive), `DELETE FROM networking_route_names WHERE instr(url,'://c-'||?||'.')=0`, label)
-	if e != nil {
-		return e
-	}
-	if n, _ := result.RowsAffected(); n > 0 {
-		m.Wake()
-	}
-	return nil
-}
 func (m *RemoteManager) Wake() {
 	if m == nil {
 		return
@@ -425,7 +408,10 @@ func (m *RemoteManager) stepRouteLocked(ctx context.Context) error {
 		}
 		ip, err := netip.ParseAddr(raw)
 		if err == nil {
-			lanCandidates = append(lanCandidates, RemoteCandidate{BaseURL: routeURL(ip, port, "https"), Class: "lan", State: "probe_required"})
+			origin, err := m.routeName(q, ip.String(), port)
+			if err == nil {
+				lanCandidates = append(lanCandidates, RemoteCandidate{BaseURL: origin, Class: "lan", State: "probe_required", Address: ip.String(), Port: port})
+			}
 		}
 	}
 	ready := lanTLSReady && q.Scope.ID != ""
@@ -447,7 +433,7 @@ func (m *RemoteManager) stepRouteLocked(ctx context.Context) error {
 			// those), or the owner saying so. Publishing it otherwise sends
 			// dual-stack clients to an address the router drops.
 			if ip, err := netip.ParseAddr(raw); err == nil && ip.Is6() && !ip.Is4In6() && !c.IPv6Open {
-				status.IPv6 = "unverified"
+				status.IPv6 = "disabled"
 				continue
 			}
 			addresses[raw] = port
@@ -458,17 +444,17 @@ func (m *RemoteManager) stepRouteLocked(ctx context.Context) error {
 		}
 		if cert.Config.PublicAddress != "" {
 			ip, err := netip.ParseAddr(cert.Config.PublicAddress)
-			if err == nil && publicAddress(ip) {
+			if err == nil && publicAddress(ip) && (ip.Is4() || c.IPv6Open) {
 				addresses[ip.String()] = cert.Config.PublicPort
 			}
 		}
 	}
 	if c.IPv6Open && hasPublicIPv6(topo) {
-		status.IPv6 = "owner_confirmed"
+		status.IPv6 = "unverified"
 	}
 	for _, mapping := range mappings {
 		status.Mappings = append(status.Mappings, MappingSummary{mapping.Protocol, mapping.State, mapping.ErrorCode, mapping.ExternalPort, mapping.ExpiresAt})
-		if mapping.Protocol == pinholeProtocol && c.Enabled && ready && mapping.State == "mapped" && now.Before(mapping.ExpiresAt) && !c.IPv6Open {
+		if mapping.Protocol == pinholeProtocol && c.Enabled && ready && mapping.State == "mapped" && now.Before(mapping.ExpiresAt) && c.IPv6Open {
 			if mapping.FirewallOpen {
 				status.IPv6 = "firewall_open"
 			} else {
@@ -477,7 +463,7 @@ func (m *RemoteManager) stepRouteLocked(ctx context.Context) error {
 		}
 		if c.Enabled && ready && mapping.Authority == authority && mapping.Topology == digest && mapping.State == "mapped" && now.Before(mapping.ExpiresAt) {
 			ip, err := netip.ParseAddr(mapping.ExternalAddress)
-			if err == nil && publicAddress(ip) {
+			if err == nil && publicAddress(ip) && (ip.Is4() || c.IPv6Open) {
 				addresses[ip.String()] = mapping.ExternalPort
 				observed[ip.String()] = mapping.ExternalPort
 			} else {
@@ -504,47 +490,11 @@ func (m *RemoteManager) stepRouteLocked(ctx context.Context) error {
 	if topo.ErrorCode == "listener_loopback_only" {
 		status.ErrorCode = topo.ErrorCode
 	}
-	if c.Enabled && q.Scope.ID != "" {
+	if q.Scope.ID != "" {
 		for _, u := range access {
-			status.Candidates = append(status.Candidates, RemoteCandidate{BaseURL: u, Class: "manual", State: "probe_required"})
+			status.Candidates = append(status.Candidates, RemoteCandidate{BaseURL: u, Class: "manual", State: "probe_required", Insecure: strings.HasPrefix(u, "http://")})
 		}
 	}
-	// An address family the server has affirmatively stopped having is withdrawn from Hosted,
-	// once, so the DNS nodes stop answering it. Everything about being sure it is really gone
-	// is in remote_withdrawal.go; this is only the gate — an installed claim, remote access
-	// actually in use, and no outstanding Retry-After.
-	var withdrawErr error
-	if c.Enabled && ready && !now.Before(state.NotBefore) {
-		present := publishedFamilies(observed)
-		// Retained configuration is a publication hint, never a fresh observation.
-		// Observer failure with a usable local IPv4 remains unknown. Only a complete
-		// interface scan with no IPv4 listener address establishes local family loss.
-		conclusive := map[string]bool{
-			familyIPv6: !topo.Incomplete,
-			familyIPv4: present[familyIPv4] || !topo.Incomplete && !hasLocalIPv4(topo),
-		}
-		if withdrawErr = m.withdrawLostFamilies(ctx, q, authority, present, conclusive, now); withdrawErr != nil {
-			state.Attempts = min(state.Attempts+1, 6)
-			// NotBefore is the "attempt nothing against Hosted before this" deadline, which
-			// is exactly what a failed withdrawal earns: the same exponential, jittered rule
-			// as every other control call, and a Retry-After is never undercut.
-			state.NotBefore = RetryAt(now, 15*time.Second, state.Attempts, 6, ControlRetryAt(withdrawErr))
-			status.ErrorCode = "route_withdraw_retry"
-		}
-	}
-	// A completed withdrawal removed its durable route-name row and cleared
-	// the certificate hint. Do not recreate it from this pass's old snapshot.
-	reported, err := m.reportedFamilies(ctx, authority)
-	if err != nil {
-		return err
-	}
-	for raw := range addresses {
-		ip, err := netip.ParseAddr(raw)
-		if err == nil && reported[addressFamily(ip)] == "" && observed[raw] == 0 {
-			delete(addresses, raw)
-		}
-	}
-
 	// Naming is fetched only on a changed address/port/namespace. A WAN transition
 	// reuses the existing wildcard and never initiates another certificate order.
 	addressKeys := make([]string, 0, len(addresses))
@@ -553,22 +503,14 @@ func (m *RemoteManager) stepRouteLocked(ctx context.Context) error {
 	}
 	sort.Strings(addressKeys)
 	var nameErr error
-	unnamed, e := m.unnamedAddress(ctx, q.Scope.ID, addresses)
-	if e != nil {
-		return e
-	}
-	allowNaming := !now.Before(state.NotBefore) && (unnamed || !now.Before(state.NextAttempt))
 	for _, raw := range addressKeys {
 		if len(status.Candidates) >= maxPublishedCandidates {
 			break
 		}
-		origin, err := m.routeName(ctx, q, raw, addresses[raw], allowNaming)
+		origin, err := m.routeName(q, raw, addresses[raw])
 		if err != nil {
 			status.ErrorCode = "route_name_retry"
-			if allowNaming {
-				nameErr = err
-				allowNaming = false
-			}
+			nameErr = err
 			continue
 		}
 		duplicate := false
@@ -578,7 +520,7 @@ func (m *RemoteManager) stepRouteLocked(ctx context.Context) error {
 			}
 		}
 		if !duplicate {
-			status.Candidates = append(status.Candidates, RemoteCandidate{BaseURL: origin, Class: "public", State: "probe_required"})
+			status.Candidates = append(status.Candidates, RemoteCandidate{BaseURL: origin, Class: "public", State: "probe_required", Address: raw, Port: addresses[raw]})
 		}
 	}
 	// Manual addresses retain owner order, followed by public and LAN routes.
@@ -586,7 +528,7 @@ func (m *RemoteManager) stepRouteLocked(ctx context.Context) error {
 	status.Candidates = boundedRouteCandidates(append(status.Candidates, lanCandidates...))
 	observation := RouteObservation{RemoteEnabled: c.Enabled, CGNAT: status.ErrorCode == "cgnat_or_double_nat", Candidates: []PublishedCandidate{}}
 	for _, candidate := range status.Candidates {
-		observation.Candidates = append(observation.Candidates, PublishedCandidate{candidate.BaseURL, candidate.Class})
+		observation.Candidates = append(observation.Candidates, PublishedCandidate{BaseURL: candidate.BaseURL, Class: candidate.Class, Insecure: candidate.Insecure, Address: candidate.Address, Port: candidate.Port})
 	}
 	epochs := map[string]uint64{}
 	for _, mapping := range mappings {
@@ -622,13 +564,6 @@ func (m *RemoteManager) stepRouteLocked(ctx context.Context) error {
 			status.ErrorCode = old.ErrorCode
 		}
 		status.NextAttempt = &state.NextAttempt
-		if withdrawErr != nil {
-			status.ErrorCode = "route_withdraw_retry"
-			if saved := m.saveState(ctx, authority, c, state, status); saved != nil {
-				return saved
-			}
-			return withdrawErr
-		}
 		return m.saveState(ctx, authority, c, state, status)
 	}
 	// Persist the exact generation before the remote effect. A lost response is
@@ -666,6 +601,9 @@ func (m *RemoteManager) stepRouteLocked(ctx context.Context) error {
 			if err == nil {
 				status.Candidates[index].State = "reachable"
 				status.Candidates[index].VerifiedAt = &proof.VerifiedAt
+				if strings.Contains(candidate.Address, ":") {
+					status.IPv6 = "verified"
+				}
 				verified = true
 			} else {
 				status.Candidates[index].State = "probe_required"
@@ -931,7 +869,7 @@ func (m *RemoteManager) reconcilePinholes(ctx context.Context, c RemoteConfig, a
 		return nil, e
 	}
 	wanted := map[string]bool{}
-	if enabled && !c.IPv6Open && t.Gateway != "" && t.LocalAddress != "" {
+	if enabled && c.IPv6Open && t.Gateway != "" && t.LocalAddress != "" {
 		for _, raw := range t.Public {
 			if ip, err := netip.ParseAddr(raw); err == nil && ip.Is6() && !ip.Is4In6() && len(wanted) < maxPinholes {
 				wanted[ip.String()] = true

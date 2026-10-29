@@ -7,8 +7,9 @@ import (
 	"database/sql"
 	"errors"
 	"io"
-	"net/url"
+	"net/netip"
 	"os"
+	"portico.local/server/internal/directname"
 	"strconv"
 	"time"
 )
@@ -26,7 +27,16 @@ func NewCertificateManager(ctx context.Context, store *SQLiteStore, runner *Auth
 	if (options.Environment == "staging") != (options.StagingRootsFile != "") {
 		return nil, errCertificateConfiguration
 	}
-	m := &CertificateManager{store: store, runner: runner, transport: transport, environment: options.Environment, wake: make(chan struct{}, 1)}
+	if options.DirectDomain == "" {
+		options.DirectDomain = "portico.direct"
+	}
+	if options.ACMEDomain == "" {
+		options.ACMEDomain = "acme.getportico.tv"
+	}
+	if !directname.ValidZone(options.DirectDomain) || !directname.ValidZone(options.ACMEDomain) {
+		return nil, ErrInvalid
+	}
+	m := &CertificateManager{directDomain: options.DirectDomain, acmeDomain: options.ACMEDomain, store: store, runner: runner, transport: transport, environment: options.Environment, wake: make(chan struct{}, 1)}
 	var e error
 	if options.Environment == "production" {
 		m.roots, e = x509.SystemCertPool()
@@ -184,7 +194,7 @@ func (m *CertificateManager) step(ctx context.Context) error {
 		return m.recordFailure(ctx, q, e)
 	}
 	v := q.Scope.Intent
-	if !validCertificateNamespace(n.Namespace) || n.DNSName != "*."+n.Namespace+".direct.getportico.tv" || n.DNS01Target != n.Namespace+".acme.getportico.tv" || n.OperationID != v.OperationID || n.ClaimGeneration != v.ClaimGeneration || n.CredentialGeneration != v.CredentialGeneration {
+	if !validCertificateNamespace(n.Namespace) || n.DNSName != "*."+n.Namespace+"."+m.directDomain || n.DNS01Target != n.Namespace+"."+m.acmeDomain || n.OperationID != v.OperationID || n.ClaimGeneration != v.ClaimGeneration || n.CredentialGeneration != v.CredentialGeneration {
 		return m.recordFailure(ctx, q, ErrInvalid)
 	}
 	if !n.Configured {
@@ -352,33 +362,19 @@ func (m *CertificateManager) updateRoute(ctx context.Context, q certificateState
 }
 
 func (m *CertificateManager) updateRouteLocked(ctx context.Context, q certificateState, c CertificateConfig) {
-	var route certificateRoute
-	e := m.transport.certificateCall(ctx, q.Scope.Intent, "route", "", struct {
-		Address string `json:"address"`
-		Port    int    `json:"port"`
-	}{c.PublicAddress, c.PublicPort}, &route)
-	if e == nil {
-		u, parse := url.Parse(route.BaseURL)
-		// A4: Hosted names routes with the member label (c-<label>.<ns>); the
-		// older current.<ns> stays accepted while Hosted deployments migrate. Port
-		// 443 is implicit in the URL.
-		port := u.Port()
-		if parse == nil && port == "" && c.PublicPort == 443 {
-			port = "443"
-		}
-		if parse != nil || u.Scheme != "https" || u.Hostname() != route.Hostname || port != strconv.Itoa(c.PublicPort) || u.Path != "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || route.Namespace != q.Namespace || !validHostedRouteName(route.Hostname, q.Namespace) || route.CertificateDNSName != "*."+q.Namespace+".direct.getportico.tv" {
-			e = ErrInvalid
-		}
+	ip, err := netip.ParseAddr(c.PublicAddress)
+	if err != nil {
+		return
 	}
-	if e == nil {
-		e = m.publishRoute(ctx, q, c, route)
+	host := directname.IPHostname(ip, q.Namespace, m.directDomain)
+	if host == "" {
+		return
 	}
-	if e != nil {
-		_ = m.mutate(ctx, q.Scope, false, func(tx *sql.Tx, current certificateState) error {
-			_, e := tx.ExecContext(ctx, `UPDATE networking_certificate_state SET route_error_code='route_name_retry',route_next_attempt=? WHERE scope_id=?`, time.Now().Add(5*time.Minute).UnixMilli(), q.Scope.ID)
-			return e
-		})
+	origin := "https://" + host
+	if c.PublicPort != 443 {
+		origin += ":" + strconv.Itoa(c.PublicPort)
 	}
+	_ = m.publishRoute(ctx, q, c, certificateRoute{Hostname: host, BaseURL: origin, Namespace: q.Namespace, CertificateDNSName: "*." + q.Namespace + "." + m.directDomain, DNS01Target: q.Namespace + "." + m.acmeDomain})
 }
 func (m *CertificateManager) Status(ctx context.Context) (CertificateStatus, error) {
 	c, q, id, e := m.snapshot(ctx)
@@ -387,7 +383,7 @@ func (m *CertificateManager) Status(ctx context.Context) (CertificateStatus, err
 	}
 	out := CertificateStatus{Configured: true, AuthorityID: id, Config: c, State: q.State, ErrorCode: q.ErrorCode, Namespace: q.Namespace, Issuer: q.Issuer, Environment: m.environment, ListenerBound: m.listening.Load(), ListenPort: int(m.listenPort.Load()), Reachability: "probe_required", RouteHostname: q.RouteHostname, RouteURL: q.RouteURL, RouteErrorCode: q.RouteErrorCode}
 	if q.Namespace != "" {
-		out.DNSName = "*." + q.Namespace + ".direct.getportico.tv"
+		out.DNSName = "*." + q.Namespace + "." + m.directDomain
 	}
 	if !q.NextAttempt.IsZero() {
 		out.NextAttemptAt = &q.NextAttempt
