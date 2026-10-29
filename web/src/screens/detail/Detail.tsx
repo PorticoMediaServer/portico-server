@@ -332,7 +332,7 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
         <MenuItem icon="i-info" onSelect={loadFiles}>{t('next.overlays.fileInfo')}</MenuItem>
         <MenuItem icon="i-stack" onSelect={loadTitles}>{t('next.overlays.discTitles')}</MenuItem>
         {/* O-161: the mock-ups have no share slot; the title's ⋯ menu carries its shareable link. */}
-        <MenuItem icon="i-copy" onSelect={() => { void copyLink({to: '/item/$itemId', params: {itemId: data.item.id}}, trigger.current ?? undefined).then(() => setLinkToast({id: crypto.randomUUID(), icon: 'i-check', message: t('next.overlays.linkCopied')}), () => setLinkToast({id: crypto.randomUUID(), icon: 'i-warn', tone: 'warning', message: t('next.overlays.copyLinkFailed')})); }}>{t('next.overlays.copyLink')}</MenuItem>
+        <MenuItem icon="i-copy" onSelect={() => { void copyLink('item', {itemId: data.item.id}, trigger.current ?? undefined).then(() => setLinkToast({id: crypto.randomUUID(), icon: 'i-check', message: t('next.overlays.linkCopied')}), () => setLinkToast({id: crypto.randomUUID(), icon: 'i-warn', tone: 'warning', message: t('next.overlays.copyLinkFailed')})); }}>{t('next.overlays.copyLink')}</MenuItem>
       </MenuGroup>
       {ownerRows && <MenuGroup label={t(sheet ? 'next.overlays.ownerOnly' : 'next.overlays.owner')} ownerOnly>{canEditMetadata && <MenuItem onSelect={() => destination(binding.context.effects.editMetadata)}>{t('entry.editMetadata')}</MenuItem>}{refreshPath && <MenuItem icon="i-refresh" onSelect={refresh}>{t('entry.refreshMetadata')}</MenuItem>}{canDelete && <MenuItem icon="i-trash" destructive onSelect={() => destination(binding.context.effects.deleteTitle)}>{t('entry.delete')}</MenuItem>}</MenuGroup>}
     </Menu>

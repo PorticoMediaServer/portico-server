@@ -72,3 +72,19 @@ test('the real router: a scoped address resolves to the very same route as the p
   assert.equal(router.state.location.pathname, '/item/def');assert.equal(router.state.matches.at(-1)?.routeId, '/item/$itemId');
   assert.equal(router.buildLocation({to: '/settings'}).publicHref, '/settings', 'settings stays unscoped');
 });
+
+test('O-162: every link the shared builder makes is read back by the Hosted router as the same screen and server', async () => {
+  const {SERVER_DESTINATIONS, buildServerLink, destinationLocation, parseServerLinkTarget} = await import('../../packages/client-core/src/server-links.ts');
+  const scope = createServerScope(true);
+  for (const destination of Object.keys(SERVER_DESTINATIONS) as (keyof typeof SERVER_DESTINATIONS)[]) {
+    const spec: {param?: string} = SERVER_DESTINATIONS[destination];
+    const params = spec.param ? {[spec.param]: 'id_1'} : {};
+    const href = buildServerLink({serverId: 'srv-9', destination, params}, 'https://web.test');
+    assert.ok(href, destination);
+    const plain = destinationLocation(destination, params)!;
+    assert.equal(scope.rewrite.input({url: new URL(href)})?.pathname, plain.pathname, destination);
+    assert.equal(scope.requested(), 'srv-9', destination);
+    assert.deepEqual(parseServerLinkTarget(buildServerLink({serverId: 'srv-9', destination, params})!), {serverId: 'srv-9', destination, params}, destination);
+    assert.equal(parseServerLinkTarget(href), undefined, 'only Portico link hosts are canonical links');
+  }
+});

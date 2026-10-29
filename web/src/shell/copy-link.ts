@@ -1,14 +1,19 @@
+import {buildServerLink, destinationLocation, type ServerDestination} from '@core/server-links.ts';
 import {copyText} from '../platform/copy-text';
-import {router} from '../router';
+import {serverScope} from '../router';
 
-/** A registered route and its params/search, as `router.navigate` takes them. */
-type Destination = Readonly<{to: string; params?: Readonly<Record<string, string>>; search?: Readonly<Record<string, unknown>>}>;
-/** O-161: the full shareable address of a place in the app. On Hosted it names this server
- * (`/s/<serverId>/…`); a server's own UI uses its plain path. Never a server address. */
-export function shareableLink(destination: Destination): string {
-  return new URL(router.buildLocation(destination as never).publicHref, location.origin).href;
+/** O-161/O-162: the full shareable address of a place, from the shared link builder. On Hosted it
+ * is the one canonical link to this server (`https://web.getportico.tv/s/<serverId>/…`), which the
+ * apps open too; a server's own UI shares its own plain address. Never a server address, never a
+ * timestamp. */
+export function shareableLink(destination: ServerDestination, params: Readonly<Record<string, string>> = {}): string | undefined {
+  const current = serverScope.current();
+  if (serverScope.hosted) return current ? buildServerLink({serverId: current, destination, params}, location.origin) : undefined;
+  const own = destinationLocation(destination, params);
+  return own && location.origin + own.pathname + own.search;
 }
 /** Call from the menu choice itself: the copy must run inside the person's gesture. */
-export function copyLink(destination: Destination, source?: HTMLElement): Promise<void> {
-  return copyText(shareableLink(destination), source);
+export function copyLink(destination: ServerDestination, params: Readonly<Record<string, string>> = {}, source?: HTMLElement): Promise<void> {
+  const href = shareableLink(destination, params);
+  return href ? copyText(href, source) : Promise.reject(new Error('link_unavailable'));
 }

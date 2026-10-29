@@ -281,7 +281,7 @@ function CommittedLibrary({captured, library, search, readingMarkAll, frame, res
   const state = useSyncExternalStore(resources.controller.subscribe, resources.controller.getSnapshot, resources.controller.getSnapshot);
   // O-161: the library's ⋯ copies its shareable address (this server's, on Hosted).
   const [linkToast, setLinkToast] = useState<ToastData | null>(null);
-  const copyLibraryLink = () => {void copyLink({to: '/library/$libraryId', params: {libraryId: library.id}, search: {}}).then(
+  const copyLibraryLink = () => {void copyLink('library', {libraryId: library.id}).then(
     () => setLinkToast({id: crypto.randomUUID(), icon: 'i-check', message: t('next.overlays.linkCopied')}),
     () => setLinkToast({id: crypto.randomUUID(), icon: 'i-warn', tone: 'warning', message: t('next.overlays.copyLinkFailed')}));};
   const runtime = captured.binding.playback?.runtime;
