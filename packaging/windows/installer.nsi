@@ -9,6 +9,8 @@ SetCompressor /SOLID lzma
 !define SERVICE_NAME "PorticoMediaServer"
 
 Name "${PRODUCT_NAME}"
+Icon "portico.ico"
+UninstallIcon "portico.ico"
 OutFile "${OUTPUT_FILE}"
 InstallDir "$PROGRAMFILES64\Portico Media Server"
 InstallDirRegKey HKLM "Software\Portico Media Server" "InstallDir"
