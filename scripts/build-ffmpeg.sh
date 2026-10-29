@@ -82,7 +82,7 @@ case "$TARGET" in
   done
   # Build tools and downloads are private to this job; never upgrade system Python.
   python3 -m venv "$WORK/python"
-  "$WORK/python/bin/pip" install --disable-pip-version-check 'meson==1.7.0' 'ninja==1.11.1.4' 'setuptools==75.8.0'
+  "$WORK/python/bin/pip" install --disable-pip-version-check 'meson==1.11.0' 'ninja==1.11.1.4' 'setuptools==75.8.0'
   export PATH="$WORK/python/bin:$PATH"
   python3 "$ROOT/scripts/configure-ffmpeg-recipe.py" "$WORK/recipe" "$PREPARED_SOURCE" "$TARGET"
   # Seed the exact verified source consumed by the pinned recipe.
