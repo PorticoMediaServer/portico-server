@@ -21,10 +21,13 @@ type SetupStartAuthority struct {
 	RequestID string
 	Revision  int64
 	CaptureTx func(context.Context, *sql.Tx, string, claimweb.Signed, claimweb.Signed) error
-	BindTx    func(context.Context, *sql.Tx, string, string) error
+	// RenewTx replaces an expired, unconsumed start of this same installed setup.
+	RenewTx func(context.Context, *sql.Tx, string, claimweb.Signed, claimweb.Signed) error
+	BindTx  func(context.Context, *sql.Tx, string, string) error
 }
 type setupStartSigner interface {
 	SignSetupStart(context.Context, Binding, claimweb.Signed, claimweb.SetupStart) (claimweb.Signed, error)
+	SignRenewedSetupStart(context.Context, Binding, claimweb.Signed, claimweb.SetupStart) (claimweb.Signed, error)
 }
 
 // beginSetupWebClaim is the private initiation producer. Its public action
@@ -44,12 +47,22 @@ func (h *ClaimHandler) beginSetupWebClaim(ctx context.Context, v Intent, address
 		return out, err
 	}
 	var claimPayload, claimSignature, startPayload, startSignature []byte
-	var phase string
-	err := h.store.db.QueryRowContext(ctx, `SELECT claim_payload,claim_signature,start_payload,start_signature,phase FROM identity_setup_completions WHERE operation_id=?`, v.OperationID).Scan(&claimPayload, &claimSignature, &startPayload, &startSignature, &phase)
+	var phase, attempt, transaction string
+	var expiresMS int64
+	err := h.store.db.QueryRowContext(ctx, `SELECT claim_payload,claim_signature,start_payload,start_signature,phase,expires_ms,attempt_id,transaction_id FROM identity_setup_completions WHERE operation_id=?`, v.OperationID).Scan(&claimPayload, &claimSignature, &startPayload, &startSignature, &phase, &expiresMS, &attempt, &transaction)
 	var start claimweb.SetupStart
 	var original claimweb.Request
-	if err == nil {
-		if phase != "prepared" {
+	// A slow installation (certificate issuance) can outlive the five-minute start. The same
+	// approved, now installed setup may then renew it: a fresh claim identical but for its time
+	// bounds and a fresh start for this browser. Owner admission is unchanged.
+	renewal := err == nil && v.Stage == Installed && v.Purpose == "setup" && attempt == "" && (phase == "prepared" || phase == "installed") && expiresMS <= time.Now().UnixMilli()
+	if renewal && authority.RenewTx == nil {
+		return out, ErrUnavailable
+	}
+	if err == nil && !renewal {
+		// A renewed start whose Hosted call or bind failed replays its own stored pair, as a
+		// prepared start does, instead of waiting out its five minutes.
+		if phase != "prepared" && !(phase == "installed" && transaction == "" && attempt == "") {
 			return out, ErrStale
 		}
 		out.Signed = claimweb.Signed{Payload: base64.RawURLEncoding.EncodeToString(claimPayload), Signature: base64.RawURLEncoding.EncodeToString(claimSignature)}
@@ -60,8 +73,8 @@ func (h *ClaimHandler) beginSetupWebClaim(ctx context.Context, v Intent, address
 		}
 		out.SetupStart = &proof
 
-	} else if errors.Is(err, sql.ErrNoRows) {
-		if v.Stage != Prepared || v.AccountID != UnboundAccount {
+	} else if renewal || errors.Is(err, sql.ErrNoRows) {
+		if !renewal && (v.Stage != Prepared || v.AccountID != UnboundAccount) {
 			return out, ErrStale
 		}
 		now := time.Now().UTC()
@@ -69,12 +82,26 @@ func (h *ClaimHandler) beginSetupWebClaim(ctx context.Context, v Intent, address
 		if !expires.After(now) {
 			return out, ErrStale
 		}
-		original = claimweb.Request{Kind: "portico.claim.web.v2", Audience: transport.origin, OperationID: v.OperationID, ServerID: v.ServerID, PublicKey: base64.RawURLEncoding.EncodeToString(v.PublicKey), LocalGeneration: v.LocalGeneration, Name: h.name(), Address: address, Purpose: "setup", IssuedAt: now, ExpiresAt: now.Add(webClaimLifetime)}
+		if renewal {
+			// The same claim the account approved, with fresh time bounds only.
+			if err = json.Unmarshal(claimPayload, &original); err != nil || original.OperationID != v.OperationID || original.ServerID != v.ServerID || original.Purpose != "setup" || original.Address != address || original.AccountID != "" {
+				return out, ErrStale
+			}
+			original.IssuedAt, original.ExpiresAt = now, now.Add(webClaimLifetime)
+		} else {
+			original = claimweb.Request{Kind: "portico.claim.web.v2", Audience: transport.origin, OperationID: v.OperationID, ServerID: v.ServerID, PublicKey: base64.RawURLEncoding.EncodeToString(v.PublicKey), LocalGeneration: v.LocalGeneration, Name: h.name(), Address: address, Purpose: "setup", IssuedAt: now, ExpiresAt: now.Add(webClaimLifetime)}
+		}
 		claimPayload, err = json.Marshal(original)
 		if err != nil {
 			return out, ErrInvalid
 		}
-		claimSignature, err = h.signer.Sign(ctx, v.Binding, claimPayload)
+		// The claim and its start are signed with the claim's original, unbound binding; a
+		// renewal's intent is now bound to its approver (the claim itself never names one).
+		signing := v.Binding
+		if renewal {
+			signing.AccountID = UnboundAccount
+		}
+		claimSignature, err = h.signer.Sign(ctx, signing, claimPayload)
 		if err != nil {
 			return out, err
 		}
@@ -85,7 +112,11 @@ func (h *ClaimHandler) beginSetupWebClaim(ctx context.Context, v Intent, address
 		}
 		digest := sha256.Sum256(claimPayload)
 		start = claimweb.SetupStart{SetupRequestID: authority.RequestID, SetupRevision: authority.Revision, Kind: claimweb.SetupStartKind, Audience: transport.origin, ClaimHash: base64.RawURLEncoding.EncodeToString(digest[:]), OperationID: v.OperationID, ServerID: v.ServerID, PublicKey: original.PublicKey, LocalGeneration: v.LocalGeneration, Address: address, Purpose: "setup", State: state, CodeChallenge: codeChallenge, InstallationID: installation, ServerChallenge: base64.RawURLEncoding.EncodeToString(challenge), IssuedAt: now, ExpiresAt: expires}
-		proof, err := signer.SignSetupStart(ctx, v.Binding, out.Signed, start)
+		sign := signer.SignSetupStart
+		if renewal {
+			sign = signer.SignRenewedSetupStart
+		}
+		proof, err := sign(ctx, signing, out.Signed, start)
 		if err != nil {
 			return out, err
 		}
@@ -98,7 +129,11 @@ func (h *ClaimHandler) beginSetupWebClaim(ctx context.Context, v Intent, address
 	if err != nil {
 		return localWebClaim{}, err
 	}
-	err = authority.CaptureTx(ctx, g.Tx(), transport.origin, out.Signed, *out.SetupStart)
+	if renewal {
+		err = authority.RenewTx(ctx, g.Tx(), transport.origin, out.Signed, *out.SetupStart)
+	} else {
+		err = authority.CaptureTx(ctx, g.Tx(), transport.origin, out.Signed, *out.SetupStart)
+	}
 	if err == nil {
 		err = commitClaimDatabaseTx(ctx, g)
 	}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -89,7 +90,8 @@ func (s *Service) BindSetupClaimTransactionTx(ctx context.Context, tx *sql.Tx, p
 	if err := s.CheckSetupContinuationTx(ctx, tx, pending, proof, operation, ""); err != nil {
 		return err
 	}
-	result, err := tx.ExecContext(ctx, `UPDATE identity_setup_completions SET transaction_id=? WHERE operation_id=? AND phase='prepared' AND (transaction_id='' OR transaction_id=?)`, transaction, operation, transaction)
+	// A renewed start of an installed setup is bound again in place (RenewSetupClaimTx).
+	result, err := tx.ExecContext(ctx, `UPDATE identity_setup_completions SET transaction_id=? WHERE operation_id=? AND (phase='prepared' OR phase='installed' AND attempt_id='') AND (transaction_id='' OR transaction_id=?)`, transaction, operation, transaction)
 	if err != nil {
 		return err
 	}
@@ -97,4 +99,75 @@ func (s *Service) BindSetupClaimTransactionTx(ctx context.Context, tx *sql.Tx, p
 		return ErrConflict
 	}
 	return s.CheckSetupContinuationTx(ctx, tx, pending, proof, operation, "")
+}
+
+// RenewSetupClaimTx replaces the expired, unconsumed start of this same pending setup once
+// its claim has INSTALLED (a slow certificate outlived the start). The new claim must equal
+// the captured one except for its time bounds, and the new start carries this browser's
+// fresh bindings. The installed registration, if any, stays. It grants nothing: owner
+// admission remains the setup return and completeAccountSetupTx.
+func (s *Service) RenewSetupClaimTx(ctx context.Context, tx *sql.Tx, pending PendingAccountSetup, proof string, original, signed claimweb.Signed, audience string) error {
+	if tx == nil {
+		return ErrUnauthorized
+	}
+	if err := s.CheckSetupClaimTx(ctx, tx, pending.RequestID, pending.Revision, proof); err != nil {
+		return err
+	}
+	now := time.Now()
+	claim, start, err := claimweb.VerifySetupStart(original, signed, audience, now)
+	if err != nil || claim.AccountID != "" || claim.ServerID != s.ID() || start.IssuedAt.After(now) || start.ExpiresAt.After(now.Add(claimweb.SetupStartLifetime)) || start.SetupRequestID != pending.RequestID || start.SetupRevision != pending.Revision || !ownerReturnSecret32(start.State) || !validInstallationID(start.InstallationID) {
+		return ErrUnauthorized
+	}
+	var oldClaim []byte
+	var phase, attempt, request, oldProof, oldChallenge, oldInstallation string
+	var revision, expires, consumed int64
+	err = tx.QueryRowContext(ctx, `SELECT claim_payload,phase,attempt_id,setup_request_id,setup_revision,setup_proof,expires_ms,consumed_ms,server_challenge_hash,installation_id FROM identity_setup_completions WHERE operation_id=?`, claim.OperationID).Scan(&oldClaim, &phase, &attempt, &request, &revision, &oldProof, &expires, &consumed, &oldChallenge, &oldInstallation)
+	if err != nil {
+		return ErrUnauthorized
+	}
+	if (phase != "prepared" && phase != "installed") || attempt != "" || consumed != 0 || expires > now.UnixMilli() || request != pending.RequestID || revision != pending.Revision || oldProof != proof {
+		return ErrUnauthorized
+	}
+	var before claimweb.Request
+	if json.Unmarshal(oldClaim, &before) != nil || !claim.IssuedAt.After(before.IssuedAt) {
+		return ErrUnauthorized
+	}
+	before.IssuedAt, before.ExpiresAt = claim.IssuedAt, claim.ExpiresAt
+	same, _ := json.Marshal(before)
+	claimRaw, _ := base64.RawURLEncoding.DecodeString(original.Payload)
+	if !bytes.Equal(same, claimRaw) {
+		return ErrUnauthorized
+	}
+	// The claim is installed for this very setup, and nobody owns the server yet.
+	var eligible bool
+	key, _ := base64.RawURLEncoding.DecodeString(claim.PublicKey)
+	err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM networking_claim_intents i JOIN networking_claim_identity k ON k.singleton=1 AND k.active_operation_id=i.operation_id AND k.installed_operation_id=i.operation_id AND k.pending_operation_id IS NULL
+ WHERE i.operation_id=? AND i.server_id=? AND i.public_key=? AND i.local_generation=? AND k.server_id=i.server_id AND k.public_key=i.public_key AND k.reset_generation=i.local_generation
+ AND i.stage='installed' AND i.purpose='setup' AND i.setup_operation_id=? AND i.owner_epoch=? AND i.current_owner_account_id='' AND i.previous_owner_role='')`, claim.OperationID, claim.ServerID, key, claim.LocalGeneration, pending.RequestID, pending.Revision).Scan(&eligible)
+	if err != nil {
+		return err
+	}
+	if !eligible {
+		return ErrUnauthorized
+	}
+	claimSig, _ := base64.RawURLEncoding.DecodeString(original.Signature)
+	startRaw, _ := base64.RawURLEncoding.DecodeString(signed.Payload)
+	startSig, _ := base64.RawURLEncoding.DecodeString(signed.Signature)
+	if _, err = tx.ExecContext(ctx, `DELETE FROM hosted_identity_challenges WHERE challenge_hash=? AND installation_id=?`, oldChallenge, oldInstallation); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO hosted_identity_challenges(challenge_hash,installation_id,expires_ms) VALUES(?,?,?)`, Digest(start.ServerChallenge), start.InstallationID, start.ExpiresAt.UnixMilli()); err != nil {
+		return err
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE identity_setup_completions SET claim_hash=?,claim_payload=?,claim_signature=?,start_payload=?,start_signature=?,state_hash=?,code_challenge=?,installation_id=?,server_challenge_hash=?,created_ms=?,expires_ms=?,transaction_id=''
+ WHERE operation_id=? AND phase=? AND attempt_id='' AND consumed_ms=0 AND expires_ms<=? AND setup_request_id=? AND setup_revision=? AND setup_proof=?`,
+		start.ClaimHash, claimRaw, claimSig, startRaw, startSig, Digest(start.State), start.CodeChallenge, start.InstallationID, Digest(start.ServerChallenge), now.UnixMilli(), start.ExpiresAt.UnixMilli(),
+		claim.OperationID, phase, now.UnixMilli(), pending.RequestID, pending.Revision, proof)
+	if err != nil {
+		return err
+	}
+	if n, e := result.RowsAffected(); e != nil || n != 1 {
+		return ErrConflict
+	}
+	return s.CheckSetupContinuationTx(ctx, tx, pending, proof, claim.OperationID, "")
 }

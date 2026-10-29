@@ -131,3 +131,22 @@ test('caller mutation after capture cannot retarget the original signed request'
   assert.equal(await f.start(), f.approvalUrl);
   assert.equal(f.bound[0].expected.operationId, claim.operationId); assert.equal(f.bound[0].binding.state, start.state);
 });
+
+// A slow certificate outlived the start: the same setup renews it once its claim installed.
+test('a renewal accepts only the installed operation of a bound account', async t => {
+  const installed = async () => {
+    const f = await fixture(t);
+    Object.assign(f.raw, {state: 'installed', installationAcknowledged: true, accountId: 'account-approved', approvalRequired: false, actions: ['cancel']});
+    return f;
+  };
+  const renew = (f: Awaited<ReturnType<typeof installed>>) => prepareSetupClaimHandoff(f.api, f.expected, f.binding, f.ports, {now: () => Date.parse('2030-01-02T03:04:07Z'), renewal: true});
+  const f = await installed();
+  assert.equal(await renew(f), f.approvalUrl); assert.equal(f.bound.length, 1);
+  // The ordinary path never takes an installed answer, and a renewal never takes anything else.
+  const ordinary = await installed();
+  await assert.rejects(ordinary.start()); assert.equal(ordinary.bound.length, 0);
+  for (const change of [{accountId: 'account-unbound'}, {installationAcknowledged: false}, {state: 'prepared'}, {accountId: ''}]) {
+    const g = await installed(); Object.assign(g.raw, change);
+    await assert.rejects(renew(g)); assert.equal(g.bound.length, 0);
+  }
+});

@@ -62,17 +62,20 @@ export class BrowserSetupClaim {
     this.controller?.abort(); const epoch = ++this.epoch, controller = this.controller = new AbortController();
     return {signal: controller.signal, current: () => epoch === this.epoch && !controller.signal.aborted};
   }
-  private async current(record: Pending, operation: ReturnType<BrowserSetupClaim['operation']>, journal = true) {
+  private async current(record: Pending, operation: ReturnType<BrowserSetupClaim['operation']>, journal = true, expired = false) {
     this.ports.journal.assertAvailable();
     if (journal && !same(await this.ports.journal.read(), record)) throw cancelled();
     if (!operation.current()) throw cancelled();
     const draft = await this.ports.draft(record.pin.serverId).read();
     if (!operation.current()) throw cancelled();
     const selection = await this.ports.sessions.read();
+    // `expired` keeps every binding check but reads the window at creation: a record a slow
+    // installation outlived is still this page's own, to be renewed or restarted, never used.
     if (!operation.current() || !draft || !setupAttemptLive(record, {draft, selectionRevision: selection.revision, origin: this.ports.pageOrigin(),
-      installationId: this.ports.installationId(), now: this.now()})) throw cancelled();
+      installationId: this.ports.installationId(), now: expired ? record.createdAt : this.now()})) throw cancelled();
     return draft;
   }
+  private expired(record: Pending) {return Date.parse(record.expiresAt) <= this.now();}
   /** Retire only this browser attempt. It cannot undo an installed claim. */
   async cancel() {
     ++this.epoch; this.controller?.abort();
@@ -94,7 +97,7 @@ export class BrowserSetupClaim {
     const checkOpening = async () => {if (!operation.current()) throw cancelled(); await opening?.assertOriginal(); if (!operation.current()) throw cancelled();};
     try {
       await checkOpening();
-      if (original) await this.assertRecovery(api, original, operation, opening);
+      if (original) await this.assertRecovery(api, original, operation, opening, true);
       const draft = await this.ports.draft(route.pin.serverId).read();
       await checkOpening();
       const selection = await this.ports.sessions.read();
@@ -121,6 +124,48 @@ export class BrowserSetupClaim {
       if (pending && (pending.origin !== origin || pending.hostedOrigin !== hostedOrigin || !sameServerPin(pending.pin, route.pin) ||
         pending.setupRequestId !== resumed.requestId || pending.setupRevision !== resumed.revision)) throw invalid();
       captureRecovery();
+      // A slow installation (a certificate issued after several attempts) can outlive the
+      // five-minute attempt. Its own expired record, or none at all, then meets the claim as
+      // it now is: installed for this setup → renew its start with a fresh attempt (no second
+      // approval; owner admission is unchanged); never approved → cancel this record's own
+      // operation and start cleanly; still installing → say so. Anything else is as before.
+      let renewal = false;
+      if (!pending || this.expired(pending)) {
+        if (pending) await this.current(pending, operation, true, true);
+        await checkOpening();
+        const raw = await captured.request<unknown>(routePath('get_networking_claim'), 'GET', undefined, operation.signal);
+        await checkOpening();
+        const status = parseClaimStatus(raw, route.pin), now = this.now();
+        const continuation = raw && typeof raw === 'object' && 'setupContinuation' in raw ? (raw as {setupContinuation?: {phase?: unknown; expiresAt?: unknown}}).setupContinuation : undefined;
+        const lapsed = !!continuation && (continuation.phase === 'prepared' || continuation.phase === 'installed') && typeof continuation.expiresAt === 'string' && Date.parse(continuation.expiresAt) <= now;
+        const mine = !pending?.expected || !!status.operation && status.operation.operationId === pending.expected.operationId && status.operation.localGeneration === pending.expected.localGeneration;
+        if (status.state === 'installed' && status.installationAcknowledged && status.operation && lapsed && mine) renewal = true;
+        else if (pending?.expected && status.state === 'prepared' && mine && status.actions.includes('cancel')) {
+          // Never approved: retire only the operation this record itself captured.
+          const result = parseClaimStatus(await captured.request(routePath('post_networking_claim_cancel'), 'POST', {expected: status.operation}, operation.signal), route.pin);
+          await checkOpening();
+          if (!absentClaim(result)) throw invalid();
+        } else if (status.operation && mine && (['approved', 'finalizing', 'retrieving'].includes(status.state) || status.state === 'installed' && !status.installationAcknowledged)) {
+          throw new CodedError('setup_installing', 'Portico is still finishing this server\'s secure connection. Try again in a minute.');
+        } else if (pending && !absentClaim(status)) throw invalid();
+        if (pending || renewal) {
+          const old = pending, fresh: Pending = await createSetupAttempt({origin, hostedOrigin, pin: route.pin, selectionRevision: selection.revision, draft, setupRevision: resumed.revision,
+            installationId: this.ports.installationId(), now: this.now(), crypto: webRouteCrypto});
+          const next: Pending = renewal ? {...fresh, expected: {...status.operation!}} : fresh;
+          await checkOpening();
+          await this.ports.journal.change(current => {if (!operation.current() || (old ? !same(current, old) : !!current)) throw cancelled(); return next;});
+          pending = next;
+          await checkOpening(); captureRecovery();
+        }
+      }
+      // A live attempt that already names an installed operation is a renewal being retried
+      // (its Hosted call or bind failed): ask for the same renewal again.
+      if (!renewal && pending?.expected && !this.expired(pending)) {
+        const status = parseClaimStatus(await captured.request(routePath('get_networking_claim'), 'GET', undefined, operation.signal), route.pin);
+        await checkOpening();
+        renewal = status.state === 'installed' && status.installationAcknowledged && status.operation?.operationId === pending.expected.operationId
+          && status.operation.localGeneration === pending.expected.localGeneration && status.operation.revision === pending.expected.revision;
+      }
       if (!pending) {
         pending = await createSetupAttempt({origin, hostedOrigin, pin: route.pin, selectionRevision: selection.revision, draft, setupRevision: resumed.revision,
           installationId: this.ports.installationId(), now: this.now(), crypto: webRouteCrypto});
@@ -162,10 +207,11 @@ export class BrowserSetupClaim {
           pending = updated;
           await checkOpening(); captureRecovery();
         },
-      }, {signal: operation.signal, now: () => this.now()});
+      }, {signal: operation.signal, now: () => this.now(), ...(renewal ? {renewal: true as const} : {})});
     } finally {this.busy = false;}
   }
-  private async assertRecovery(api: HttpLocalApi, receipt: RecoveryReceipt, operation: {signal: AbortSignal; current: () => boolean}, opening?: PrepareOpening) {
+  /** `retrying` alone may meet its own lapsed record (to renew or restart it); Use local never does. */
+  private async assertRecovery(api: HttpLocalApi, receipt: RecoveryReceipt, operation: {signal: AbortSignal; current: () => boolean}, opening?: PrepareOpening, retrying = false) {
     const live = () => {
       const route = api.getRouteConnection();
       if (!operation.current() || receipt.origin !== this.ports.pageOrigin() || api.baseUrl !== receipt.origin ||
@@ -175,7 +221,7 @@ export class BrowserSetupClaim {
     this.ports.journal.assertAvailable();
     const record = await this.ports.journal.read(); live();
     if (!equal(record, receipt.pending)) throw cancelled();
-    if (receipt.pending) {await this.current(receipt.pending, operation); live();}
+    if (receipt.pending) {await this.current(receipt.pending, operation, true, retrying && this.expired(receipt.pending)); live();}
     const draft = await this.ports.draft(receipt.pin.serverId).read(); live();
     if (!equal(draft, receipt.draft)) throw cancelled();
     const selection = await this.ports.sessions.read(); live();

@@ -2216,6 +2216,7 @@ export const webMessages = {
   'web.setup.localBody': 'Works without the internet. You’ll manage every sign-in yourself.',
   'web.setup.servicesUnavailableBody': 'This server can’t be connected right now. Try again in a moment, or use local sign-in and switch to Portico Accounts later.',
   'web.setup.notOnNetwork': 'Setup could not be authorized at this address. Open the server using its IP address, or allow this hostname in the server configuration.',
+  'web.setup.stillInstalling': 'Portico is still finishing this server’s secure connection. Try again in a minute.',
   'web.setup.recoveryTitleLocal': 'Create the owner account',
   'web.setup.recoveryBodyLocal': 'You will use this to sign in and to manage the server.',
   'web.setup.mismatch': 'The passwords don’t match.',

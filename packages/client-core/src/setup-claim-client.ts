@@ -40,7 +40,10 @@ function signed(value: unknown): SetupSignedProof {
  * session. The signed Server producer owns all current authority and expiry.
  * Return an approval URL only after the protected pending record commits. */
 export async function prepareSetupClaimHandoff(api: Api, expected: ClaimExpected, binding: SetupStartExpectation,
-  ports: SetupClaimStartPorts, options: Readonly<{signal?: AbortSignal; now?: () => number; crypto?: RouteCrypto}> = {}): Promise<string> {
+  ports: SetupClaimStartPorts, options: Readonly<{signal?: AbortSignal; now?: () => number; crypto?: RouteCrypto;
+    /** The same setup whose claim already INSTALLED, renewing its expired start (a slow
+     * certificate). The answer is then the installed operation, bound to its account. */
+    renewal?: true}> = {}): Promise<string> {
   expected = Object.freeze({operationId: expected.operationId, localGeneration: expected.localGeneration, revision: expected.revision});
   binding = Object.freeze({pin: Object.freeze({...binding.pin}), origin: binding.origin, hostedOrigin: binding.hostedOrigin,
     operationId: binding.operationId, localGeneration: binding.localGeneration, setupRequestId: binding.setupRequestId, setupRevision: binding.setupRevision, state: binding.state, codeChallenge: binding.codeChallenge, installationId: binding.installationId});
@@ -62,10 +65,13 @@ export async function prepareSetupClaimHandoff(api: Api, expected: ClaimExpected
   const raw: unknown = await api.request(routePath('post_networking_claim_web_approval'), 'POST', {expected,
     setupStart: {state: binding.state, codeChallenge: binding.codeChallenge, installationId: binding.installationId}}, options.signal);
   // Capture the response before any asynchronous current-setup check.
-  if (!object(raw) || raw.state !== 'prepared' || !object(raw.identity) || raw.identity.serverId !== binding.pin.serverId || raw.identity.localGeneration !== binding.localGeneration ||
+  const shape = options.renewal
+    ? object(raw) && raw.state === 'installed' && raw.installationAcknowledged === true && typeof raw.accountId === 'string' && identifier(raw.accountId) && raw.accountId !== 'account-unbound'
+    : object(raw) && raw.state === 'prepared' && raw.accountId === 'account-unbound' && raw.installationAcknowledged === false && raw.approvalRequired === true
+      && Array.isArray(raw.actions) && raw.actions.every(action => action === 'cancel' || action === 'approve');
+  if (!shape || !object(raw) || !object(raw.identity) || raw.identity.serverId !== binding.pin.serverId || raw.identity.localGeneration !== binding.localGeneration ||
       !object(raw.operation) || !exactKeys(raw.operation, ['operationId', 'localGeneration', 'revision']) || raw.operation.operationId !== expected.operationId ||
-      raw.operation.localGeneration !== expected.localGeneration || raw.operation.revision !== expected.revision || raw.accountId !== 'account-unbound' ||
-      raw.installationAcknowledged !== false || raw.approvalRequired !== true || !Array.isArray(raw.actions) || raw.actions.some(action => action !== 'cancel' && action !== 'approve') ||
+      raw.operation.localGeneration !== expected.localGeneration || raw.operation.revision !== expected.revision ||
       typeof raw.approvalUrl !== 'string' || typeof raw.claimCode !== 'string' || !identifier(raw.claimCode) || !object(raw.setupContinuation)) throw invalid();
   const continuation = raw.setupContinuation;
   if (!exactKeys(continuation, ['transactionId', 'phase', 'expiresAt', 'claim', 'start']) || continuation.phase !== 'prepared' || !identifier(continuation.transactionId) || typeof continuation.expiresAt !== 'string') throw invalid();

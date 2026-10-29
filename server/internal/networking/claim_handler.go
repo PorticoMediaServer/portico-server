@@ -174,7 +174,8 @@ func (h *ClaimHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	// The server itself waits for the Portico Account's decision from here on, so
 	// the claim installs even when the page that asked is closed.
-	if r.URL.Path == "/v1/networking/claim/web-approval" && result.Operation != nil {
+	// A renewed start of an already installed setup has no decision left to wait for.
+	if r.URL.Path == "/v1/networking/claim/web-approval" && result.Operation != nil && result.State != string(Installed) {
 		if _, e = h.watchWebClaim(r.Context(), *result.Operation, actor.Guard, actor.Resume); e != nil {
 			log.Printf("Waiting for the Portico Account approval could not start: %v", e)
 		}
@@ -289,6 +290,13 @@ func (h *ClaimHandler) handle(ctx context.Context, w http.ResponseWriter, r *htt
 				return ClaimStatus{}, ErrInvalid
 			}
 			pending, e = h.beginSetupWebClaim(ctx, expected, actor.WebOrigin, body.SetupStart.State, body.SetupStart.CodeChallenge, body.SetupStart.InstallationID, actor.SetupStart)
+			// A renewed start of an installed setup binds its HTTPS return now, as the
+			// continue step would have if the original start were still live.
+			if e == nil && expected.Stage == Installed && expected.InstallationAcknowledged && actor.ResolveSetupReturn != nil {
+				if err := actor.ResolveSetupReturn(ctx); err != nil && !errors.Is(err, ErrUnavailable) {
+					e = err
+				}
+			}
 		} else if expected.Purpose == "switch" && expected.CurrentOwnerAccountID == "" {
 			if body.OwnerStart == nil || actor.OwnerStart == nil || actor.WebOrigin == "" || body.ApprovalEnvelope != "" || len(r.Header.Values("X-Portico-Installation-Id")) != 1 || body.OwnerStart.InstallationID != r.Header.Get("X-Portico-Installation-Id") {
 				return ClaimStatus{}, ErrInvalid
