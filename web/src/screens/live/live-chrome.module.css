@@ -83,6 +83,12 @@
   .control[data-main] { width: 54px; height: 54px; }
   .bottom { padding: 0 14px 14px; }
   .miniGuide { right: 14px; top: 74px; width: calc(100vw - 28px); }
+  /* A phone-width window can't hold Guide, five transport controls and the right-hand group on one
+     line: the transport takes its own centred row and Guide and the rest share the row under it. */
+  .controls { grid-template-columns: 1fr auto; grid-template-areas: 'center center' 'left right'; row-gap: 10px; }
+  .center { grid-area: center; justify-content: center; }
+  .left { grid-area: left; }
+  .right { grid-area: right; }
 }
 
 /* motion.html 3.7-3.9: the panel arrives with a fade and a 8px rise over standard 180 (out);
