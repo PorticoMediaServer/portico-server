@@ -164,7 +164,7 @@ function BoundReadItem({captured, handoff, eligibility}: {captured: Captured; ha
     {versionChooser}
   </>;
   const manifest = current(attempt) && detail.attempt === attempt ? detail.manifest : undefined;
-  if (!manifest || !version || manifest.sourceId !== sourceId) return <>{phoneBack}<Skeleton height={480}/>
+  if (!manifest || !version || manifest.sourceId !== sourceId) return <>{phoneBack}<Skeleton quiet height={480}/>
     {versionChooser && <div className={styles.versionRow}>
       <Button ref={chooserAnchor} size="small" variant="glass" icon="i-more" iconOnly aria-label={t('next.controls.more')} onClick={() => setChooserMenu(value => !value)}/>
       <Menu open={chooserMenu} onOpenChange={setChooserMenu} title={t('next.reader.version')} anchorRef={chooserAnchor}>{versionItems}</Menu>

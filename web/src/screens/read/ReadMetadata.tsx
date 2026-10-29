@@ -39,6 +39,6 @@ export function ReadMetadata({context, itemId, libraryId: expectedLibraryId, onC
   return <Dialog open placement="right" width={520} title={defaultI18n.t('entry.editMetadata')} onOpenChange={open => {if (!open) onClose();}} returnFocusRef={anchor}>
     {ready ? <MetadataEditor localArtworkOnly renderCoverPages={reading && sourceId && format === 'cbz' ? (upload, busy) => <ReadCoverPages reading={reading} context={context} itemId={itemId} sourceId={sourceId} upload={upload} busy={busy}/> : undefined} api={ready.api} scope={context.scope} target={ready.target} onClose={onClose}/>
       : failed ? <StateView title={defaultI18n.t('next.states.pageFailed')} body={defaultI18n.t('next.states.pageFailedBody')}
-        primary={{id: 'retry', label: defaultI18n.t('next.states.tryAgain'), onPress: () => setRetry(value => value + 1)}}/> : <Skeleton height={480}/>}
+        primary={{id: 'retry', label: defaultI18n.t('next.states.tryAgain'), onPress: () => setRetry(value => value + 1)}}/> : <Skeleton quiet height={480}/>}
   </Dialog>;
 }

@@ -55,7 +55,7 @@ function BoundPeriodicals({captured, libraryId, kind, seriesId}: {captured: Capt
   }, [captured.context, libraryId, kind, seriesId, retry, issueDate, year, month]);
   const onRetry = () => setRetry(value => value + 1);
   const content = retired ? <Failure retry={onRetry}/>
-    : !resources || resources.context !== captured.context || resources.issueDate !== (issueDate || undefined) || resources.year !== (year || undefined) || resources.month !== (month || undefined) ? <Skeleton height={320}/>
+    : !resources || resources.context !== captured.context || resources.issueDate !== (issueDate || undefined) || resources.year !== (year || undefined) || resources.month !== (month || undefined) ? <Skeleton quiet height={320}/>
     : resources.mode === 'groups' ? <GroupRows resources={resources} retry={onRetry}/> : <IssueRows resources={resources} retry={onRetry}/>;
   const yearChoices = yearFact?.context === captured.context ? yearFact.choices : [];
   const days = dayFact?.context === captured.context && dayFact.month === month ? dayFact.choices : undefined;

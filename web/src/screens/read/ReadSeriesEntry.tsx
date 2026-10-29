@@ -57,13 +57,13 @@ function BoundSeries({captured, libraryId, seriesId}: {captured: Captured; libra
     return () => {off(); rows.dispose(); void bindings.dispose().catch(() => {});};
   }, [captured.context, libraryId, seriesId, kind, retry]);
   if (retired) return <StateView variant="page" title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => setRetry(value => value + 1)}}/>;
-  return resources && resources.context === captured.context ? <SeriesRows resources={resources} captured={captured} retry={() => setRetry(value => value + 1)}/> : <Skeleton height={320}/>;
+  return resources && resources.context === captured.context ? <SeriesRows resources={resources} captured={captured} retry={() => setRetry(value => value + 1)}/> : <Skeleton quiet height={320}/>;
 }
 /** The holder acquires the committed context; the live body below always receives one. */
 function SeriesRows({resources, captured, retry}: {resources: Resources; captured: Captured; retry: () => void}) {
   const href = useLocation({select: location => location.href});
   const context = useCommittedLibraryScreenContext(captured, href, () => router.state.location.href === href);
-  return context ? <LiveSeriesRows key={resources.id} resources={resources} context={context} retry={retry}/> : <Skeleton height={320}/>;
+  return context ? <LiveSeriesRows key={resources.id} resources={resources} context={context} retry={retry}/> : <Skeleton quiet height={320}/>;
 }
 /** A fresh resource id keys this body, so a new cursor or a strict replay never inherits the
  *  previous selection or bulk draft. */

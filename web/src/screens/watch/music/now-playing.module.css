@@ -5,21 +5,21 @@
 .from { min-width: 0; max-width: 46vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--type-fixed-size-14px); color: var(--color-text-secondary); }
 .spacer { flex: 1; }
 .glass { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border: 0; border-radius: 10px; background: color-mix(in srgb, var(--color-text) 12%, transparent); color: var(--color-text); font: inherit; font-size: var(--type-fixed-size-14px); font-weight: var(--type-fixed-weight-600); cursor: pointer; }
-.main { position: absolute; z-index: var(--layer-art-label); left: 0; top: 84px; bottom: 28px; width: 940px; max-width: calc(100% - 484px); display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.cover { flex: none; width: 480px; max-width: 100%; aspect-ratio: 1; border-radius: 14px; overflow: hidden; --music-cover-shadow: 0 50px 90px -30px color-mix(in srgb, var(--color-shadow) 95%, transparent), 0 0 0 1px color-mix(in srgb, var(--color-text) 8%, transparent); box-shadow: var(--music-cover-shadow); }
-.info { width: 480px; max-width: 100%; margin-top: 30px; min-width: 0; display: block; }
+.main { position: absolute; z-index: var(--layer-art-label); left: 0; top: 84px; bottom: 28px; width: 940px; max-width: calc(100% - 484px); display: flex; flex-direction: column; align-items: center; justify-content: safe center; }
+.cover { flex: none; width: var(--np-column, 480px); max-width: 100%; aspect-ratio: 1; border-radius: 14px; overflow: hidden; --music-cover-shadow: 0 50px 90px -30px color-mix(in srgb, var(--color-shadow) 95%, transparent), 0 0 0 1px color-mix(in srgb, var(--color-text) 8%, transparent); box-shadow: var(--music-cover-shadow); }
+.info { width: var(--np-column, 480px); max-width: 100%; margin-top: 30px; min-width: 0; display: block; }
 .identity { display: flex; align-items: flex-end; gap: 12px; }
 .identity > div { flex: 1; min-width: 0; }
 .info h1 { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--type-fixed-size-36px); line-height: var(--type-fixed-line-1point-05); font-weight: var(--type-fixed-weight-800); letter-spacing: var(--type-fixed-tracking-minus-point-03em); }
 .info p { display: flex; flex-wrap: wrap; gap: 8px 14px; margin: 8px 0 0; font-size: var(--type-fixed-size-17px); color: var(--color-text-secondary); }
 .signal { position: relative; display: flex; margin-top: 10px; }
-.scrub { width: 480px; max-width: 100%; margin-top: 16px; }
+.scrub { width: var(--np-column, 480px); max-width: 100%; margin-top: 16px; }
 .controls { display: flex; align-items: center; justify-content: center; gap: 24px; margin-top: 18px; }
 .ctl { position: relative; flex: none; width: 50px; height: 50px; display: grid; place-items: center; border: 0; border-radius: 50%; background: none; color: var(--color-text); cursor: pointer; }
 .ctl:disabled { opacity: .4; cursor: default; }
 .big { width: 74px; height: 74px; display: grid; place-items: center; border: 0; border-radius: 50%; background: var(--color-text); color: var(--color-ink); cursor: pointer; }
 .big:disabled { opacity: .5; cursor: default; }
-.volume { width: 480px; max-width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 12px; }
+.volume { width: var(--np-column, 480px); max-width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 12px; }
 .volume > :last-child { width: 160px; flex: none; }
 .side { position: absolute; z-index: var(--layer-row-arrow); right: 32px; top: 92px; bottom: 32px; width: 452px; min-height: 0; overflow: auto; border-radius: 20px; padding: 14px 16px; background: color-mix(in srgb, var(--color-ink) 44%, transparent); -webkit-backdrop-filter: blur(30px); backdrop-filter: blur(30px); border: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent); }
 .side h2 { margin: 0 0 12px; font-size: var(--type-fixed-size-15px); font-weight: var(--type-fixed-weight-800); letter-spacing: var(--type-fixed-tracking-minus-point-01em); }
@@ -83,3 +83,8 @@
 @media (min-width: 600px) and (max-width: 1023px) { .main { bottom: 80px; } }
 @media (prefers-reduced-transparency: reduce) { .side { background: var(--color-ink); -webkit-backdrop-filter: none; backdrop-filter: none; } }
 [data-reduce-transparency="true"] .side { background: var(--color-ink); -webkit-backdrop-filter: none; backdrop-filter: none; }
+
+/* desktop-listen.html draws a 900 px window. Shorter windows shrink the column (cover, words, bar,
+   volume) so the whole stack stays between the header and the foot: about 330 px of words and
+   controls sit under the cover, and the header and foot take 112 px. */
+@media (min-width: 600px) { .frame { --np-column: clamp(240px, calc(100dvh - 442px), 480px); } }

@@ -31,6 +31,8 @@ export type LiveChromeProps = Readonly<{
   /** The unchanged generic right cluster: volume, subtitles/audio, quality, PiP and full screen. */
   right: ReactNode;
   onMiniGuideOpenChange?: (open: boolean) => void;
+  /** A held seek drag keeps the controls up (motion.html 2.6). */
+  onDragChange?: (dragging: boolean) => void;
   initialMiniGuideOpen?: boolean;
   reportError: (error: unknown) => void;
 }>;
@@ -39,7 +41,7 @@ export type LiveChromeProps = Readonly<{
  * programme-span seek rail, live edge and Go to live, channel surf, Guide mini guide and Record.
  * Presentation only: every fact is a genuine channel/guide/session fact supplied by the port,
  * and every action rechecks that port's exact channel fence before it runs. */
-export function LiveChrome({port, playing, onCollapse, onStop, onPlayPause, onSkip, onSeek, onMore, right, onMiniGuideOpenChange, initialMiniGuideOpen = false, canPlayPause = true, canSeek = true, reportError}: LiveChromeProps) {
+export function LiveChrome({port, playing, onCollapse, onStop, onPlayPause, onSkip, onSeek, onMore, right, onMiniGuideOpenChange, onDragChange, initialMiniGuideOpen = false, canPlayPause = true, canSeek = true, reportError}: LiveChromeProps) {
   const [miniGuide, setMiniGuide] = useState(initialMiniGuideOpen), [recordingBusy, setRecordingBusy] = useState(false), [scrub, setScrub] = useState<number>();
   const guide = useRef<HTMLElement>(null), guideTrigger = useRef<HTMLButtonElement>(null), rail = useRef<HTMLDivElement>(null), drag = useRef<LiveChromeDrag | undefined>(undefined), scrubRef = useRef<number | undefined>(undefined);
   const window = port.window, channel = port.channel, programme = port.programme;
@@ -72,7 +74,7 @@ export function LiveChrome({port, playing, onCollapse, onStop, onPlayPause, onSk
     const value = Math.min(window.liveEdgeMs, Math.max(window.seekStartMs, at));
     scrubRef.current = value;setScrub(value);
   };
-  const endDrag = () => {drag.current = undefined;scrubRef.current = undefined;setScrub(undefined);};
+  const endDrag = () => {const held = !!drag.current;drag.current = undefined;scrubRef.current = undefined;setScrub(undefined);if (held) onDragChange?.(false);};
   const railKeys = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!port.isCurrent()) return;
     const bounds = [window.seekStartMs, window.liveEdgeMs];
@@ -132,7 +134,7 @@ export function LiveChrome({port, playing, onCollapse, onStop, onPlayPause, onSk
         <div ref={rail} className={styles.rail} role="slider" aria-label={t('player.position')}
           aria-valuemin={Math.round(liveSeekSeconds(window, window.seekStartMs))} aria-valuemax={Math.round(liveSeekSeconds(window, window.liveEdgeMs))} aria-valuenow={Math.round(liveSeekSeconds(window, displayWindow.positionMs))}
           aria-disabled={!canSeek || undefined} tabIndex={canSeek ? 0 : -1} aria-valuetext={liveRailValueText(displayWindow, programme, time)} onKeyDown={railKeys}
-          onPointerDown={event => {if (!canSeek || !port.isCurrent()) return;drag.current = {fence: port.fence, window};event.currentTarget.setPointerCapture(event.pointerId);seekAt(event.clientX);}}
+          onPointerDown={event => {if (!canSeek || !port.isCurrent()) return;drag.current = {fence: port.fence, window};onDragChange?.(true);event.currentTarget.setPointerCapture(event.pointerId);seekAt(event.clientX);}}
           onPointerMove={event => {if (!drag.current) return;if (!liveRailDragHeld(drag.current, port.fence)) {endDrag();return;}seekAt(event.clientX);}}
           onPointerUp={event => {const captured = drag.current;const value = scrubRef.current;endDrag();if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);const seconds = liveRailDragSeek(captured, port.fence, value);if (seconds !== undefined && port.isCurrent()) onSeek(seconds);}}
           onPointerCancel={endDrag}>

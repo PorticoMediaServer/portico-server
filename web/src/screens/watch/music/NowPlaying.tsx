@@ -48,6 +48,17 @@ export function WatchMusicNowPlaying({binding, snapshot, expanded, onCollapse, p
   const open = expanded && presentation?.kind === 'music' && !!identity && (!isCurrent || isCurrent()) && (!motion || !!motion.scope);
   const favorite = useMusicFavorite(context, binding.runtime, snapshot, open, binding.reportError, isCurrent);
   useLayoutEffect(() => {if (!open) {setSignalOpen(false); setEqOpen(false); setMoreOpen(false);}}, [open]);
+  // Esc minimises, as it does for video and audiobooks (shortcuts list); open panels and fields keep their own Esc.
+  const collapse = useRef(onCollapse); collapse.current = onCollapse;
+  useEffect(() => {
+    if (!open || signalOpen || eqOpen || moreOpen || typeof document === 'undefined') return;
+    const key = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || (event.target as Element | null)?.closest?.('[role="dialog"],[role="menu"],input,textarea,select,[contenteditable="true"]')) return;
+      event.preventDefault(); collapse.current?.();
+    };
+    document.addEventListener('keydown', key);
+    return () => document.removeEventListener('keydown', key);
+  }, [open, signalOpen, eqOpen, moreOpen]);
   // Immutable rendered facts. A receipt is minted fresh for each layout setup/replay.
   const [hostReceipt, setHostReceipt] = useState<WatchReceipt | null>(null);
   const publishedHost = useRef<WatchReceipt | null>(null);

@@ -134,3 +134,21 @@ test('a full-fence replacement during a drag cancels the scrub before pointer-up
   assert.deepEqual(seeks, []);
   frame.unmount();
 });
+
+test('a held rail drag tells the player it is dragging until release or cancel, once each way', () => {
+  const frame = new HookFrame(), seeks: number[] = [], drags: boolean[] = [], events = pointer();
+  const withDrag = (live: LiveChromePort) => ({...props(live, seconds => seeks.push(seconds)), onDragChange: (dragging: boolean) => drags.push(dragging)});
+  let tree = frame.render(() => LiveChrome(withDrag(port('a', 1_000_000))));
+  byRole(tree, 'slider').props.ref.current = railElement;
+  byRole(tree, 'slider').props.onPointerDown({pointerId: 1, clientX: 100, currentTarget: events.target});
+  assert.deepEqual(drags, [true], 'the idle timer is told as the drag starts');
+  tree = frame.render(() => LiveChrome(withDrag(port('a', 1_000_000))));
+  byRole(tree, 'slider').props.onPointerUp({pointerId: 1, currentTarget: events.target});
+  assert.deepEqual(drags, [true, false], 'release ends it');
+  byRole(tree, 'slider').props.onPointerDown({pointerId: 2, clientX: 200, currentTarget: events.target});
+  tree = frame.render(() => LiveChrome(withDrag(port('a', 1_000_000))));
+  byRole(tree, 'slider').props.onPointerCancel();
+  byRole(tree, 'slider').props.onPointerCancel();
+  assert.deepEqual(drags, [true, false, true, false], 'a cancel ends it once; a second cancel reports nothing');
+  frame.unmount();
+});

@@ -18,7 +18,7 @@ export function ScrubPreview({frame, source, seconds, percent, phone}: {
     const actual = value.scheduler.peek(value.key);
     setLoaded(actual ? {key: value.key, scheduler: value.scheduler, width: actual.width, height: actual.height} : null);
   };
-  return <span className={styles.scrubPreview} style={{left: `${percent}%`}} data-phone={phone} data-ready={ready} aria-hidden="true">
+  return <span className={styles.scrubPreview} style={{left: `clamp(var(--scrub-half), ${percent}%, calc(100% - var(--scrub-half)))`}} data-phone={phone} data-ready={ready} aria-hidden="true">
     <span className={styles.scrubFrame}>
       <Artwork source={source} alt="" className={styles.scrubSheet} style={crop ?? undefined} fit="contain" arrivalDurationMs={0}
         onReady={arrived} onError={() => setLoaded(null)} onStatusChange={status => { if (status !== 'ready') setLoaded(null); }} />

@@ -73,7 +73,7 @@ export function MetadataSettingsPage({api, isCurrent, onLibraries}: {api: Librar
   const current = () => !denied && !!owned?.current();
   if (!isCurrent() || denied) return <p role="alert">{t('next.remoteSources.error.forbidden')}</p>;
   const problem = error && <p role="alert">{error}</p>;
-  if (!document || !draft || !owned || !owned.current()) return busy ? <div aria-busy="true"><Skeleton height={72}/><Skeleton height={96}/><Skeleton height={96}/></div>
+  if (!document || !draft || !owned || !owned.current()) return busy ? <div aria-busy="true"><Skeleton quiet height={72}/><Skeleton quiet height={96}/><Skeleton quiet height={96}/></div>
     : <>{problem}<Button size="small" onClick={() => setReload(value => value + 1)}>{t('action.tryAgain')}</Button></>;
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => {if (!flight.current && current()) {setDraft({...draft, [key]: value}); setError(undefined);}};
   const setLibrary = (row: MetadataLibrarySettings, patch: Partial<Omit<MetadataLibraryChange, 'id' | 'expectedRevision'>>) => {
