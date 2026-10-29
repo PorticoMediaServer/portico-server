@@ -9,7 +9,7 @@ export type SetupApprovalDisplay = Readonly<{
 }>;
 export type SetupApprovalSnapshot = Readonly<{
   phase: 'loading' | 'review' | 'approved' | 'finishing' | 'denied' | 'returning' | 'error' | 'expired';
-  busy: boolean; approved?: true; display?: SetupApprovalDisplay; error?: unknown;
+  busy: boolean; approved?: true; /** Hosted reports the claim installed: only then is Return offered. */ installed?: true; display?: SetupApprovalDisplay; error?: unknown;
 }>;
 const changed = () => new ApiError(409, 'claim_stale', 'claim_stale', false);
 
@@ -62,7 +62,7 @@ export class SetupApprovalFlow {
       const display = Object.freeze({name: review.name, address: review.address,
         accountName: session.account.displayName || session.account.username,
         requestedAt: review.requestedAt, expiresAt: review.expiresAt});
-      this.publish({phase: review.status === 'approved' ? 'approved' : 'review', busy: false, ...(review.status === 'approved' ? {approved: true as const} : {}), display});
+      this.publish({phase: review.status === 'approved' ? 'approved' : 'review', busy: false, ...(review.status === 'approved' ? {approved: true as const} : {}), ...(review.status === 'approved' && review.installed ? {installed: true as const} : {}), display});
     });
   }
   async decide(decision: 'approve' | 'deny') {
@@ -101,9 +101,16 @@ export class SetupApprovalFlow {
     return this.run(async (generation, identity) => {
       const location = await this.controller.complete();
       this.current(generation, identity);
-      // Approved, but the server's secure return isn't ready yet. Say so, and let the same
-      // Return try again: never a silent no-op.
-      if (!location) {this.publish({phase: 'finishing', busy: false, approved: true, display: this.state.display}); return;}
+      // Not finished yet: never a silent no-op. One lookup refreshes the Return offer, and the
+      // page says the server is finishing, with the same Return to try again.
+      if (!location) {
+        const review = await this.controller.review();
+        this.current(generation, identity);
+        this.review = review;
+        const installed = review.status === 'approved' && review.installed;
+        this.publish({...this.state, phase: 'finishing', busy: false, ...(installed ? {installed: true as const} : {})});
+        return;
+      }
       // The protected controller already performs the final authenticated check
       // before spending this attempt. Do not add fallible I/O after that spend.
       this.publish({phase: 'returning', busy: false, approved: true, display: this.state.display});

@@ -15,14 +15,13 @@ type SetupExchange struct {
 	TransactionID   string `json:"transactionId"`
 	State           string `json:"state"`
 	Verifier        string `json:"verifier"`
-	RegistrationID  string `json:"registrationId"`
 	InstallationID  string `json:"installationId"`
 	ServerChallenge string `json:"serverChallenge"`
 	Purpose         string `json:"purpose"`
 }
 
 func (q SetupExchange) Valid() bool {
-	return identifier.MatchString(q.TransactionID) && secret.MatchString(q.State) && secret.MatchString(q.Verifier) && identifier.MatchString(q.RegistrationID) && secret.MatchString(q.InstallationID) && secret.MatchString(q.ServerChallenge) && q.Purpose == "setup"
+	return identifier.MatchString(q.TransactionID) && secret.MatchString(q.State) && secret.MatchString(q.Verifier) && secret.MatchString(q.InstallationID) && secret.MatchString(q.ServerChallenge) && q.Purpose == "setup"
 }
 func (SetupExchange) String() string   { return "[setup exchange redacted]" }
 func (SetupExchange) GoString() string { return "[setup exchange redacted]" }
@@ -31,9 +30,9 @@ type setupExchangeShape SetupExchange
 
 func (q *SetupExchange) UnmarshalJSON(raw []byte) error {
 	*q = SetupExchange{}
-	fields, e := wirejson.Object(raw, "transactionId", "state", "verifier", "registrationId", "installationId", "serverChallenge", "purpose")
+	fields, e := wirejson.Object(raw, "transactionId", "state", "verifier", "installationId", "serverChallenge", "purpose")
 	var next setupExchangeShape
-	if e != nil || len(fields) != 7 || json.Unmarshal(raw, &next) != nil || !SetupExchange(next).Valid() {
+	if e != nil || len(fields) != 6 || json.Unmarshal(raw, &next) != nil || !SetupExchange(next).Valid() {
 		return ErrInvalid
 	}
 	*q = SetupExchange(next)
@@ -51,7 +50,7 @@ func (SetupExchange) JSONSchema() map[string]any {
 	for _, field := range []string{"state", "verifier", "installationId", "serverChallenge"} {
 		props[field] = map[string]any{"type": "string", "minLength": 32, "maxLength": 128, "pattern": "^[A-Za-z0-9_-]+$"}
 	}
-	for _, field := range []string{"transactionId", "registrationId"} {
+	for _, field := range []string{"transactionId"} {
 		props[field] = map[string]any{"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_-]+$"}
 	}
 	return shape

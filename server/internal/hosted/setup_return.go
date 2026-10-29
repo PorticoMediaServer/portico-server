@@ -35,47 +35,46 @@ func (s *Service) setupCompletionCaller(ctx context.Context, bearer, origin stri
 	return pending, proof, operation, nil
 }
 
-// PrepareSetupCompletion is an existing operation's post-install step. Its
-// registration is resolved using the actual installed credential and serving
-// HTTPS route. It never prepares an ordinary sign-in or invents an origin/ID.
-func (s *Service) PrepareSetupCompletion(ctx context.Context, h *networking.ClaimHandler, bearer, sourceOrigin string) (serverreturn.Registration, error) {
+// PrepareSetupCompletion is an existing operation's post-install step: once the claim has
+// installed, the setup can finish over its signed original address (O-163). No HTTPS
+// return registration is resolved or required; that attaches later for ordinary sign-ins.
+func (s *Service) PrepareSetupCompletion(ctx context.Context, h *networking.ClaimHandler, bearer, sourceOrigin string) error {
 	pending, proof, operation, err := s.setupCompletionCaller(ctx, bearer, sourceOrigin)
 	if err != nil {
-		return serverreturn.Registration{}, err
+		return err
 	}
 	return s.prepareSetupCompletion(ctx, h, pending, proof, operation, sourceOrigin)
 }
 
 // PrepareCapturedSetupCompletion resumes the exact server-private capture after
-// installation, including across restart. It binds a return registration only;
-// no browser verifier, setup token or owner credential is recovered or issued.
-func (s *Service) PrepareCapturedSetupCompletion(ctx context.Context, h *networking.ClaimHandler, pending identity.PendingAccountSetup, proof, operation string) (serverreturn.Registration, error) {
+// installation, including across restart. It marks the setup installed only; no browser
+// verifier, setup token or owner credential is recovered or issued.
+func (s *Service) PrepareCapturedSetupCompletion(ctx context.Context, h *networking.ClaimHandler, pending identity.PendingAccountSetup, proof, operation string) error {
 	if s == nil || s.identity == nil || s.current == nil || !s.Configured() {
-		return serverreturn.Registration{}, networking.ErrUnavailable
+		return networking.ErrUnavailable
 	}
 	g, err := dbwork.BeginSnapshot(ctx, s.db)
 	if err != nil {
-		return serverreturn.Registration{}, err
+		return err
 	}
 	sourceOrigin, err := s.identity.CapturedSetupReturnOriginTx(ctx, g.Tx(), pending, proof, operation, s.origin)
 	g.Rollback()
 	if err != nil {
-		return serverreturn.Registration{}, err
+		return err
 	}
 	return s.prepareSetupCompletion(ctx, h, pending, proof, operation, sourceOrigin)
 }
 
-func (s *Service) prepareSetupCompletion(ctx context.Context, h *networking.ClaimHandler, pending identity.PendingAccountSetup, proof, operation, sourceOrigin string) (serverreturn.Registration, error) {
+func (s *Service) prepareSetupCompletion(ctx context.Context, h *networking.ClaimHandler, pending identity.PendingAccountSetup, proof, operation, sourceOrigin string) error {
 	guard := func(ctx context.Context, tx *sql.Tx) error {
 		if err := s.identity.CheckSetupContinuationTx(ctx, tx, pending, proof, operation, ""); err != nil {
 			return err
 		}
 		return identity.CheckSetupReturnOriginTx(ctx, tx, operation, sourceOrigin, s.origin)
 	}
-	registration, _, err := h.BindSetupReturn(ctx, guard, func(ctx context.Context, tx *sql.Tx, r serverreturn.Registration, generation int64) (bool, error) {
-		return s.identity.BindSetupReturnRegistrationTx(ctx, tx, pending, proof, operation, identity.SetupReturnRoute{Registration: r, Generation: generation})
+	return h.InstallSetupReturn(ctx, guard, func(ctx context.Context, tx *sql.Tx) error {
+		return s.identity.MarkSetupInstalledTx(ctx, tx, pending, proof, operation)
 	})
-	return registration, err
 }
 
 // ExchangeSetupCompletion consumes exactly one captured operation attempt.
@@ -88,7 +87,6 @@ func (s *Service) ExchangeSetupCompletion(ctx context.Context, h *networking.Cla
 		return out, err
 	}
 	var attempt, nonce string
-	var route identity.SetupReturnRoute
 	var who identity.PorticoIdentity
 	err = h.RunSetupReturn(ctx, q, networking.SetupReturnActions{
 		Guard: func(ctx context.Context, tx *sql.Tx) error {
@@ -97,9 +95,8 @@ func (s *Service) ExchangeSetupCompletion(ctx context.Context, h *networking.Cla
 			}
 			return identity.CheckSetupReturnOriginTx(ctx, tx, operation, sourceOrigin, s.origin)
 		},
-		BeginTx: func(ctx context.Context, tx *sql.Tx, r serverreturn.Registration, generation int64) error {
-			route = identity.SetupReturnRoute{Registration: r, Generation: generation}
-			actual, started, err := s.identity.BeginSetupReturnTx(ctx, tx, pending, proof, q, route)
+		BeginTx: func(ctx context.Context, tx *sql.Tx) error {
+			actual, started, err := s.identity.BeginSetupReturnTx(ctx, tx, pending, proof, q)
 			if err != nil {
 				return err
 			}
@@ -110,7 +107,7 @@ func (s *Service) ExchangeSetupCompletion(ctx context.Context, h *networking.Cla
 			return nil
 		},
 		CheckAttemptTx: func(ctx context.Context, tx *sql.Tx) error {
-			if err := s.identity.CheckSetupReturnAttemptTx(ctx, tx, pending, proof, operation, attempt, q, route); err != nil {
+			if err := s.identity.CheckSetupReturnAttemptTx(ctx, tx, pending, proof, operation, attempt, q); err != nil {
 				return err
 			}
 			return identity.CheckSetupReturnOriginTx(ctx, tx, operation, sourceOrigin, s.origin)
@@ -122,7 +119,7 @@ func (s *Service) ExchangeSetupCompletion(ctx context.Context, h *networking.Cla
 		},
 		CompleteTx: func(ctx context.Context, tx *sql.Tx) error {
 			var err error
-			out, err = s.identity.CompleteSetupReturnTx(ctx, tx, pending, proof, operation, attempt, q, route, who, nonce)
+			out, err = s.identity.CompleteSetupReturnTx(ctx, tx, pending, proof, operation, attempt, q, who, nonce)
 			return err
 		},
 		AbandonTx: func(ctx context.Context, tx *sql.Tx) error {
