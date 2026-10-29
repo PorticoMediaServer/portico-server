@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/reading"
@@ -131,10 +132,6 @@ func TestReadingPrivateSourceChangeRootEscapeAndSourceDisable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	info, err := os.Stat(r.path)
-	if err != nil {
-		t.Fatal(err)
-	}
 	raw, err := os.ReadFile(r.path)
 	if err != nil {
 		t.Fatal(err)
@@ -143,12 +140,14 @@ func TestReadingPrivateSourceChangeRootEscapeAndSourceDisable(t *testing.T) {
 	if err = os.WriteFile(r.path, raw, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err = os.Chtimes(r.path, info.ModTime(), info.ModTime()); err != nil {
+	// A real edit moves the modification time. The session captured before it
+	// still refuses to serve the replaced object.
+	edited := time.Now().Add(time.Minute)
+	if err = os.Chtimes(r.path, edited, edited); err != nil {
 		t.Fatal(err)
 	}
-	// Size and mtime still match; the real opened object's change token does not.
 	if _, err = r.s.OpenSession(ctx, r.p, session.ID); err == nil {
-		t.Fatal("equal-size/mtime rewrite was accepted")
+		t.Fatal("stale session served an edited object")
 	}
 	w := r.bytesRequest(t, "GET", "/source", session, document.Selection.Revision, r.f.owner.AccessToken, map[string]string{"Range": "bytes=0-4"})
 	if w.Code == 206 {

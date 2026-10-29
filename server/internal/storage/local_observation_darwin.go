@@ -22,7 +22,7 @@ func nativeObjectBinding(info os.FileInfo) (string, string, error) {
 	if !ok {
 		return "", "", ErrObservedSourceUnsupported
 	}
-	return fmt.Sprintf("dev:%d:ino:%d", s.Dev, s.Ino), fmt.Sprintf("%d:%d", s.Ctimespec.Sec, s.Ctimespec.Nsec), nil
+	return fmt.Sprintf("dev:%d:ino:%d", s.Dev, s.Ino), localChangeToken(s.Ino, info.Size(), info.ModTime().UnixNano()), nil
 }
 
 func checkLocalRoot(string) error { return nil }

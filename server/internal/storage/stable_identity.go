@@ -51,6 +51,18 @@ func SameRoot(recorded, observed string) bool {
 	return okA && okB && a == b && hasA && hasB && fsA != "" && fsA == fsB
 }
 
+// localChangeToken is the change token of a local observation: the object's
+// inode, size and modification time. The file's ctime is deliberately absent.
+// A permission, ownership or ACL write moves ctime without touching a byte, so
+// it is not content evidence and must neither refuse a current source nor
+// republish it. The device number is absent for the same reason as in
+// StableObjectIdentity: a reboot may rename the filesystem. A real edit moves
+// the modification time (and usually the size or inode), which is what
+// republishes a new revision.
+func localChangeToken(inode uint64, size, modifiedNS int64) string {
+	return "fp1:ino:" + strconv.FormatUint(inode, 10) + ":size:" + strconv.FormatInt(size, 10) + ":mtime:" + strconv.FormatInt(modifiedNS, 10)
+}
+
 // StableObjectIdentity is the identity of an object under a root in the form
 // that is kept across restarts. An object on the root's own filesystem is named
 // by its inode alone ("ino:N"); one on another filesystem mounted beneath the
