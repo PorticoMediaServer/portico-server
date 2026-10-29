@@ -12,7 +12,7 @@ import {connectPairedServer, connectPairedPorticoServer, rememberNativeSession, 
 import {CodedError} from '@core/server-messages.ts';
 import {routePath} from '../../../packages/contracts/src/routes.ts';
 import {dispatchPorticoReturn, type CapturedPorticoReturn} from './portico-return-dispatch';
-import {secureBrowserPending} from './secure-pending';
+import {setupBrowserPending} from './setup-pending';
 import {BrowserProtectedStore, browserAppSessions, browserConnectionEnvironment} from './server-connections';
 
 /** Reuse the original setup draft namespace. Passwords are never stored here. */
@@ -83,6 +83,33 @@ export class BrowserSetupClaim {
     if (id) await this.ports.journal.change(old => old?.attemptId === id ? undefined : old);
   }
   async dispose() {await this.cancel();}
+  /** A saved Portico Account setup whose attempt expired and was never approved is dropped (its
+   * prepared operation cancelled, the draft and journal cleared) so setup starts cleanly. Anything
+   * that might have been approved, a live attempt, or a read that fails leaves everything as it is. */
+  async discardStale(api: HttpLocalApi): Promise<boolean> {
+    this.ports.journal.assertAvailable();
+    const route = api.getRouteConnection(), record = await this.ports.journal.read();
+    if (!route || !record || record.kind !== 'setup' || !this.expired(record) || record.pin.serverId !== route.pin.serverId) return false;
+    const store = this.ports.draft(route.pin.serverId), draft = await store.read();
+    if (!draft || draft.version !== 1 || draft.authMode !== 'hosted' || draft.serverId !== route.pin.serverId || draft.requestId !== record.setupRequestId) return false;
+    if (this.busy) return false;
+    const owned = this.operation();
+    try {
+      const captured = new HttpLocalApi(api.baseUrl, draft.setupToken); captured.useRoutes(route);
+      const status = parseClaimStatus(await captured.request(routePath('get_networking_claim'), 'GET', undefined, owned.signal), route.pin);
+      if (!owned.current() || status.state === 'approved' || status.state === 'finalizing' || status.state === 'retrieving' || status.state === 'installed') return false;
+      const mine = !!record.expected && !!status.operation && status.operation.operationId === record.expected.operationId && status.operation.localGeneration === record.expected.localGeneration;
+      if (status.operation && !mine) return false;
+      if (mine && status.state === 'prepared') {
+        if (!status.actions.includes('cancel')) return false;
+        if (!absentClaim(parseClaimStatus(await captured.request(routePath('post_networking_claim_cancel'), 'POST', {expected: status.operation}, owned.signal), route.pin))) return false;
+      }
+      if (!owned.current()) return false;
+      await this.ports.journal.change(old => same(old, record) ? undefined : old);
+      await store.change(old => old?.requestId === draft.requestId && old.setupToken === draft.setupToken ? undefined : old);
+      return true;
+    } catch {return false;} finally {this.busy = false;}
+  }
   async prepare(api: HttpLocalApi, hostedOrigin: string, opening?: PrepareOpening): Promise<string> {
     return this.prepareOriginal(api, hostedOrigin, opening);
   }
@@ -358,11 +385,11 @@ export class BrowserSetupClaim {
 }
 
 export function createBrowserSetupClaim() {
-  const guard = secureBrowserPending<Pending>('portico.setup-claim.guard'); guard.assertAvailable();
+  const guard = setupBrowserPending<Pending>('portico.setup-claim.guard'); guard.assertAvailable();
   const key = 'portico.setup-claim.tab.v1'; let tab = sessionStorage.getItem(key);
   if (tab !== null) routeBytes(tab, 32);
   else {tab = routeBase64(crypto.getRandomValues(new Uint8Array(32))); sessionStorage.setItem(key, tab);}
-  return new BrowserSetupClaim({journal: secureBrowserPending<Pending>('portico.setup-claim.v1:' + tab),
-    draft: id => secureBrowserPending<SetupDraft>('portico.initialize.' + id), sessions: browserAppSessions(), environment: browserConnectionEnvironment,
+  return new BrowserSetupClaim({journal: setupBrowserPending<Pending>('portico.setup-claim.v1:' + tab),
+    draft: id => setupBrowserPending<SetupDraft>('portico.initialize.' + id), sessions: browserAppSessions(), environment: browserConnectionEnvironment,
     installationId: () => {const value = installationIdentity(); if (!value) throw invalid(); return value.installationId;}, pageOrigin: () => location.origin});
 }
