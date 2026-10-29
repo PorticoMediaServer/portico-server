@@ -341,8 +341,11 @@ var infoRetireTables = []string{
 }
 
 func retireInfoChange(ctx context.Context, tx *sql.Tx, c infoChange) (bool, error) {
-	// One table and <=8 raw PK rows per call. copy_family is also the durable
-	// GC phase, so there is no repeated all-family scan per quantum.
+	// At most one populated table and <=8 raw PK rows per call. Empty prefixes
+	// may advance through the fixed family list in the same writer: they change
+	// no rows and need only full change_id-prefix seeks. Save copy_family once,
+	// so an availability-only change does not need 18 empty writer admissions
+	// before reaching its scalar witness. Parent retirement remains a later turn.
 	var phase int
 	if err := tx.QueryRowContext(ctx, `SELECT copy_family FROM catalog_info_changes WHERE id=?`, c.id).Scan(&phase); err != nil {
 		return false, err
@@ -350,7 +353,8 @@ func retireInfoChange(ctx context.Context, tx *sql.Tx, c infoChange) (bool, erro
 	if phase < 0 || phase > len(infoRetireTables) {
 		return false, ErrInfoInvariant
 	}
-	if phase < len(infoRetireTables) {
+	started := phase
+	for phase < len(infoRetireTables) {
 		table := infoRetireTables[phase]
 		// Every source table is keyed first by change_id; row-value IN uses
 		// its complete declared PK, including WITHOUT ROWID tables.
@@ -367,9 +371,16 @@ func retireInfoChange(ctx context.Context, tx *sql.Tx, c infoChange) (bool, erro
 		if err != nil {
 			return false, err
 		}
-		if n == 0 {
-			_, err = tx.ExecContext(ctx, `UPDATE catalog_info_changes SET copy_family=copy_family+1 WHERE id=?`, c.id)
+		if n > 0 {
+			if phase != started {
+				_, err = tx.ExecContext(ctx, `UPDATE catalog_info_changes SET copy_family=? WHERE id=? AND phase=5`, phase, c.id)
+			}
+			return false, err
 		}
+		phase++
+	}
+	if phase != started {
+		_, err := tx.ExecContext(ctx, `UPDATE catalog_info_changes SET copy_family=? WHERE id=? AND phase=5`, phase, c.id)
 		return false, err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM catalog_info_changes WHERE id=? AND phase=5`, c.id); err != nil {
