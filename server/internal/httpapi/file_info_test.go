@@ -36,27 +36,14 @@ func TestDetailFileInfoLazyAndPrivate(t *testing.T) {
 			t.Fatal("missing language summary")
 		}
 	}
-	response := editorRequest(t, h, "GET", "/v1/items/"+id+"/file-info", owner, "", nil)
-	if response.Code != 200 {
-		t.Fatalf("file info %d %s", response.Code, response.Body.String())
-	}
-	var info struct {
-		Files []struct {
-			Path string `json:"path"`
+	// File information is now a set of opening-bound lanes. A bare read has no
+	// accepted Detail to bind to and refuses rather than serving an eager page.
+	for _, token := range []string{owner, member} {
+		response := editorRequest(t, h, "GET", "/v1/items/"+id+"/file-info", token, "", nil)
+		if response.Code != 400 || strings.Contains(response.Body.String(), "Alpha.mkv") {
+			t.Fatalf("bare file info %d %s", response.Code, response.Body.String())
 		}
-		Manage any `json:"manage"`
 	}
-	if err := json.Unmarshal(response.Body.Bytes(), &info); err != nil {
-		t.Fatal(err)
-	}
-	if len(info.Files) != 1 || info.Files[0].Path == "" || info.Manage == nil {
-		t.Fatalf("owner info %s", response.Body.String())
-	}
-	denied := editorRequest(t, h, "GET", "/v1/items/"+id+"/file-info", member, "", nil)
-	if denied.Code == 200 || strings.Contains(denied.Body.String(), "Alpha.mkv") {
-		t.Fatalf("private file leaked %d %s", denied.Code, denied.Body.String())
-	}
-	tl6AssertSpecResponse(t, "GET", "/v1/items/{id}/file-info", response)
 }
 
 func TestMetadataMalformedRequestsAreClientErrors(t *testing.T) {

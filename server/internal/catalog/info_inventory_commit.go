@@ -6,6 +6,22 @@ import (
 	"portico.local/server/internal/compactcatalog"
 )
 
+// The accepting producers in this package return an explicit receipt instead of
+// claiming canonical facts are applied. Two shapes share that contract:
+//
+//   - acceptInventoryInfo/AcceptInventoryAnalysis/AcceptInventoryLocalRefresh
+//     stage one file's technical input. Their naming, artwork and queue
+//     acknowledgement finalizer runs only when the receipt is already applied;
+//     accepted-pending returns the receipt untouched, and the scan resumes it
+//     later without pretending NEW is visible.
+//   - AcceptInventoryDiscProbe and AcceptDiscAlternate stage one disc
+//     observation's normalized families (10..18). They have no naming or queue
+//     finalizer of their own, so their receipt is the whole acknowledgement:
+//     durable accepted-pending, then applied by the sole source publication.
+//
+// No producer in this file writes a canonical technical child row, walks a
+// holder or turns an accepted-pending receipt into success.
+
 // AcceptInventoryAnalysis accepts immutable technical inputs before naming and
 // queue acknowledgement. Accepted-pending is durable success, not an assertion
 // that canonical rows or item summaries are already applied. The scan retries

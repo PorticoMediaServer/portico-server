@@ -657,7 +657,10 @@ func invalidateInventoryFacts(ctx context.Context, tx *sql.Tx, asset string) err
 	if err != nil || id == 0 {
 		return err
 	}
-	return compactcatalog.SetAssetTx(ctx, tx, id, map[string]any{"video_codec": "", "audio_codec": "", "width": 0, "height": 0, "duration": 0})
+	if err := compactcatalog.SetAssetTx(ctx, tx, id, map[string]any{"video_codec": "", "audio_codec": "", "width": 0, "height": 0, "duration": 0}); err != nil {
+		return err
+	}
+	return compactcatalog.InvalidateInfoTechnicalTx(ctx, tx, id)
 }
 func (s *Service) associateInventoryTx(ctx context.Context, tx *sql.Tx, source LibrarySource, asset, path string) error {
 	var kind string

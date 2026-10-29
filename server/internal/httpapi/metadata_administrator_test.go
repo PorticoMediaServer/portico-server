@@ -49,14 +49,11 @@ func TestMetadataAdministratorEditsAndLiveDemotion(t *testing.T) {
 	if denied.Code < 400 || denied.Code >= 500 {
 		t.Fatalf("member session borrowed tier: %d %s", denied.Code, denied.Body.String())
 	}
+	// File information is opening-bound now: a bare read refuses rather than
+	// serving an eager page to an administrator or a member.
 	files := editorRequest(t, h, "GET", "/v1/items/"+movie.Public+"/file-info", admin.AccessToken, "", nil)
-	if files.Code != 200 {
-		t.Fatalf("admin lazy info %d %s", files.Code, files.Body.String())
-	}
-	var info map[string]json.RawMessage
-	json.Unmarshal(files.Body.Bytes(), &info)
-	if _, ok := info["manage"]; ok {
-		t.Fatal("admin gained owner file operations")
+	if files.Code != 400 {
+		t.Fatalf("bare lazy info %d %s", files.Code, files.Body.String())
 	}
 	principal, err := d.Identity.Authenticate(admin.AccessToken)
 	if err != nil {

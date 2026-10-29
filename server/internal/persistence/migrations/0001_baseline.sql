@@ -14520,3 +14520,35 @@ END;
 -- One accepted owner observation and one transient target pin; no object history.
 CREATE INDEX catalog_info_owner_object ON catalog_assets(info_owner_object) WHERE info_owner_object IS NOT NULL;
 CREATE INDEX catalog_info_target_owner_object ON catalog_info_changes(target_owner_object) WHERE target_owner_object IS NOT NULL;
+
+CREATE TRIGGER catalog_info_item_edition_insert AFTER INSERT ON catalog_item_details
+ WHEN NEW.edition<>'' BEGIN
+ UPDATE catalog_entities SET info_desired_epoch=info_desired_epoch+1,
+ info_applied_epoch=CASE WHEN info_source_blockers=0 AND info_availability_pending=0 AND info_blocked_children=0 THEN info_desired_epoch+1 ELSE info_applied_epoch END WHERE id=NEW.entity_id;
+END;
+
+CREATE TRIGGER catalog_info_item_edition_update AFTER UPDATE OF edition ON catalog_item_details
+ WHEN OLD.edition IS NOT NEW.edition BEGIN
+ UPDATE catalog_entities SET info_desired_epoch=info_desired_epoch+1,
+ info_applied_epoch=CASE WHEN info_source_blockers=0 AND info_availability_pending=0 AND info_blocked_children=0 THEN info_desired_epoch+1 ELSE info_applied_epoch END WHERE id=NEW.entity_id;
+END;
+
+CREATE TRIGGER catalog_info_item_edition_delete AFTER DELETE ON catalog_item_details
+ WHEN OLD.edition<>'' BEGIN
+ UPDATE catalog_entities SET info_desired_epoch=info_desired_epoch+1,
+ info_applied_epoch=CASE WHEN info_source_blockers=0 AND info_availability_pending=0 AND info_blocked_children=0 THEN info_desired_epoch+1 ELSE info_applied_epoch END WHERE id=OLD.entity_id;
+END;
+
+-- A frozen source frame is shared by its holders, never duplicated per item.
+-- Last-holder retirement makes it unreachable; schedule ordinary raw8 source
+-- retirement rather than leaving a charged orphan until another probe arrives.
+CREATE TRIGGER catalog_info_frozen_unlinked AFTER DELETE ON catalog_asset_links
+WHEN NOT EXISTS(SELECT 1 FROM catalog_asset_links INDEXED BY catalog_asset_links_asset WHERE asset_id=OLD.asset_id)
+ AND EXISTS(SELECT 1 FROM catalog_info_changes WHERE asset_id=OLD.asset_id AND phase=0 AND copy_aux=-2) BEGIN
+ UPDATE catalog_info_changes SET phase=5,copy_family=0 WHERE asset_id=OLD.asset_id AND phase=0 AND copy_aux=-2;
+ INSERT INTO catalog_upstream_sources(domain,source_id,token,flags)
+ SELECT 41,asset_id,asset_token,32 FROM catalog_info_changes WHERE asset_id=OLD.asset_id AND phase=5 AND copy_aux=-2 AND slot=0
+ ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|32,revision=revision+1;
+ INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 41,source_id,1 FROM catalog_upstream_sources WHERE domain=41 AND source_id=OLD.asset_id
+ ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
+END;

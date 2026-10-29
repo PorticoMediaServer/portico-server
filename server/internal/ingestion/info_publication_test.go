@@ -38,3 +38,31 @@ func settleInventoryInfo(t *testing.T, db *sql.DB, ctx context.Context, accept f
 	}
 	return errors.New("informational source did not apply")
 }
+
+// The application runs the catalogue worker alongside scans. Fixtures must
+// provide that same bounded progress while an accepted-pending frame waits;
+// scan completion is not a substitute for source41 activation.
+func advanceScanInfo(t *testing.T, db *sql.DB) {
+	t.Helper()
+	if _, err := compactcatalog.NewWorker(db).Step(context.Background(), 500); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Preserve process()'s 32-scan-quantum ceiling while interleaving the separately
+// running catalogue worker after each quantum, rather than replaying expensive
+// sidecar/probe IO32 times before allowing a source frame to advance once.
+func scanInfoTurn(t *testing.T, s *Service, db *sql.DB, job, library string) {
+	t.Helper()
+	for turn := 0; turn < 32; turn++ {
+		s.processQuantum(context.Background(), job, library)
+		advanceScanInfo(t, db)
+		state, err := s.Get(job)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if state.Status != "running" && state.Status != "queued" {
+			return
+		}
+	}
+}

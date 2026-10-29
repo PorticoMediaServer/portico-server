@@ -28,7 +28,11 @@ type fileInfoIDSpec struct {
 }
 
 type fileInfoIDSummary struct {
-	Total          int64
+	Total int64
+	// FirstOrdinal is the 1-based global ordinal of IDs[0] within the whole
+	// accepted lane, or 0 for an empty page. It lets delivery place a short or
+	// backward page without re-walking or retaining resident pages.
+	FirstOrdinal   int64
 	Earlier, Later bool
 	IDs            []int64
 }
@@ -43,6 +47,7 @@ type fileInfoIDScan struct {
 	bytes       int64
 	after       int64
 	hasAfter    bool
+	found       bool
 	total       int64
 	count       int
 	start       int
@@ -104,6 +109,11 @@ func (s *fileInfoIDScan) Step(ctx context.Context, budget *readprep.Budget) (rea
 				return readprep.StepResult{}, readprep.ErrInvalid
 			}
 			s.total++
+			// The anchor proves itself only by arriving as an accepted raw ID;
+			// its position in the page is irrelevant.
+			if s.spec.HasAnchor && id == s.spec.Anchor {
+				s.found = true
+			}
 			s.keep(id)
 		}
 		// Every raw reject consumes a unit. Time is checked after every row;
@@ -118,12 +128,22 @@ func (s *fileInfoIDScan) Step(ctx context.Context, budget *readprep.Budget) (rea
 	if !done {
 		return readprep.StepResult{}, nil
 	}
+	// A genuine EOF without the anchor proves the caller's cursor is not an
+	// accepted ID in this lane, so the window is stale rather than empty.
+	if s.spec.HasAnchor && !s.found {
+		return readprep.StepResult{}, readprep.ErrStale
+	}
 	// Binary payload has a fixed bound, including nineteen-digit IDs/totals.
 	// This allocation was reserved in the initial fixed charge, before New.
-	payload := make([]byte, 12+8*s.count)
-	payload[0] = 1
+	first := int64(0)
+	if s.count > 0 {
+		first = s.ordinals[s.start]
+	}
+	payload := make([]byte, 20+8*s.count)
+	payload[0] = 2
 	payload[1] = byte(s.count)
 	binary.BigEndian.PutUint64(payload[4:12], uint64(s.total))
+	binary.BigEndian.PutUint64(payload[12:20], uint64(first))
 	if s.count > 0 {
 		s.left = s.ordinals[s.start] > 1
 		last := (s.start + s.count - 1) % s.spec.Limit
@@ -136,7 +156,7 @@ func (s *fileInfoIDScan) Step(ctx context.Context, budget *readprep.Budget) (rea
 		payload[3] = 1
 	}
 	for i := 0; i < s.count; i++ {
-		binary.BigEndian.PutUint64(payload[12+8*i:], uint64(s.ids[(s.start+i)%s.spec.Limit]))
+		binary.BigEndian.PutUint64(payload[20+8*i:], uint64(s.ids[(s.start+i)%s.spec.Limit]))
 	}
 	return readprep.StepResult{Done: true, Payload: payload}, nil
 }
@@ -172,23 +192,37 @@ func (s *fileInfoIDScan) keep(id int64) {
 }
 
 // The caller reserves <=100 IDs in its delivery lease before decoding. Reject
-// malformed lengths before allocating; no user-controlled scalar is decoded.
+// malformed versions, lengths and ordinal ranges before allocating; no
+// user-controlled scalar is decoded.
 func decodeFileInfoIDs(payload []byte) (fileInfoIDSummary, error) {
 	var out fileInfoIDSummary
-	if len(payload) < 12 || payload[0] != 1 || payload[1] > 100 || payload[2] > 1 || payload[3] > 1 || len(payload) != 12+8*int(payload[1]) {
+	if len(payload) < 20 || payload[0] != 2 || payload[1] > 100 || payload[2] > 1 || payload[3] > 1 || len(payload) != 20+8*int(payload[1]) {
 		return out, readprep.ErrStale
 	}
 	out.Total = int64(binary.BigEndian.Uint64(payload[4:12]))
-	if out.Total < int64(payload[1]) {
-		return out, readprep.ErrStale
+	out.FirstOrdinal = int64(binary.BigEndian.Uint64(payload[12:20]))
+	if !fileInfoOrdinalRangeOK(out.FirstOrdinal, int64(payload[1]), out.Total) {
+		return fileInfoIDSummary{}, readprep.ErrStale
 	}
 	out.Earlier, out.Later = payload[2] == 1, payload[3] == 1
 	out.IDs = make([]int64, int(payload[1]))
 	for i := range out.IDs {
-		out.IDs[i] = int64(binary.BigEndian.Uint64(payload[12+8*i:]))
+		out.IDs[i] = int64(binary.BigEndian.Uint64(payload[20+8*i:]))
 		if i > 0 && out.IDs[i] <= out.IDs[i-1] {
 			return fileInfoIDSummary{}, readprep.ErrStale
 		}
 	}
 	return out, nil
+}
+
+// fileInfoOrdinalRangeOK requires an empty page to carry no ordinal and a
+// non-empty page to start inside the exact total it reports.
+func fileInfoOrdinalRangeOK(first, count, total int64) bool {
+	if first < 0 || total < count {
+		return false
+	}
+	if count == 0 {
+		return first == 0
+	}
+	return first >= 1 && first <= total-count+1
 }

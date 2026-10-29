@@ -15,6 +15,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -352,9 +353,29 @@ type Store struct {
 // computation. It is valid only during New/Step. Resize failure is terminal even
 // if a producer ignores it; no weight update can bypass the store cap.
 type Budget struct {
-	s   *Store
-	e   *entry
-	err error
+	s        *Store
+	e        *entry
+	err      error
+	parent   *Budget
+	overhead int64
+}
+
+// WithOverhead gives a composed reducer a view of this same reservation. Every
+// child Resize retains the wrapper's still-live captures and buffers, including
+// while other workers admit work. Errors remain sticky on the original budget.
+// The view is valid only during this New/Step and must never be retained.
+func (b *Budget) WithOverhead(bytes int64) (*Budget, error) {
+	root := b
+	if b.parent != nil {
+		root = b.parent
+	}
+	if bytes < 0 || b.overhead > math.MaxInt64-bytes {
+		b.s.mu.Lock()
+		root.err = ErrInvalid
+		b.s.mu.Unlock()
+		return nil, ErrInvalid
+	}
+	return &Budget{s: b.s, e: b.e, parent: root, overhead: b.overhead + bytes}, nil
 }
 
 func (b *Budget) Resize(bytes int64) error {
@@ -371,25 +392,30 @@ func (b *Budget) TryResize(bytes int64) (bool, error) {
 }
 
 func (b *Budget) resize(bytes int64, optional bool) (bool, error) {
+	root := b
+	if b.parent != nil {
+		root = b.parent
+	}
 	b.s.mu.Lock()
 	defer b.s.mu.Unlock()
-	if b.err != nil {
-		return false, b.err
+	if root.err != nil {
+		return false, root.err
 	}
 	if b.e.retired || b.s.closed {
-		b.err = ErrStale
-		return false, b.err
+		root.err = ErrStale
+		return false, root.err
 	}
-	if bytes < 0 {
-		b.err = ErrInvalid
-		return false, b.err
+	if bytes < 0 || bytes > math.MaxInt64-b.overhead {
+		root.err = ErrInvalid
+		return false, root.err
 	}
+	bytes += b.overhead
 	if bytes > b.e.reserved && !b.s.room(bytes-b.e.reserved, b.e) {
 		if optional {
 			return false, nil
 		}
-		b.err = ErrCapacity
-		return false, b.err
+		root.err = ErrCapacity
+		return false, root.err
 	}
 	b.s.used += bytes - b.e.reserved
 	b.e.reserved = bytes

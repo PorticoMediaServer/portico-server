@@ -85,7 +85,7 @@ func (f *loopFixture) queue() Job {
 func (f *loopFixture) finish(job Job) Job {
 	f.t.Helper()
 	for n := 0; n < 200; n++ {
-		f.s.process(context.Background(), job.ID, f.library)
+		scanInfoTurn(f.t, f.s, f.db, job.ID, f.library)
 		state, err := f.s.Get(job.ID)
 		if err != nil {
 			f.t.Fatal(err)
@@ -114,6 +114,7 @@ func (f *loopFixture) until(job Job, phase string) {
 			f.t.Fatal(state)
 		}
 		f.s.processQuantum(context.Background(), job.ID, f.library)
+		advanceScanInfo(f.t, f.db)
 	}
 	f.t.Fatalf("scan did not reach %s", phase)
 }

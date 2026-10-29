@@ -110,7 +110,7 @@ func (s *Service) referenceDiscTitles(files []TitleFile) *FileInfoDisc {
 	}
 	for _, file := range files {
 		var object, revision string
-		if err := tx.QueryRowContext(s.Context(), `SELECT o.id,o.revision FROM inventory_objects o JOIN catalog_assets a ON a.token=o.asset_id WHERE a.token=? AND o.retired=0 AND o.state='available'`, file.ID).Scan(&object, &revision); err != nil {
+		if err := tx.QueryRowContext(s.Context(), `SELECT o.id,o.revision FROM inventory_objects o JOIN catalog_assets a ON a.token=o.asset_id WHERE a.token=? AND o.retired=0 AND o.state='available' ORDER BY o.id LIMIT 1`, file.ID).Scan(&object, &revision); err != nil {
 			continue
 		}
 		probe, err := ReadInventoryDiscProbe(s.Context(), tx, object, revision)

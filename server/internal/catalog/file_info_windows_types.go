@@ -50,14 +50,16 @@ type FileInfoFile struct {
 	ItemID        string          `json:"itemId"`
 	ID            string          `json:"id"`
 	Path          string          `json:"path,omitempty"`
-	Size          int64           `json:"size"`
+	Size          *int64          `json:"size,omitempty"`
+	SizeExact     string          `json:"sizeExact,omitempty"`
 	Container     string          `json:"container"`
-	Duration      float64         `json:"duration"`
+	Duration      *float64        `json:"duration,omitempty"`
+	DurationState string          `json:"durationState,omitempty"`
 	BitRate       int64           `json:"bitRate,omitempty"`
 	Available     bool            `json:"available"`
 	PartIndex     int             `json:"partIndex"`
 	Edition       string          `json:"edition,omitempty"`
-	Video         *TitleFileVideo `json:"video,omitempty"`
+	Video         *FileInfoVideo  `json:"video,omitempty"`
 	Disc          *DiscMediaFacts `json:"disc,omitempty"`
 	AudioCount    int64           `json:"audioCount"`
 	SubtitleCount int64           `json:"subtitleCount"`
@@ -71,9 +73,35 @@ type FileInfoFilesPage struct {
 	Files    []FileInfoFile  `json:"files"`
 }
 
+type FileInfoVideo struct {
+	TitleFileVideo
+	Profile string `json:"profile,omitempty"`
+}
+
 type FileInfoRawTrack struct {
 	Ordinal int64 `json:"ordinal"`
 	TitleFileTrack
+	Profile         string `json:"profile,omitempty"`
+	SampleRate      int    `json:"sampleRate,omitempty"`
+	BitDepth        int    `json:"bitDepth,omitempty"`
+	Commentary      bool   `json:"commentary,omitempty"`
+	HearingImpaired bool   `json:"hearingImpaired,omitempty"`
+}
+
+// Offered tracks use the same informational fields as raw tracks. ID names the
+// exact accepted head track; it is not a byte delivery or playback grant.
+type FileInfoHeadTrack struct {
+	FileInfoRawTrack
+	ID string `json:"id"`
+}
+type FileInfoHeadTracksPage struct {
+	FileInfoWindowBasis
+	Kind       string              `json:"kind"`
+	Lane       string              `json:"lane"`
+	GroupID    string              `json:"groupId"`
+	Occurrence string              `json:"occurrence"`
+	Total      int64               `json:"total"`
+	Tracks     []FileInfoHeadTrack `json:"tracks"`
 }
 
 // Raw lanes preserve stored audio/subtitle order and evidence, including raw
@@ -89,15 +117,16 @@ type FileInfoTracksPage struct {
 }
 
 type FileInfoSource struct {
-	Occurrence string  `json:"occurrence"`
-	ItemID     string  `json:"itemId"`
-	ID         string  `json:"id"`
-	Container  string  `json:"container"`
-	VideoCodec string  `json:"videoCodec"`
-	AudioCodec string  `json:"audioCodec"`
-	Width      int     `json:"width"`
-	Height     int     `json:"height"`
-	Duration   float64 `json:"duration"`
+	Occurrence    string   `json:"occurrence"`
+	ItemID        string   `json:"itemId"`
+	ID            string   `json:"id"`
+	Container     string   `json:"container"`
+	VideoCodec    string   `json:"videoCodec"`
+	AudioCodec    string   `json:"audioCodec"`
+	Width         int      `json:"width"`
+	Height        int      `json:"height"`
+	Duration      *float64 `json:"duration,omitempty"`
+	DurationState string   `json:"durationState,omitempty"`
 }
 
 type FileInfoSourcesPage struct {
@@ -126,9 +155,11 @@ type FileInfoGroup struct {
 	MemberCount    int64           `json:"memberCount"`
 	Edition        string          `json:"edition,omitempty"`
 	Container      string          `json:"container"`
-	SizeBytes      int64           `json:"sizeBytes"`
-	DurationMs     int64           `json:"durationMs"`
-	Video          *TitleFileVideo `json:"video,omitempty"`
+	SizeBytes      *int64          `json:"sizeBytes,omitempty"`
+	SizeBytesExact string          `json:"sizeBytesExact,omitempty"`
+	DurationMs     *int64          `json:"durationMs,omitempty"`
+	DurationState  string          `json:"durationState,omitempty"`
+	Video          *FileInfoVideo  `json:"video,omitempty"`
 	Disc           *DiscMediaFacts `json:"disc,omitempty"`
 	AudioCount     int64           `json:"audioCount"`
 	SubtitleCount  int64           `json:"subtitleCount"`
@@ -150,11 +181,11 @@ type FileInfoMembersPage struct {
 }
 
 type FileInfoPreparing struct {
-	Kind         string                `json:"kind"`
-	State        string                `json:"state"`
-	QueryID      string                `json:"queryId"`
-	RetryAfterMs int                   `json:"retryAfterMs"`
-	Detail       FileInfoDetailCapture `json:"detail"`
+	Kind         string                 `json:"kind"`
+	State        string                 `json:"state"`
+	QueryID      string                 `json:"queryId"`
+	RetryAfterMs int                    `json:"retryAfterMs"`
+	Detail       *FileInfoDetailCapture `json:"detail,omitempty"`
 }
 
 // Typed results are registered as explicit200/202 unions at the HTTP boundary.
@@ -162,18 +193,26 @@ type FileInfoPreparing struct {
 // ordinary transient hydration is charged and one legal oversized scalar takes
 // the explicit uncached path. A preparation never carries guessed rows/counts.
 type FileInfoWindowResult struct {
-	Files     *FileInfoFilesPage
-	Tracks    *FileInfoTracksPage
-	Sources   *FileInfoSourcesPage
-	Disc      *FileInfoDiscPage
-	Groups    *FileInfoGroupsPage
-	Members   *FileInfoMembersPage
-	Preparing *FileInfoPreparing
-	release   func()
+	Files      *FileInfoFilesPage
+	Tracks     *FileInfoTracksPage
+	HeadTracks *FileInfoHeadTracksPage
+	Sources    *FileInfoSourcesPage
+	Disc       *FileInfoDiscPage
+	Groups     *FileInfoGroupsPage
+	Members    *FileInfoMembersPage
+	Preparing  *FileInfoPreparing
+	release    func()
 }
 
 func (r FileInfoWindowResult) Release() {
 	if r.release != nil {
 		r.release()
 	}
+}
+
+// FileInfoActionProof supplements existing action admission; it never replaces
+// live owner, source custody, selection or preview/confirmation checks.
+type FileInfoActionProof struct {
+	Opening    string `json:"opening"`
+	Occurrence string `json:"occurrence"`
 }

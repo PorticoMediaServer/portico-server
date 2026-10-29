@@ -312,6 +312,21 @@ func (w *upstreamSource) asset(ctx context.Context, tx *sql.Tx, limit int) (int,
 		w.phase = 3
 		return 0, false, nil
 	case 3:
+		if w.flags&sourceInfoInvalidated != 0 && w.passRevision == w.revision && w.key != "rerun" {
+			handled, accepted, e := advanceInfoInvalidationTx(ctx, tx, w.id, w.token)
+			if e != nil {
+				return 0, false, e
+			}
+			if accepted {
+				if _, e = tx.ExecContext(ctx, `UPDATE catalog_upstream_sources SET flags=flags&~128 WHERE domain=41 AND source_id=? AND token=? AND revision=?`, w.id, w.token, w.revision); e != nil {
+					return 0, false, e
+				}
+				w.flags &^= sourceInfoInvalidated
+			}
+			if handled {
+				return 0, false, nil
+			}
+		}
 		canAdvanceInfo := true
 		if w.flags&sourceInfo != 0 {
 			// Finish an already fenced publication even during later churn.

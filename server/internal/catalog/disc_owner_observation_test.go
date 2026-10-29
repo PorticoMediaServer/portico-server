@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"testing"
 
+	"portico.local/server/internal/catalogtest"
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/disc"
 )
@@ -53,9 +55,11 @@ func (o *discOwnerObservationScenario) observe(t *testing.T, id string) {
 
 func (o *discOwnerObservationScenario) publish(t *testing.T, id string) {
 	t.Helper()
-	if err := o.service.CommitInventoryDiscProbe(context.Background(), o.job, id, o.revision, o.policy, o.probe); err != nil {
-		t.Fatal(err)
+	receipt, err := o.service.AcceptInventoryDiscProbe(context.Background(), o.job, id, o.revision, o.policy, o.probe)
+	if err != nil || receipt.State != compactcatalog.InfoInputAcceptedPending {
+		t.Fatal("structure source receipt", receipt, err)
 	}
+	catalogtest.New(t, o.db).Drain()
 }
 
 func (o *discOwnerObservationScenario) storedFacts(t *testing.T, id string) int {

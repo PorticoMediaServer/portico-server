@@ -343,7 +343,7 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 	// An object whose stage waits for a retry is passed over until it is due,
 	// so one delayed file cannot hold every later one behind it.
 	now := time.Now().UnixMilli()
-	err = s.db.QueryRowContext(parent, `SELECT q.object_id,q.revision,q.policy_revision,o.relative_path,o.analysis_revision,o.analysis_operations_json,o.analysis_policy,o.analysis_state FROM inventory_analysis_queue q JOIN inventory_objects o ON o.id=q.object_id WHERE q.job_id=? AND q.state='pending' AND NOT EXISTS(SELECT 1 FROM analysis_stage_runs w WHERE w.job_id=q.job_id AND w.object_id=q.object_id AND w.source_revision=q.revision AND w.policy_revision=q.policy_revision AND w.state NOT IN('failed','unsupported','complete') AND w.next_ms>?) ORDER BY q.object_id LIMIT 1`, job, now).Scan(&object, &revision, &queuedPolicy, &relative, &analyzed, &operations, &analysisPolicy, &analysisState)
+	err = s.db.QueryRowContext(parent, `SELECT q.object_id,q.revision,q.policy_revision,o.relative_path,o.analysis_revision,o.analysis_operations_json,o.analysis_policy,o.analysis_state FROM inventory_analysis_queue q JOIN inventory_objects o ON o.id=q.object_id WHERE q.job_id=? AND q.state='pending' AND NOT EXISTS(SELECT 1 FROM catalog_assets ia JOIN catalog_info_changes ic ON ic.asset_id=ia.id AND ic.asset_token=ia.token WHERE ia.token=o.asset_id AND ic.phase BETWEEN 1 AND 3) AND NOT EXISTS(SELECT 1 FROM analysis_stage_runs w WHERE w.job_id=q.job_id AND w.object_id=q.object_id AND w.source_revision=q.revision AND w.policy_revision=q.policy_revision AND w.state NOT IN('failed','unsupported','complete') AND w.next_ms>?) ORDER BY q.object_id LIMIT 1`, job, now).Scan(&object, &revision, &queuedPolicy, &relative, &analyzed, &operations, &analysisPolicy, &analysisState)
 	if errors.Is(err, sql.ErrNoRows) {
 		// Everything left is waiting for a retry: no progress this turn, and the
 		// run is not over.
@@ -677,8 +677,15 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 		if e != nil || !matches(after) {
 			return s.analysisOutcome(parent, job, object, revision, queuedPolicy, true, "source_revision_changed")
 		}
-		if err = s.catalog.CommitDiscAlternate(ctx, job, object, revision, policy.Revision, f); err != nil {
+		receipt, e := s.catalog.AcceptDiscAlternate(ctx, job, object, revision, policy.Revision, f)
+		if e != nil {
+			if infoPublicationDeferred(e) {
+				return nil
+			}
 			return s.analysisOutcome(parent, job, object, revision, queuedPolicy, true, "probe_or_sidecar_failed")
+		}
+		if receipt.State != compactcatalog.InfoInputApplied {
+			return nil
 		}
 		return s.analysisOutcome(parent, job, object, revision, queuedPolicy, false, "")
 	}
@@ -761,6 +768,9 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 		return nil
 	}
 	if err != nil {
+		if infoPublicationDeferred(err) {
+			return nil
+		}
 		return s.analysisOutcome(parent, job, object, revision, queuedPolicy, true, "probe_or_sidecar_failed")
 	}
 	after, err := stat()
@@ -777,7 +787,7 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 	f.SubtitleTextPending = !descriptor && policy.Allows("subtitles") && s.Subtitles != nil && f.VideoCodec != ""
 	receipt, err := s.catalog.AcceptInventoryAnalysis(ctx, job, object, revision, policy.Revision, f)
 	if err != nil {
-		if errors.Is(err, context.Canceled) {
+		if infoPublicationDeferred(err) {
 			return nil
 		}
 		return s.analysisOutcome(parent, job, object, revision, queuedPolicy, true, "analysis_publication_failed")
@@ -950,7 +960,7 @@ func (s *Service) refreshLocalMetadata(parent, ctx context.Context, job, object,
 	f.SubtitleTextPending = f.SubtitleInventory != nil && s.Subtitles != nil
 	receipt, err := s.catalog.AcceptInventoryLocalRefresh(ctx, job, object, revision, policy.Revision, f)
 	if err != nil {
-		if errors.Is(err, context.Canceled) {
+		if infoPublicationDeferred(err) {
 			return nil
 		}
 		return s.analysisOutcome(parent, job, object, revision, queuedPolicy, true, "analysis_publication_failed")
@@ -1129,8 +1139,12 @@ func (s *Service) inspectDisc(ctx context.Context, job, object, revision string,
 			return assets.Facts{}, errors.New("disc members changed during analysis")
 		}
 	}
-	if err = s.catalog.CommitInventoryDiscProbe(ctx, job, object, revision, policyRevision, again); err != nil {
+	receipt, err := s.catalog.AcceptInventoryDiscProbe(ctx, job, object, revision, policyRevision, again)
+	if err != nil {
 		return assets.Facts{}, err
+	}
+	if receipt.State != compactcatalog.InfoInputApplied {
+		return assets.Facts{}, compactcatalog.ErrInfoPreparing
 	}
 	raw, err := json.Marshal(again)
 	if err != nil {
@@ -1280,4 +1294,10 @@ func finishScanTx(ctx context.Context, tx *sql.Tx, job, source string) error {
 	// this transaction can no longer strand the second-pass marker.
 	_, err = queueSourceTx(context.WithValue(ctx, scanModeKey{}, "incremental"), tx, source, false)
 	return err
+}
+
+// A durable pending source frame and an exact disc structure awaiting apply
+// remain queued. They are not probe failures and may not acknowledge analysis.
+func infoPublicationDeferred(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, compactcatalog.ErrInfoInputBusy) || errors.Is(err, compactcatalog.ErrInfoInputDeferred) || errors.Is(err, compactcatalog.ErrInfoPreparing) || errors.Is(err, catalog.ErrDiscSelectionChanged)
 }

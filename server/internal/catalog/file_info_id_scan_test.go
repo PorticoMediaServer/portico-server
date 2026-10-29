@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"math"
 	"reflect"
@@ -75,6 +76,9 @@ func fileInfoIDTestRun(t *testing.T, source fileInfoIDSource, spec fileInfoIDSpe
 			if err := result.Reserve(800); err != nil {
 				return fileInfoIDSummary{}, err
 			}
+			if len(result.Payload) > 20+8*100 {
+				t.Fatal("summary retained something beyond bounded numeric IDs")
+			}
 			return decodeFileInfoIDs(result.Payload)
 		}
 		result.Release()
@@ -92,20 +96,27 @@ func TestFileInfoIDWindowsExactTotalsAndDirections(t *testing.T) {
 	for i := range ids {
 		ids[i] = int64(i)
 	}
+	// Only even IDs are accepted, so the 1-based global ordinal of v is v/2+1.
 	for _, tc := range []struct {
 		name           string
 		spec           fileInfoIDSpec
 		want           []int64
+		first          int64
 		earlier, later bool
 	}{
-		{"initial", fileInfoIDSpec{Limit: 3, Direction: fileInfoForward}, []int64{0, 2, 4}, false, true},
-		{"after", fileInfoIDSpec{Limit: 3, Direction: fileInfoForward, HasAnchor: true, Anchor: 4}, []int64{6, 8, 10}, true, true},
-		{"reload", fileInfoIDSpec{Limit: 3, Direction: fileInfoReload, HasAnchor: true, Anchor: 4}, []int64{4, 6, 8}, true, true},
-		{"before", fileInfoIDSpec{Limit: 3, Direction: fileInfoBackward, HasAnchor: true, Anchor: 10}, []int64{4, 6, 8}, true, true},
-		{"first-before", fileInfoIDSpec{Limit: 3, Direction: fileInfoBackward, HasAnchor: true, Anchor: 4}, []int64{0, 2}, false, true},
-		{"last-after", fileInfoIDSpec{Limit: 3, Direction: fileInfoForward, HasAnchor: true, Anchor: 994}, []int64{996, 998}, true, false},
-		{"empty-after", fileInfoIDSpec{Limit: 3, Direction: fileInfoForward, HasAnchor: true, Anchor: 999}, []int64{}, true, false},
-		{"empty-before", fileInfoIDSpec{Limit: 3, Direction: fileInfoBackward, HasAnchor: true, Anchor: 0}, []int64{}, false, true},
+		{"initial", fileInfoIDSpec{Limit: 3, Direction: fileInfoForward}, []int64{0, 2, 4}, 1, false, true},
+		{"after", fileInfoIDSpec{Limit: 3, Direction: fileInfoForward, HasAnchor: true, Anchor: 4}, []int64{6, 8, 10}, 4, true, true},
+		{"reload", fileInfoIDSpec{Limit: 3, Direction: fileInfoReload, HasAnchor: true, Anchor: 4}, []int64{4, 6, 8}, 3, true, true},
+		{"before", fileInfoIDSpec{Limit: 3, Direction: fileInfoBackward, HasAnchor: true, Anchor: 10}, []int64{4, 6, 8}, 3, true, true},
+		{"first-before", fileInfoIDSpec{Limit: 3, Direction: fileInfoBackward, HasAnchor: true, Anchor: 4}, []int64{0, 2}, 1, false, true},
+		{"before-last", fileInfoIDSpec{Limit: 3, Direction: fileInfoBackward, HasAnchor: true, Anchor: 998}, []int64{992, 994, 996}, 497, true, true},
+		{"last-after", fileInfoIDSpec{Limit: 3, Direction: fileInfoForward, HasAnchor: true, Anchor: 994}, []int64{996, 998}, 499, true, false},
+		{"final-short-after", fileInfoIDSpec{Limit: 3, Direction: fileInfoForward, HasAnchor: true, Anchor: 996}, []int64{998}, 500, true, false},
+		{"final-short-reload", fileInfoIDSpec{Limit: 3, Direction: fileInfoReload, HasAnchor: true, Anchor: 994}, []int64{994, 996, 998}, 498, true, false},
+		// An empty page reports no ordinal; its edges stay the conservative
+		// per-row aggregation already used by the accepted direction logic.
+		{"empty-after", fileInfoIDSpec{Limit: 3, Direction: fileInfoForward, HasAnchor: true, Anchor: 998}, []int64{}, 0, true, true},
+		{"empty-before", fileInfoIDSpec{Limit: 3, Direction: fileInfoBackward, HasAnchor: true, Anchor: 0}, []int64{}, 0, false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			source := &fileInfoIDTestSource{ids: ids, match: func(id int64) bool { return id%2 == 0 }}
@@ -113,8 +124,8 @@ func TestFileInfoIDWindowsExactTotalsAndDirections(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got.Total != 500 || !reflect.DeepEqual(got.IDs, tc.want) || got.Earlier != tc.earlier || got.Later != tc.later {
-				t.Fatalf("got %+v, expected IDs%v edges%v/%v", got, tc.want, tc.earlier, tc.later)
+			if got.Total != 500 || !reflect.DeepEqual(got.IDs, tc.want) || got.FirstOrdinal != tc.first || got.Earlier != tc.earlier || got.Later != tc.later {
+				t.Fatalf("got %+v, expected IDs%v first%d edges%v/%v", got, tc.want, tc.first, tc.earlier, tc.later)
 			}
 			if source.reads.Load() != 1001 {
 				t.Fatalf("raw rejects/EOF were skipped: %d reads", source.reads.Load())
@@ -123,6 +134,38 @@ func TestFileInfoIDWindowsExactTotalsAndDirections(t *testing.T) {
 				t.Fatal("whole source was consumed in one quantum")
 			}
 		})
+	}
+}
+
+func TestFileInfoIDAnchorRequiresAnAcceptedRawID(t *testing.T) {
+	source := &fileInfoIDTestSource{ids: []int64{0, 1, 2, 3, 4, 5, 6}, match: func(id int64) bool { return id%2 == 0 }}
+	// An anchor that never arrives as an accepted row proves the caller's cursor
+	// is not in this lane, so the window is stale even at genuine EOF.
+	for _, spec := range []fileInfoIDSpec{
+		{Limit: 2, Direction: fileInfoForward, HasAnchor: true, Anchor: 5},   // present but rejected
+		{Limit: 2, Direction: fileInfoForward, HasAnchor: true, Anchor: 8},   // beyond the final raw value
+		{Limit: 2, Direction: fileInfoForward, HasAnchor: true, Anchor: -1},  // before the first raw value
+		{Limit: 2, Direction: fileInfoBackward, HasAnchor: true, Anchor: -2}, // no accepted predecessor
+		{Limit: 2, Direction: fileInfoReload, HasAnchor: true, Anchor: 7},    // never stored
+	} {
+		if _, err := fileInfoIDTestRun(t, source, spec); !errors.Is(err, readprep.ErrStale) {
+			t.Fatalf("anchor %+v accepted: %v", spec, err)
+		}
+	}
+	// The accepted edges still resolve at any page position.
+	for _, tc := range []struct {
+		spec  fileInfoIDSpec
+		want  []int64
+		first int64
+	}{
+		{fileInfoIDSpec{Limit: 2, Direction: fileInfoForward, HasAnchor: true, Anchor: 0}, []int64{2, 4}, 2},
+		{fileInfoIDSpec{Limit: 2, Direction: fileInfoReload, HasAnchor: true, Anchor: 6}, []int64{6}, 4},
+		{fileInfoIDSpec{Limit: 2, Direction: fileInfoBackward, HasAnchor: true, Anchor: 6}, []int64{2, 4}, 2},
+	} {
+		got, err := fileInfoIDTestRun(t, source, tc.spec)
+		if err != nil || !reflect.DeepEqual(got.IDs, tc.want) || got.FirstOrdinal != tc.first {
+			t.Fatalf("%+v: %+v %v", tc.spec, got, err)
+		}
 	}
 }
 
@@ -145,10 +188,47 @@ func TestFileInfoIDWindowsIntegerEdgesAndBasisDrift(t *testing.T) {
 	}
 }
 
+func fileInfoIDTestPayload(version byte, count int, earlier, later byte, total, first int64, ids ...int64) []byte {
+	payload := make([]byte, 20+8*count)
+	payload[0], payload[1], payload[2], payload[3] = version, byte(count), earlier, later
+	binary.BigEndian.PutUint64(payload[4:12], uint64(total))
+	binary.BigEndian.PutUint64(payload[12:20], uint64(first))
+	for i, id := range ids {
+		binary.BigEndian.PutUint64(payload[20+8*i:], uint64(id))
+	}
+	return payload
+}
+
 func TestFileInfoIDWindowsMalformedPayloadAndAdmission(t *testing.T) {
-	for _, raw := range [][]byte{nil, make([]byte, 12), {1, 255, 0, 0}, append([]byte{1, 101}, make([]byte, 818)...)} {
+	valid := fileInfoIDTestPayload(2, 2, 1, 1, 9, 4, 11, 13)
+	summary, err := decodeFileInfoIDs(valid)
+	if err != nil || summary.Total != 9 || summary.FirstOrdinal != 4 || !reflect.DeepEqual(summary.IDs, []int64{11, 13}) {
+		t.Fatal("valid summary rejected", summary, err)
+	}
+	empty, err := decodeFileInfoIDs(fileInfoIDTestPayload(2, 0, 0, 0, 0, 0))
+	if err != nil || empty.Total != 0 || empty.FirstOrdinal != 0 || len(empty.IDs) != 0 {
+		t.Fatal("valid empty summary rejected", empty, err)
+	}
+	for _, raw := range [][]byte{
+		nil,
+		make([]byte, 12),
+		make([]byte, 20),
+		{1, 255, 0, 0},
+		append([]byte{1, 101}, make([]byte, 826)...),
+		// Corrupt version and length must be rejected before any allocation.
+		fileInfoIDTestPayload(1, 2, 0, 0, 9, 4, 11, 13),
+		fileInfoIDTestPayload(3, 2, 0, 0, 9, 4, 11, 13),
+		valid[:len(valid)-1],
+		append(append([]byte{}, valid...), 0),
+		// Ordinal range must agree with the reported count and total.
+		fileInfoIDTestPayload(2, 2, 0, 0, 9, 0, 11, 13),
+		fileInfoIDTestPayload(2, 2, 0, 0, 9, 9, 11, 13),
+		fileInfoIDTestPayload(2, 2, 0, 0, 2, 2, 11, 13),
+		fileInfoIDTestPayload(2, 1, 0, 0, 3, -1, 11),
+		fileInfoIDTestPayload(2, 0, 0, 0, 3, 1),
+	} {
 		if _, err := decodeFileInfoIDs(raw); err == nil {
-			t.Fatal("malformed ID payload accepted")
+			t.Fatal("malformed ID payload accepted", raw)
 		}
 	}
 	for _, limit := range []int{0, 101, -1} {

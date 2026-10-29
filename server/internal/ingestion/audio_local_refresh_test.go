@@ -90,7 +90,10 @@ func newAudioRefreshFixture(t *testing.T, kind string, embeddedCue bool) *audioR
 	}
 	stats := dbwork.Plans()
 	t.Logf("per-file audio publication: %+v, elapsed %s", stats.Largest, time.Since(started))
-	if stats.Measured != 1 || stats.Overruns != 0 {
+	// FI1 stages and applies technical input in bounded transactions before
+	// the file's existing atomic naming/artwork acknowledgement. Every
+	// transaction must still obey its unchanged declared write plan.
+	if stats.Measured < 2 || stats.Overruns != 0 {
 		t.Fatalf("per-file audio publication exceeded its measured budget: %+v", stats)
 	}
 	f.finish(job)

@@ -32,13 +32,32 @@ type InfoSourcePrepare func(context.Context, *sql.Tx) (InfoInputSpec, []InfoSour
 // PublishInfoSource accepts one complete immutable source frame in bounded
 // transactions. Its receipt explicitly distinguishes durable accepted-pending
 // from applied. Canonical rows are installed later by the sole source41 owner.
-// Cancellation leaves a durable unaccepted input; an identical witnessed retry
-// resumes its transactional counts instead of restaging the prefix.
-func PublishInfoSource(ctx context.Context, db *sql.DB, check InfoSourceCheck, prepare InfoSourcePrepare) (InfoAcceptReceipt, error) {
+// A resumable producer error keeps the committed prefix. Terminal cancellation
+// abandons only its exact phase0 body for bounded NEW reclamation; accepted
+// inputs always finish and retain their truthful pending/applied receipt.
+func PublishInfoSource(ctx context.Context, db *sql.DB, check InfoSourceCheck, prepare InfoSourcePrepare) (out InfoAcceptReceipt, retErr error) {
 	if db == nil || check == nil || prepare == nil {
 		return InfoAcceptReceipt{}, ErrInfoInvariant
 	}
 	var input InfoInput
+	var ownerWitness InfoWitness
+	var ownerFingerprint [32]byte
+	// Only terminal producer loss abandons its own exact unaccepted body.
+	// Ordinary capacity/Busy errors and resumable producer errors keep the prefix.
+	defer func() {
+		if input.Ref.ChangeID == 0 || !(errors.Is(retErr, context.Canceled) || errors.Is(retErr, context.DeadlineExceeded) || errors.Is(retErr, ErrInfoInputDrift) || errors.Is(retErr, ErrInfoInvariant) || errors.Is(retErr, sql.ErrNoRows)) {
+			return
+		}
+		clean, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+		defer cancel()
+		e := dbwork.WithWriteTxContext(clean, db, dbwork.ClassFrom(ctx, dbwork.ClassBackgroundMedia), func(c context.Context, tx *sql.Tx) error {
+			_, e := abandonInfoWitnessTx(c, tx, input.Ref, ownerWitness, ownerFingerprint)
+			return e
+		})
+		if e != nil {
+			retErr = errors.Join(retErr, e)
+		}
+	}()
 	var families []InfoSourceFamily
 	write := func(fn func(context.Context, *sql.Tx) error) error {
 		return dbwork.WithWriteTxContext(ctx, db, dbwork.ClassFrom(ctx, dbwork.ClassBackgroundMedia), func(ctx context.Context, tx *sql.Tx) error {
@@ -82,6 +101,10 @@ func PublishInfoSource(ctx context.Context, db *sql.DB, check InfoSourceCheck, p
 				return nil
 			}
 		}
+		if e := spec.validate(); e != nil {
+			return e
+		}
+		ownerWitness, ownerFingerprint = spec.Witnesses[0], spec.Fingerprint
 		input, err = BeginInfoInputTx(ctx, tx, spec)
 		families = fs
 		return err

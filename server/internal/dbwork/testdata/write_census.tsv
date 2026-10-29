@@ -37,7 +37,6 @@ internal/catalog/bulk_jobs.go	(*Service).CleanupBulkJobs	WithWriteTx	ClassMainte
 internal/catalog/bulk_jobs.go	(*Service).CreateBulkJob	WithWriteTx	ClassInteractive	-	×2
 internal/catalog/bulk_jobs.go	(*Service).deleteBulkRows	ExecWrite	ClassMaintenance	-
 internal/catalog/bulk_jobs.go	(*Service).failBulkJob	WithWriteTx	ClassBackgroundMedia	-
-internal/catalog/catalog.go	(*Service).CommitMedia	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/catalog/catalog.go	(*Service).CreateAuthorizedThen	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/catalog/collections.go	(*Service).CreateCollection	WithWriteTx	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/catalog/collections.go	(*Service).DeleteCollection	WithWriteTx	ClassFrom(ctx, dbwork.ClassInteractive)	-
@@ -50,8 +49,6 @@ internal/catalog/container_personal.go	(*Service).SetContainerPersonal	WithWrite
 internal/catalog/container_personal.go	(*Service).SetContainerSaved	WithWriteTxContext	ClassInteractive	-
 internal/catalog/container_undo.go	(*Service).UndoContainerPersonal	WithWriteTx	ClassInteractive	-
 internal/catalog/delete_title.go	(*Service).RemoveTitle	WithWriteTx	ClassFrom(ctx, dbwork.ClassInteractive)	-
-internal/catalog/disc_publication.go	(*Service).CommitInventoryDiscProbe	Begin	ClassBackgroundMedia	-
-internal/catalog/disc_title_media.go	(*Service).CommitDiscAlternate	Begin	ClassBackgroundMedia	-
 internal/catalog/entity_adoption_mutations.go	(*Service).MutationAdapter	WithWriteTx	ClassBackgroundMedia	-
 internal/catalog/episode_repository.go	(*Service).AssignEpisodes	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/catalog/episodic_reparse.go	(*Service).ReparseEpisodicIssues	ExecWrite	ClassMaintenance	-

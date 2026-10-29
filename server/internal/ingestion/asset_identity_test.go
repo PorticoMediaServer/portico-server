@@ -52,7 +52,7 @@ func TestSamePathReplacementKeepsIdentityAndReturnRestoresAvailability(t *testin
 			t.Fatal(e)
 		}
 		for i := 0; i < 100; i++ {
-			s.process(ctx, job.ID, lib.ID)
+			scanInfoTurn(t, s, db, job.ID, lib.ID)
 			state, e := s.Get(job.ID)
 			if e != nil {
 				t.Fatal(e)

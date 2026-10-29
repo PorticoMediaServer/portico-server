@@ -432,6 +432,7 @@ type infoInputHeader struct {
 	familyMask      int64
 	fingerprint     []byte
 	targetAvailable sql.NullInt64
+	fault           string
 }
 
 func (h infoInputHeader) ref() InfoInputRef {
@@ -463,6 +464,13 @@ func (h infoInputHeader) ref() InfoInputRef {
 // parent may report accepted-pending only after that transaction commits and
 // whole-input acceptance has moved the body to phase 1.
 func BeginInfoInputTx(ctx context.Context, tx *sql.Tx, spec InfoInputSpec) (InfoInput, error) {
+	var invalidated bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_upstream_sources WHERE domain=41 AND source_id=? AND token=? AND flags&128<>0)`, spec.AssetID, spec.Token).Scan(&invalidated); err != nil {
+		return InfoInput{}, err
+	}
+	if invalidated {
+		return InfoInput{}, ErrInfoInputBusy
+	}
 	input, err := beginInfoInputTx(ctx, tx, spec)
 	if err != nil {
 		return InfoInput{}, err
@@ -506,6 +514,9 @@ func beginInfoInputTx(ctx context.Context, tx *sql.Tx, spec InfoInputSpec) (Info
 		return begunInfoInputAs(ctx, tx, spec.AssetID, spec.Token, 0, InfoInputOpened)
 	case err != nil:
 		return InfoInput{}, err
+	}
+	if active.fault == infoReclaim {
+		return InfoInput{}, ErrInfoInputBusy
 	}
 	witnesses, err := infoInputWitnesses(ctx, tx, active.changeID)
 	if err != nil {
@@ -987,7 +998,7 @@ func claimInfoInputHeader(ctx context.Context, tx *sql.Tx, h infoInputHeader, sp
 		return InfoInput{}, err
 	}
 	merged := h.familyMask | spec.FamilyMask
-	result, err := tx.ExecContext(ctx, `UPDATE catalog_info_changes SET fingerprint=?,family_mask=?,input_revision=input_revision+1
+	result, err := tx.ExecContext(ctx, `UPDATE catalog_info_changes SET fingerprint=?,family_mask=?,fault='',copy_aux=0,input_revision=input_revision+1
  WHERE id=? AND slot=? AND phase=0 AND input_revision=?`, spec.Fingerprint[:], merged, h.changeID, h.slot, h.inputRevision)
 	if err != nil {
 		return InfoInput{}, infoInputClassifyWrite(err)
@@ -1167,12 +1178,12 @@ func infoInputHeaderForWrite(ctx context.Context, tx *sql.Tx, ref InfoInputRef) 
 }
 
 func infoInputHeaderBySlot(ctx context.Context, tx *sql.Tx, asset int64, token string, slot int) (infoInputHeader, error) {
-	return scanInfoInputHeader(tx.QueryRowContext(ctx, `SELECT id,asset_id,asset_token,slot,phase,input_revision,expected_epoch,family_mask,fingerprint,target_available
+	return scanInfoInputHeader(tx.QueryRowContext(ctx, `SELECT id,asset_id,asset_token,slot,phase,input_revision,expected_epoch,family_mask,fingerprint,target_available,CASE copy_aux WHEN -1 THEN 'unaccepted-reclaim' WHEN -2 THEN 'old-frozen' ELSE fault END
  FROM catalog_info_changes WHERE asset_id=? AND asset_token=? AND slot=?`, asset, token, slot))
 }
 
 func infoInputHeaderByID(ctx context.Context, tx *sql.Tx, changeID int64) (infoInputHeader, error) {
-	return scanInfoInputHeader(tx.QueryRowContext(ctx, `SELECT id,asset_id,asset_token,slot,phase,input_revision,expected_epoch,family_mask,fingerprint,target_available
+	return scanInfoInputHeader(tx.QueryRowContext(ctx, `SELECT id,asset_id,asset_token,slot,phase,input_revision,expected_epoch,family_mask,fingerprint,target_available,CASE copy_aux WHEN -1 THEN 'unaccepted-reclaim' WHEN -2 THEN 'old-frozen' ELSE fault END
  FROM catalog_info_changes WHERE id=?`, changeID))
 }
 
@@ -1182,7 +1193,7 @@ type infoInputScanner interface {
 
 func scanInfoInputHeader(row infoInputScanner) (infoInputHeader, error) {
 	var h infoInputHeader
-	err := row.Scan(&h.changeID, &h.assetID, &h.token, &h.slot, &h.phase, &h.inputRevision, &h.expectedEpoch, &h.familyMask, &h.fingerprint, &h.targetAvailable)
+	err := row.Scan(&h.changeID, &h.assetID, &h.token, &h.slot, &h.phase, &h.inputRevision, &h.expectedEpoch, &h.familyMask, &h.fingerprint, &h.targetAvailable, &h.fault)
 	return h, err
 }
 

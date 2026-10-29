@@ -107,6 +107,9 @@ func AdvanceInfoPublicationTx(ctx context.Context, tx *sql.Tx, asset int64, toke
 	}
 	switch c.phase {
 	case 0:
+		if handled, done, e := recoverInfoInputTx(ctx, tx, c); handled || e != nil {
+			return done, e
+		}
 		var unsealed bool
 		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_info_input_families WHERE change_id=? AND (sealed=0 OR rows_staged<>rows_expected))`, c.id).Scan(&unsealed); err != nil {
 			return false, err

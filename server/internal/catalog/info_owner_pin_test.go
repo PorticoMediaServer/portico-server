@@ -19,8 +19,8 @@ func infoOwnerPinFixture(t *testing.T) (*catalogtest.Catalog, int64, string, str
 	if err := db.QueryRow(`SELECT o.revision,o.asset_id,a.id FROM inventory_objects o JOIN catalog_assets a ON a.token=o.asset_id WHERE o.id=?`, object).Scan(&revision, &token, &asset); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.CommitInventoryDiscProbe(context.Background(), job, object, revision, policy, probe); err != nil {
-		t.Fatal(err)
+	if receipt, err := s.AcceptInventoryDiscProbe(context.Background(), job, object, revision, policy, probe); err != nil || receipt.State != compactcatalog.InfoInputAcceptedPending {
+		t.Fatal("structure source receipt", receipt, err)
 	}
 	c := catalogtest.New(t, db)
 	c.Drain()

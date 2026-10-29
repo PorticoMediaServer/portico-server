@@ -36,8 +36,12 @@ type fileInfoOrderedSpec struct {
 }
 type fileInfoOrderedSummary struct {
 	Total, Eligible int64
-	Earlier, Later  bool
-	Occurrences     []fileInfoOccurrence
+	// FirstOrdinal is the 1-based global ordinal of Occurrences[0] in the whole
+	// accepted lane order, or 0 for an empty page. It lets delivery place a short
+	// or backward page without re-walking, sorting or retaining pages.
+	FirstOrdinal   int64
+	Earlier, Later bool
+	Occurrences    []fileInfoOccurrence
 }
 
 type fileInfoOrderedScan struct {
@@ -194,8 +198,25 @@ func (s *fileInfoOrderedScan) Step(ctx context.Context, b *readprep.Budget) (rea
 		earlier = s.spec.HasAnchor && s.total > s.window
 		later = s.window > int64(s.count)
 	}
-	payload := make([]byte, 20+16*s.count)
-	payload[0], payload[1] = 1, byte(s.count)
+	// `before` counts accepted rows strictly before the anchor, which fixes the
+	// page's first global ordinal without a sort or a resident page.
+	first := int64(0)
+	if s.count > 0 {
+		switch s.spec.Direction {
+		case fileInfoBackward:
+			first = s.before - int64(s.count) + 1
+		case fileInfoReload:
+			first = s.before + 1
+		default:
+			if s.spec.HasAnchor {
+				first = s.before + 2
+			} else {
+				first = 1
+			}
+		}
+	}
+	payload := make([]byte, 28+16*s.count)
+	payload[0], payload[1] = 2, byte(s.count)
 	if earlier {
 		payload[2] = 1
 	}
@@ -204,40 +225,42 @@ func (s *fileInfoOrderedScan) Step(ctx context.Context, b *readprep.Budget) (rea
 	}
 	binary.BigEndian.PutUint64(payload[4:12], uint64(s.total))
 	binary.BigEndian.PutUint64(payload[12:20], uint64(s.eligible))
+	binary.BigEndian.PutUint64(payload[20:28], uint64(first))
 	for i, o := range s.items[:s.count] {
-		binary.BigEndian.PutUint64(payload[20+16*i:28+16*i], uint64(o.Item))
-		binary.BigEndian.PutUint64(payload[28+16*i:36+16*i], uint64(o.Asset))
+		binary.BigEndian.PutUint64(payload[28+16*i:36+16*i], uint64(o.Item))
+		binary.BigEndian.PutUint64(payload[36+16*i:44+16*i], uint64(o.Asset))
 	}
 	return readprep.StepResult{Done: true, Payload: payload}, nil
 }
 
 func decodeFileInfoOrderedSummary(payload []byte) (fileInfoOrderedSummary, error) {
 	var out fileInfoOrderedSummary
-	if len(payload) < 20 || payload[0] != 1 || payload[1] > 100 || payload[2] > 1 || payload[3] > 1 || len(payload) != 20+16*int(payload[1]) {
+	if len(payload) < 28 || payload[0] != 2 || payload[1] > 100 || payload[2] > 1 || payload[3] > 1 || len(payload) != 28+16*int(payload[1]) {
 		return out, readprep.ErrInvalid
 	}
 	out.Total = int64(binary.BigEndian.Uint64(payload[4:12]))
 	out.Eligible = int64(binary.BigEndian.Uint64(payload[12:20]))
+	out.FirstOrdinal = int64(binary.BigEndian.Uint64(payload[20:28]))
 	out.Earlier, out.Later = payload[2] == 1, payload[3] == 1
-	if out.Total < int64(payload[1]) || out.Eligible < 0 || out.Eligible > out.Total {
+	if out.Eligible < 0 || out.Eligible > out.Total || !fileInfoOrdinalRangeOK(out.FirstOrdinal, int64(payload[1]), out.Total) {
 		return fileInfoOrderedSummary{}, readprep.ErrInvalid
 	}
 	// Validate bounded coordinates and duplicates before allocating the delivery.
 	for i := 0; i < int(payload[1]); i++ {
-		item := int64(binary.BigEndian.Uint64(payload[20+16*i : 28+16*i]))
-		asset := int64(binary.BigEndian.Uint64(payload[28+16*i : 36+16*i]))
+		item := int64(binary.BigEndian.Uint64(payload[28+16*i : 36+16*i]))
+		asset := int64(binary.BigEndian.Uint64(payload[36+16*i : 44+16*i]))
 		if item <= 0 || asset <= 0 {
 			return fileInfoOrderedSummary{}, readprep.ErrInvalid
 		}
 		for j := 0; j < i; j++ {
-			if binary.BigEndian.Uint64(payload[20+16*j:28+16*j]) == uint64(item) && binary.BigEndian.Uint64(payload[28+16*j:36+16*j]) == uint64(asset) {
+			if binary.BigEndian.Uint64(payload[28+16*j:36+16*j]) == uint64(item) && binary.BigEndian.Uint64(payload[36+16*j:44+16*j]) == uint64(asset) {
 				return fileInfoOrderedSummary{}, readprep.ErrInvalid
 			}
 		}
 	}
 	out.Occurrences = make([]fileInfoOccurrence, int(payload[1]))
 	for i := range out.Occurrences {
-		out.Occurrences[i] = fileInfoOccurrence{int64(binary.BigEndian.Uint64(payload[20+16*i : 28+16*i])), int64(binary.BigEndian.Uint64(payload[28+16*i : 36+16*i]))}
+		out.Occurrences[i] = fileInfoOccurrence{int64(binary.BigEndian.Uint64(payload[28+16*i : 36+16*i])), int64(binary.BigEndian.Uint64(payload[36+16*i : 44+16*i]))}
 	}
 	return out, nil
 }
