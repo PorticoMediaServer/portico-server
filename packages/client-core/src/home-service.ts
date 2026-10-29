@@ -149,6 +149,8 @@ export class HomeService {
   private readonly rowRetries = new Set<ReturnType<typeof setTimeout>>();
   /** Shelves dropped after their last retry; the next return to Home reads them again. */
   private readonly droppedRows = new Set<string>();
+  /** Failed reads per shelf, kept across quiet re-reads so a retry schedule can't restart forever. */
+  private readonly rowFailures = new Map<string, number>();
   private readonly api: () => HomeApi;
   private readonly timeoutMs: number;
   private readonly initialLimit: number | undefined;
@@ -385,7 +387,7 @@ export class HomeService {
       }
       if (!current()) return;
       if (this.state.phase !== 'ready' || !this.state.document) { outcome = 'not-answered'; return; }
-      const merged = mergeHomeDocument(this.state.document, fresh);
+      const merged = this.withoutDropped(mergeHomeDocument(this.state.document, fresh));
       if (this.display === flight) this.display = undefined;
       if (merged !== this.state.document) this.publish({document: merged});
       if (!this.displayCurrent(flight) || this.state.document !== merged) return;
@@ -408,7 +410,7 @@ export class HomeService {
       await context?.settle?.();
       if (!current()) return 'superseded';
       if (this.state.phase !== 'ready' || !this.state.document) return 'not-answered';
-      const merged = mergeHomeDocument(this.state.document, fresh);
+      const merged = this.withoutDropped(mergeHomeDocument(this.state.document, fresh));
       if (merged !== this.state.document) this.publish({document: merged});
       if (!current()) return 'superseded';
       this.hydrateRows(fresh, quiet);
@@ -429,7 +431,6 @@ export class HomeService {
     const queue: HomeDocument['rows'][number][] = [];
     const mine = this.generation;
     let running = 0;
-    const attempts = new Map<string, number>();
     const consume = async () => {
       running++;
       try { while (queue.length && this.ownerCurrent() && epoch === this.hydrationGeneration && (quiet === undefined || quiet === this.quiet)) {
@@ -455,14 +456,15 @@ export class HomeService {
           const at = shown.rows.findIndex(old => old.id === descriptor.id || descriptor.id === 'for_you' && old.family === 'for_you');
           rows.splice(Math.max(0, at), 0, ...replacements.filter(next => hasHomeRowContent(next) || next.critical));
           this.publish({document: mergeHomeDocument(shown, Object.freeze({...shown, rows: Object.freeze(rows)})), error: undefined});
+          this.rowFailures.delete(descriptor.id);
         } catch (error) {
           if(permissionDenied(error)&&this.ownerCurrent()&&mine===this.generation&&(quiet===undefined||quiet===this.quiet)&&epoch===this.hydrationGeneration&&!controller.signal.aborted)this.removeRow(descriptor.id);
           // A failed or timed-out shelf stays a skeleton, which nothing else would ever retry on this document.
           // Retry it a few times with backoff while this hydration is current, then drop it; a later refresh
           // brings the descriptor back. Other shelves continue meanwhile.
           else if (mine === this.generation && epoch === this.hydrationGeneration && this.ownerCurrent() && (quiet === undefined || quiet === this.quiet) && !(error instanceof HomeAuthorityRetired)) {
-            const attempt = (attempts.get(descriptor.id) ?? 0) + 1;
-            attempts.set(descriptor.id, attempt);
+            const attempt = (this.rowFailures.get(descriptor.id) ?? 0) + 1;
+            this.rowFailures.set(descriptor.id, attempt);
             if (attempt > homeRowRetryDelaysMs.length) { this.droppedRows.add(descriptor.id); this.removeRow(descriptor.id); }
             else {
               const retry = setTimeout(() => {
@@ -477,11 +479,18 @@ export class HomeService {
     };
     const pump = () => { while (running < 2 && queue.length) void consume(); };
     for (const row of fresh.rows) {
-      if (!row.deferred) continue;
+      // A shelf dropped after its retries stays away until the viewer comes back to Home (recoverDroppedRows).
+      if (!row.deferred || this.droppedRows.has(row.id)) continue;
       if (this.wanted(row.id)) queue.push(row);
       else this.waiting.set(row.id, () => { if (this.ownerCurrent() && epoch === this.hydrationGeneration) { queue.push(row); pump(); } });
     }
     pump();
+  }
+
+  /** A quiet re-read brings every descriptor back; a dropped shelf must not return as a skeleton. */
+  private withoutDropped(document: HomeDocument): HomeDocument {
+    if (!this.droppedRows.size || !document.rows.some(row => this.droppedRows.has(row.id))) return document;
+    return Object.freeze({...document, rows: Object.freeze(document.rows.filter(row => !this.droppedRows.has(row.id)))});
   }
 
   private removeRow(id:string):void {
@@ -516,6 +525,7 @@ export class HomeService {
     this.reading?.controller.abort();
     const mine = ++this.generation, controller = new AbortController();
     if (this.observation) this.privateReadSerial++;
+    this.droppedRows.clear(); this.rowFailures.clear();
     // An explicit load/clear invalidates every outstanding quiet read.
     this.advanceQuiet();
     for (const page of this.pages.values()) page.abort();
@@ -551,7 +561,7 @@ export class HomeService {
    */
   async recoverDroppedRows(): Promise<void> {
     if (!this.droppedRows.size || this.disposed || this.state.phase !== 'ready') return;
-    this.droppedRows.clear();
+    this.droppedRows.clear(); this.rowFailures.clear();
     await this.revalidate();
   }
 
@@ -568,7 +578,7 @@ export class HomeService {
       if (!current()) return;
       await context?.settle?.();
       if (!current() || !this.state.document || this.state.phase !== 'ready') return;
-      const merged = mergeHomeDocument(this.state.document, fresh);
+      const merged = this.withoutDropped(mergeHomeDocument(this.state.document, fresh));
       if (merged !== this.state.document) this.publish({document: merged});
       // A read superseded after its settle may not start or own deferred shelves.
       if (current()) this.hydrateRows(fresh, ticket);

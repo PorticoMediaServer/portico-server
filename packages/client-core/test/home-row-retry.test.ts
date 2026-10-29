@@ -77,3 +77,25 @@ test('a deferred shelf outside the declared demand waits, and loads once it is d
   assert.equal(reads, 1);
   home.dispose();
 });
+
+test('quiet re-reads neither restart a failing shelf\'s retries nor bring a dropped shelf back as a skeleton', async t => {
+  t.mock.timers.enable({apis: ['setTimeout']});
+  let reads = 0, failing = true;
+  const home = new HomeService({request: async path => {
+    if (!path.includes('/rows/')) return JSON.parse(JSON.stringify(document([row('later', [], true)])));
+    reads++; if (failing) throw Object.assign(new Error('down'), {code: 'request_timeout', retryable: true});
+    return JSON.parse(JSON.stringify(row('later', [entry('a')])));
+  }});
+  await home.load(); await settle();
+  // A background re-read lands between every failure, as the live app's freshness reads do.
+  for (let index = 0; index < homeRowRetryDelaysMs.length + 2; index++) { await home.revalidate(); await settle(); }
+  assert.equal(reads, homeRowRetryDelaysMs.length + 1, 'four failed reads in all, then the shelf is dropped');
+  assert.equal(home.getSnapshot().document!.rows.length, 0);
+  await home.revalidate(); await settle();
+  assert.equal(home.getSnapshot().document!.rows.length, 0, 'a later quiet re-read does not bring it back as a skeleton');
+  assert.equal(reads, homeRowRetryDelaysMs.length + 1, 'and does not read it again');
+  failing = false;
+  await home.recoverDroppedRows(); await settle();
+  assert.deepEqual(home.getSnapshot().document!.rows[0]!.entries.map(item => item.id), ['a'], 'the return to Home brings it back');
+  home.dispose();
+});
