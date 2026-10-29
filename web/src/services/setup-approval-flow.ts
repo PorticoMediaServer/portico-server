@@ -10,8 +10,11 @@ export type SetupApprovalDisplay = Readonly<{
 export type SetupApprovalSnapshot = Readonly<{
   phase: 'loading' | 'review' | 'approved' | 'finishing' | 'denied' | 'returning' | 'error' | 'expired';
   busy: boolean; approved?: true; /** Hosted reports the claim installed: only then is Return offered. */ installed?: true; display?: SetupApprovalDisplay; error?: unknown;
+  /** Still finishing well after Approve: the page says so honestly, with what to check. */ slow?: true;
 }>;
 const changed = () => new ApiError(409, 'claim_stale', 'claim_stale', false);
+/** The server retries finishing quickly for about two minutes, then keeps trying slowly. */
+export const FINISHING_SLOW_MS = 2 * 60_000;
 
 /** View lifecycle over the one existing protected setup controller. No cookie,
  * credential, journal or claim code is copied into this public snapshot. */
@@ -22,6 +25,7 @@ export class SetupApprovalFlow {
   private disposed = false;
   private review?: HostedSetupClaimReview;
   private identity?: AccountIdentity;
+  private approvedAt?: number;
   constructor(private readonly account: ServicesAccount, private readonly controller: Controller,
     private readonly navigate: (location: string) => void, private readonly now = Date.now) {}
   readonly getSnapshot = () => this.state;
@@ -76,7 +80,10 @@ export class SetupApprovalFlow {
         await currentAccountWork(this.account, async () => {this.current(generation, identity);}, identity);
         this.current(generation, identity);
         this.publish({phase: 'denied', busy: false, display: this.state.display});
-      } else this.publish({phase: 'approved', busy: false, approved: true, display: this.state.display});
+      } else {
+        this.approvedAt = this.now();
+        this.publish({phase: 'approved', busy: false, approved: true, display: this.state.display});
+      }
     });
   }
   /** A denial has no credential exchange to finish. Return only to the original
@@ -108,7 +115,9 @@ export class SetupApprovalFlow {
         this.current(generation, identity);
         this.review = review;
         const installed = review.status === 'approved' && review.installed;
-        this.publish({...this.state, phase: 'finishing', busy: false, ...(installed ? {installed: true as const} : {})});
+        this.approvedAt ??= this.now();
+        const slow = this.now() - this.approvedAt > FINISHING_SLOW_MS;
+        this.publish({...this.state, phase: 'finishing', busy: false, ...(installed ? {installed: true as const} : {}), ...(slow ? {slow: true as const} : {})});
         return;
       }
       // The protected controller already performs the final authenticated check

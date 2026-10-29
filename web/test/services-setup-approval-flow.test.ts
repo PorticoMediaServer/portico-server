@@ -18,7 +18,7 @@ function fixture() {
   return {flow, review, navigations, decisions, completion: (work: typeof completion) => {completion = work;},
     rejectDecision: () => {rejectDecision = true;}, replaceFamily: () => {session = {...session, familyId: 'successor-family'};},
     closeAccountReads: () => {accountReadsClosed = true;},
-    expireClock: () => {now += 180000;}, completeCalls: () => completeCalls, disposed: () => disposed};
+    expireClock: () => {now += 180000;}, advance: (ms: number) => {now += ms;}, completeCalls: () => completeCalls, disposed: () => disposed};
 }
 
 test('confirmed approval retries the same protected completion after refusal without a public-address bypass', async () => {
@@ -93,4 +93,21 @@ test('Return is offered only once Hosted reports the approved claim installed', 
   assert.equal(g.flow.getSnapshot().installed, true); assert.deepEqual(g.navigations, []); g.flow.dispose();
   const h = fixture(); await h.flow.start(); await h.flow.decide('approve');
   assert.equal(h.flow.getSnapshot().installed, undefined); h.flow.dispose();
+});
+
+// A slow or failing Portico Services keeps the server finishing after Approve. Try again
+// keeps looking it up, and past two minutes the page says so honestly (the rig's d2).
+test('finishing long after Approve is marked slow; shortly after it is not', async () => {
+  const f = fixture();
+  (f.review as {expiresAt: string}).expiresAt = new Date(Date.now() + 30 * 60_000).toISOString();
+  await f.flow.start(); await f.flow.decide('approve');
+  f.completion(async () => undefined as unknown as string);
+  f.advance(30_000); await f.flow.complete();
+  assert.equal(f.flow.getSnapshot().phase, 'finishing'); assert.equal(f.flow.getSnapshot().slow, undefined);
+  f.advance(150_000); await f.flow.complete();
+  assert.equal(f.flow.getSnapshot().phase, 'finishing'); assert.equal(f.flow.getSnapshot().slow, true);
+  f.completion(async () => 'https://original.example/auth/portico-return#transaction=original-transaction');
+  await f.flow.complete();
+  assert.deepEqual(f.navigations, ['https://original.example/auth/portico-return#transaction=original-transaction']);
+  f.flow.dispose();
 });

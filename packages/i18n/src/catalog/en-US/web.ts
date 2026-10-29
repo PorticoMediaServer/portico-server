@@ -639,6 +639,7 @@ export const webMessages = {
   'web.claim.becomesOwnerOf': '{account} becomes the owner of {server}.',
   'web.claim.mainProfile': 'It gets a main profile there, named {account}.',
   'web.claim.finishingOnServer': 'Your server is finishing setup.',
+  'web.claim.finishingSlow': 'This is taking longer than usual. Your server keeps trying on its own. Check that it’s on and can reach the internet, then try again.',
   'web.claim.nextFirstLibrary': 'Next, add your first library.',
   'web.claim.signedInAs': 'You’re signed in there as {account}, the owner. Anyone you invite signs in on web.getportico.tv with their own Portico Account.',
   'web.claim.approved': 'Approved',
