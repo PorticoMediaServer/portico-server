@@ -117,7 +117,8 @@ func (h *ClaimHandler) awaitWebClaim(w http.ResponseWriter, r *http.Request) {
 		h.failure(w, r, e)
 		return
 	}
-	deadline := time.Now().Add(webClaimLifetime + time.Minute)
+	// The longest purpose (setup) bounds how long a watcher can wait.
+	deadline := time.Now().Add(claimweb.RequestLifetime("setup") + time.Minute)
 	_ = http.NewResponseController(w).SetWriteDeadline(deadline)
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("X-Accel-Buffering", "no")

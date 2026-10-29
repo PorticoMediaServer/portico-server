@@ -11,6 +11,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"os"
 	"portico.local/server/internal/authorityfiles"
+	"portico.local/server/internal/claimweb"
 	"portico.local/server/internal/dbwork"
 	"strings"
 	"time"
@@ -315,13 +316,110 @@ func (s *Service) BrowserSetupToken(ctx context.Context) (string, error) {
 		return "", err
 	}
 	if pending {
-		return "", ErrConflict
+		// An abandoned Portico Account attempt must never strand the server: once its
+		// window has passed without approval it gives way to this new start.
+		if err := s.supersedeStaleSetup(ctx); err != nil {
+			return "", err
+		}
+		token := Token()
+		if err := os.WriteFile(s.setupPath, []byte(token), 0600); err != nil {
+			return "", err
+		}
+		return token, nil
 	}
 	token, err := os.ReadFile(s.setupPath)
 	if err != nil {
 		return "", err
 	}
 	return string(token), nil
+}
+
+// SetupInProgressError refuses a new setup start while another browser's Portico
+// Account attempt is still inside its window. Until says when it may be started over.
+type SetupInProgressError struct{ Until time.Time }
+
+func (e *SetupInProgressError) Error() string { return "setup_in_progress" }
+
+// supersedeStaleSetup retires the pending Portico Account setup when it can no longer
+// finish: never approved, never installed, and past its window (claimweb.SetupLifetime
+// after its newest start, or after it began when it never reached Hosted). A live attempt
+// refuses with SetupInProgressError; a local, approved or installed one keeps ErrConflict.
+func (s *Service) supersedeStaleSetup(ctx context.Context) error {
+	gated, err := dbwork.Begin(ctx, s.db, dbwork.ClassSecurityFence)
+	if err != nil {
+		return err
+	}
+	defer gated.Rollback()
+	tx := gated.Tx()
+	var accounts int
+	if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM accounts`).Scan(&accounts); err != nil {
+		return err
+	}
+	var operation, mode string
+	var ready, receiptUntil int64
+	err = tx.QueryRowContext(ctx, `SELECT operation_id,auth_mode,ready,receipt_until FROM onboarding_state_v1 WHERE singleton=1`).Scan(&operation, &mode, &ready, &receiptUntil)
+	if errors.Is(err, sql.ErrNoRows) {
+		return gated.Commit()
+	}
+	if err != nil {
+		return err
+	}
+	if accounts != 0 || mode != "hosted" || ready != 0 {
+		return ErrConflict
+	}
+	var active, installed sql.NullString
+	if err = tx.QueryRowContext(ctx, `SELECT active_operation_id,installed_operation_id FROM networking_claim_identity WHERE singleton=1`).Scan(&active, &installed); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if installed.Valid {
+		return ErrConflict
+	}
+	if active.Valid {
+		// Only this setup's own claim, still exactly as prepared, may be retired.
+		var setupOperation, stage, account string
+		var approval int64
+		if err = tx.QueryRowContext(ctx, `SELECT setup_operation_id,stage,account_id,approval_revision FROM networking_claim_intents WHERE operation_id=?`, active.String).Scan(&setupOperation, &stage, &account, &approval); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return ErrConflict
+			}
+			return err
+		}
+		if setupOperation != operation || stage != "prepared" || account != "account-unbound" || approval != 0 {
+			return ErrConflict
+		}
+	}
+	var settled int
+	var newest sql.NullInt64
+	if err = tx.QueryRowContext(ctx, `SELECT count(*) FILTER (WHERE phase IN('installed','consumed','completed')),max(expires_ms) FROM identity_setup_completions WHERE setup_request_id=?`, operation).Scan(&settled, &newest); err != nil {
+		return err
+	}
+	if settled != 0 {
+		return ErrConflict
+	}
+	now := time.Now()
+	// receipt_until is the start plus setupReceiptSeconds; a start never prepared at
+	// Hosted keeps the same window from that moment.
+	until := time.Unix(receiptUntil-setupReceiptSeconds, 0).Add(claimweb.SetupLifetime())
+	if newest.Valid {
+		until = time.UnixMilli(newest.Int64)
+	}
+	if now.Before(until) {
+		return &SetupInProgressError{Until: until}
+	}
+	for _, q := range []struct {
+		query string
+		args  []any
+	}{
+		{`UPDATE identity_setup_completions SET phase='superseded' WHERE setup_request_id=? AND phase IN('prepared','expired')`, []any{operation}},
+		{`UPDATE networking_claim_intents SET stage='cancelled',revision=revision+1 WHERE operation_id=? AND stage='prepared' AND account_id='account-unbound' AND approval_revision=0`, []any{active.String}},
+		{`UPDATE networking_claim_identity SET active_operation_id=NULL,pending_operation_id=CASE WHEN pending_operation_id=? THEN NULL ELSE pending_operation_id END WHERE singleton=1 AND active_operation_id=? AND installed_operation_id IS NULL`, []any{active.String, active.String}},
+		{`DELETE FROM onboarding_state_v1 WHERE singleton=1 AND operation_id=? AND ready=0`, []any{operation}},
+	} {
+		if _, err = tx.ExecContext(ctx, q.query, q.args...); err != nil {
+			return err
+		}
+	}
+	return gated.Commit()
 }
 
 // SetupClaimAuthority verifies the continuation secret without inventing a

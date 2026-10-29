@@ -10,9 +10,11 @@ import (
 	"os"
 	"portico.local/apikit"
 	"portico.local/apikit/apierror"
+	"portico.local/server/internal/claimweb"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/networkpolicy"
 	"strings"
+	"time"
 )
 
 // Native clients may omit Origin. Browser writes require the request's exact
@@ -73,6 +75,8 @@ func (d Dependencies) serveSetup(w http.ResponseWriter, r *http.Request) {
 		failure(w, identity.ErrUnauthorized)
 		return
 	}
+	// No source check here: the setup secret leaves this server only through the
+	// start routes (setupStart), which admit local sources only (S1).
 	var body identity.SetupOptions
 	if e := decode(w, r, &body); e != nil {
 		failure(w, e)
@@ -103,8 +107,21 @@ func (d Dependencies) appSetupRequest(r *http.Request) bool {
 	return d.setupRequestAllowed(r) && r.Header.Get("Origin") == "" && r.Header.Get("Sec-Fetch-Mode") == ""
 }
 
+// setupSourceAllowed is PLEX-SETUP-NOTES S1: first-run setup is open to this machine and
+// the local network over plain HTTP — loopback, RFC 1918, CGNAT, link-local, IPv6 ULA —
+// plus the owner's LAN networks, never a public-internet source.
+func (d Dependencies) setupSourceAllowed(r *http.Request) bool {
+	client, ok := networkpolicy.Client(r, d.trustedProxyPrefixes(r.Context()))
+	return ok && (claimweb.LocalSetupAddr(client.Unmap()) || !d.requestIsRemote(r))
+}
+
+var errSetupSourceNotLocal = &apierror.Error{Code: "setup_source_not_local"}
+
 // setupStart answers a first-run setup secret once the caller has passed its route's check.
 func (d Dependencies) setupStart(ctx context.Context, r *http.Request, bucket string) (BrowserSetupResponse, error) {
+	if !d.setupSourceAllowed(r) {
+		return BrowserSetupResponse{}, errSetupSourceNotLocal
+	}
 	if err := d.Identity.SetupLimit(ctx, d.setupPeerSubject(r), bucket, 10); err != nil {
 		return BrowserSetupResponse{}, setupTransportError(err)
 	}
@@ -120,7 +137,7 @@ func registerSetupTransport(registry *apikit.Registry, d Dependencies) error {
 	if err != nil {
 		return err
 	}
-	err = apikit.Register(registry, apikit.Route[struct{}, BrowserSetupResponse]{Metadata: apikit.Metadata{Audience: apikit.Clients, Admission: laneDefault, ID: "start_browser_setup", Method: "POST", Path: "/v1/setup/browser", Summary: "Start first-run setup from this origin", Access: apikit.Public, Requires: apikit.ScopeSession, Lane: apikit.Security, Cost: apikit.Constant, Status: 200, BodyLimit: 4096, Errors: []string{"unauthorized", "invalid_request", "rate_limited", "setup_already_complete", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (BrowserSetupResponse, error) {
+	err = apikit.Register(registry, apikit.Route[struct{}, BrowserSetupResponse]{Metadata: apikit.Metadata{Audience: apikit.Clients, Admission: laneDefault, ID: "start_browser_setup", Method: "POST", Path: "/v1/setup/browser", Summary: "Start first-run setup from this origin", Access: apikit.Public, Requires: apikit.ScopeSession, Lane: apikit.Security, Cost: apikit.Constant, Status: 200, BodyLimit: 4096, Errors: []string{"unauthorized", "invalid_request", "rate_limited", "setup_already_complete", "setup_in_progress", "setup_source_not_local", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (BrowserSetupResponse, error) {
 		if !d.setupRequestAllowed(r) || !d.sameRequestOrigin(r, r.Header.Get("Origin")) {
 			return BrowserSetupResponse{}, foundationAuthError(identity.ErrUnauthorized)
 		}
@@ -130,7 +147,7 @@ func registerSetupTransport(registry *apikit.Registry, d Dependencies) error {
 		return err
 	}
 	// First run from the Portico app on a phone or tablet that found a server nobody has set up.
-	return apikit.Register(registry, apikit.Route[struct{}, BrowserSetupResponse]{Metadata: apikit.Metadata{Audience: apikit.Clients, Admission: laneDefault, ID: "start_app_setup", Method: "POST", Path: "/v1/setup/app", Summary: "Start first-run setup from an app", Access: apikit.Public, Requires: apikit.ScopeSession, Lane: apikit.Security, Cost: apikit.Constant, Status: 200, BodyLimit: 4096, Errors: []string{"unauthorized", "invalid_request", "rate_limited", "setup_already_complete", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (BrowserSetupResponse, error) {
+	return apikit.Register(registry, apikit.Route[struct{}, BrowserSetupResponse]{Metadata: apikit.Metadata{Audience: apikit.Clients, Admission: laneDefault, ID: "start_app_setup", Method: "POST", Path: "/v1/setup/app", Summary: "Start first-run setup from an app", Access: apikit.Public, Requires: apikit.ScopeSession, Lane: apikit.Security, Cost: apikit.Constant, Status: 200, BodyLimit: 4096, Errors: []string{"unauthorized", "invalid_request", "rate_limited", "setup_already_complete", "setup_in_progress", "setup_source_not_local", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (BrowserSetupResponse, error) {
 		if !d.appSetupRequest(r) {
 			return BrowserSetupResponse{}, foundationAuthError(identity.ErrUnauthorized)
 		}
@@ -142,6 +159,11 @@ func setupTransportError(err error) error {
 	if errors.Is(err, identity.ErrConflict) {
 		return &apierror.Error{Code: "setup_already_complete"}
 	}
+	var progress *identity.SetupInProgressError
+	if errors.As(err, &progress) {
+		wait := int(time.Until(progress.Until).Seconds()) + 1
+		return &apierror.Error{Code: "setup_in_progress", RetryAfterSeconds: max(wait, 1)}
+	}
 	var protocol *identity.SetupProtocolError
 	if errors.As(err, &protocol) && protocol.Code == "rate_limited" {
 		return &apierror.Error{Code: "rate_limited", RetryAfterSeconds: protocol.Interval}
@@ -149,5 +171,7 @@ func setupTransportError(err error) error {
 	return foundationAuthError(err)
 }
 func connectionErrorDefinitions() []apierror.Definition {
-	return []apierror.Definition{{Code: "setup_already_complete", Status: 409, Message: "This server is already set up.", Retry: apierror.Never}}
+	return []apierror.Definition{{Code: "setup_already_complete", Status: 409, Message: "This server is already set up.", Retry: apierror.Never},
+		{Code: "setup_in_progress", Status: 409, Message: "Setup is already in progress in another browser.", Retry: apierror.SameRequest},
+		{Code: "setup_source_not_local", Status: 403, Message: "Setup has to start from a device on the same network as this server.", Retry: apierror.Never}}
 }
