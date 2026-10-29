@@ -4,28 +4,10 @@
  * URL rewrite adds the prefix on the way out and removes it (noting the server) on the way in.
  * A server serving its own UI keeps plain paths: it is the only server there. */
 
-/** The screens that show a server's content or a place on it. Account, server choice, setup,
- * sign-in, settings, the device page, help and about stay unscoped. */
-const scopedScreen = /^\/(?:|search|search\/reading|libraries|library\/[^/]+|live|saved|item\/[^/]+|home\/rows\/[^/]+|player|person\/[^/]+|read\/[^/]+|watch-together|dashboard|notifications)$/;
-const serverIdPattern = /^[A-Za-z0-9._~-]{1,128}$/;
-
-export const isScopedScreenPath = (pathname: string): boolean => scopedScreen.test(pathname);
-export const validServerId = (value: unknown): value is string => typeof value === 'string' && serverIdPattern.test(value) && value !== '.' && value !== '..';
-
-/** `/s/<serverId>` + a scoped screen path, else undefined. `/s/<id>` and `/s/<id>/` are Home. */
-export function parseScopedPath(pathname: string): Readonly<{serverId: string; pathname: string}> | undefined {
-  const match = /^\/s\/([^/]+)(\/.*)?$/.exec(pathname);
-  if (!match) return undefined;
-  let serverId: string;
-  try {serverId = decodeURIComponent(match[1]!);} catch {return undefined;}
-  const rest = !match[2] || match[2] === '/' ? '/' : match[2];
-  return validServerId(serverId) && isScopedScreenPath(rest) ? Object.freeze({serverId, pathname: rest}) : undefined;
-}
-/** The public form of an internal path on `serverId`; a path that is not a scoped screen is unchanged. */
-export function scopedPathname(pathname: string, serverId: string): string {
-  if (!isScopedScreenPath(pathname) || !validServerId(serverId)) return pathname;
-  return `/s/${encodeURIComponent(serverId)}${pathname === '/' ? '' : pathname}`;
-}
+// The link grammar is shared with the apps (client-core, frozen in REQUESTS for O-162).
+import {isScopedScreenPath, parseServerLinkPath, scopedPathname, validServerId} from '@core/server-links.ts';
+export {isScopedScreenPath, scopedPathname, validServerId};
+export const parseScopedPath = parseServerLinkPath;
 
 type Rewrite = Readonly<{input: (options: {url: URL}) => URL | undefined; output: (options: {url: URL}) => URL | undefined}>;
 export type ServerScope = Readonly<{
