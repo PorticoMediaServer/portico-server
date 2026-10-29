@@ -9,9 +9,11 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -123,6 +125,7 @@ func TestSetupStartRenewalProducerAgainstStubHosted(t *testing.T) {
 	}
 	var requests []seen
 	answer := "first_setup_transaction"
+	refuse := false
 	transport.client = &http.Client{Transport: ownerPendingRoundTrip(func(r *http.Request) (*http.Response, error) {
 		if r.Method != "POST" || r.URL.String() != "https://hosted.example/v1/server-claims/pending" || r.Header.Get("Authorization") != "" {
 			t.Fatal("unexpected Hosted request")
@@ -140,6 +143,9 @@ func TestSetupStartRenewalProducerAgainstStubHosted(t *testing.T) {
 			t.Fatal("Hosted receives a verifiable signed pair", err)
 		}
 		requests = append(requests, seen{claim, start, request})
+		if refuse {
+			return &http.Response{StatusCode: 409, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":{"code":"claim_stale","message":"stale","retryable":false}}`))}, nil
+		}
 		out, _ := json.Marshal(claimweb.Pending{Purpose: "setup", Code: "claim_" + strings.Repeat("K", 43), SetupTransactionID: answer, ServerID: claim.ServerID, Name: claim.Name, Address: claim.Address, RequestedAt: claim.IssuedAt, ExpiresAt: start.ExpiresAt, Status: "pending"})
 		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(bytes.NewReader(out))}, nil
 	})}
@@ -230,6 +236,31 @@ func TestSetupStartRenewalProducerAgainstStubHosted(t *testing.T) {
 	if err = db.QueryRow(`SELECT server_challenge_hash FROM identity_setup_completions`).Scan(&oldChallenge); err != nil {
 		t.Fatal(err)
 	}
+	// Contabo, 29 Oct: Hosted refused the first renewal (409 claim_stale). The server had
+	// already stored that renewed start, prepared and unbound, and it then lapsed too.
+	refuse = true
+	sx, cx, ix := browser()
+	_, refused := begin(installed, sx, cx, ix)
+	if !errors.Is(refused, ErrStale) {
+		t.Fatal("the Hosted refusal is stale", refused)
+	}
+	// The refusal now explains itself in the server log: its step and class, no values.
+	var logged []string
+	h.failures = newFailureLog(func(format string, args ...any) { logged = append(logged, fmt.Sprintf(format, args...)) })
+	w := httptest.NewRecorder()
+	h.failure(w, httptest.NewRequest("POST", "/v1/networking/claim/web-approval", nil), refused)
+	if w.Code != 409 || len(logged) != 1 || !strings.Contains(logged[0], "answered 409: step hosted pending, identity stale") || strings.Contains(logged[0], sx) {
+		t.Fatal("the refusal reason is logged", w.Code, logged)
+	}
+	var refusedPhase, refusedTransaction, refusedAttempt string
+	if err = db.QueryRow(`SELECT phase,transaction_id,attempt_id FROM identity_setup_completions`).Scan(&refusedPhase, &refusedTransaction, &refusedAttempt); err != nil || refusedPhase != "prepared" || refusedTransaction != "" || refusedAttempt != "" {
+		t.Fatal("the refused renewal left its prepared, unbound start", refusedPhase, refusedTransaction, refusedAttempt, err)
+	}
+	if _, err = db.Exec(`UPDATE identity_setup_completions SET created_ms=created_ms-1200000,expires_ms=expires_ms-1200000`); err != nil {
+		t.Fatal(err)
+	}
+	refuse = false
+	// The retry renews that lapsed renewal again, with this browser's fresh bindings.
 	answer = "renewed_setup_transaction"
 	before := len(requests)
 	out, err := begin(installed, s2, c2, i2)

@@ -274,7 +274,7 @@ func (h *ClaimHandler) handle(ctx context.Context, w http.ResponseWriter, r *htt
 	}
 	expected, e := h.expected(ctx, body.Expected)
 	if e != nil {
-		return ClaimStatus{}, e
+		return ClaimStatus{}, stepFailure("expected operation", e)
 	}
 	if r.URL.Path == "/v1/networking/claim/web-approval" {
 		address := returnOrigin(r)
@@ -294,7 +294,7 @@ func (h *ClaimHandler) handle(ctx context.Context, w http.ResponseWriter, r *htt
 			// continue step would have if the original start were still live.
 			if e == nil && expected.Stage == Installed && expected.InstallationAcknowledged && actor.ResolveSetupReturn != nil {
 				if err := actor.ResolveSetupReturn(ctx); err != nil && !errors.Is(err, ErrUnavailable) {
-					e = err
+					e = stepFailure("setup return registration", err)
 				}
 			}
 		} else if expected.Purpose == "switch" && expected.CurrentOwnerAccountID == "" {
@@ -585,6 +585,15 @@ func writeClaimFailure(w http.ResponseWriter, status int, code, message string, 
 	_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"code": code, "message": message, "retryable": retry}})
 }
 func (h *ClaimHandler) failure(w http.ResponseWriter, r *http.Request, e error) {
+	var request context.Context
+	if r != nil {
+		request = r.Context()
+	}
+	// A refusal is answered plainly, but the server log names its step and class (never a
+	// value), so a refused setup or claim explains itself without a reproduction.
+	if errors.Is(e, ErrStale) || errors.Is(e, ErrApprovalRequired) || errors.Is(e, ErrCancelled) {
+		h.failures.report(routeLabel(r, "networking claim route"), 409, request, e)
+	}
 	switch {
 	case errors.Is(e, ErrClaimOwnerRequired):
 		writeClaimFailure(w, 401, "owner_required", "Sign in as this server’s current owner.", false)
@@ -601,10 +610,6 @@ func (h *ClaimHandler) failure(w http.ResponseWriter, r *http.Request, e error) 
 	case errors.Is(e, ErrCancelled):
 		writeClaimFailure(w, 409, "claim_cancelled", "This server connection was cancelled or revoked.", false)
 	default:
-		var request context.Context
-		if r != nil {
-			request = r.Context()
-		}
 		h.failures.report(routeLabel(r, "networking claim route"), 503, request, e)
 		writeClaimFailure(w, 503, "claim_unavailable", "Server setup could not finish. Refresh its status and retry when the connection is available.", true)
 	}

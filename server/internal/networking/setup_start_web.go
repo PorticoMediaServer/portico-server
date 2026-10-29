@@ -63,19 +63,19 @@ func (h *ClaimHandler) beginSetupWebClaim(ctx context.Context, v Intent, address
 		// A renewed start whose Hosted call or bind failed replays its own stored pair, as a
 		// prepared start does, instead of waiting out its five minutes.
 		if phase != "prepared" && !(phase == "installed" && transaction == "" && attempt == "") {
-			return out, ErrStale
+			return out, stepFailure("setup start phase", ErrStale)
 		}
 		out.Signed = claimweb.Signed{Payload: base64.RawURLEncoding.EncodeToString(claimPayload), Signature: base64.RawURLEncoding.EncodeToString(claimSignature)}
 		proof := claimweb.Signed{Payload: base64.RawURLEncoding.EncodeToString(startPayload), Signature: base64.RawURLEncoding.EncodeToString(startSignature)}
 		original, start, err = claimweb.VerifySetupStart(out.Signed, proof, transport.origin, time.Now())
 		if err != nil || original.Address != address || start.CodeChallenge != codeChallenge || start.InstallationID != installation || start.SetupRequestID != authority.RequestID || start.SetupRevision != authority.Revision || subtle.ConstantTimeCompare([]byte(start.State), []byte(state)) != 1 {
-			return localWebClaim{}, ErrStale
+			return localWebClaim{}, stepFailure("setup start replay", ErrStale)
 		}
 		out.SetupStart = &proof
 
 	} else if renewal || errors.Is(err, sql.ErrNoRows) {
 		if !renewal && (v.Stage != Prepared || v.AccountID != UnboundAccount) {
-			return out, ErrStale
+			return out, stepFailure("setup start stage", ErrStale)
 		}
 		now := time.Now().UTC()
 		expires := now.Add(claimweb.SetupStartLifetime)
@@ -85,7 +85,7 @@ func (h *ClaimHandler) beginSetupWebClaim(ctx context.Context, v Intent, address
 		if renewal {
 			// The same claim the account approved, with fresh time bounds only.
 			if err = json.Unmarshal(claimPayload, &original); err != nil || original.OperationID != v.OperationID || original.ServerID != v.ServerID || original.Purpose != "setup" || original.Address != address || original.AccountID != "" {
-				return out, ErrStale
+				return out, stepFailure("setup start renewal claim", ErrStale)
 			}
 			original.IssuedAt, original.ExpiresAt = now, now.Add(webClaimLifetime)
 		} else {
@@ -118,7 +118,7 @@ func (h *ClaimHandler) beginSetupWebClaim(ctx context.Context, v Intent, address
 		}
 		proof, err := sign(ctx, signing, out.Signed, start)
 		if err != nil {
-			return out, err
+			return out, stepFailure("setup start signing", err)
 		}
 		out.SetupStart = &proof
 	} else {
@@ -139,14 +139,17 @@ func (h *ClaimHandler) beginSetupWebClaim(ctx context.Context, v Intent, address
 	}
 	g.Rollback()
 	if err != nil {
-		return localWebClaim{}, err
+		if renewal {
+			return localWebClaim{}, stepFailure("setup start renewal", err)
+		}
+		return localWebClaim{}, stepFailure("setup start capture", err)
 	}
 	// A failed pending POST may never create networking_web_claims/watch. The
 	// typed capture must still wake expiry reconciliation and survive restart.
 	h.wakeClaimRecovery()
 	var pending claimweb.Pending
 	if err = transport.call(ctx, "pending", claimweb.PendingRequest{Payload: out.Signed.Payload, Signature: out.Signed.Signature, SetupStart: out.SetupStart}, &pending, nil); err != nil {
-		return localWebClaim{}, err
+		return localWebClaim{}, stepFailure("hosted pending", err)
 	}
 	if !validID(pending.SetupTransactionID) || pending.Code == "" || len(pending.Code) > 128 || pending.ServerID != v.ServerID || pending.Purpose != "setup" || pending.Address != address || !pending.ExpiresAt.After(time.Now()) || pending.ExpiresAt.After(original.ExpiresAt) {
 		return localWebClaim{}, ErrInvalid
@@ -165,7 +168,7 @@ func (h *ClaimHandler) beginSetupWebClaim(ctx context.Context, v Intent, address
 	}
 	defer g.Rollback()
 	if err = authority.BindTx(ctx, g.Tx(), v.OperationID, pending.SetupTransactionID); err != nil {
-		return localWebClaim{}, err
+		return localWebClaim{}, stepFailure("setup start bind", err)
 	}
 	if _, err = g.Tx().ExecContext(ctx, `INSERT INTO networking_web_claims(operation_id,request) VALUES(?,?) ON CONFLICT(operation_id) DO UPDATE SET request=excluded.request`, v.OperationID, string(encoded)); err != nil {
 		return localWebClaim{}, err
