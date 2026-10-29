@@ -469,7 +469,7 @@ func (s *Service) EmptyMissingAuthorized(ctx context.Context, library string, cu
 				// a release closure and needs no cross-writer custody.
 				if pinErr := compactcatalog.RequireNoEntityMBPinsTx(ctx, tx, title); pinErr == nil {
 					var files int
-					if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM catalog_asset_links l JOIN catalog_assets a ON a.id=l.asset_id JOIN inventory_objects o ON o.asset_id=a.token WHERE l.entity_id=?`, title).Scan(&files); err != nil {
+					if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM catalog_asset_links l JOIN catalog_assets a ON a.id=l.asset_id JOIN inventory_objects o ON o.asset_id=a.token WHERE l.entity_id=? AND NOT EXISTS(SELECT 1 FROM catalog_asset_links shared INDEXED BY catalog_asset_links_asset WHERE shared.asset_id=l.asset_id AND shared.entity_id<>l.entity_id)`, title).Scan(&files); err != nil {
 						return err
 					}
 					if err = RemoveTitleTx(ctx, tx, title); err != nil {
@@ -487,7 +487,7 @@ func (s *Service) EmptyMissingAuthorized(ctx context.Context, library string, cu
 				return err
 			}
 			var files int
-			if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM catalog_asset_links l JOIN catalog_assets a ON a.id=l.asset_id JOIN inventory_objects o ON o.asset_id=a.token WHERE l.entity_id=?`, title).Scan(&files); err != nil {
+			if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM catalog_asset_links l JOIN catalog_assets a ON a.id=l.asset_id JOIN inventory_objects o ON o.asset_id=a.token WHERE l.entity_id=? AND NOT EXISTS(SELECT 1 FROM catalog_asset_links shared INDEXED BY catalog_asset_links_asset WHERE shared.asset_id=l.asset_id AND shared.entity_id<>l.entity_id)`, title).Scan(&files); err != nil {
 				return err
 			}
 			step, e := RemoveTitleStepTx(ctx, tx, ref)
