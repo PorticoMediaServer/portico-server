@@ -111,6 +111,20 @@ func TestAccountBackoffIsIsolated(t *testing.T) {
 	for range 5 {
 		_, _ = s.DirectLogin(ctx, "owner", "wrong")
 	}
+	// The fifth guess sets a one-second cool-off ending at the next whole
+	// second, so the lock can expire between the guess and the assertion below.
+	// This assertion exercises admission while locked, not expiry: verify the
+	// fifth guess established the lock, then keep the fixture locked across the
+	// boundary or a shared-runner scheduling gap.
+	source, _ := credentialSource(ctx)
+	var attempts int
+	var lastFailure, lockedUntil int64
+	if err := db.QueryRow(`SELECT failed_attempts,last_failure,locked_until FROM identity_credential_attempts WHERE account_id='account' AND source_bucket=?`, source).Scan(&attempts, &lastFailure, &lockedUntil); err != nil || attempts != 5 || lockedUntil != lastFailure+1 {
+		t.Fatalf("fifth guess must establish a one-second source lock: attempts=%d last=%d until=%d err=%v", attempts, lastFailure, lockedUntil, err)
+	}
+	if _, err = db.Exec(`UPDATE identity_credential_attempts SET locked_until=? WHERE account_id='account' AND source_bucket=?`, time.Now().Unix()+30, source); err != nil {
+		t.Fatal(err)
+	}
 	if _, err = s.DirectLogin(ctx, "owner", "Testing1!"); !errors.Is(err, ErrAccountLocked) {
 		t.Fatalf("password was checked during cool-off: %v", err)
 	}
