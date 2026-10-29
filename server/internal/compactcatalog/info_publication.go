@@ -51,21 +51,22 @@ func BeginInfoAvailabilityTx(ctx context.Context, tx *sql.Tx, item int64) error 
 }
 
 type infoChange struct {
-	id, asset, expected int64
-	token               string
-	phase               int
-	hasAfter            bool
-	after, upper        int64
-	familyMask          int64
-	targetAvailable     sql.NullInt64
-	targetShape         sql.NullInt64
+	id, asset, expected              int64
+	token                            string
+	phase                            int
+	hasAfter                         bool
+	after, upper                     int64
+	familyMask                       int64
+	targetAvailable                  sql.NullInt64
+	targetShape                      sql.NullInt64
+	targetOwner, targetOwnerRevision sql.NullString
 }
 
 func activeInfoChange(ctx context.Context, tx *sql.Tx, asset int64, token string) (infoChange, error) {
 	var c infoChange
-	err := tx.QueryRowContext(ctx, `SELECT id,asset_id,asset_token,phase,expected_epoch,has_after,after_entity,upper_entity,family_mask,target_available,target_shape_id
+	err := tx.QueryRowContext(ctx, `SELECT id,asset_id,asset_token,phase,expected_epoch,has_after,after_entity,upper_entity,family_mask,target_available,target_shape_id,target_owner_object,target_owner_revision
  FROM catalog_info_changes WHERE asset_id=? AND asset_token=? AND slot=0`, asset, token).
-		Scan(&c.id, &c.asset, &c.token, &c.phase, &c.expected, &c.hasAfter, &c.after, &c.upper, &c.familyMask, &c.targetAvailable, &c.targetShape)
+		Scan(&c.id, &c.asset, &c.token, &c.phase, &c.expected, &c.hasAfter, &c.after, &c.upper, &c.familyMask, &c.targetAvailable, &c.targetShape, &c.targetOwner, &c.targetOwnerRevision)
 	return c, err
 }
 
@@ -134,6 +135,12 @@ func AdvanceInfoPublicationTx(ctx context.Context, tx *sql.Tx, asset int64, toke
  target_available=COALESCE((SELECT o.old_integer FROM catalog_info_changes n JOIN catalog_info_scalar_old o ON o.change_id=n.id AND o.field=1 WHERE n.asset_id=? AND n.asset_token=? AND n.slot=1),(SELECT available FROM catalog_assets WHERE id=? AND token=?)),
  upper_entity=COALESCE((SELECT MAX(entity_id) FROM catalog_asset_links INDEXED BY catalog_asset_links_asset WHERE asset_id=?),0) WHERE id=?`, asset, token, asset, token, asset, c.id)
 	case 1:
+		// Disc-capable choices are supplied by source41's coherent A5 pass.
+		// Non-disc sources can resolve an empty choice without another pass.
+		ready, e := infoOwnerTargetReadyTx(ctx, tx, c)
+		if e != nil || !ready {
+			return false, e
+		}
 		err = prefenceInfoHolders(ctx, tx, c)
 	case 2:
 		if c.familyMask != 0 {
@@ -152,8 +159,8 @@ func AdvanceInfoPublicationTx(ctx context.Context, tx *sql.Tx, asset int64, toke
 		if !c.targetAvailable.Valid || !c.targetShape.Valid {
 			return false, ErrInfoInvariant
 		}
-		_, err = tx.ExecContext(ctx, `UPDATE catalog_assets SET info_epoch=info_epoch+1,info_order_available=?
- WHERE id=? AND token=? AND info_epoch=?`, c.targetAvailable.Int64, asset, token, c.expected)
+		_, err = tx.ExecContext(ctx, `UPDATE catalog_assets SET info_epoch=info_epoch+1,info_order_available=?,info_owner_object=?,info_owner_revision=?
+ WHERE id=? AND token=? AND info_epoch=?`, c.targetAvailable.Int64, c.targetOwner, c.targetOwnerRevision, asset, token, c.expected)
 		if err == nil {
 			_, err = tx.ExecContext(ctx, `UPDATE catalog_info_changes SET phase=4 WHERE id=?`, c.id)
 		}
@@ -239,7 +246,7 @@ func prefenceInfoHolders(ctx context.Context, tx *sql.Tx, c infoChange) error {
 		}
 	}
 	if n < len(ids) {
-		_, err = tx.ExecContext(ctx, `UPDATE catalog_info_changes SET phase=2 WHERE id=?`, c.id)
+		_, err = tx.ExecContext(ctx, `UPDATE catalog_info_changes SET phase=2,copy_family=0 WHERE id=?`, c.id)
 	}
 	return err
 }
@@ -272,6 +279,14 @@ func applyInfoHolders(ctx context.Context, tx *sql.Tx, c infoChange) error {
 	if err != nil {
 		return err
 	}
+	if n > 0 && c.familyMask&((1<<5)|(1<<7)|(1<<8)) != 0 {
+		done, err := projectInfoSubtitles(ctx, tx, c, ids[0])
+		if err != nil || !done {
+			return err
+		}
+		// Only this holder's resource projection is complete in this turn.
+		n = 1
+	}
 	for _, id := range ids[:n] {
 		if availability {
 			if err = BeginInfoAvailabilityTx(ctx, tx, id); err != nil {
@@ -302,7 +317,7 @@ var infoRetireTables = []string{
 	"catalog_info_new_stream_breadth", "catalog_info_new_streams", "catalog_info_new_stream_facts",
 	"catalog_info_new_subtitles", "catalog_info_new_subtitle_sidecars", "catalog_info_new_subtitle_inventory_evidence", "catalog_info_new_subtitle_facts",
 	"catalog_info_new_chapters", "catalog_info_new_chapter_facts",
-	"catalog_info_observation_old", "catalog_info_scalar_old", "catalog_info_path_old", "catalog_info_input_families", "catalog_info_input_witnesses",
+	"catalog_info_scalar_old", "catalog_info_path_old", "catalog_info_input_families", "catalog_info_input_witnesses",
 }
 
 func retireInfoChange(ctx context.Context, tx *sql.Tx, c infoChange) (bool, error) {

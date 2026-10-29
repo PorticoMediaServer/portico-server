@@ -268,6 +268,11 @@ func (w *upstreamSource) asset(ctx context.Context, tx *sql.Tx, limit int) (int,
 			bytes += len(id)
 			w.innerHas, w.innerKey, w.seen = true, id, true
 			w.available = w.available || available
+			// The first eligible raw ID also defines informational owner choice;
+			// do not let later rows replace it before testing for a probe.
+			if available {
+				break
+			}
 			if bytes >= facetScalarBudget {
 				break
 			}
@@ -307,7 +312,31 @@ func (w *upstreamSource) asset(ctx context.Context, tx *sql.Tx, limit int) (int,
 		w.phase = 3
 		return 0, false, nil
 	case 3:
+		canAdvanceInfo := true
 		if w.flags&sourceInfo != 0 {
+			// Finish an already fenced publication even during later churn.
+			// An unresolved owner choice needs A5's coherent captured pass;
+			// otherwise finish the old owner walk and honor its existing rerun.
+			c, e := activeInfoChange(ctx, tx, w.id, w.token)
+			unresolved := errors.Is(e, sql.ErrNoRows) || e == nil && c.phase <= 1
+			if e != nil && !errors.Is(e, sql.ErrNoRows) {
+				return 0, false, e
+			}
+			if unresolved {
+				if w.passRevision != w.revision || w.key == "rerun" {
+					canAdvanceInfo = false
+				} else {
+					ready, e := prepareInfoOwnerTargetTx(ctx, tx, w.id, w.token, w.available, w.innerKey)
+					if e != nil {
+						return 0, false, e
+					}
+					if !ready {
+						return 0, false, nil
+					}
+				}
+			}
+		}
+		if w.flags&sourceInfo != 0 && canAdvanceInfo {
 			done, err := AdvanceInfoPublicationTx(ctx, tx, w.id, w.token, NewInfoMaterializer())
 			if err != nil || !done {
 				return 0, false, err

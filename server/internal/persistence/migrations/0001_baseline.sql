@@ -79,7 +79,10 @@ CREATE TABLE catalog_assets(
  duration REAL NOT NULL,
  available INTEGER NOT NULL DEFAULT 1 CHECK(available IN(0,1)),
  info_epoch INTEGER NOT NULL DEFAULT 1 CHECK(typeof(info_epoch)='integer' AND info_epoch>0),
- info_order_available INTEGER NOT NULL DEFAULT 1 CHECK(info_order_available IN(0,1))) STRICT;
+ info_order_available INTEGER NOT NULL DEFAULT 1 CHECK(info_order_available IN(0,1)),
+ info_owner_object TEXT REFERENCES inventory_objects(id),
+ info_owner_revision TEXT,
+ CHECK((info_owner_object IS NULL)=(info_owner_revision IS NULL))) STRICT;
 CREATE TABLE catalog_asset_links(
  entity_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
  asset_id INTEGER NOT NULL REFERENCES catalog_assets(id) ON DELETE CASCADE,
@@ -5932,27 +5935,27 @@ CREATE TRIGGER catalog_library_update AFTER UPDATE OF name,kind ON libraries BEG
 END;
 CREATE TRIGGER catalog_availability_object_insert AFTER INSERT ON inventory_objects BEGIN
  UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1;
- INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) SELECT 41,id,token,3 FROM catalog_assets WHERE token=NEW.asset_id
+ INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) SELECT 41,id,token,3|CASE WHEN info_owner_object IS NOT NULL OR container IN('disc','iso','bluray','dvd') OR EXISTS(SELECT 1 FROM inventory_disc_facts WHERE asset_id=catalog_assets.token) THEN 32 ELSE 0 END FROM catalog_assets WHERE token=NEW.asset_id
  ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,source_epoch=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN source_epoch ELSE 0 END,phase=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN phase ELSE 0 END,has_after=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN has_after ELSE 0 END,after_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_id ELSE 0 END,after_aux=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_aux ELSE 0 END,after_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_key ELSE '' END,active_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_id ELSE NULL END,active_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_key ELSE '' END,active_available=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_available ELSE 0 END,seen_inventory=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN seen_inventory ELSE 0 END,inner_has=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_has ELSE 0 END,inner_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_id ELSE 0 END,inner_aux=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_aux ELSE 0 END,inner_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_key ELSE '' END,pass_revision=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN pass_revision ELSE 0 END,fence_entity=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN fence_entity ELSE NULL END;
  INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 41,source_id,1 FROM catalog_upstream_sources WHERE domain=41 AND source_id=(SELECT id FROM catalog_assets WHERE token=NEW.asset_id)
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
-CREATE TRIGGER catalog_availability_object_update AFTER UPDATE OF id,state,retired,root_incarnation,unsupported_reason,source_id,asset_id ON inventory_objects
- WHEN OLD.id IS NOT NEW.id OR OLD.state IS NOT NEW.state OR OLD.retired IS NOT NEW.retired OR OLD.root_incarnation IS NOT NEW.root_incarnation OR OLD.unsupported_reason IS NOT NEW.unsupported_reason OR OLD.source_id IS NOT NEW.source_id OR OLD.asset_id IS NOT NEW.asset_id BEGIN
+CREATE TRIGGER catalog_availability_object_update AFTER UPDATE OF id,state,retired,root_incarnation,unsupported_reason,source_id,asset_id,revision ON inventory_objects
+ WHEN OLD.id IS NOT NEW.id OR OLD.state IS NOT NEW.state OR OLD.retired IS NOT NEW.retired OR OLD.root_incarnation IS NOT NEW.root_incarnation OR OLD.unsupported_reason IS NOT NEW.unsupported_reason OR OLD.source_id IS NOT NEW.source_id OR OLD.asset_id IS NOT NEW.asset_id OR (OLD.revision IS NOT NEW.revision AND EXISTS(SELECT 1 FROM catalog_assets a WHERE a.token=NEW.asset_id AND (a.info_owner_object IS NOT NULL OR a.container IN('disc','iso','bluray','dvd') OR EXISTS(SELECT 1 FROM inventory_disc_facts WHERE asset_id=a.token)))) BEGIN
  UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1;
- INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) SELECT 41,id,token,3 FROM catalog_assets WHERE token=OLD.asset_id
+ INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) SELECT 41,id,token,3|CASE WHEN info_owner_object IS NOT NULL OR container IN('disc','iso','bluray','dvd') OR EXISTS(SELECT 1 FROM inventory_disc_facts WHERE asset_id=catalog_assets.token) THEN 32 ELSE 0 END FROM catalog_assets WHERE token=OLD.asset_id
  ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,source_epoch=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN source_epoch ELSE 0 END,phase=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN phase ELSE 0 END,has_after=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN has_after ELSE 0 END,after_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_id ELSE 0 END,after_aux=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_aux ELSE 0 END,after_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_key ELSE '' END,active_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_id ELSE NULL END,active_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_key ELSE '' END,active_available=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_available ELSE 0 END,seen_inventory=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN seen_inventory ELSE 0 END,inner_has=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_has ELSE 0 END,inner_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_id ELSE 0 END,inner_aux=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_aux ELSE 0 END,inner_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_key ELSE '' END,pass_revision=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN pass_revision ELSE 0 END,fence_entity=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN fence_entity ELSE NULL END;
  INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 41,source_id,1 FROM catalog_upstream_sources WHERE domain=41 AND source_id=(SELECT id FROM catalog_assets WHERE token=OLD.asset_id)
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
  UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1;
- INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) SELECT 41,id,token,3 FROM catalog_assets WHERE token=NEW.asset_id
+ INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) SELECT 41,id,token,3|CASE WHEN info_owner_object IS NOT NULL OR container IN('disc','iso','bluray','dvd') OR EXISTS(SELECT 1 FROM inventory_disc_facts WHERE asset_id=catalog_assets.token) THEN 32 ELSE 0 END FROM catalog_assets WHERE token=NEW.asset_id
  ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,source_epoch=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN source_epoch ELSE 0 END,phase=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN phase ELSE 0 END,has_after=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN has_after ELSE 0 END,after_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_id ELSE 0 END,after_aux=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_aux ELSE 0 END,after_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_key ELSE '' END,active_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_id ELSE NULL END,active_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_key ELSE '' END,active_available=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_available ELSE 0 END,seen_inventory=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN seen_inventory ELSE 0 END,inner_has=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_has ELSE 0 END,inner_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_id ELSE 0 END,inner_aux=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_aux ELSE 0 END,inner_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_key ELSE '' END,pass_revision=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN pass_revision ELSE 0 END,fence_entity=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN fence_entity ELSE NULL END;
  INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 41,source_id,1 FROM catalog_upstream_sources WHERE domain=41 AND source_id=(SELECT id FROM catalog_assets WHERE token=NEW.asset_id)
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
 CREATE TRIGGER catalog_availability_object_delete AFTER DELETE ON inventory_objects BEGIN
  UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1;
- INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) SELECT 41,id,token,3 FROM catalog_assets WHERE token=OLD.asset_id
+ INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) SELECT 41,id,token,3|CASE WHEN info_owner_object IS NOT NULL OR container IN('disc','iso','bluray','dvd') OR EXISTS(SELECT 1 FROM inventory_disc_facts WHERE asset_id=catalog_assets.token) THEN 32 ELSE 0 END FROM catalog_assets WHERE token=OLD.asset_id
  ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,source_epoch=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN source_epoch ELSE 0 END,phase=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN phase ELSE 0 END,has_after=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN has_after ELSE 0 END,after_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_id ELSE 0 END,after_aux=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_aux ELSE 0 END,after_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_key ELSE '' END,active_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_id ELSE NULL END,active_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_key ELSE '' END,active_available=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_available ELSE 0 END,seen_inventory=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN seen_inventory ELSE 0 END,inner_has=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_has ELSE 0 END,inner_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_id ELSE 0 END,inner_aux=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_aux ELSE 0 END,inner_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_key ELSE '' END,pass_revision=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN pass_revision ELSE 0 END,fence_entity=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN fence_entity ELSE NULL END;
  INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 41,source_id,1 FROM catalog_upstream_sources WHERE domain=41 AND source_id=(SELECT id FROM catalog_assets WHERE token=OLD.asset_id)
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
@@ -7920,19 +7923,22 @@ CREATE TRIGGER catalog_personal_plays_move AFTER UPDATE OF play_count,profile_id
  INSERT INTO catalog_personal_play_totals(profile_id,entity_id,total) VALUES(NEW.profile_id,NEW.entity_id,NEW.play_count)
  ON CONFLICT(profile_id,entity_id) DO UPDATE SET total=total+excluded.total;
 END;
-CREATE TRIGGER browse_subtitle_facts_insert AFTER INSERT ON asset_subtitle_facts BEGIN
+CREATE TRIGGER browse_subtitle_facts_insert AFTER INSERT ON asset_subtitle_facts
+ WHEN NOT EXISTS(SELECT 1 FROM catalog_assets a JOIN catalog_info_changes c ON c.asset_id=a.id AND c.asset_token=a.token WHERE a.token=NEW.asset_id AND c.slot=0 AND c.phase=2) BEGIN
  UPDATE library_revisions SET revision=revision+1,order_revision=order_revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_asset_links link JOIN catalog_assets asset ON asset.id=link.asset_id JOIN catalog_entities e ON e.id=link.entity_id JOIN catalog_libraries l ON l.id=e.library_id WHERE asset.token=NEW.asset_id);
 END;
 CREATE TRIGGER browse_subtitle_resources_insert AFTER INSERT ON subtitle_resources BEGIN
  UPDATE library_revisions SET revision=revision+1,order_revision=order_revision+1 WHERE library_id=(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id=NEW.item_id);
 END;
-CREATE TRIGGER browse_subtitle_facts_update AFTER UPDATE ON asset_subtitle_facts BEGIN
+CREATE TRIGGER browse_subtitle_facts_update AFTER UPDATE ON asset_subtitle_facts
+ WHEN NOT EXISTS(SELECT 1 FROM catalog_assets a JOIN catalog_info_changes c ON c.asset_id=a.id AND c.asset_token=a.token WHERE a.token=NEW.asset_id AND c.slot=0 AND c.phase=2) BEGIN
  UPDATE library_revisions SET revision=revision+1,order_revision=order_revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_asset_links link JOIN catalog_assets asset ON asset.id=link.asset_id JOIN catalog_entities e ON e.id=link.entity_id JOIN catalog_libraries l ON l.id=e.library_id WHERE asset.token=NEW.asset_id);
 END;
 CREATE TRIGGER browse_subtitle_resources_update AFTER UPDATE ON subtitle_resources BEGIN
  UPDATE library_revisions SET revision=revision+1,order_revision=order_revision+1 WHERE library_id=(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id=NEW.item_id);
 END;
-CREATE TRIGGER browse_subtitle_facts_delete AFTER DELETE ON asset_subtitle_facts BEGIN
+CREATE TRIGGER browse_subtitle_facts_delete AFTER DELETE ON asset_subtitle_facts
+ WHEN NOT EXISTS(SELECT 1 FROM catalog_assets a JOIN catalog_info_changes c ON c.asset_id=a.id AND c.asset_token=a.token WHERE a.token=OLD.asset_id AND c.slot=0 AND c.phase=2) BEGIN
  UPDATE library_revisions SET revision=revision+1,order_revision=order_revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_asset_links link JOIN catalog_assets asset ON asset.id=link.asset_id JOIN catalog_entities e ON e.id=link.entity_id JOIN catalog_libraries l ON l.id=e.library_id WHERE asset.token=OLD.asset_id);
 END;
 CREATE TRIGGER browse_subtitle_resources_delete AFTER DELETE ON subtitle_resources BEGIN
@@ -13410,9 +13416,12 @@ CREATE TABLE catalog_info_changes(
  copy_key3 TEXT NOT NULL DEFAULT '',
  target_available INTEGER CHECK(target_available IS NULL OR target_available IN(0,1)),
  target_shape_id INTEGER REFERENCES catalog_info_shapes(id),
+ target_owner_object TEXT REFERENCES inventory_objects(id),
+ target_owner_revision TEXT,
  created_ms INTEGER NOT NULL,
  fault TEXT NOT NULL DEFAULT '',
- UNIQUE(asset_id,asset_token,slot)
+ UNIQUE(asset_id,asset_token,slot),
+ CHECK((target_owner_object IS NULL)=(target_owner_revision IS NULL))
 ) STRICT;
 -- Surviving obligations live on the EXISTING link row. Its partial index above
 -- walks the pending lane. An atomic link deletion/move completes that obligation
@@ -13444,24 +13453,6 @@ CREATE TABLE catalog_info_path_old(
  change_id INTEGER PRIMARY KEY REFERENCES catalog_info_changes(id),
  old_path TEXT NOT NULL
 ) STRICT;
--- Accepted INFORMATIONAL observation state; byte/root grants are always live.
--- New object membership (existed=0) is held out until its asset pre-fence closes.
--- This records real per-file events only, never source health flaps.
-CREATE TABLE catalog_info_observation_old(
- change_id INTEGER NOT NULL REFERENCES catalog_info_changes(id),
- object_id TEXT NOT NULL,
- existed INTEGER NOT NULL CHECK(existed IN(0,1)),
- asset_token TEXT,
- source_id TEXT NOT NULL,
- root_incarnation TEXT NOT NULL,
- revision TEXT NOT NULL,
- state TEXT NOT NULL CHECK(state IN('available','missing','unavailable')),
- retired INTEGER NOT NULL CHECK(retired IN(0,1)),
- size INTEGER NOT NULL,
- modified_ns INTEGER NOT NULL,
- PRIMARY KEY(change_id,object_id)
-) WITHOUT ROWID, STRICT;
-
 -- Per-observation live admission used to seal and activate source facts.
 -- An input may include several independent disc observations of one asset.
 CREATE TABLE catalog_info_input_witnesses(
@@ -13731,14 +13722,14 @@ CREATE TABLE catalog_info_new_disc_title_media_members(
 -- Literal logical-byte ledger and source-input immutability guards.
 CREATE TRIGGER catalog_info_changes_charge_insert AFTER INSERT ON catalog_info_changes BEGIN
  SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM catalog_info_input_budget WHERE singleton=1) THEN RAISE(ABORT,'info_source_budget_missing') END;
- UPDATE catalog_info_input_budget SET used_bytes=used_bytes+(312+COALESCE(length(CAST(NEW.asset_token AS BLOB)),0)+COALESCE(length(CAST(NEW.fingerprint AS BLOB)),0)+COALESCE(length(CAST(NEW.fault AS BLOB)),0)+COALESCE(length(CAST(NEW.copy_key AS BLOB)),0)+COALESCE(length(CAST(NEW.copy_key2 AS BLOB)),0)+COALESCE(length(CAST(NEW.copy_key3 AS BLOB)),0)) WHERE singleton=1;
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes+(344+2*COALESCE(length(CAST(NEW.target_owner_object AS BLOB)),0)+COALESCE(length(CAST(NEW.target_owner_revision AS BLOB)),0)+COALESCE(length(CAST(NEW.asset_token AS BLOB)),0)+COALESCE(length(CAST(NEW.fingerprint AS BLOB)),0)+COALESCE(length(CAST(NEW.fault AS BLOB)),0)+COALESCE(length(CAST(NEW.copy_key AS BLOB)),0)+COALESCE(length(CAST(NEW.copy_key2 AS BLOB)),0)+COALESCE(length(CAST(NEW.copy_key3 AS BLOB)),0)) WHERE singleton=1;
 END;
 CREATE TRIGGER catalog_info_changes_charge_delete AFTER DELETE ON catalog_info_changes BEGIN
- UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(312+COALESCE(length(CAST(OLD.asset_token AS BLOB)),0)+COALESCE(length(CAST(OLD.fingerprint AS BLOB)),0)+COALESCE(length(CAST(OLD.fault AS BLOB)),0)+COALESCE(length(CAST(OLD.copy_key AS BLOB)),0)+COALESCE(length(CAST(OLD.copy_key2 AS BLOB)),0)+COALESCE(length(CAST(OLD.copy_key3 AS BLOB)),0)) WHERE singleton=1;
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(344+2*COALESCE(length(CAST(OLD.target_owner_object AS BLOB)),0)+COALESCE(length(CAST(OLD.target_owner_revision AS BLOB)),0)+COALESCE(length(CAST(OLD.asset_token AS BLOB)),0)+COALESCE(length(CAST(OLD.fingerprint AS BLOB)),0)+COALESCE(length(CAST(OLD.fault AS BLOB)),0)+COALESCE(length(CAST(OLD.copy_key AS BLOB)),0)+COALESCE(length(CAST(OLD.copy_key2 AS BLOB)),0)+COALESCE(length(CAST(OLD.copy_key3 AS BLOB)),0)) WHERE singleton=1;
 END;
 CREATE TRIGGER catalog_info_changes_charge_update AFTER UPDATE ON catalog_info_changes
- WHEN (312+COALESCE(length(CAST(OLD.asset_token AS BLOB)),0)+COALESCE(length(CAST(OLD.fingerprint AS BLOB)),0)+COALESCE(length(CAST(OLD.fault AS BLOB)),0)+COALESCE(length(CAST(OLD.copy_key AS BLOB)),0)+COALESCE(length(CAST(OLD.copy_key2 AS BLOB)),0)+COALESCE(length(CAST(OLD.copy_key3 AS BLOB)),0)) <> (312+COALESCE(length(CAST(NEW.asset_token AS BLOB)),0)+COALESCE(length(CAST(NEW.fingerprint AS BLOB)),0)+COALESCE(length(CAST(NEW.fault AS BLOB)),0)+COALESCE(length(CAST(NEW.copy_key AS BLOB)),0)+COALESCE(length(CAST(NEW.copy_key2 AS BLOB)),0)+COALESCE(length(CAST(NEW.copy_key3 AS BLOB)),0)) BEGIN
- UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(312+COALESCE(length(CAST(OLD.asset_token AS BLOB)),0)+COALESCE(length(CAST(OLD.fingerprint AS BLOB)),0)+COALESCE(length(CAST(OLD.fault AS BLOB)),0)+COALESCE(length(CAST(OLD.copy_key AS BLOB)),0)+COALESCE(length(CAST(OLD.copy_key2 AS BLOB)),0)+COALESCE(length(CAST(OLD.copy_key3 AS BLOB)),0))+(312+COALESCE(length(CAST(NEW.asset_token AS BLOB)),0)+COALESCE(length(CAST(NEW.fingerprint AS BLOB)),0)+COALESCE(length(CAST(NEW.fault AS BLOB)),0)+COALESCE(length(CAST(NEW.copy_key AS BLOB)),0)+COALESCE(length(CAST(NEW.copy_key2 AS BLOB)),0)+COALESCE(length(CAST(NEW.copy_key3 AS BLOB)),0)) WHERE singleton=1;
+ WHEN (344+2*COALESCE(length(CAST(OLD.target_owner_object AS BLOB)),0)+COALESCE(length(CAST(OLD.target_owner_revision AS BLOB)),0)+COALESCE(length(CAST(OLD.asset_token AS BLOB)),0)+COALESCE(length(CAST(OLD.fingerprint AS BLOB)),0)+COALESCE(length(CAST(OLD.fault AS BLOB)),0)+COALESCE(length(CAST(OLD.copy_key AS BLOB)),0)+COALESCE(length(CAST(OLD.copy_key2 AS BLOB)),0)+COALESCE(length(CAST(OLD.copy_key3 AS BLOB)),0)) <> (344+2*COALESCE(length(CAST(NEW.target_owner_object AS BLOB)),0)+COALESCE(length(CAST(NEW.target_owner_revision AS BLOB)),0)+COALESCE(length(CAST(NEW.asset_token AS BLOB)),0)+COALESCE(length(CAST(NEW.fingerprint AS BLOB)),0)+COALESCE(length(CAST(NEW.fault AS BLOB)),0)+COALESCE(length(CAST(NEW.copy_key AS BLOB)),0)+COALESCE(length(CAST(NEW.copy_key2 AS BLOB)),0)+COALESCE(length(CAST(NEW.copy_key3 AS BLOB)),0)) BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(344+2*COALESCE(length(CAST(OLD.target_owner_object AS BLOB)),0)+COALESCE(length(CAST(OLD.target_owner_revision AS BLOB)),0)+COALESCE(length(CAST(OLD.asset_token AS BLOB)),0)+COALESCE(length(CAST(OLD.fingerprint AS BLOB)),0)+COALESCE(length(CAST(OLD.fault AS BLOB)),0)+COALESCE(length(CAST(OLD.copy_key AS BLOB)),0)+COALESCE(length(CAST(OLD.copy_key2 AS BLOB)),0)+COALESCE(length(CAST(OLD.copy_key3 AS BLOB)),0))+(344+2*COALESCE(length(CAST(NEW.target_owner_object AS BLOB)),0)+COALESCE(length(CAST(NEW.target_owner_revision AS BLOB)),0)+COALESCE(length(CAST(NEW.asset_token AS BLOB)),0)+COALESCE(length(CAST(NEW.fingerprint AS BLOB)),0)+COALESCE(length(CAST(NEW.fault AS BLOB)),0)+COALESCE(length(CAST(NEW.copy_key AS BLOB)),0)+COALESCE(length(CAST(NEW.copy_key2 AS BLOB)),0)+COALESCE(length(CAST(NEW.copy_key3 AS BLOB)),0)) WHERE singleton=1;
 END;
 CREATE TRIGGER catalog_info_scalar_old_charge_insert AFTER INSERT ON catalog_info_scalar_old BEGIN
  SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM catalog_info_input_budget WHERE singleton=1) THEN RAISE(ABORT,'info_source_budget_missing') END;
@@ -13761,17 +13752,6 @@ END;
 CREATE TRIGGER catalog_info_path_old_charge_update AFTER UPDATE ON catalog_info_path_old
  WHEN (144+COALESCE(length(CAST(OLD.old_path AS BLOB)),0)) <> (144+COALESCE(length(CAST(NEW.old_path AS BLOB)),0)) BEGIN
  UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(144+COALESCE(length(CAST(OLD.old_path AS BLOB)),0))+(144+COALESCE(length(CAST(NEW.old_path AS BLOB)),0)) WHERE singleton=1;
-END;
-CREATE TRIGGER catalog_info_observation_old_charge_insert AFTER INSERT ON catalog_info_observation_old BEGIN
- SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM catalog_info_input_budget WHERE singleton=1) THEN RAISE(ABORT,'info_source_budget_missing') END;
- UPDATE catalog_info_input_budget SET used_bytes=used_bytes+(216+COALESCE(length(CAST(NEW.object_id AS BLOB)),0)+COALESCE(length(CAST(NEW.asset_token AS BLOB)),0)+COALESCE(length(CAST(NEW.source_id AS BLOB)),0)+COALESCE(length(CAST(NEW.root_incarnation AS BLOB)),0)+COALESCE(length(CAST(NEW.revision AS BLOB)),0)+COALESCE(length(CAST(NEW.state AS BLOB)),0)) WHERE singleton=1;
-END;
-CREATE TRIGGER catalog_info_observation_old_charge_delete AFTER DELETE ON catalog_info_observation_old BEGIN
- UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(216+COALESCE(length(CAST(OLD.object_id AS BLOB)),0)+COALESCE(length(CAST(OLD.asset_token AS BLOB)),0)+COALESCE(length(CAST(OLD.source_id AS BLOB)),0)+COALESCE(length(CAST(OLD.root_incarnation AS BLOB)),0)+COALESCE(length(CAST(OLD.revision AS BLOB)),0)+COALESCE(length(CAST(OLD.state AS BLOB)),0)) WHERE singleton=1;
-END;
-CREATE TRIGGER catalog_info_observation_old_charge_update AFTER UPDATE ON catalog_info_observation_old
- WHEN (216+COALESCE(length(CAST(OLD.object_id AS BLOB)),0)+COALESCE(length(CAST(OLD.asset_token AS BLOB)),0)+COALESCE(length(CAST(OLD.source_id AS BLOB)),0)+COALESCE(length(CAST(OLD.root_incarnation AS BLOB)),0)+COALESCE(length(CAST(OLD.revision AS BLOB)),0)+COALESCE(length(CAST(OLD.state AS BLOB)),0)) <> (216+COALESCE(length(CAST(NEW.object_id AS BLOB)),0)+COALESCE(length(CAST(NEW.asset_token AS BLOB)),0)+COALESCE(length(CAST(NEW.source_id AS BLOB)),0)+COALESCE(length(CAST(NEW.root_incarnation AS BLOB)),0)+COALESCE(length(CAST(NEW.revision AS BLOB)),0)+COALESCE(length(CAST(NEW.state AS BLOB)),0)) BEGIN
- UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(216+COALESCE(length(CAST(OLD.object_id AS BLOB)),0)+COALESCE(length(CAST(OLD.asset_token AS BLOB)),0)+COALESCE(length(CAST(OLD.source_id AS BLOB)),0)+COALESCE(length(CAST(OLD.root_incarnation AS BLOB)),0)+COALESCE(length(CAST(OLD.revision AS BLOB)),0)+COALESCE(length(CAST(OLD.state AS BLOB)),0))+(216+COALESCE(length(CAST(NEW.object_id AS BLOB)),0)+COALESCE(length(CAST(NEW.asset_token AS BLOB)),0)+COALESCE(length(CAST(NEW.source_id AS BLOB)),0)+COALESCE(length(CAST(NEW.root_incarnation AS BLOB)),0)+COALESCE(length(CAST(NEW.revision AS BLOB)),0)+COALESCE(length(CAST(NEW.state AS BLOB)),0)) WHERE singleton=1;
 END;
 CREATE TRIGGER catalog_info_input_witnesses_charge_insert AFTER INSERT ON catalog_info_input_witnesses BEGIN
  SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM catalog_info_input_budget WHERE singleton=1) THEN RAISE(ABORT,'info_source_budget_missing') END;
@@ -14536,3 +14516,7 @@ CREATE TRIGGER catalog_info_new_disc_title_media_members_count_delete AFTER DELE
  WHEN (SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id)=0 BEGIN
  UPDATE catalog_info_input_families SET rows_staged=rows_staged-1 WHERE change_id=OLD.change_id AND family=18;
 END;
+
+-- One accepted owner observation and one transient target pin; no object history.
+CREATE INDEX catalog_info_owner_object ON catalog_assets(info_owner_object) WHERE info_owner_object IS NOT NULL;
+CREATE INDEX catalog_info_target_owner_object ON catalog_info_changes(target_owner_object) WHERE target_owner_object IS NOT NULL;

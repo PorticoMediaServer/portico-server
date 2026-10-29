@@ -22,7 +22,6 @@ var infoRetirePrimaryKeys = map[string]string{
 	"catalog_info_new_subtitle_inventory_evidence": "change_id,asset_id",
 	"catalog_info_new_subtitle_sidecars":           "change_id,id",
 	"catalog_info_new_subtitles":                   "change_id,id",
-	"catalog_info_observation_old":                 "change_id,object_id",
 	"catalog_info_path_old":                        "change_id",
 	"catalog_info_scalar_old":                      "change_id,field",
 }

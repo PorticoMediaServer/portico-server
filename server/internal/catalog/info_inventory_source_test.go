@@ -1,0 +1,56 @@
+package catalog
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"portico.local/server/internal/assets"
+	"portico.local/server/internal/catalogtest"
+	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/subtitles"
+)
+
+func TestInfoInventorySourceUsesLiveFenceAndExplicitReceipt(t *testing.T) {
+	s, db, _, job, object, policy, _ := discPublicationFixture(t)
+	var revision, token string
+	var asset int64
+	if err := db.QueryRow(`SELECT o.revision,o.asset_id,a.id FROM inventory_objects o JOIN catalog_assets a ON a.token=o.asset_id WHERE o.id=?`, object).Scan(&revision, &token, &asset); err != nil {
+		t.Fatal(err)
+	}
+	facts := assets.Facts{Container: "mkv", VideoCodec: "h264", AudioCodec: "aac", Duration: 120, Streams: []assets.Stream{{Index: 0, Type: "video", Codec: "h264"}, {Index: 1, Type: "audio", Codec: "aac"}}, ChapterStatus: "known", Chapters: []assets.Chapter{{Title: "Opening", Start: 0, End: 60}}, SubtitleInventory: &subtitles.Inventory{Status: "known", Tracks: []subtitles.Track{{Origin: "embedded", StreamIndex: 2, Format: "vtt", Language: "en"}}}}
+	receipt, err := s.acceptInventoryInfo(context.Background(), job, object, revision, policy, facts, false)
+	if err != nil || receipt.State != compactcatalog.InfoInputAcceptedPending {
+		t.Fatal("not accepted-pending", receipt, err)
+	}
+	var installed int
+	if err := db.QueryRow(`SELECT count(*) FROM asset_streams WHERE asset_id=?`, token).Scan(&installed); err != nil || installed != 0 {
+		t.Fatal("pending receipt claimed immediate canonical publication", installed, err)
+	}
+	catalogtest.New(t, db).Drain()
+	if err := db.QueryRow(`SELECT count(*) FROM asset_streams WHERE asset_id=?`, token).Scan(&installed); err != nil || installed != 2 {
+		t.Fatal("accepted technical source not applied", installed, err)
+	}
+	var epoch int64
+	if err := db.QueryRow(`SELECT info_epoch FROM catalog_assets WHERE id=?`, asset).Scan(&epoch); err != nil {
+		t.Fatal(err)
+	}
+	unchanged, err := s.acceptInventoryInfo(context.Background(), job, object, revision, policy, facts, false)
+	if err != nil || unchanged.State != compactcatalog.InfoInputApplied || unchanged.ChangeID != 0 {
+		t.Fatal("unchanged source was not an applied no-op", unchanged, err)
+	}
+	var after int64
+	if err := db.QueryRow(`SELECT info_epoch FROM catalog_assets WHERE id=?`, asset).Scan(&after); err != nil || after != epoch {
+		t.Fatal("unchanged source advanced its head", epoch, after, err)
+	}
+	if _, err = db.Exec(`UPDATE jobs SET status='canceled' WHERE id=?`, job); err != nil {
+		t.Fatal(err)
+	}
+	facts.Streams[1].Codec = "flac"
+	if _, err = s.acceptInventoryInfo(context.Background(), job, object, revision, policy, facts, false); !errors.Is(err, context.Canceled) {
+		t.Fatal("canceled job admitted new source facts", err)
+	}
+	if err := db.QueryRow(`SELECT count(*) FROM catalog_info_changes`).Scan(&installed); err != nil || installed != 0 {
+		t.Fatal("refused input left an accepted body", installed, err)
+	}
+}

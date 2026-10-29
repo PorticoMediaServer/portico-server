@@ -3,6 +3,7 @@ package subtitles
 import (
 	"context"
 	"database/sql"
+	"portico.local/server/internal/subtitleoffer"
 	"strings"
 )
 
@@ -95,10 +96,7 @@ var iso639ThreeToTwo = map[string]string{
 	"wol": "wo", "xho": "xh", "yid": "yi", "yor": "yo", "zha": "za", "zho": "zh", "zul": "zu",
 }
 
-func hearingImpairedTitle(title string) bool {
-	t := strings.ToLower(title)
-	return strings.Contains(t, "sdh") || strings.Contains(t, "hearing") || strings.Contains(t, "[cc]") || strings.Contains(t, "closed caption")
-}
+func hearingImpairedTitle(s string) bool { return subtitleoffer.HearingImpairedTitle(s) }
 
 // ChooseAutomatic applies the rule. With subtitles off altogether: nothing. With subtitles on: the first preferred
 // language that has a track, taking an ordinary track over an SDH one and never a

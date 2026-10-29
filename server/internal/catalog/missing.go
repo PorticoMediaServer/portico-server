@@ -156,6 +156,14 @@ func forgetAssetTx(ctx context.Context, tx *sql.Tx, id int64, token string) erro
 	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM item_extras WHERE asset_id=?1) OR EXISTS(SELECT 1 FROM playback_sessions WHERE asset_id=?1) OR EXISTS(SELECT 1 FROM lyric_resources WHERE asset_id=?1) OR EXISTS(SELECT 1 FROM lyric_candidates WHERE asset_id=?1) OR EXISTS(SELECT 1 FROM subtitle_resources WHERE source_id=?1) OR EXISTS(SELECT 1 FROM dvr_catalog_provenance WHERE asset_id=?1)`, token).Scan(&held); err != nil {
 		return err
 	}
+	// This transaction destroys or unlinks every holder below. Release only
+	// this exact asset's observation pins; other lifetimes' FKs still veto.
+	if _, err := tx.ExecContext(ctx, `UPDATE catalog_assets SET info_owner_object=NULL,info_owner_revision=NULL WHERE id=? AND token=? AND info_owner_object IS NOT NULL`, id, token); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE catalog_info_changes SET target_owner_object=NULL,target_owner_revision=NULL WHERE asset_id=? AND asset_token=? AND target_owner_object IS NOT NULL`, id, token); err != nil {
+		return err
+	}
 	for _, query := range []string{
 		`DELETE FROM inventory_analysis_queue WHERE object_id IN(SELECT id FROM inventory_objects WHERE asset_id=?)`,
 		`DELETE FROM inventory_objects WHERE asset_id=?`,
@@ -530,6 +538,14 @@ func (s *Service) EmptyMissingAuthorized(ctx context.Context, library string, cu
 			files, out.More = files[:missingBatch], true
 		}
 		for _, g := range files {
+			ready, e := compactcatalog.PrepareInfoObjectDeleteTx(ctx, tx, g.object)
+			if e != nil {
+				return e
+			}
+			if !ready {
+				out.More = true
+				continue
+			}
 			if _, err = tx.ExecContext(ctx, `DELETE FROM inventory_analysis_queue WHERE object_id=?`, g.object); err != nil {
 				return err
 			}

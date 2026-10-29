@@ -7,13 +7,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"portico.local/server/internal/subtitleoffer"
 	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf16"
 	"unicode/utf8"
-
-	"golang.org/x/text/language"
 )
 
 var (
@@ -57,17 +56,11 @@ func textField(s string, max int) bool {
 	return true
 }
 func Language(s string) (string, error) {
-	if s == "" {
-		return "und", nil
-	}
-	if !textField(s, 64) {
+	v, ok := subtitleoffer.Language(s)
+	if !ok {
 		return "", ErrInput
 	}
-	tag, e := language.Parse(s)
-	if e != nil {
-		return "", ErrInput
-	}
-	return tag.String(), nil
+	return v, nil
 }
 func Offset(s string) (int64, error) {
 	if s == "" {
@@ -159,20 +152,5 @@ func textDocument(cues []StyledCue) ([]byte, error) {
 func Canonical(raw []byte, format string, durationUS int64) ([]byte, error) {
 	return CanonicalAsset(raw, nil, format, durationUS)
 }
-func validFormat(s string) bool {
-	switch s {
-	case "srt", "vtt", "ass", "ssa", "pgs", "sup", "vobsub", "idx", "dvb", "smi", "sami", "ttml", "dfxp":
-		return true
-	}
-	return false
-}
-func safeTitle(s string) string {
-	if !textField(s, 160) {
-		return "Subtitles"
-	}
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return "Subtitles"
-	}
-	return s
-}
+func validFormat(s string) bool { return subtitleoffer.ValidFormat(s) }
+func safeTitle(s string) string { return subtitleoffer.Title(s) }

@@ -463,6 +463,21 @@ func (h infoInputHeader) ref() InfoInputRef {
 // parent may report accepted-pending only after that transaction commits and
 // whole-input acceptance has moved the body to phase 1.
 func BeginInfoInputTx(ctx context.Context, tx *sql.Tx, spec InfoInputSpec) (InfoInput, error) {
+	input, err := beginInfoInputTx(ctx, tx, spec)
+	if err != nil {
+		return InfoInput{}, err
+	}
+	var queued bool
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_upstream_sources WHERE domain=41 AND source_id=? AND token=? AND flags&32<>0)`, spec.AssetID, spec.Token).Scan(&queued); err != nil {
+		return InfoInput{}, err
+	}
+	if !queued {
+		err = queueSource(ctx, tx, DomainAssetSources, spec.AssetID, spec.Token, sourceInfo|sourceMetadata|sourceRevision)
+	}
+	return input, err
+}
+
+func beginInfoInputTx(ctx context.Context, tx *sql.Tx, spec InfoInputSpec) (InfoInput, error) {
 	if err := spec.validate(); err != nil {
 		return InfoInput{}, err
 	}

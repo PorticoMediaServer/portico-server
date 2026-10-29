@@ -1,11 +1,8 @@
 package assets
 
 import (
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -81,25 +78,11 @@ func PersistStreams(tx *sql.Tx, asset string, size, modified int64, streams []St
 	if streams == nil {
 		return nil
 	}
-	if len(streams) > 128 {
-		return errors.New("stream facts exceed capacity")
+	fingerprint, e := streamInputFingerprint(streams)
+	if e != nil {
+		return e
 	}
-	seen := map[int]bool{}
-	for _, s := range streams {
-		if s.Index < 0 || seen[s.Index] || (s.Type != "video" && s.Type != "audio" && s.Type != "subtitle") {
-			return errors.New("invalid stream facts")
-		}
-		seen[s.Index] = true
-	}
-	raw, _ := json.Marshal(streams)
-	for _, s := range streams {
-		raw = append(raw, s.EncodeDetail()...)
-		breadth, _ := json.Marshal(s.Detail.StreamBreadth)
-		raw = append(raw, breadth...)
-	}
-	hash := sha256.Sum256(raw)
-	fingerprint := hex.EncodeToString(hash[:])
-	_, e := tx.Exec(`INSERT INTO asset_stream_facts(asset_id,revision,size,modified_ns,fingerprint,detail_version) VALUES(?,1,?,?,?,?) ON CONFLICT(asset_id) DO UPDATE SET detail_version=excluded.detail_version,revision=asset_stream_facts.revision+CASE WHEN asset_stream_facts.fingerprint!=excluded.fingerprint OR asset_stream_facts.size!=excluded.size OR asset_stream_facts.modified_ns!=excluded.modified_ns THEN 1 ELSE 0 END,size=excluded.size,modified_ns=excluded.modified_ns,fingerprint=excluded.fingerprint`, asset, size, modified, fingerprint, StreamDetailVersion)
+	_, e = tx.Exec(`INSERT INTO asset_stream_facts(asset_id,revision,size,modified_ns,fingerprint,detail_version) VALUES(?,1,?,?,?,?) ON CONFLICT(asset_id) DO UPDATE SET detail_version=excluded.detail_version,revision=asset_stream_facts.revision+CASE WHEN asset_stream_facts.fingerprint!=excluded.fingerprint OR asset_stream_facts.size!=excluded.size OR asset_stream_facts.modified_ns!=excluded.modified_ns THEN 1 ELSE 0 END,size=excluded.size,modified_ns=excluded.modified_ns,fingerprint=excluded.fingerprint`, asset, size, modified, fingerprint, StreamDetailVersion)
 	if e != nil {
 		return e
 	}

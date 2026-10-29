@@ -569,6 +569,8 @@ catalog_assets.height
 catalog_assets.id
 catalog_assets.info_epoch
 catalog_assets.info_order_available
+catalog_assets.info_owner_object
+catalog_assets.info_owner_revision
 catalog_assets.modified_ns
 catalog_assets.path
 catalog_assets.size
@@ -1271,6 +1273,8 @@ catalog_info_changes.input_revision
 catalog_info_changes.phase
 catalog_info_changes.slot
 catalog_info_changes.target_available
+catalog_info_changes.target_owner_object
+catalog_info_changes.target_owner_revision
 catalog_info_changes.target_shape_id
 catalog_info_changes.upper_entity
 catalog_info_input_budget.cap_bytes
@@ -1494,17 +1498,6 @@ catalog_info_new_subtitles.reason
 catalog_info_new_subtitles.sidecar_id
 catalog_info_new_subtitles.stream_index
 catalog_info_new_subtitles.title
-catalog_info_observation_old.asset_token
-catalog_info_observation_old.change_id
-catalog_info_observation_old.existed
-catalog_info_observation_old.modified_ns
-catalog_info_observation_old.object_id
-catalog_info_observation_old.retired
-catalog_info_observation_old.revision
-catalog_info_observation_old.root_incarnation
-catalog_info_observation_old.size
-catalog_info_observation_old.source_id
-catalog_info_observation_old.state
 catalog_info_path_old.change_id
 catalog_info_path_old.old_path
 catalog_info_scalar_old.change_id
