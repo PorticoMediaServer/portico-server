@@ -155,10 +155,12 @@ export function TitleActions({binding, data, small = false, topResult = false}: 
   const run = (task: Promise<unknown>) => { void task.catch(binding.context.effects.reportError); };
   const size = small ? 'compact' as const : 'hero' as const;
   // The drawn caption is the title's own long duration ("1 h 26 min left"), not the compact one.
-  const left = titleFactParts({durationSeconds: Math.max(0, data.item.duration - data.personal.progressSeconds)}, env).find(part => part.id === 'duration')?.text;
+  // An unknown length has no time left to state and no progress line to draw; never a zero.
+  const length = data.item.duration ?? 0, fraction = length > 0 ? data.personal.progressSeconds / length : 0;
+  const left = length > 0 ? titleFactParts({durationSeconds: Math.max(0, length - data.personal.progressSeconds)}, env).find(part => part.id === 'duration')?.text : undefined;
   const remaining = primary?.id === 'resume' && left ? serviceText('duration.remaining', {duration: left}) : primary?.caption;
   return <><div className={styles.actions} data-phone-title={phone && !small || undefined}>
-    {primary && primaryAction && (primary.id === 'resume' && !phone ? <ResumeButton size={size} progress={data.item.duration > 0 ? data.personal.progressSeconds / data.item.duration : 0} remaining={remaining} onClick={() => run(binding.play(data, primaryAction.id))}>{t('next.controls.resume')}</ResumeButton>
+    {primary && primaryAction && (primary.id === 'resume' && !phone ? <ResumeButton size={size} progress={fraction} remaining={remaining} onClick={() => run(binding.play(data, primaryAction.id))}>{t('next.controls.resume')}</ResumeButton>
       : <Button variant="primary" icon="i-play" size={size} onClick={() => run(binding.play(data, primaryAction.id))}>{t(primary.id === 'resume' ? 'next.controls.resume' : 'next.controls.play')}</Button>)}
     {!small && <>
       {!phone && !topResult && restart && primary?.id === 'resume' && <Button icon="i-retry" size={size} onClick={() => run(binding.play(data, restart.id))}>{t('next.controls.startOver')}</Button>}
@@ -167,7 +169,7 @@ export function TitleActions({binding, data, small = false, topResult = false}: 
       <TitleMore binding={binding} data={data} />
     </>}
   </div>{phone && !small && primary?.id === 'resume' && <div className={styles.phoneResume}>
-    <div className={styles.phoneProgress} role="progressbar" aria-label={t('next.layout.progress')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(Math.min(1, Math.max(0, data.item.duration > 0 ? data.personal.progressSeconds / data.item.duration : 0)) * 100)}><span style={{transform: `scaleX(${Math.min(1, Math.max(0, data.item.duration > 0 ? data.personal.progressSeconds / data.item.duration : 0))})`}} /></div>
+    <div className={styles.phoneProgress} role="progressbar" aria-label={t('next.layout.progress')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(Math.min(1, Math.max(0, fraction)) * 100)}><span style={{transform: `scaleX(${Math.min(1, Math.max(0, fraction))})`}} /></div>
     <div className={styles.phoneRemaining}>{remaining}{restart && <Button variant="text" icon="i-retry" size="small" onClick={() => run(binding.play(data, restart.id))}>{t('next.controls.startOver')}</Button>}</div>
   </div>}</>;
 }

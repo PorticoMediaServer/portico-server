@@ -11,6 +11,6 @@ export function showPrimary(data: ShowWorkspaceData, snapshot: Pick<DetailSnapsh
   const action = detail.actions.find(value => value.enabled && value.playback && value.id !== 'start_over');
   if (!action?.playback || action.playback.itemId !== next.playback.itemId) return undefined;
   const resume = (detail.item.progressSeconds ?? 0) > 0 && action.playback.startSeconds > 0;
-  const progress = detail.item.duration > 0 ? Math.min(1, Math.max(0, (detail.item.progressSeconds ?? 0) / detail.item.duration)) : 0;
+  const length = detail.item.duration ?? 0, progress = length > 0 ? Math.min(1, Math.max(0, (detail.item.progressSeconds ?? 0) / length)) : 0;
   return {next, detail, action, resume, progress};
 }

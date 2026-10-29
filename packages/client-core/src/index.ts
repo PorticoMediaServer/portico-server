@@ -116,7 +116,10 @@ export type MediaItem = {
   title: string;
   kind: string;
   year?: number;
-  duration: number;
+  /** Seconds. Absent when not known: in particular the server could not represent it
+   * (`durationUnrepresentable`). Never read an absent length as zero. */
+  duration?: number;
+  durationUnrepresentable?: true;
   overview?: string;
   posterUrl?: string;
   backdropUrl?: string;

@@ -169,7 +169,7 @@ function projection(raw: unknown, scope: DetailScope, target: DetailTarget): Det
   if (s.serverId !== scope.serverId || s.libraryId !== target.libraryId || s.itemId !== target.itemId || !id(s.viewerFence) || !integer(r.catalog) || !integer(r.viewer)) invalid();
   if (!obj(item)) invalid();
   if (item.id !== target.itemId || item.libraryId !== target.libraryId || !str(item.title ?? '', 2048) || !id(item.kind)) invalid();
-  const media: DetailItem = { id: target.itemId, libraryId: target.libraryId, title: (item.title ?? '') as string, kind: item.kind, duration: finite(item.duration) ? item.duration : 0, progressSeconds: finite(item.progressSeconds) ? item.progressSeconds : 0, available: item.available === true };
+  const media: DetailItem = { id: target.itemId, libraryId: target.libraryId, title: (item.title ?? '') as string, kind: item.kind, ...(finite(item.duration) ? {duration: item.duration} : {}), ...(item.durationState === 'unrepresentable' && item.duration === undefined ? {durationUnrepresentable: true as const} : {}), progressSeconds: finite(item.progressSeconds) ? item.progressSeconds : 0, available: item.available === true };
   for (const key of ['overview','posterUrl','backdropUrl','stillUrl'] as const) { const v = item[key]; if (key === 'overview' ? typeof v === 'string' && v.length <= 65536 && !/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(v) : str(v, 4096)) media[key] = v as string; else left('item.' + key, v); }
   if (integer(item.year)) media.year = item.year; else left('item.year', item.year);
   if (item.addedAt === null || str(item.addedAt, 128)) media.addedAt = item.addedAt as string | null; else left('item.addedAt', item.addedAt);
@@ -199,7 +199,7 @@ function projection(raw: unknown, scope: DetailScope, target: DetailTarget): Det
     // An action that plays says where it starts within this title; one that cannot is not offered.
     if (action.playback !== undefined && action.playback !== null) {
       const p = wireDurations(action.playback,{startSeconds:"startMs"});
-      if (!obj(p) || p.itemId !== target.itemId || !finite(p.startSeconds) || p.startSeconds > media.duration) invalid();
+      if (!obj(p) || p.itemId !== target.itemId || !finite(p.startSeconds) || media.duration !== undefined && p.startSeconds > media.duration) invalid();
       result.playback = Object.freeze({ itemId: target.itemId, startSeconds: p.startSeconds });
     }
     return Object.freeze(result);
