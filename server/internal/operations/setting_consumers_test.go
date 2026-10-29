@@ -187,6 +187,7 @@ var settingConsumers = map[string]settingConsumer{
 	"operations.Settings.jobDays":                                            {"internal/operations/evidence.go", "JobDays", "Prune the corresponding history by its retention rule"},
 	"operations.Settings.lanDiscoveryEnabled":                                {"cmd/server/administration.go", "LANDiscoveryEnabled", "Start or stop LAN advertisement"},
 	"operations.Settings.dlnaEnabled":                                        {"internal/httpapi/connection_settings.go", "DLNAEnabled", "Start or stop the DLNA server and its SSDP advertisement"},
+	"operations.Settings.secureConnections":                                  {"internal/httpapi/connection_policy.go", "SecureConnections", "Require secure HTTP transport by owner policy"},
 	"operations.Settings.lanNetworks":                                        {"internal/httpapi/request_locality.go", "LANNetworks", "Classify home connections and forwarded client addresses"},
 	"operations.Settings.library.missingTitles":                              {"internal/catalog/missing.go", "literal:library.missingTitles", "Keep or remove missing titles by the owner rule"},
 	"operations.Settings.library.segmentDetection":                           {"internal/mediaanalysis/segment_modes.go", "literal:library.segmentDetection", "Choose the server's intro and credits detection mode"},

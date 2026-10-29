@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/url"
+	"portico.local/server/internal/directname"
 	"strconv"
 	"strings"
 	"time"
@@ -65,7 +66,7 @@ func (h *ClaimHandler) currentManagedHTTPSTx(ctx context.Context, tx *sql.Tx) (s
 		return "", nil
 	}
 	u, e := url.Parse(q.RouteURL)
-	if e != nil || u.Hostname() != q.RouteHostname || !validHostedRouteName(q.RouteHostname, q.Namespace) {
+	if e != nil || u.Hostname() != q.RouteHostname || !validManagedRouteName(q.RouteHostname, q.Namespace, m.directDomain) {
 		return "", nil
 	}
 	port := 443
@@ -136,4 +137,9 @@ func (h *ClaimHandler) currentManagedHTTPSTx(ctx context.Context, tx *sql.Tx) (s
 		return "", e
 	}
 	return q.RouteURL, nil
+}
+
+func validManagedRouteName(host, namespace, domain string) bool {
+	_, ns, err := directname.ParseIPHostname(host, domain)
+	return err == nil && ns == namespace
 }

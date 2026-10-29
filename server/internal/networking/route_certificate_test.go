@@ -81,7 +81,7 @@ func TestRouteCertificateManagedActiveAndRenewalFallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cert, err := manager.GetCertificate(&tls.ClientHelloInfo{ServerName: "current." + fixtureCertificateNamespace + ".direct.getportico.tv"})
+	cert, err := manager.GetCertificate(&tls.ClientHelloInfo{ServerName: "current." + fixtureCertificateNamespace + ".portico.direct"})
 	if err != nil {
 		t.Fatal(err)
 	}

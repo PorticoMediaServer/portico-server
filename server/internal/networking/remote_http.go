@@ -61,6 +61,7 @@ func (h *ClaimHandler) remoteHTTP(w http.ResponseWriter, r *http.Request) {
 			out.Topology.Public = []string{}
 		}
 		out.Config = c
+		out.Warnings = remoteWarnings(c.PublicPort, h.remote.accessURLs(ctx))
 		if certificate.State == "claim_required" && !c.Enabled {
 			out.State = "unconfigured"
 		}

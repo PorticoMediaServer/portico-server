@@ -28,8 +28,6 @@ type CredentialReader interface {
 type HTTPTransport struct {
 	origin      string
 	client      *http.Client
-	routeIPv4   *http.Client
-	routeIPv6   *http.Client
 	credentials CredentialReader
 }
 
@@ -43,7 +41,7 @@ func NewHTTPTransport(origin string, credentials CredentialReader) (*HTTPTranspo
 	}
 	return &HTTPTransport{
 		origin: origin, credentials: credentials,
-		client: newClaimHTTPClient(""), routeIPv4: newClaimHTTPClient("tcp4"), routeIPv6: newClaimHTTPClient("tcp6"),
+		client: newClaimHTTPClient(""),
 	}, nil
 }
 
@@ -74,7 +72,7 @@ func newClaimHTTPClient(network string) *http.Client {
 	}
 }
 func (t *HTTPTransport) CloseIdleConnections() {
-	for _, client := range []*http.Client{t.client, t.routeIPv4, t.routeIPv6} {
+	for _, client := range []*http.Client{t.client} {
 		if client != nil {
 			client.CloseIdleConnections()
 		}

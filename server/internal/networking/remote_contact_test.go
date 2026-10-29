@@ -42,9 +42,7 @@ func contactFixture(t *testing.T) (*sqlFixture, *RemoteManager, *Topology, *cont
 				Generation int64 `json:"generation,string"`
 			}{in.Generation})
 			return reply(http.StatusOK, string(body)), nil
-		case strings.HasSuffix(r.URL.Path, "/direct-route"):
-			counts.names++
-			return reply(http.StatusOK, `{}`), nil
+
 		}
 		t.Errorf("unexpected Hosted call %s", r.URL.Path)
 		return reply(http.StatusNotFound, `{"code":"unexpected"}`), nil
@@ -113,29 +111,3 @@ func TestATopologyChangeThatChangesNoRouteDoesNotCallHosted(t *testing.T) {
 
 // The gate that replaced the topology digest: a name is requested for an address that has
 // none, and for nothing else. Without this, a new address would wait for the weekly attempt.
-func TestAnAddressWithNoNameIsTheOnlyReasonToAskForOne(t *testing.T) {
-	f, m, _, _, ctx := contactFixture(t)
-	_, q, authority, e := m.h.certificates.snapshot(ctx)
-	if e != nil {
-		t.Fatal(e)
-	}
-	_ = q
-	addresses := map[string]int{"188.68.34.120": 32500}
-	unnamed, e := m.unnamedAddress(ctx, authority, addresses)
-	if e != nil || !unnamed {
-		t.Fatal("an address with no name was not noticed", unnamed, e)
-	}
-	if _, e = f.db.Exec(`INSERT INTO networking_route_names(authority,address,port,url) VALUES(?,?,?,?)`, authority, "188.68.34.120", 32500, "https://current.example:32500"); e != nil {
-		t.Fatal(e)
-	}
-	if unnamed, e = m.unnamedAddress(ctx, authority, addresses); e != nil || unnamed {
-		t.Fatal("a named address still asked for a name", unnamed, e)
-	}
-	// A different port is a different name, and an empty set asks for nothing.
-	if unnamed, e = m.unnamedAddress(ctx, authority, map[string]int{"188.68.34.120": 443}); e != nil || !unnamed {
-		t.Fatal("a changed port did not need a name", unnamed, e)
-	}
-	if unnamed, e = m.unnamedAddress(ctx, authority, map[string]int{}); e != nil || unnamed {
-		t.Fatal("an empty candidate set asked Hosted for something", unnamed, e)
-	}
-}

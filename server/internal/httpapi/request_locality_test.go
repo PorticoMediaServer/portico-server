@@ -14,6 +14,8 @@ import (
 )
 
 func TestRemoteClientLocality(t *testing.T) {
+	settings := operations.DefaultSettings()
+	settings.LANNetworks = []string{"127.0.0.0/8", "192.168.1.0/24"}
 	proxy := []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32"), netip.MustParsePrefix("10.0.0.2/32")}
 	guestLAN := localityPolicy{lan: []netip.Prefix{netip.MustParsePrefix("192.168.1.0/24")}}
 	public := []netip.Addr{netip.MustParseAddr("203.0.113.9")}
@@ -26,25 +28,27 @@ func TestRemoteClientLocality(t *testing.T) {
 		public    []netip.Addr
 		remote    bool
 	}{
-		{"private peer is LAN by default", "192.168.1.20:5000", nil, nil, newLocalityPolicy(operations.DefaultSettings()), nil, false},
-		{"loopback peer is LAN by default", "127.0.0.1:5000", nil, nil, newLocalityPolicy(operations.DefaultSettings()), nil, false},
-		{"public peer is remote", "198.51.100.7:5000", nil, nil, newLocalityPolicy(operations.DefaultSettings()), nil, true},
-		{"unparsable peer is remote", "garbage", nil, nil, newLocalityPolicy(operations.DefaultSettings()), nil, true},
-		{"untrusted peer's forwarded header is ignored", "198.51.100.7:5000", []string{"192.168.1.20"}, nil, newLocalityPolicy(operations.DefaultSettings()), nil, true},
-		{"local proxy forwarding an internet client is remote", "127.0.0.1:5000", []string{"198.51.100.7"}, proxy, newLocalityPolicy(operations.DefaultSettings()), nil, true},
-		{"local proxy forwarding a LAN client is LAN", "127.0.0.1:5000", []string{"192.168.1.20"}, proxy, newLocalityPolicy(operations.DefaultSettings()), nil, false},
-		{"trusted proxy without a header is remote", "127.0.0.1:5000", nil, proxy, newLocalityPolicy(operations.DefaultSettings()), nil, true},
-		{"trusted proxy with a malformed header is remote", "127.0.0.1:5000", []string{"not-an-ip"}, proxy, newLocalityPolicy(operations.DefaultSettings()), nil, true},
-		{"spoofed left-most hop is ignored", "127.0.0.1:5000", []string{"192.168.1.20, 198.51.100.7"}, proxy, newLocalityPolicy(operations.DefaultSettings()), nil, true},
-		{"chained trusted proxies are skipped", "127.0.0.1:5000", []string{"198.51.100.7, 10.0.0.2"}, proxy, newLocalityPolicy(operations.DefaultSettings()), nil, true},
-		{"chained trusted proxies reach a LAN client", "127.0.0.1:5000", []string{"192.168.1.20", "10.0.0.2"}, proxy, newLocalityPolicy(operations.DefaultSettings()), nil, false},
+		{"configured private peer is LAN", "192.168.1.20:5000", nil, nil, newLocalityPolicy(settings), nil, false},
+		{"loopback peer is LAN by default", "127.0.0.1:5000", nil, nil, newLocalityPolicy(settings), nil, false},
+		{"overlay remains remote", "100.64.1.20:5000", nil, nil, newLocalityPolicy(settings), nil, true},
+		{"explicit owner overlay is local", "100.64.1.20:5000", nil, nil, localityPolicy{lan: []netip.Prefix{netip.MustParsePrefix("100.64.0.0/10")}}, nil, false},
+		{"public peer is remote", "198.51.100.7:5000", nil, nil, newLocalityPolicy(settings), nil, true},
+		{"unparsable peer is remote", "garbage", nil, nil, newLocalityPolicy(settings), nil, true},
+		{"untrusted peer's forwarded header is ignored", "198.51.100.7:5000", []string{"192.168.1.20"}, nil, newLocalityPolicy(settings), nil, true},
+		{"local proxy forwarding an internet client is remote", "127.0.0.1:5000", []string{"198.51.100.7"}, proxy, newLocalityPolicy(settings), nil, true},
+		{"local proxy forwarding a LAN client is LAN", "127.0.0.1:5000", []string{"192.168.1.20"}, proxy, newLocalityPolicy(settings), nil, false},
+		{"trusted proxy without a header is remote", "127.0.0.1:5000", nil, proxy, newLocalityPolicy(settings), nil, true},
+		{"trusted proxy with a malformed header is remote", "127.0.0.1:5000", []string{"not-an-ip"}, proxy, newLocalityPolicy(settings), nil, true},
+		{"spoofed left-most hop is ignored", "127.0.0.1:5000", []string{"192.168.1.20, 198.51.100.7"}, proxy, newLocalityPolicy(settings), nil, true},
+		{"chained trusted proxies are skipped", "127.0.0.1:5000", []string{"198.51.100.7, 10.0.0.2"}, proxy, newLocalityPolicy(settings), nil, true},
+		{"chained trusted proxies reach a LAN client", "127.0.0.1:5000", []string{"192.168.1.20", "10.0.0.2"}, proxy, newLocalityPolicy(settings), nil, false},
 		{"configured LAN is authoritative for other private ranges", "192.168.50.4:5000", nil, nil, guestLAN, nil, true},
 		{"configured LAN is authoritative for loopback", "127.0.0.1:5000", nil, nil, guestLAN, nil, true},
 		{"configured LAN includes its members", "192.168.1.20:5000", nil, nil, guestLAN, nil, false},
 		{"own public address is LAN when treated so", "203.0.113.9:5000", nil, nil, localityPolicy{lan: []netip.Prefix{netip.MustParsePrefix("203.0.113.9/32")}}, public, false},
-		{"own public address is remote when not treated so", "203.0.113.9:5000", nil, nil, newLocalityPolicy(operations.DefaultSettings()), public, true},
+		{"own public address is remote when not treated so", "203.0.113.9:5000", nil, nil, newLocalityPolicy(settings), public, true},
 		{"own public address beats a configured LAN", "203.0.113.9:5000", nil, nil, guestLAN, public, true},
-		{"IPv4-mapped peer is unmapped", "[::ffff:192.168.1.20]:5000", nil, nil, newLocalityPolicy(operations.DefaultSettings()), nil, false},
+		{"IPv4-mapped peer is unmapped", "[::ffff:192.168.1.20]:5000", nil, nil, newLocalityPolicy(settings), nil, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

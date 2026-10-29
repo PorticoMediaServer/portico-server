@@ -20,10 +20,10 @@ func TestVerifyConnectionFencesOnlyResumedSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer l.Close()
-	if err = l.config.VerifyConnection(tls.ConnectionState{ServerName: "c-x.ns.direct.getportico.tv"}); err != nil {
+	if err = l.config.VerifyConnection(tls.ConnectionState{ServerName: "c-x.ns.portico.direct"}); err != nil {
 		t.Fatal("full handshake fenced twice:", err)
 	}
-	if err = l.config.VerifyConnection(tls.ConnectionState{ServerName: "c-x.ns.direct.getportico.tv", DidResume: true}); err == nil {
+	if err = l.config.VerifyConnection(tls.ConnectionState{ServerName: "c-x.ns.portico.direct", DidResume: true}); err == nil {
 		t.Fatal("resumed session skipped the authority fence")
 	}
 }

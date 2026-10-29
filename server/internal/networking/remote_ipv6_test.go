@@ -23,70 +23,91 @@ func remoteStatusOf(t *testing.T, f *sqlFixture) RemoteStatus {
 	return out
 }
 
-// routeHostedFake answers route observations and direct-route names, and
-// counts the names Hosted was asked for.
+// routeHostedFake ACKs observations and records actual per-origin proof requests.
 func routeHostedFake(t *testing.T, cert *CertificateManager, ctx context.Context) *contactCounts {
 	t.Helper()
-	_, q, _, e := cert.snapshot(ctx)
-	if e != nil {
-		t.Fatal(e)
-	}
 	counts := &contactCounts{}
 	cert.transport.client.Transport = claimRoundTrip(func(r *http.Request) (*http.Response, error) {
+		raw, _ := io.ReadAll(r.Body)
 		switch {
+		case strings.HasSuffix(r.URL.Path, "/routes/prove"):
+			var in struct {
+				Endpoint struct {
+					BaseURL string `json:"baseUrl"`
+				} `json:"endpoint"`
+			}
+			if err := json.Unmarshal(raw, &in); err != nil {
+				t.Fatal(err)
+			}
+			counts.names++
+			body, _ := json.Marshal(EndpointReceipt{BaseURL: in.Endpoint.BaseURL, VerifiedAt: time.Now()})
+			return reply(http.StatusOK, string(body)), nil
 		case strings.HasSuffix(r.URL.Path, "/routes"):
 			var in RouteObservation
-			raw, _ := io.ReadAll(r.Body)
-			_ = json.Unmarshal(raw, &in)
+			if err := json.Unmarshal(raw, &in); err != nil {
+				t.Fatal(err)
+			}
+			counts.publishes++
 			body, _ := json.Marshal(struct {
 				Generation int64 `json:"generation,string"`
 			}{in.Generation})
 			return reply(http.StatusOK, string(body)), nil
-		case strings.HasSuffix(r.URL.Path, "/direct-route"):
-			counts.names++
-			host := "c-0123456789abcdef0123456789abcdef." + q.Namespace + ".direct.getportico.tv"
-			body, _ := json.Marshal(certificateRoute{Namespace: q.Namespace, Hostname: host, BaseURL: "https://" + host + ":32500", CertificateDNSName: "*." + q.Namespace + ".direct.getportico.tv"})
-			return reply(http.StatusOK, string(body)), nil
 		}
+		t.Errorf("unexpected Hosted call %s", r.URL.Path)
 		return reply(http.StatusServiceUnavailable, `{"code":"unavailable"}`), nil
 	})
 	return counts
 }
 
-// A global IPv6 address is published only when inbound IPv6 is known to reach
-// the server. With no pinhole and no owner confirmation it stays unpublished
-// and the status says why; the owner's confirmation publishes it.
-func TestUnverifiedIPv6IsNotPublished(t *testing.T) {
+func TestIPv6AllowedByDefaultAndDisableOverrideRemovesCandidate(t *testing.T) {
 	f, m, topo, _, ctx := contactFixture(t)
 	cert := m.h.certificates
 	m.h.endpoints.pending = map[string]endpointPending{}
 	installSyntheticCertificate(t, cert, ctx)
 	cert.SetListening(32500, true)
 	counts := routeHostedFake(t, cert, ctx)
-	// The first snapshot binds the settings to the current claim authority.
-	if _, _, _, _, key, e := m.snapshot(ctx); e != nil {
-		t.Fatal(e)
-	} else {
-		clear(key)
+	config, _, _, _, key, err := m.snapshot(ctx)
+	clear(key)
+	if err != nil || !config.IPv6Open {
+		t.Fatalf("IPv6 default: %+v %v", config, err)
 	}
-	if _, e := f.db.Exec(`UPDATE networking_remote_settings SET enabled=1,mapping=0`); e != nil {
-		t.Fatal(e)
+	if _, err = f.db.Exec(`UPDATE networking_remote_settings SET enabled=1,mapping=0`); err != nil {
+		t.Fatal(err)
 	}
 	topo.Public = []string{"2a03:4000:6:8::1"}
-	if e := m.step(ctx); e != nil {
-		t.Logf("step: %v", e)
+	if err = m.step(ctx); err != nil {
+		t.Fatal(err)
 	}
 	status := remoteStatusOf(t, f)
-	if status.IPv6 != "unverified" || counts.names != 0 {
-		t.Fatalf("unverified IPv6 published: ipv6=%q names=%d state=%s err=%s candidates=%v", status.IPv6, counts.names, status.State, status.ErrorCode, status.Candidates)
+	if status.IPv6 != "verified" || counts.names != 1 {
+		t.Fatalf("IPv6 proof: %+v proofs=%d", status, counts.names)
 	}
-	if _, e := f.db.Exec(`UPDATE networking_remote_settings SET ipv6_open=1,revision=revision+1`); e != nil {
-		t.Fatal(e)
+	found := false
+	for _, c := range status.Candidates {
+		if c.Address == topo.Public[0] {
+			found = true
+			if c.Port != 32500 || c.State != "reachable" {
+				t.Fatalf("candidate %+v", c)
+			}
+		}
 	}
-	_ = m.step(ctx)
+	if !found {
+		t.Fatal("missing IPv6 candidate")
+	}
+	if _, err = f.db.Exec(`UPDATE networking_remote_settings SET ipv6_open=0,revision=revision+1`); err != nil {
+		t.Fatal(err)
+	}
+	if err = m.step(ctx); err != nil {
+		t.Fatal(err)
+	}
 	status = remoteStatusOf(t, f)
-	if status.IPv6 != "owner_confirmed" || counts.names == 0 {
-		t.Fatalf("owner-confirmed IPv6 not published: ipv6=%q names=%d", status.IPv6, counts.names)
+	for _, c := range status.Candidates {
+		if c.Address == topo.Public[0] {
+			t.Fatal("disabled IPv6 still published", c)
+		}
+	}
+	if status.IPv6 != "disabled" || counts.names != 1 {
+		t.Fatalf("override %+v proofs=%d", status, counts.names)
 	}
 }
 
@@ -149,7 +170,7 @@ func TestIPv6PinholeOpensPublishesAndCloses(t *testing.T) {
 	}
 	topo.Public = []string{"2a03:4000:6:8::1"}
 	_ = m.step(ctx)
-	if status := remoteStatusOf(t, f); status.IPv6 != "pinhole" || gateway.opened != 1 || counts.names == 0 {
+	if status := remoteStatusOf(t, f); status.IPv6 != "verified" || gateway.opened != 1 || counts.names == 0 {
 		t.Fatalf("ipv6=%q opened=%d mappings=%v", status.IPv6, gateway.opened, status.Mappings)
 	}
 	topo.Public = []string{}
@@ -219,43 +240,6 @@ func TestPinholeProbeBacksOffWithoutFirewallControl(t *testing.T) {
 	}
 	if d := pinholeBackoff(40); d < 24*time.Hour || d > 24*time.Hour+144*time.Minute {
 		t.Fatalf("cap %v", d)
-	}
-}
-
-// A86: a new members-only label from Hosted drops cached route names under
-// another label (so the manager re-asks and republishes) and keeps current ones.
-func TestRouteLabelDropsStaleCachedNames(t *testing.T) {
-	f, m, _, _, ctx := contactFixture(t)
-	const oldLabel, newLabel = "0123456789abcdef0123456789abcdef", "fedcba9876543210fedcba9876543210"
-	for _, row := range [][2]string{{"188.68.34.120", "https://c-" + oldLabel + ".ptc-aaaaaaaaaaaaaaaaaaaa.direct.getportico.tv:32500"}, {"2a03:4000:6:8::1", "https://c-" + newLabel + ".ptc-aaaaaaaaaaaaaaaaaaaa.direct.getportico.tv:32500"}} {
-		if _, e := f.db.Exec(`INSERT INTO networking_route_names(authority,address,port,url) VALUES('auth',?,32500,?)`, row[0], row[1]); e != nil {
-			t.Fatal(e)
-		}
-	}
-	if e := m.RouteLabel(ctx, newLabel); e != nil {
-		t.Fatal(e)
-	}
-	var left []string
-	rows, e := f.db.Query(`SELECT address FROM networking_route_names ORDER BY address`)
-	if e != nil {
-		t.Fatal(e)
-	}
-	for rows.Next() {
-		var a string
-		_ = rows.Scan(&a)
-		left = append(left, a)
-	}
-	rows.Close()
-	if len(left) != 1 || left[0] != "2a03:4000:6:8::1" {
-		t.Fatalf("left %v", left)
-	}
-	select {
-	case <-m.wake:
-	default:
-		t.Fatal("manager not woken to re-ask its name")
-	}
-	if m.RouteLabel(ctx, "not-a-label") == nil {
-		t.Fatal("invalid label accepted")
 	}
 }
 

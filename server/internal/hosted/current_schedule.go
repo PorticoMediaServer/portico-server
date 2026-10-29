@@ -158,16 +158,6 @@ func stopTimer(timer *time.Timer) {
 
 // nextControlDeadline is the earliest instant at which this schedule has
 // something to do. It is what lets the loop sleep instead of poll.
-// OnRouteLabel sets who is told the server's members-only label (the remote
-// manager). Hosted returns it with each check-in (A86); a member removal
-// changes it, and that removal also wakes the server for its new policy,
-// which runs a check-in, so the label is picked up without periodic contact.
-func (s *Service) OnRouteLabel(f func(context.Context, string) error) {
-	if s != nil && f != nil {
-		s.routeLabel.Store(&f)
-	}
-}
-
 func nextControlDeadline(q controlSchedule, now time.Time) time.Time {
 	next := time.Time{}
 	consider := func(at time.Time) {
@@ -267,7 +257,6 @@ func (s *Service) ordinaryControlStep(ctx context.Context) (time.Time, error) {
 		var result struct {
 			HeartbeatAfterMs    int64       `json:"heartbeatAfterMs"`
 			PresenceExpiresAt   time.Time   `json:"presenceExpiresAt"`
-			RouteLabel          string      `json:"routeLabel"`
 			MemberSequence      int64       `json:"memberSequence"`
 			MemberDigestMatches bool        `json:"memberDigestMatches"`
 			Departures          []Departure `json:"departures"`
@@ -292,9 +281,6 @@ func (s *Service) ordinaryControlStep(ctx context.Context) (time.Time, error) {
 		delay := time.Duration(result.HeartbeatAfterMs) * time.Millisecond
 		delay = delay*9/10 + time.Duration(rand.Int64N(int64(delay/5)))
 		schedule.NextHeartbeat = now.Add(delay)
-		if f := s.routeLabel.Load(); result.RouteLabel != "" && f != nil {
-			_ = (*f)(ctx, result.RouteLabel)
-		}
 		// Hosted's index disagrees with this server's members (a restore on
 		// either side, a lost push): replace it with the full list.
 		if !sync.journalPending && (!result.MemberDigestMatches || result.MemberSequence != sync.acked) {

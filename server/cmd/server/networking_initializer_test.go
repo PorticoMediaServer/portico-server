@@ -176,15 +176,15 @@ func TestAccessURLsForPublicationComposesDomainRoute(t *testing.T) {
 	}
 }
 
-func TestPublicationFiltersPlainHTTPAndIncludesExternalAddress(t *testing.T) {
+func TestPublicationPreservesPlainHTTPAndExternalAddress(t *testing.T) {
 	v := operations.Settings{AccessURLs: []string{"http://overlay.example:32500", "https://media.example"}, AdvertiseURL: "https://external.example"}
 	got := accessURLsForPublication(v, 32500)
-	if len(got) != 2 || got[1] != "https://media.example" || got[0] != "https://external.example" {
+	if len(got) != 3 || got[2] != "https://media.example" || got[1] != "http://overlay.example:32500" || got[0] != "https://external.example" {
 		t.Fatalf("%v", got)
 	}
 	v.AdvertiseURL = "http://external.example"
 	got = accessURLsForPublication(v, 32500)
-	if len(got) != 1 {
-		t.Fatalf("plaintext was published: %v", got)
+	if len(got) != 3 || got[0] != "http://external.example" {
+		t.Fatalf("owner HTTP address was lost: %v", got)
 	}
 }

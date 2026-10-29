@@ -24,6 +24,8 @@ type connectionPolicyCache struct {
 }
 
 type connectionSettingValue struct {
+	secureConnections string
+	lanNetworks       []string
 	revision          int64
 	locality          localityPolicy
 	accessURLs        []string
@@ -63,7 +65,11 @@ func (c *connectionPolicyCache) setLocked(document operations.SettingsDocument) 
 	if document.Effective.OwnAddressEnabled {
 		certificateDomain = document.Effective.CustomCertificateDomain
 	}
-	c.setting.Store(&connectionSettingValue{revision: document.Revision, locality: newLocalityPolicy(document.Effective), accessURLs: urls, certificateDomain: certificateDomain, apiPerMinute: document.Effective.APIRequestsPerMinute, remoteSignIn: remoteSignInPolicy(document.Effective.RemoteSignInPolicy), dlna: document.Effective.DLNAEnabled})
+	secure := document.Effective.SecureConnections
+	if secure == "" {
+		secure = "preferred"
+	}
+	c.setting.Store(&connectionSettingValue{secureConnections: secure, lanNetworks: append([]string{}, document.Effective.LANNetworks...), revision: document.Revision, locality: newLocalityPolicy(document.Effective), accessURLs: urls, certificateDomain: certificateDomain, apiPerMinute: document.Effective.APIRequestsPerMinute, remoteSignIn: remoteSignInPolicy(document.Effective.RemoteSignInPolicy), dlna: document.Effective.DLNAEnabled})
 }
 
 // remoteSignInPolicy reads the stored choice. An empty value is the default,

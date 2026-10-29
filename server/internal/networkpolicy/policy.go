@@ -9,41 +9,40 @@ import (
 	"net/netip"
 	"net/url"
 	"strings"
-	"sync"
 )
 
-var defaultOnce sync.Once
-var defaultNetworks []string
-
-// DefaultHomeNetworks includes the attached subnets without naming or detecting
-// particular VPNs, proxies or container runtimes. Owners can replace this list.
-func DefaultHomeNetworks() []string {
-	defaultOnce.Do(func() {
-		defaultNetworks = []string{"127.0.0.0/8", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "fe80::/10", "fc00::/7"}
-		seen := map[string]bool{}
-		for _, s := range defaultNetworks {
-			seen[s] = true
+// VirtualInterface excludes container, bridge and overlay interfaces from
+// automatic LAN routes/defaults. Owners may add explicit LAN networks.
+func VirtualInterface(name string) bool {
+	for _, prefix := range []string{"docker", "br", "veth", "virbr", "vmnet", "vboxnet", "cni", "flannel", "cali", "lxcbr", "lxdbr", "podman", "zt", "wg", "tun", "tap", "utun", "tailscale"} {
+		if strings.HasPrefix(name, prefix) {
+			return true
 		}
-		interfaces, _ := net.Interfaces()
-		for _, iface := range interfaces {
-			if iface.Flags&net.FlagUp == 0 {
+	}
+	return false
+}
+func DefaultHomeNetworks() []string {
+	out := []string{"127.0.0.0/8", "::1/128", "169.254.0.0/16", "fe80::/10"}
+	seen := map[string]bool{}
+	interfaces, _ := net.Interfaces()
+	for _, iface := range interfaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 || VirtualInterface(iface.Name) {
+			continue
+		}
+		addresses, _ := iface.Addrs()
+		for _, address := range addresses {
+			p, err := netip.ParsePrefix(address.String())
+			if err != nil || !p.Addr().IsPrivate() || netip.MustParsePrefix("fd7a:115c:a1e0::/48").Contains(p.Addr()) {
 				continue
 			}
-			addresses, _ := iface.Addrs()
-			for _, a := range addresses {
-				p, err := netip.ParsePrefix(a.String())
-				if err != nil || p.Addr().IsUnspecified() || p.Addr().IsMulticast() {
-					continue
-				}
-				s := p.Masked().String()
-				if !seen[s] && len(defaultNetworks) < 64 {
-					defaultNetworks = append(defaultNetworks, s)
-					seen[s] = true
-				}
+			value := p.Masked().String()
+			if !seen[value] && len(out) < 64 {
+				out = append(out, value)
+				seen[value] = true
 			}
 		}
-	})
-	return append([]string{}, defaultNetworks...)
+	}
+	return out
 }
 
 func Contains(prefixes []netip.Prefix, addr netip.Addr) bool {

@@ -7545,6 +7545,7 @@ var PorticoCastContracts = (function(exports) {
 					"type": "integer"
 				},
 				"remoteSignInPolicy": { "type": "string" },
+				"secureConnections": { "type": "string" },
 				"trustedProxies": {
 					"items": { "type": "string" },
 					"type": "array"
@@ -7597,6 +7598,7 @@ var PorticoCastContracts = (function(exports) {
 					"minimum": -9007199254740991,
 					"type": "integer"
 				},
+				"secureConnections": { "type": "string" },
 				"trustedProxies": {
 					"items": { "type": "string" },
 					"type": "array"
@@ -7608,6 +7610,7 @@ var PorticoCastContracts = (function(exports) {
 				}
 			},
 			"required": [
+				"secureConnections",
 				"ownAddressEnabled",
 				"connectionLimit",
 				"advertiseUrl",
@@ -7801,6 +7804,7 @@ var PorticoCastContracts = (function(exports) {
 							"type": "integer"
 						},
 						"remoteSignInPolicy": { "type": "string" },
+						"secureConnections": { "type": "string" },
 						"segments.animeMode": {
 							"enum": [
 								"server",
@@ -8002,6 +8006,7 @@ var PorticoCastContracts = (function(exports) {
 						"library.missingTitles",
 						"library.missingTitlesDays",
 						"library.segmentDetection",
+						"secureConnections",
 						"remoteSignInPolicy",
 						"remoteBitrateLimitKbps",
 						"connectionLimit",
@@ -8206,6 +8211,7 @@ var PorticoCastContracts = (function(exports) {
 									"type": "integer"
 								},
 								"remoteSignInPolicy": { "type": "string" },
+								"secureConnections": { "type": "string" },
 								"segments.animeMode": {
 									"enum": [
 										"server",
@@ -8407,6 +8413,7 @@ var PorticoCastContracts = (function(exports) {
 								"library.missingTitles",
 								"library.missingTitlesDays",
 								"library.segmentDetection",
+								"secureConnections",
 								"remoteSignInPolicy",
 								"remoteBitrateLimitKbps",
 								"connectionLimit",
@@ -8615,6 +8622,7 @@ var PorticoCastContracts = (function(exports) {
 									"type": "integer"
 								},
 								"remoteSignInPolicy": { "type": "string" },
+								"secureConnections": { "type": "string" },
 								"segments.animeMode": {
 									"enum": [
 										"server",
@@ -8816,6 +8824,7 @@ var PorticoCastContracts = (function(exports) {
 								"library.missingTitles",
 								"library.missingTitlesDays",
 								"library.segmentDetection",
+								"secureConnections",
 								"remoteSignInPolicy",
 								"remoteBitrateLimitKbps",
 								"connectionLimit",
@@ -31144,11 +31153,18 @@ var PorticoCastContracts = (function(exports) {
 					"type": "array"
 				},
 				"clientAddress": { "type": "string" },
+				"lanNetworks": {
+					"items": { "type": "string" },
+					"type": "array"
+				},
 				"plainHttpOutsideHome": { "type": "boolean" },
 				"remote": { "type": "boolean" },
-				"secure": { "type": "boolean" }
+				"secure": { "type": "boolean" },
+				"secureConnections": { "type": "string" }
 			},
 			"required": [
+				"lanNetworks",
+				"secureConnections",
 				"secure",
 				"remote",
 				"plainHttpOutsideHome",
@@ -31201,6 +31217,7 @@ var PorticoCastContracts = (function(exports) {
 					"minimum": -9007199254740991,
 					"type": "integer"
 				},
+				"secureConnections": { "type": "string" },
 				"trustedProxies": {
 					"items": { "type": "string" },
 					"type": "array"
@@ -31212,6 +31229,7 @@ var PorticoCastContracts = (function(exports) {
 				}
 			},
 			"required": [
+				"secureConnections",
 				"ownAddressEnabled",
 				"connectionLimit",
 				"advertiseUrl",
@@ -31264,11 +31282,18 @@ var PorticoCastContracts = (function(exports) {
 							"type": "array"
 						},
 						"clientAddress": { "type": "string" },
+						"lanNetworks": {
+							"items": { "type": "string" },
+							"type": "array"
+						},
 						"plainHttpOutsideHome": { "type": "boolean" },
 						"remote": { "type": "boolean" },
-						"secure": { "type": "boolean" }
+						"secure": { "type": "boolean" },
+						"secureConnections": { "type": "string" }
 					},
 					"required": [
+						"lanNetworks",
+						"secureConnections",
 						"secure",
 						"remote",
 						"plainHttpOutsideHome",
@@ -31357,6 +31382,7 @@ var PorticoCastContracts = (function(exports) {
 							"minimum": -9007199254740991,
 							"type": "integer"
 						},
+						"secureConnections": { "type": "string" },
 						"trustedProxies": {
 							"items": { "type": "string" },
 							"type": "array"
@@ -31368,6 +31394,7 @@ var PorticoCastContracts = (function(exports) {
 						}
 					},
 					"required": [
+						"secureConnections",
 						"ownAddressEnabled",
 						"connectionLimit",
 						"advertiseUrl",
@@ -31727,6 +31754,7 @@ var PorticoCastContracts = (function(exports) {
 									"type": "integer"
 								},
 								"remoteSignInPolicy": { "type": "string" },
+								"secureConnections": { "type": "string" },
 								"segments.animeMode": {
 									"enum": [
 										"server",
@@ -31928,6 +31956,7 @@ var PorticoCastContracts = (function(exports) {
 								"library.missingTitles",
 								"library.missingTitlesDays",
 								"library.segmentDetection",
+								"secureConnections",
 								"remoteSignInPolicy",
 								"remoteBitrateLimitKbps",
 								"connectionLimit",
@@ -32136,6 +32165,7 @@ var PorticoCastContracts = (function(exports) {
 									"type": "integer"
 								},
 								"remoteSignInPolicy": { "type": "string" },
+								"secureConnections": { "type": "string" },
 								"segments.animeMode": {
 									"enum": [
 										"server",
@@ -32337,6 +32367,7 @@ var PorticoCastContracts = (function(exports) {
 								"library.missingTitles",
 								"library.missingTitlesDays",
 								"library.segmentDetection",
+								"secureConnections",
 								"remoteSignInPolicy",
 								"remoteBitrateLimitKbps",
 								"connectionLimit",
@@ -99333,8 +99364,15 @@ var PorticoCastContracts = (function(exports) {
 				"candidates": {
 					"items": {
 						"properties": {
+							"address": { "type": "string" },
 							"baseUrl": { "type": "string" },
 							"class": { "type": "string" },
+							"insecure": { "type": "boolean" },
+							"port": {
+								"maximum": 9007199254740991,
+								"minimum": -9007199254740991,
+								"type": "integer"
+							},
 							"state": { "type": "string" },
 							"verifiedAt": {
 								"format": "date-time",
@@ -99343,6 +99381,7 @@ var PorticoCastContracts = (function(exports) {
 						},
 						"required": [
 							"baseUrl",
+							"insecure",
 							"class",
 							"state"
 						],
@@ -99441,9 +99480,31 @@ var PorticoCastContracts = (function(exports) {
 						"bind"
 					],
 					"type": "object"
+				},
+				"warnings": {
+					"items": {
+						"properties": {
+							"baseUrl": { "type": "string" },
+							"code": { "type": "string" },
+							"message": { "type": "string" },
+							"port": {
+								"maximum": 9007199254740991,
+								"minimum": -9007199254740991,
+								"type": "integer"
+							}
+						},
+						"required": [
+							"code",
+							"port",
+							"message"
+						],
+						"type": "object"
+					},
+					"type": "array"
 				}
 			},
 			"required": [
+				"warnings",
 				"authorityId",
 				"config",
 				"generation",
@@ -165921,8 +165982,15 @@ var PorticoCastContracts = (function(exports) {
 				"candidates": {
 					"items": {
 						"properties": {
+							"address": { "type": "string" },
 							"baseUrl": { "type": "string" },
 							"class": { "type": "string" },
+							"insecure": { "type": "boolean" },
+							"port": {
+								"maximum": 9007199254740991,
+								"minimum": -9007199254740991,
+								"type": "integer"
+							},
 							"state": { "type": "string" },
 							"verifiedAt": {
 								"format": "date-time",
@@ -165931,6 +165999,7 @@ var PorticoCastContracts = (function(exports) {
 						},
 						"required": [
 							"baseUrl",
+							"insecure",
 							"class",
 							"state"
 						],
@@ -166029,9 +166098,31 @@ var PorticoCastContracts = (function(exports) {
 						"bind"
 					],
 					"type": "object"
+				},
+				"warnings": {
+					"items": {
+						"properties": {
+							"baseUrl": { "type": "string" },
+							"code": { "type": "string" },
+							"message": { "type": "string" },
+							"port": {
+								"maximum": 9007199254740991,
+								"minimum": -9007199254740991,
+								"type": "integer"
+							}
+						},
+						"required": [
+							"code",
+							"port",
+							"message"
+						],
+						"type": "object"
+					},
+					"type": "array"
 				}
 			},
 			"required": [
+				"warnings",
 				"authorityId",
 				"config",
 				"generation",
@@ -166086,8 +166177,15 @@ var PorticoCastContracts = (function(exports) {
 				"candidates": {
 					"items": {
 						"properties": {
+							"address": { "type": "string" },
 							"baseUrl": { "type": "string" },
 							"class": { "type": "string" },
+							"insecure": { "type": "boolean" },
+							"port": {
+								"maximum": 9007199254740991,
+								"minimum": -9007199254740991,
+								"type": "integer"
+							},
 							"state": { "type": "string" },
 							"verifiedAt": {
 								"format": "date-time",
@@ -166096,6 +166194,7 @@ var PorticoCastContracts = (function(exports) {
 						},
 						"required": [
 							"baseUrl",
+							"insecure",
 							"class",
 							"state"
 						],
@@ -166194,9 +166293,31 @@ var PorticoCastContracts = (function(exports) {
 						"bind"
 					],
 					"type": "object"
+				},
+				"warnings": {
+					"items": {
+						"properties": {
+							"baseUrl": { "type": "string" },
+							"code": { "type": "string" },
+							"message": { "type": "string" },
+							"port": {
+								"maximum": 9007199254740991,
+								"minimum": -9007199254740991,
+								"type": "integer"
+							}
+						},
+						"required": [
+							"code",
+							"port",
+							"message"
+						],
+						"type": "object"
+					},
+					"type": "array"
 				}
 			},
 			"required": [
+				"warnings",
 				"authorityId",
 				"config",
 				"generation",

@@ -22,6 +22,7 @@ import (
 
 // Connectivity routes use the same typed registry as the first-party API.
 type ConnectivityChange struct {
+	SecureConnections *string   `json:"secureConnections,omitempty"`
 	ExpectedRevision  int64     `json:"expectedRevision"`
 	OperationID       string    `json:"operationId"`
 	RemoteSignIn      *string   `json:"remoteSignInPolicy,omitempty"`
@@ -48,6 +49,9 @@ func (d Dependencies) changeConnectivity(r *http.Request, body ConnectivityChang
 		return connectivity.Policy{}, err
 	}
 	document, err := d.applySettings(r, p, body.ExpectedRevision, body.OperationID, func(v *operations.Settings) {
+		if body.SecureConnections != nil {
+			v.SecureConnections = *body.SecureConnections
+		}
 		if body.RemoteSignIn != nil {
 			v.RemoteSignInPolicy = *body.RemoteSignIn
 		}
@@ -106,6 +110,8 @@ func (d Dependencies) changeConnectivity(r *http.Request, body ConnectivityChang
 // ConnectionDocument lets sign-in show a quiet HTTP note and lets owners see
 // the address actually used by rate limits and the home-network policy.
 type ConnectionDocument struct {
+	LANNetworks          []string `json:"lanNetworks"`
+	SecureConnections    string   `json:"secureConnections"`
 	Secure               bool     `json:"secure"`
 	Remote               bool     `json:"remote"`
 	PlainHTTPOutsideHome bool     `json:"plainHttpOutsideHome"`
@@ -115,9 +121,11 @@ type ConnectionDocument struct {
 
 func (d Dependencies) connectionDocument(r *http.Request) ConnectionDocument {
 	secure, remote := d.secureTransport(r), d.requestIsRemote(r)
-	out := ConnectionDocument{Secure: secure, Remote: remote, PlainHTTPOutsideHome: !secure && remote, ClientAddress: d.setupPeerSubject(r), AccessURLs: []string{}}
+	out := ConnectionDocument{LANNetworks: append([]string{}, operations.DefaultSettings().LANNetworks...), SecureConnections: "preferred", Secure: secure, Remote: remote, PlainHTTPOutsideHome: !secure && remote, ClientAddress: d.setupPeerSubject(r), AccessURLs: []string{}}
 	if setting, err := d.connectionSetting(r.Context()); err == nil && setting != nil {
 		out.AccessURLs = append(out.AccessURLs, setting.accessURLs...)
+		out.LANNetworks = append([]string{}, setting.lanNetworks...)
+		out.SecureConnections = setting.secureConnections
 		if setting.certificateDomain != "" && d.ListeningPort > 0 {
 			host := setting.certificateDomain
 			if d.ListeningPort != 443 {

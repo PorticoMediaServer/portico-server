@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"os"
 	"os/exec"
+	"portico.local/server/internal/networkpolicy"
 	"runtime"
 	"sort"
 	"strconv"
@@ -27,22 +28,9 @@ type Topology struct {
 	ErrorCode    string   `json:"errorCode,omitempty"`
 }
 
-// virtualInterfacePrefixes names interface name prefixes that are virtual
-// (containers, bridges, VPNs, tunnels) rather than the host's LAN. A real
-// Linux bridge on NAS boxes is br0, so the bridge prefix includes the dash
-// (br-) and does not match br0.
-var virtualInterfacePrefixes = []string{"docker", "br-", "veth", "virbr", "vmnet", "vboxnet", "cni", "flannel", "cali", "lxcbr", "lxdbr", "podman", "zt", "wg", "tun", "tap", "utun"}
-
 // VirtualInterface reports whether an interface name looks virtual, using the
 // same prefix rule as topology observation and the connectivity report.
-func VirtualInterface(name string) bool {
-	for _, prefix := range virtualInterfacePrefixes {
-		if strings.HasPrefix(name, prefix) {
-			return true
-		}
-	}
-	return false
-}
+func VirtualInterface(name string) bool { return networkpolicy.VirtualInterface(name) }
 
 // ifaceAddrs is one interface with its addresses as prefix strings, so tests
 // can inject topologies without touching the host's interfaces.
@@ -188,8 +176,7 @@ func observeTopology(ctx context.Context, bind, gateway, advertisedInterface str
 		return out, ErrInvalid
 	}
 	out.Gateway = gateway
-	// The gateway-selected source address is observed before filtering, so the
-	// interface holding it is never skipped as virtual.
+	// Observe the gateway source while keeping virtual interfaces excluded.
 	gatewayLocal := ""
 	gatewayIface := ""
 	if gateway != "" {
@@ -197,7 +184,7 @@ func observeTopology(ctx context.Context, bind, gateway, advertisedInterface str
 		if local, e := topologyDialLocal(gateway); e == nil {
 			gatewayLocal = local
 			for _, iface := range interfaces {
-				if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+				if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 || VirtualInterface(iface.Name) {
 					continue
 				}
 				for _, raw := range iface.Addrs {
@@ -232,7 +219,7 @@ func observeTopology(ctx context.Context, bind, gateway, advertisedInterface str
 		}
 	}
 	for _, iface := range interfaces {
-		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 || VirtualInterface(iface.Name) {
 			continue
 		}
 		if len(iface.Addrs) == 0 && iface.AddrsError {
@@ -266,13 +253,23 @@ func observeTopology(ctx context.Context, bind, gateway, advertisedInterface str
 	}
 	sort.Strings(out.LAN)
 	sort.Strings(out.Public)
-	if len(out.LAN) > 8 {
+	if len(out.LAN) > 64 {
 		out.Incomplete = true
-		out.LAN = out.LAN[:8]
+		out.LAN = out.LAN[:64]
 	}
 	if len(out.Public) > 2 {
 		out.Incomplete = true
-		out.Public = out.Public[:2]
+		first, _ := netip.ParseAddr(out.Public[0])
+		selected := append([]string{}, out.Public[:2]...)
+		for _, raw := range out.Public[1:] {
+			ip, _ := netip.ParseAddr(raw)
+			if ip.Is4() != first.Is4() {
+				selected[1] = raw
+				break
+			}
+		}
+		out.Public = selected
+		sort.Strings(out.Public)
 	}
 	if gatewayLocal != "" {
 		for _, ip := range out.LAN {

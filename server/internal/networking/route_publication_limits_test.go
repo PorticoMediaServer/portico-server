@@ -2,6 +2,7 @@ package networking
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -23,7 +24,7 @@ func TestHostedCandidatesStayTLS(t *testing.T) {
 		}
 	}
 }
-func TestHostedCandidatesAreBoundedTogether(t *testing.T) {
+func TestHostedCandidatesPreserveEveryLANWithinBudget(t *testing.T) {
 	_, m, topo, ctx := accessURLsFixture(t, func(_ context.Context) []string {
 		return []string{"https://one.example", "https://two.example", "https://three.example", "https://four.example", "https://five.example", "https://six.example", "https://seven.example", "https://eight.example"}
 	})
@@ -41,8 +42,8 @@ func TestHostedCandidatesAreBoundedTogether(t *testing.T) {
 		if got := manualCandidates(obs); len(got) != 8 || got[0] != "https://one.example" {
 			t.Fatalf("owner addresses lost priority: %v", got)
 		}
-		if len(obs.Candidates) != 12 {
-			t.Fatalf("Hosted publication has %d candidates; Hosted rejects anything above 12", len(obs.Candidates))
+		if len(obs.Candidates) != 13 {
+			t.Fatalf("Hosted publication lost a real LAN address: %d candidates", len(obs.Candidates))
 		}
 	}
 }
@@ -52,5 +53,16 @@ func TestPublishedCandidatesDeduplicateAndKeepManualPriority(t *testing.T) {
 	out := boundedRouteCandidates(in)
 	if len(out) != 2 || out[0].BaseURL != "https://preferred.example" || out[0].Class != "manual" || out[1].BaseURL != "https://second.example" {
 		t.Fatalf("selected candidates: %+v", out)
+	}
+}
+
+func TestPublishedCandidatesShareEightyCandidateBudget(t *testing.T) {
+	in := []RemoteCandidate{}
+	for i := 0; i < 100; i++ {
+		in = append(in, RemoteCandidate{BaseURL: fmt.Sprintf("https://candidate-%d.example", i), Class: "manual"})
+	}
+	out := boundedRouteCandidates(in)
+	if len(out) != 80 || out[0].BaseURL != in[0].BaseURL || out[79].BaseURL != in[79].BaseURL {
+		t.Fatalf("candidate budget len=%d", len(out))
 	}
 }

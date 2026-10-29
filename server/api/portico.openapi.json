@@ -10700,6 +10700,9 @@
           "remoteSignInPolicy": {
             "type": "string"
           },
+          "secureConnections": {
+            "type": "string"
+          },
           "trustedProxies": {
             "items": {
               "type": "string"
@@ -10779,6 +10782,9 @@
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "secureConnections": {
+            "type": "string"
+          },
           "trustedProxies": {
             "items": {
               "type": "string"
@@ -10792,6 +10798,7 @@
           }
         },
         "required": [
+          "secureConnections",
           "ownAddressEnabled",
           "connectionLimit",
           "advertiseUrl",
@@ -11063,6 +11070,9 @@
               "remoteSignInPolicy": {
                 "type": "string"
               },
+              "secureConnections": {
+                "type": "string"
+              },
               "segments.animeMode": {
                 "enum": [
                   "server",
@@ -11293,6 +11303,7 @@
               "library.missingTitles",
               "library.missingTitlesDays",
               "library.segmentDetection",
+              "secureConnections",
               "remoteSignInPolicy",
               "remoteBitrateLimitKbps",
               "connectionLimit",
@@ -11575,6 +11586,9 @@
                   "remoteSignInPolicy": {
                     "type": "string"
                   },
+                  "secureConnections": {
+                    "type": "string"
+                  },
                   "segments.animeMode": {
                     "enum": [
                       "server",
@@ -11805,6 +11819,7 @@
                   "library.missingTitles",
                   "library.missingTitlesDays",
                   "library.segmentDetection",
+                  "secureConnections",
                   "remoteSignInPolicy",
                   "remoteBitrateLimitKbps",
                   "connectionLimit",
@@ -12103,6 +12118,9 @@
                   "remoteSignInPolicy": {
                     "type": "string"
                   },
+                  "secureConnections": {
+                    "type": "string"
+                  },
                   "segments.animeMode": {
                     "enum": [
                       "server",
@@ -12333,6 +12351,7 @@
                   "library.missingTitles",
                   "library.missingTitlesDays",
                   "library.segmentDetection",
+                  "secureConnections",
                   "remoteSignInPolicy",
                   "remoteBitrateLimitKbps",
                   "connectionLimit",
@@ -44120,6 +44139,12 @@
           "clientAddress": {
             "type": "string"
           },
+          "lanNetworks": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "plainHttpOutsideHome": {
             "type": "boolean"
           },
@@ -44128,9 +44153,14 @@
           },
           "secure": {
             "type": "boolean"
+          },
+          "secureConnections": {
+            "type": "string"
           }
         },
         "required": [
+          "lanNetworks",
+          "secureConnections",
           "secure",
           "remote",
           "plainHttpOutsideHome",
@@ -44204,6 +44234,9 @@
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "secureConnections": {
+            "type": "string"
+          },
           "trustedProxies": {
             "items": {
               "type": "string"
@@ -44217,6 +44250,7 @@
           }
         },
         "required": [
+          "secureConnections",
           "ownAddressEnabled",
           "connectionLimit",
           "advertiseUrl",
@@ -44280,6 +44314,12 @@
               "clientAddress": {
                 "type": "string"
               },
+              "lanNetworks": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
               "plainHttpOutsideHome": {
                 "type": "boolean"
               },
@@ -44288,9 +44328,14 @@
               },
               "secure": {
                 "type": "boolean"
+              },
+              "secureConnections": {
+                "type": "string"
               }
             },
             "required": [
+              "lanNetworks",
+              "secureConnections",
               "secure",
               "remote",
               "plainHttpOutsideHome",
@@ -44427,6 +44472,9 @@
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "secureConnections": {
+                "type": "string"
+              },
               "trustedProxies": {
                 "items": {
                   "type": "string"
@@ -44440,6 +44488,7 @@
               }
             },
             "required": [
+              "secureConnections",
               "ownAddressEnabled",
               "connectionLimit",
               "advertiseUrl",
@@ -44975,6 +45024,9 @@
                   "remoteSignInPolicy": {
                     "type": "string"
                   },
+                  "secureConnections": {
+                    "type": "string"
+                  },
                   "segments.animeMode": {
                     "enum": [
                       "server",
@@ -45205,6 +45257,7 @@
                   "library.missingTitles",
                   "library.missingTitlesDays",
                   "library.segmentDetection",
+                  "secureConnections",
                   "remoteSignInPolicy",
                   "remoteBitrateLimitKbps",
                   "connectionLimit",
@@ -45503,6 +45556,9 @@
                   "remoteSignInPolicy": {
                     "type": "string"
                   },
+                  "secureConnections": {
+                    "type": "string"
+                  },
                   "segments.animeMode": {
                     "enum": [
                       "server",
@@ -45733,6 +45789,7 @@
                   "library.missingTitles",
                   "library.missingTitlesDays",
                   "library.segmentDetection",
+                  "secureConnections",
                   "remoteSignInPolicy",
                   "remoteBitrateLimitKbps",
                   "connectionLimit",
@@ -143064,11 +143121,22 @@
           "candidates": {
             "items": {
               "properties": {
+                "address": {
+                  "type": "string"
+                },
                 "baseUrl": {
                   "type": "string"
                 },
                 "class": {
                   "type": "string"
+                },
+                "insecure": {
+                  "type": "boolean"
+                },
+                "port": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 },
                 "state": {
                   "type": "string"
@@ -143080,6 +143148,7 @@
               },
               "required": [
                 "baseUrl",
+                "insecure",
                 "class",
                 "state"
               ],
@@ -143224,9 +143293,37 @@
               "bind"
             ],
             "type": "object"
+          },
+          "warnings": {
+            "items": {
+              "properties": {
+                "baseUrl": {
+                  "type": "string"
+                },
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "port": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "code",
+                "port",
+                "message"
+              ],
+              "type": "object"
+            },
+            "type": "array"
           }
         },
         "required": [
+          "warnings",
           "authorityId",
           "config",
           "generation",
@@ -254420,11 +254517,22 @@
           "candidates": {
             "items": {
               "properties": {
+                "address": {
+                  "type": "string"
+                },
                 "baseUrl": {
                   "type": "string"
                 },
                 "class": {
                   "type": "string"
+                },
+                "insecure": {
+                  "type": "boolean"
+                },
+                "port": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 },
                 "state": {
                   "type": "string"
@@ -254436,6 +254544,7 @@
               },
               "required": [
                 "baseUrl",
+                "insecure",
                 "class",
                 "state"
               ],
@@ -254580,9 +254689,37 @@
               "bind"
             ],
             "type": "object"
+          },
+          "warnings": {
+            "items": {
+              "properties": {
+                "baseUrl": {
+                  "type": "string"
+                },
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "port": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "code",
+                "port",
+                "message"
+              ],
+              "type": "object"
+            },
+            "type": "array"
           }
         },
         "required": [
+          "warnings",
           "authorityId",
           "config",
           "generation",
@@ -254662,11 +254799,22 @@
           "candidates": {
             "items": {
               "properties": {
+                "address": {
+                  "type": "string"
+                },
                 "baseUrl": {
                   "type": "string"
                 },
                 "class": {
                   "type": "string"
+                },
+                "insecure": {
+                  "type": "boolean"
+                },
+                "port": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 },
                 "state": {
                   "type": "string"
@@ -254678,6 +254826,7 @@
               },
               "required": [
                 "baseUrl",
+                "insecure",
                 "class",
                 "state"
               ],
@@ -254822,9 +254971,37 @@
               "bind"
             ],
             "type": "object"
+          },
+          "warnings": {
+            "items": {
+              "properties": {
+                "baseUrl": {
+                  "type": "string"
+                },
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "port": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "code",
+                "port",
+                "message"
+              ],
+              "type": "object"
+            },
+            "type": "array"
           }
         },
         "required": [
+          "warnings",
           "authorityId",
           "config",
           "generation",
@@ -398108,6 +398285,9 @@
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "secureConnections": {
+                      "type": "string"
+                    },
                     "trustedProxies": {
                       "items": {
                         "type": "string"
@@ -398121,6 +398301,7 @@
                     }
                   },
                   "required": [
+                    "secureConnections",
                     "ownAddressEnabled",
                     "connectionLimit",
                     "advertiseUrl",
@@ -398262,6 +398443,9 @@
                   "remoteSignInPolicy": {
                     "type": "string"
                   },
+                  "secureConnections": {
+                    "type": "string"
+                  },
                   "trustedProxies": {
                     "items": {
                       "type": "string"
@@ -398349,6 +398533,9 @@
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "secureConnections": {
+                      "type": "string"
+                    },
                     "trustedProxies": {
                       "items": {
                         "type": "string"
@@ -398362,6 +398549,7 @@
                     }
                   },
                   "required": [
+                    "secureConnections",
                     "ownAddressEnabled",
                     "connectionLimit",
                     "advertiseUrl",
@@ -398487,6 +398675,12 @@
                         "clientAddress": {
                           "type": "string"
                         },
+                        "lanNetworks": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
                         "plainHttpOutsideHome": {
                           "type": "boolean"
                         },
@@ -398495,9 +398689,14 @@
                         },
                         "secure": {
                           "type": "boolean"
+                        },
+                        "secureConnections": {
+                          "type": "string"
                         }
                       },
                       "required": [
+                        "lanNetworks",
+                        "secureConnections",
                         "secure",
                         "remote",
                         "plainHttpOutsideHome",
@@ -398634,6 +398833,9 @@
                           "minimum": -9007199254740991,
                           "type": "integer"
                         },
+                        "secureConnections": {
+                          "type": "string"
+                        },
                         "trustedProxies": {
                           "items": {
                             "type": "string"
@@ -398647,6 +398849,7 @@
                         }
                       },
                       "required": [
+                        "secureConnections",
                         "ownAddressEnabled",
                         "connectionLimit",
                         "advertiseUrl",
@@ -402458,6 +402661,9 @@
                             "remoteSignInPolicy": {
                               "type": "string"
                             },
+                            "secureConnections": {
+                              "type": "string"
+                            },
                             "segments.animeMode": {
                               "enum": [
                                 "server",
@@ -402688,6 +402894,7 @@
                             "library.missingTitles",
                             "library.missingTitlesDays",
                             "library.segmentDetection",
+                            "secureConnections",
                             "remoteSignInPolicy",
                             "remoteBitrateLimitKbps",
                             "connectionLimit",
@@ -402986,6 +403193,9 @@
                             "remoteSignInPolicy": {
                               "type": "string"
                             },
+                            "secureConnections": {
+                              "type": "string"
+                            },
                             "segments.animeMode": {
                               "enum": [
                                 "server",
@@ -403216,6 +403426,7 @@
                             "library.missingTitles",
                             "library.missingTitlesDays",
                             "library.segmentDetection",
+                            "secureConnections",
                             "remoteSignInPolicy",
                             "remoteBitrateLimitKbps",
                             "connectionLimit",
@@ -403612,6 +403823,9 @@
                       "remoteSignInPolicy": {
                         "type": "string"
                       },
+                      "secureConnections": {
+                        "type": "string"
+                      },
                       "segments.animeMode": {
                         "enum": [
                           "server",
@@ -403842,6 +404056,7 @@
                       "library.missingTitles",
                       "library.missingTitlesDays",
                       "library.segmentDetection",
+                      "secureConnections",
                       "remoteSignInPolicy",
                       "remoteBitrateLimitKbps",
                       "connectionLimit",
@@ -404132,6 +404347,9 @@
                             "remoteSignInPolicy": {
                               "type": "string"
                             },
+                            "secureConnections": {
+                              "type": "string"
+                            },
                             "segments.animeMode": {
                               "enum": [
                                 "server",
@@ -404362,6 +404580,7 @@
                             "library.missingTitles",
                             "library.missingTitlesDays",
                             "library.segmentDetection",
+                            "secureConnections",
                             "remoteSignInPolicy",
                             "remoteBitrateLimitKbps",
                             "connectionLimit",
@@ -404660,6 +404879,9 @@
                             "remoteSignInPolicy": {
                               "type": "string"
                             },
+                            "secureConnections": {
+                              "type": "string"
+                            },
                             "segments.animeMode": {
                               "enum": [
                                 "server",
@@ -404890,6 +405112,7 @@
                             "library.missingTitles",
                             "library.missingTitlesDays",
                             "library.segmentDetection",
+                            "secureConnections",
                             "remoteSignInPolicy",
                             "remoteBitrateLimitKbps",
                             "connectionLimit",
@@ -631279,6 +631502,12 @@
                     "clientAddress": {
                       "type": "string"
                     },
+                    "lanNetworks": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
                     "plainHttpOutsideHome": {
                       "type": "boolean"
                     },
@@ -631287,9 +631516,14 @@
                     },
                     "secure": {
                       "type": "boolean"
+                    },
+                    "secureConnections": {
+                      "type": "string"
                     }
                   },
                   "required": [
+                    "lanNetworks",
+                    "secureConnections",
                     "secure",
                     "remote",
                     "plainHttpOutsideHome",
@@ -631596,11 +631830,22 @@
                     "candidates": {
                       "items": {
                         "properties": {
+                          "address": {
+                            "type": "string"
+                          },
                           "baseUrl": {
                             "type": "string"
                           },
                           "class": {
                             "type": "string"
+                          },
+                          "insecure": {
+                            "type": "boolean"
+                          },
+                          "port": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
                           },
                           "state": {
                             "type": "string"
@@ -631612,6 +631857,7 @@
                         },
                         "required": [
                           "baseUrl",
+                          "insecure",
                           "class",
                           "state"
                         ],
@@ -631756,9 +632002,37 @@
                         "bind"
                       ],
                       "type": "object"
+                    },
+                    "warnings": {
+                      "items": {
+                        "properties": {
+                          "baseUrl": {
+                            "type": "string"
+                          },
+                          "code": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "port": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "code",
+                          "port",
+                          "message"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
                     }
                   },
                   "required": [
+                    "warnings",
                     "authorityId",
                     "config",
                     "generation",
@@ -631839,11 +632113,22 @@
                     "candidates": {
                       "items": {
                         "properties": {
+                          "address": {
+                            "type": "string"
+                          },
                           "baseUrl": {
                             "type": "string"
                           },
                           "class": {
                             "type": "string"
+                          },
+                          "insecure": {
+                            "type": "boolean"
+                          },
+                          "port": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
                           },
                           "state": {
                             "type": "string"
@@ -631855,6 +632140,7 @@
                         },
                         "required": [
                           "baseUrl",
+                          "insecure",
                           "class",
                           "state"
                         ],
@@ -631999,9 +632285,37 @@
                         "bind"
                       ],
                       "type": "object"
+                    },
+                    "warnings": {
+                      "items": {
+                        "properties": {
+                          "baseUrl": {
+                            "type": "string"
+                          },
+                          "code": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "port": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "code",
+                          "port",
+                          "message"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
                     }
                   },
                   "required": [
+                    "warnings",
                     "authorityId",
                     "config",
                     "generation",
@@ -632169,11 +632483,22 @@
                     "candidates": {
                       "items": {
                         "properties": {
+                          "address": {
+                            "type": "string"
+                          },
                           "baseUrl": {
                             "type": "string"
                           },
                           "class": {
                             "type": "string"
+                          },
+                          "insecure": {
+                            "type": "boolean"
+                          },
+                          "port": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
                           },
                           "state": {
                             "type": "string"
@@ -632185,6 +632510,7 @@
                         },
                         "required": [
                           "baseUrl",
+                          "insecure",
                           "class",
                           "state"
                         ],
@@ -632329,9 +632655,37 @@
                         "bind"
                       ],
                       "type": "object"
+                    },
+                    "warnings": {
+                      "items": {
+                        "properties": {
+                          "baseUrl": {
+                            "type": "string"
+                          },
+                          "code": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "port": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "code",
+                          "port",
+                          "message"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
                     }
                   },
                   "required": [
+                    "warnings",
                     "authorityId",
                     "config",
                     "generation",

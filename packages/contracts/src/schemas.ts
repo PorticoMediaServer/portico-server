@@ -10495,6 +10495,9 @@ export const schemas = {
       "remoteSignInPolicy": {
         "type": "string"
       },
+      "secureConnections": {
+        "type": "string"
+      },
       "trustedProxies": {
         "items": {
           "type": "string"
@@ -10574,6 +10577,9 @@ export const schemas = {
         "minimum": -9007199254740991,
         "type": "integer"
       },
+      "secureConnections": {
+        "type": "string"
+      },
       "trustedProxies": {
         "items": {
           "type": "string"
@@ -10587,6 +10593,7 @@ export const schemas = {
       }
     },
     "required": [
+      "secureConnections",
       "ownAddressEnabled",
       "connectionLimit",
       "advertiseUrl",
@@ -10852,6 +10859,9 @@ export const schemas = {
           "remoteSignInPolicy": {
             "type": "string"
           },
+          "secureConnections": {
+            "type": "string"
+          },
           "segments.animeMode": {
             "enum": [
               "server",
@@ -11076,6 +11086,7 @@ export const schemas = {
           "library.missingTitles",
           "library.missingTitlesDays",
           "library.segmentDetection",
+          "secureConnections",
           "remoteSignInPolicy",
           "remoteBitrateLimitKbps",
           "connectionLimit",
@@ -11352,6 +11363,9 @@ export const schemas = {
               "remoteSignInPolicy": {
                 "type": "string"
               },
+              "secureConnections": {
+                "type": "string"
+              },
               "segments.animeMode": {
                 "enum": [
                   "server",
@@ -11576,6 +11590,7 @@ export const schemas = {
               "library.missingTitles",
               "library.missingTitlesDays",
               "library.segmentDetection",
+              "secureConnections",
               "remoteSignInPolicy",
               "remoteBitrateLimitKbps",
               "connectionLimit",
@@ -11868,6 +11883,9 @@ export const schemas = {
               "remoteSignInPolicy": {
                 "type": "string"
               },
+              "secureConnections": {
+                "type": "string"
+              },
               "segments.animeMode": {
                 "enum": [
                   "server",
@@ -12092,6 +12110,7 @@ export const schemas = {
               "library.missingTitles",
               "library.missingTitlesDays",
               "library.segmentDetection",
+              "secureConnections",
               "remoteSignInPolicy",
               "remoteBitrateLimitKbps",
               "connectionLimit",
@@ -41643,6 +41662,12 @@ export const schemas = {
       "clientAddress": {
         "type": "string"
       },
+      "lanNetworks": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
       "plainHttpOutsideHome": {
         "type": "boolean"
       },
@@ -41651,9 +41676,14 @@ export const schemas = {
       },
       "secure": {
         "type": "boolean"
+      },
+      "secureConnections": {
+        "type": "string"
       }
     },
     "required": [
+      "lanNetworks",
+      "secureConnections",
       "secure",
       "remote",
       "plainHttpOutsideHome",
@@ -41728,6 +41758,9 @@ export const schemas = {
         "minimum": -9007199254740991,
         "type": "integer"
       },
+      "secureConnections": {
+        "type": "string"
+      },
       "trustedProxies": {
         "items": {
           "type": "string"
@@ -41741,6 +41774,7 @@ export const schemas = {
       }
     },
     "required": [
+      "secureConnections",
       "ownAddressEnabled",
       "connectionLimit",
       "advertiseUrl",
@@ -41805,6 +41839,12 @@ export const schemas = {
           "clientAddress": {
             "type": "string"
           },
+          "lanNetworks": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "plainHttpOutsideHome": {
             "type": "boolean"
           },
@@ -41813,9 +41853,14 @@ export const schemas = {
           },
           "secure": {
             "type": "boolean"
+          },
+          "secureConnections": {
+            "type": "string"
           }
         },
         "required": [
+          "lanNetworks",
+          "secureConnections",
           "secure",
           "remote",
           "plainHttpOutsideHome",
@@ -41952,6 +41997,9 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "secureConnections": {
+            "type": "string"
+          },
           "trustedProxies": {
             "items": {
               "type": "string"
@@ -41965,6 +42013,7 @@ export const schemas = {
           }
         },
         "required": [
+          "secureConnections",
           "ownAddressEnabled",
           "connectionLimit",
           "advertiseUrl",
@@ -42488,6 +42537,9 @@ export const schemas = {
               "remoteSignInPolicy": {
                 "type": "string"
               },
+              "secureConnections": {
+                "type": "string"
+              },
               "segments.animeMode": {
                 "enum": [
                   "server",
@@ -42712,6 +42764,7 @@ export const schemas = {
               "library.missingTitles",
               "library.missingTitlesDays",
               "library.segmentDetection",
+              "secureConnections",
               "remoteSignInPolicy",
               "remoteBitrateLimitKbps",
               "connectionLimit",
@@ -43004,6 +43057,9 @@ export const schemas = {
               "remoteSignInPolicy": {
                 "type": "string"
               },
+              "secureConnections": {
+                "type": "string"
+              },
               "segments.animeMode": {
                 "enum": [
                   "server",
@@ -43228,6 +43284,7 @@ export const schemas = {
               "library.missingTitles",
               "library.missingTitlesDays",
               "library.segmentDetection",
+              "secureConnections",
               "remoteSignInPolicy",
               "remoteBitrateLimitKbps",
               "connectionLimit",
@@ -138918,11 +138975,22 @@ export const schemas = {
       "candidates": {
         "items": {
           "properties": {
+            "address": {
+              "type": "string"
+            },
             "baseUrl": {
               "type": "string"
             },
             "class": {
               "type": "string"
+            },
+            "insecure": {
+              "type": "boolean"
+            },
+            "port": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
             },
             "state": {
               "type": "string"
@@ -138934,6 +139002,7 @@ export const schemas = {
           },
           "required": [
             "baseUrl",
+            "insecure",
             "class",
             "state"
           ],
@@ -139078,9 +139147,37 @@ export const schemas = {
           "bind"
         ],
         "type": "object"
+      },
+      "warnings": {
+        "items": {
+          "properties": {
+            "baseUrl": {
+              "type": "string"
+            },
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "port": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "code",
+            "port",
+            "message"
+          ],
+          "type": "object"
+        },
+        "type": "array"
       }
     },
     "required": [
+      "warnings",
       "authorityId",
       "config",
       "generation",
@@ -232486,11 +232583,22 @@ export const schemas = {
       "candidates": {
         "items": {
           "properties": {
+            "address": {
+              "type": "string"
+            },
             "baseUrl": {
               "type": "string"
             },
             "class": {
               "type": "string"
+            },
+            "insecure": {
+              "type": "boolean"
+            },
+            "port": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
             },
             "state": {
               "type": "string"
@@ -232502,6 +232610,7 @@ export const schemas = {
           },
           "required": [
             "baseUrl",
+            "insecure",
             "class",
             "state"
           ],
@@ -232646,9 +232755,37 @@ export const schemas = {
           "bind"
         ],
         "type": "object"
+      },
+      "warnings": {
+        "items": {
+          "properties": {
+            "baseUrl": {
+              "type": "string"
+            },
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "port": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "code",
+            "port",
+            "message"
+          ],
+          "type": "object"
+        },
+        "type": "array"
       }
     },
     "required": [
+      "warnings",
       "authorityId",
       "config",
       "generation",
@@ -232728,11 +232865,22 @@ export const schemas = {
       "candidates": {
         "items": {
           "properties": {
+            "address": {
+              "type": "string"
+            },
             "baseUrl": {
               "type": "string"
             },
             "class": {
               "type": "string"
+            },
+            "insecure": {
+              "type": "boolean"
+            },
+            "port": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
             },
             "state": {
               "type": "string"
@@ -232744,6 +232892,7 @@ export const schemas = {
           },
           "required": [
             "baseUrl",
+            "insecure",
             "class",
             "state"
           ],
@@ -232888,9 +233037,37 @@ export const schemas = {
           "bind"
         ],
         "type": "object"
+      },
+      "warnings": {
+        "items": {
+          "properties": {
+            "baseUrl": {
+              "type": "string"
+            },
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "port": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "code",
+            "port",
+            "message"
+          ],
+          "type": "object"
+        },
+        "type": "array"
       }
     },
     "required": [
+      "warnings",
       "authorityId",
       "config",
       "generation",
