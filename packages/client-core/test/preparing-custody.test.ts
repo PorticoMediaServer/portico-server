@@ -52,7 +52,7 @@ test('keys are reserved once, invalid resources never bind, and the history fail
   assert.throws(() => registration.reserve('key-1', () => true), {name: 'AbortError'});
   assert.throws(() => registration.reserve('', () => true), {name: 'AbortError'});
   assert.equal(flight.acquire({id: '', generation: 1}, () => true, async () => {}), undefined);
-  assert.equal(flight.acquire({id: 'x', generation: 0}, () => true, async () => {}), undefined);
+  assert.equal(flight.acquire({id: 'x', generation: -1}, () => true, async () => {}), undefined);
   for (let i = 0; i < 256; i++) registration.remember('installed-' + i);
   const {calls, stop} = stops();
   const cleanup = flight.acquire(resource, () => true, stop)!;
@@ -128,4 +128,17 @@ test('WEB002 pending observers cannot interrupt canonical custody and unsubscrib
   const off = custody.subscribePending(() => {heard++;throw new Error('observer');});
   const flight = registration.reserve('original', () => true);assert.equal(flight.current(), true);
   off();flight.finish();assert.equal(heard, 1);assert.equal(custody.pending(), false);custody.dispose();
+});
+
+test('E-web-25: a Live start resource at generation 0 is accepted; negative and non-integer generations are not', async () => {
+  const custody = new PreparingStartCustody(), registration = custody.attach();
+  const flight = registration.reserve('key-gen0', () => true);
+  const {calls, stop} = stops();
+  assert.equal(flight.acquire({id: 's', generation: -1}, () => true, stop), undefined);
+  assert.equal(flight.acquire({id: 's', generation: 0.5}, () => true, stop), undefined);
+  assert.equal(flight.acquire({id: 's', generation: Number.NaN}, () => true, stop), undefined);
+  const cleanup = flight.acquire({id: 's', generation: 0}, () => true, stop);
+  assert.ok(cleanup, 'generation 0 is claimable');
+  await cleanup!();
+  assert.deepEqual(calls, ['stop']);
 });

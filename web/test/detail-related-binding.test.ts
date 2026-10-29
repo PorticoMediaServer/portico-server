@@ -35,13 +35,14 @@ function setup(handler: (path: string, signal?: AbortSignal, body?: unknown) => 
 }
 
 test('the bare movie route reuses its item kind and never computes embedded recommendations on success', async () => {
-  const owner = setup(async path => path === '/v1/items/movie' ? media()
-    : path.includes('/recommendations?') ? {itemId: 'movie', rows: [], revision: {catalog: 1, viewer: 1}} : page());
+  // A bare /item route learns the title's library and kind from its own detail route, which serves
+  // Reading titles too; the timed-media item read does not (E-web-23).
+  const owner = setup(async path => path.includes('/recommendations?') ? {itemId: 'movie', rows: [], revision: {catalog: 1, viewer: 1}} : page());
   const binding = createDetailBindings(owner.context);
   try {
     await binding.select({itemId: 'movie'});
     await binding.readRecommendations(binding.service.getSnapshot().data!);
-    assert.deepEqual(owner.paths, ['/v1/items/movie', '/v1/items/movie/detail?related=none', '/v1/items/movie/recommendations?limit=12']);
+    assert.deepEqual(owner.paths, ['/v1/items/movie/detail?related=none', '/v1/items/movie/detail?related=none', '/v1/items/movie/recommendations?limit=12']);
     assert.equal(binding.recommendations.getSnapshot().phase, 'ready');
     assert.deepEqual(binding.recommendations.getSnapshot().data?.rows, [], 'an empty successful full read is not a failure');
     await binding.service.revalidate();
@@ -62,14 +63,14 @@ test('a known movie target uses its kind hint without an extra item lookup, incl
 
 for (const bare of [true, false]) {
   test(`a ${bare ? 'bare' : 'known-library'} nonmovie target keeps embedded rows without another detail read`, async () => {
-    const owner = setup(async path => path === '/v1/items/song' ? media('song', 'song') : page('song', 'song', true));
+    const owner = setup(async () => page('song', 'song', true));
     const binding = createDetailBindings(owner.context);
     try {
       await binding.select(bare ? {itemId: 'song'} : {itemId: 'song', libraryId: 'library', kind: 'song'});
       const data = binding.service.getSnapshot().data!;
       await binding.readRecommendations(data);
       assert.equal(data.related?.rows[0]?.entries[0]?.kind, 'album');
-      assert.deepEqual(owner.paths, [...(bare ? ['/v1/items/song'] : []), '/v1/items/song/detail?related=all']);
+      assert.deepEqual(owner.paths, [...(bare ? ['/v1/items/song/detail?related=none'] : []), '/v1/items/song/detail?related=all']);
     } finally {binding.dispose();}
   });
 }

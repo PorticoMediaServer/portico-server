@@ -8,4 +8,4 @@ export {LevelMeter} from './LevelMeter';
 export {PlayerMorph, GestureRelease, type MotionSample} from './motion';
 export {dockView, actionCurrent, dispatchDockAction, commandFor, progressOf, seekBounds, seekTarget, positionOf} from './model';
 export {dockText} from './text';
-export type {DockAction, DockActionKind, DockBinding, DockControl, DockHostProps, DockIntent, DockLayout, DockMessageId, DockMode, DockPresentation, DockRendererProps, DockTranslate, DockView, MediaSurfaceProps} from './types';
+export type {DockAction, DockActionKind, DockBinding, DockControl, DockHostProps, DockIntent, DockLayout, DockMessageId, DockMode, DockPresentation, DockRendererProps, DockStarting, DockTranslate, DockView, MediaSurfaceProps} from './types';

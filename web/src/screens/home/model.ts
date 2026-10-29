@@ -63,6 +63,18 @@ export function homeLiveDeadline(rows: readonly HomeRow[], nowMs: number): numbe
   }
   return Number.isFinite(deadline) ? deadline : undefined;
 }
+/** Live rows re-read Home at their next boundary, but never in a loop: a past expiry or one
+ * under HOME_LIVE_MIN_MS away waits that long (plus jitter), and an expiry that did not advance
+ * since the last re-read backs off exponentially up to HOME_LIVE_MAX_MS. */
+export const HOME_LIVE_MIN_MS = 30_000, HOME_LIVE_MAX_MS = 600_000, HOME_LIVE_JITTER_MS = 5_000;
+export type HomeLiveSchedule = Readonly<{lastDeadline?: number; streak: number}>;
+export function homeLiveDelay(deadline: number, nowMs: number, previous: HomeLiveSchedule, jitter = Math.random()): Readonly<{delayMs: number; schedule: HomeLiveSchedule}> {
+  const advanced = previous.lastDeadline === undefined || deadline > previous.lastDeadline;
+  const streak = advanced ? 0 : Math.min(previous.streak + 1, 6);
+  const base = Math.min(60_000, Math.max(HOME_LIVE_MIN_MS, deadline - nowMs));
+  const delayMs = Math.min(HOME_LIVE_MAX_MS, base * 2 ** streak) + Math.round(Math.min(1, Math.max(0, jitter)) * HOME_LIVE_JITTER_MS);
+  return Object.freeze({delayMs, schedule: Object.freeze({lastDeadline: deadline, streak})});
+}
 export function homeRows(document: HomeDocument) {
   return document.rows.filter(row => !row.platforms || row.platforms.includes('web')).map(homeRowPresentation);
 }

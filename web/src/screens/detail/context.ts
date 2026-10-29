@@ -1,6 +1,7 @@
 import {useCallback, useSyncExternalStore} from 'react';
 import type {EntryMetadataEffect} from '../../shell/entry-metadata';
 import type {BrowserDownloadPort} from '../../platform/browser-download';
+import type {WebPlaybackScreenTarget} from '../../platform/playback/types';
 import type {EntryActionTarget} from '../../shell/entry-actions';
 import type {HttpLocalApi} from '@core/index.ts';
 import type {ContentScope} from '@core/library-content.ts';
@@ -30,7 +31,7 @@ export type ScreenContext = Readonly<{
     back?: () => void;
     chooseProfile?: () => void;
     openBrowse?: (selector: QueueBrowseSelector) => void;
-    play: (target: Readonly<{libraryId: string; itemId: string; startSeconds: number; versionId?: string; storedResume?: boolean}>, signal: AbortSignal, isCurrent?: () => boolean) => Promise<void>;
+    play: (target: WebPlaybackScreenTarget, signal: AbortSignal, isCurrent?: () => boolean) => Promise<void>;
     playSeason?: (seasonId: string, signal: AbortSignal, isCurrent: () => boolean) => Promise<void>;
     playArtist?: (artistId: string, signal: AbortSignal, isCurrent: () => boolean, shuffle?: boolean) => Promise<void>;
     playAlbum?: (albumId: string, shuffle: boolean, signal: AbortSignal, isCurrent: () => boolean) => Promise<void>;

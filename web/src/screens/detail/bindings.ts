@@ -5,8 +5,8 @@ import {readListeningSimilar} from '@core/library-content.ts';
 import type {ListeningViewerScope} from '@core/listening.ts';
 import {PlaybackOptionsClient} from '@core/playback-v1/options.ts';
 import {localV1Http} from '@core/playback-v1/local-http.ts';
-import {parseMediaItem} from '@core/media-item.ts';
 import {encodedRoutePath} from '../../../../packages/contracts/src/routes.ts';
+import {readTitleIdentity} from '../../platform/title-identity';
 import {screenLifetime, type ScreenContext} from './context';
 import {createRecommendations} from './recommendations';
 import {versionDeletionService, deletionAllowed, type VersionDeletePreview} from '@core/administration.ts';
@@ -44,8 +44,9 @@ export function createDetailBindings(context: ScreenContext) {
     life.assert(); const generation = ++intent;
     signal?.throwIfAborted();
     service.cancel(); recommendations.clear(); selected = undefined; embeddedFallback = undefined;
-    // The real item reader supplies library identity for a bare /item/$itemId route.
-    const item = target.libraryId !== undefined ? undefined : parseMediaItem(await life.api.request(encodedRoutePath('get_items_id', {id: encodeURIComponent(target.itemId)}), 'GET', undefined, signal));
+    // The title's own detail route supplies library identity for a bare /item/$itemId route; it
+    // serves Reading titles too, which the timed-media item read does not (E-web-23).
+    const item = target.libraryId !== undefined ? undefined : await readTitleIdentity(life.api, target.itemId, signal);
     if (item && item.id !== target.itemId) throw new Error('Title target changed');
     const libraryId = target.libraryId ?? item!.libraryId, kind = item?.kind ?? target.kind;
     life.assert(); if (generation !== intent) return;
@@ -106,7 +107,7 @@ export function createDetailBindings(context: ScreenContext) {
   };
   const commandApi = (signal?: AbortSignal) => ({request: <T,>(path: string, method?: string, body?: unknown) => life.api.request<T>(path, method, body, signal)});
   const resolveEntry = async (itemId: string, signal?: AbortSignal) => {
-    const item = parseMediaItem(await life.api.request(encodedRoutePath('get_items_id', {id: encodeURIComponent(itemId)}), 'GET', undefined, signal));
+    const item = await readTitleIdentity(life.api, itemId, signal);
     return validateContentEntry({id: item.id, libraryId: item.libraryId, kind: item.kind, title: item.title, posterUrl: item.posterUrl, backdropUrl: item.backdropUrl, navigation: {view: 'item', entityId: item.id}});
   };
   /** music-plus f7 (MC-9): the album's own More like this, ranked by sound when the server has
