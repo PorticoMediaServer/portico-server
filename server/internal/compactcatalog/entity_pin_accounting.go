@@ -24,7 +24,15 @@ func pinAccountingStepTx(ctx context.Context, tx *sql.Tx, m EntityMutation) (Mut
 		// Any worker may finish accepted accounting, and inactivity alone may
 		// abort only a private build. Neither case spends this title's authority.
 		// Return after this turn: folding and a pin mutation never share a budget.
-		worked, e := mbaccounting.MaintainTx(ctx, tx, func(mbaccounting.Owner) (bool, error) { return true, nil })
+		worked, e := mbaccounting.MaintainTx(ctx, tx, func(held mbaccounting.Owner) (bool, error) {
+			if held.Kind != "entity-mutation" {
+				// Publication owners retain their own lease/domain validation.
+				return true, nil
+			}
+			var active bool
+			e := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_entity_mutations WHERE mutation_id=? AND generation=? AND status='active' AND entity_id IS NOT NULL)`, held.Operation, held.Generation).Scan(&active)
+			return active, e
+		})
 		if e != nil || worked {
 			return MutationStep{More: true, Progressed: e == nil && worked, Outcome: "pending"}, e
 		}

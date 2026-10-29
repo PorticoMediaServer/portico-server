@@ -810,3 +810,44 @@ func TestP252bStaleChildCancelsRootWithoutDroppingOtherMembers(t *testing.T) {
 	}
 	t.Fatal("stale parent kept reselecting its terminal child")
 }
+
+// A source change terminals the real mutation. Its private accounting must not
+// retain the singleton until TTL, even when the metadata maintenance loop has
+// not run; the next mutation performs the exact owner point recheck.
+func TestP252bStalePrivateAccountingReleasesTheNextMutation(t *testing.T) {
+	c, _, songs := drainFixture(t, 2)
+	drainEvidence(t, c, "stale-private", 37)
+	for _, song := range songs {
+		drainPin(t, c, song, "stale-private", false)
+	}
+	asset, _ := identityFile(t, c, "m", "/m/first.flac", 1)
+	c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		return compactcatalog.LinkAssetTx(ctx, tx, songs[0], asset, compactcatalog.Link{})
+	})
+	begin := func(song int64, owner string) compactcatalog.MutationRef {
+		var ref compactcatalog.MutationRef
+		c.Write(func(ctx context.Context, tx *sql.Tx) error {
+			var e error
+			ref, e = compactcatalog.BeginEntityMutationTx(ctx, tx, compactcatalog.MutationIntent{Entity: song, OwnerKind: "title", OwnerID: owner, OwnerGeneration: 1, Mode: "remove"})
+			return e
+		})
+		return ref
+	}
+	first := begin(songs[0], "stale-private-first")
+	readyMutationPin(t, c, first)
+	c.Exec(`UPDATE catalog_assets SET modified_ns=modified_ns+1 WHERE id=?`, asset)
+	if step := mutationTurn(t, c, first); !step.Complete || step.Outcome != "stale" {
+		t.Fatalf("source drift: %+v", step)
+	}
+	second := begin(songs[1], "stale-private-second")
+	if step := nextMutationPin(t, c, second); !step.PinDrained {
+		t.Fatal(step)
+	}
+	finishMutationPinFold(t, c, second)
+	if rows(t, c, `SELECT count(*) FROM mb_song_links WHERE item_id=?`, songs[0]) != 1 || rows(t, c, `SELECT count(*) FROM mb_song_links WHERE item_id=?`, songs[1]) != 0 {
+		t.Fatal("stale private capture removed its pin or blocked the next accepted unpin")
+	}
+	if rows(t, c, `SELECT direct_refs FROM mb_release_accounting WHERE revision_id='stale-private'`) != 1 {
+		t.Fatal("remaining pin accounting changed")
+	}
+}
