@@ -1,6 +1,5 @@
 import type {ContentEntry} from '@core/library-content.ts';
 import type {SelectionContext} from '@core/selection-model/index.ts';
-import {readFileInfo} from '@core/detail.ts';
 import {PlaybackOptionsClient} from '@core/playback-v1/options.ts';
 import {localV1Http} from '@core/playback-v1/local-http.ts';
 import {createDetailBindings} from './bindings';
@@ -20,13 +19,6 @@ export function createEntryDetailsBindings(context: ScreenContext, authority: En
   };
   return {
     details(entry: ContentEntry, captured: SelectionContext, signal: AbortSignal) { guard(captured, signal); context.effects.openEntry(entry); },
-    async fileInfo(entry: ContentEntry, captured: SelectionContext, signal: AbortSignal) {
-      guard(captured, signal); const value = await readFileInfo(life.api, context.scope, target(entry), {limit: 40}, life.signal(signal)); guard(captured, signal);
-      // The outer Search/Home context and item FileInfo have distinct server-owned
-      // fence/revision domains. The caller's authority guard validates the former;
-      // readFileInfo validates the fresh item's own scope and target.
-      return value;
-    },
     async versions(entry: ContentEntry, captured: SelectionContext, signal: AbortSignal) {
       guard(captured, signal); const value = await versions.options(target(entry).itemId, {}, life.signal(signal)); guard(captured, signal);
       if (value.itemId !== entry.id) throw new Error('Playback options target mismatch');

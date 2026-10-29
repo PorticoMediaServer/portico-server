@@ -60,3 +60,8 @@
 .files[data-layout='phone'] .ownerActions > button { justify-content: flex-start; height: 48px; padding: 0; font-size: 16px; font-weight: 600; gap: 12px; border-radius: 0; color: var(--color-text); }
 .files[data-layout='phone'] .ownerActions > button + button { border-top: 1px solid rgba(59,86,104,.45); }
 .files[data-layout='phone'] .ownerActions > button > svg { padding: 6px; box-sizing: content-box; border-radius: 8px; background: rgba(64,159,212,.16); color: var(--color-accent-strong); }
+/* Windowed reads: a version's tracks still being read hold one quiet line; continuations are the
+   mock-ups' centred glass "Show more" (owner-libraries 12, collections). */
+.pending { display: block; width: 46%; height: 1em; margin: 2px 0; border-radius: 4px; background: rgba(237,245,250,.08); }
+.more { display: flex; justify-content: center; margin-top: 14px; }
+dd > .more { justify-content: flex-start; margin-top: 6px; }

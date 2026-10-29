@@ -38,11 +38,3 @@ export function entrySubject(entry: ContentEntry): CardSubject {
 export function entryCard(entry: ContentEntry, env: TextEnvironment, context: 'search' | 'ordinary' | 'in-show' = 'ordinary') {
   return cardText(entrySubject(entry), context, env);
 }
-export function fileFacts(file: TitleFile): FileFacts {
-  return {id: file.id, available: file.available, edition: file.edition, container: file.container, sizeBytes: file.size,
-    durationSeconds: file.duration, bitRate: file.bitRate, videoCodec: file.video?.codec, width: file.video?.width,
-    height: file.video?.height, dynamicRange: file.video?.dynamicRange, hdr10Plus: file.video?.hdr10Plus,
-    frameRate: file.video?.frameRate, bitDepth: file.video?.bitDepth,
-    audio: file.audio.map((track, i) => ({...track, id: `audio:${i}`, objectAudio: track.objectAudio === 'atmos' || track.objectAudio === 'dtsx' ? track.objectAudio : undefined})),
-    subtitles: file.subtitles.map((track, i) => ({...track, id: `subtitle:${i}`, objectAudio: undefined}))};
-}

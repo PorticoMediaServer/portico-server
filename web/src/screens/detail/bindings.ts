@@ -1,4 +1,6 @@
-import {DetailService, readFileInfo, parseCreditPage, type DetailProjection, type DetailTarget, type FileInfoProjection, type PersonalIntent} from '@core/detail.ts';
+import {FileInfoSession} from '@core/file-info-session.ts';
+import {DetailService, parseCreditPage, type DetailProjection, type DetailTarget, type PersonalIntent} from '@core/detail.ts';
+import type {FileInfoFileRow} from '@core/file-info-pages.ts';
 import {readListeningSimilar} from '@core/library-content.ts';
 import type {ListeningViewerScope} from '@core/listening.ts';
 import {PlaybackOptionsClient} from '@core/playback-v1/options.ts';
@@ -8,7 +10,7 @@ import {encodedRoutePath} from '../../../../packages/contracts/src/routes.ts';
 import {screenLifetime, type ScreenContext} from './context';
 import {createRecommendations} from './recommendations';
 import {versionDeletionService, deletionAllowed, type VersionDeletePreview} from '@core/administration.ts';
-import {findLibraryFile, libraryFolders, folderOfPath, separateLibraryFile, canMergeTitles, mergeTitles, SPLITTABLE_KINDS} from '@core/title-identity.ts';
+import {separateFileInfoOccurrence, canMergeTitles, mergeTitles, SPLITTABLE_KINDS} from '@core/title-identity.ts';
 import {validateContentEntry, type ContentEntry} from '@core/library-content.ts';
 import {titleView} from './view-state';
 import {openGenre} from './genre-binding';
@@ -18,7 +20,7 @@ import type {RefObject} from 'react';
 /** A caller that already knows the real item can suppress movie-only embedded rows. */
 export type WebDetailTarget = Readonly<{itemId: string; libraryId?: string; kind?: string}>;
 
-/** Constructor is inert. Only select/readFileInfo/readVersions perform reads. */
+/** Constructor is inert. Only select/openFileInfo/readVersions perform reads. */
 export function createDetailBindings(context: ScreenContext) {
   const life = screenLifetime(context);
   const service = new DetailService({api: life.api, scope: context.scope, requestId: async () => { life.assert(); return crypto.randomUUID(); }});
@@ -33,9 +35,7 @@ export function createDetailBindings(context: ScreenContext) {
   const offSubject = service.subscribe(() => { const data = service.getSnapshot().data; if (data && service.getSnapshot().phase === 'ready') subject = {itemId: data.item.id, libraryId: data.scope.libraryId, title: data.item.title}; });
   /** Unmount cleanup may follow the route's dispose; it must never revive a retired read. */
   const cancel = () => { if (!disposed) {intent++; selected = undefined; recommendations.clear(); service.cancel();} };
-  const fileReads = new WeakSet<FileInfoProjection>();
-  const fileContexts = new WeakMap<DetailProjection, FileInfoProjection>();
-  const previews = new WeakMap<VersionDeletePreview, Readonly<{data: DetailProjection; fileId: string}>>();
+  const previews = new WeakMap<VersionDeletePreview, Readonly<{data: DetailProjection; proof: Readonly<{opening: string; occurrence: string}>}>>();
   const current = (data: DetailProjection) => {
     life.assert();
     if (service.getSnapshot().phase !== 'ready' || service.getSnapshot().data !== data) throw new DOMException('Title revision changed', 'AbortError');
@@ -88,28 +88,21 @@ export function createDetailBindings(context: ScreenContext) {
     await service.select(selected, {related});
     if (!disposed && generation === intent && life.current()) embeddedFallback = service.getSnapshot().data ?? undefined;
   };
-  const files = async (data: DetailProjection, cursor?: string, signal?: AbortSignal): Promise<FileInfoProjection> => {
+  /** One File info opening, made from the accepted Detail the page shows. It never adopts a
+   * newer Detail: a later one is a new opening. Retire it with its panel. */
+  const openFileInfo = (data: DetailProjection, signal?: AbortSignal) => {
     current(data);
-    const value = await readFileInfo(life.api, context.scope, data.scope, {cursor, limit: 40}, life.signal(signal));
-    current(data);
-    // FileInfo uses the server's Home authority fence; detail has its own fence.
-    // Their library revisions agree, while continuations stay in FileInfo's own domain.
-    if (value.revision.catalog !== data.revision.catalog || value.revision.viewer !== data.revision.viewer) throw new DOMException('File facts changed', 'AbortError');
-    const before = fileContexts.get(data);
-    if (cursor && (!before || value.scope.viewerFence !== before.scope.viewerFence)) throw new DOMException('File authority changed', 'AbortError');
-    fileContexts.set(data, value);
-    fileReads.add(value);
-    return value;
+    // The Detail carries its opening only once the title is ready.
+    if (!data.fileInfoOpening) return undefined;
+    return new FileInfoSession({api: life.api, opening: {token: data.fileInfoOpening, scope: context.scope, target: data.scope, revision: data.revision},
+      isCurrent: () => life.current() && service.getSnapshot().data === data, signal: life.signal(signal)});
   };
-  const authorizeFileCommand = async (data: DetailProjection, captured: FileInfoProjection, action: 'delete' | 'split' | 'merge', fileId?: string, signal?: AbortSignal) => {
+  /** A File info command names the exact occurrence of the opening it was read from. The page
+   * must still show that same accepted Detail; the server rechecks everything else live and
+   * refuses a stale opening (409) before any change. */
+  const fileCommand = (data: DetailProjection, opening: string, signal?: AbortSignal) => {
     current(data); signal?.throwIfAborted();
-    if (!fileReads.has(captured) || !captured.manage?.[action] || captured.scope.itemId !== data.item.id) throw new DOMException('File action unavailable', 'AbortError');
-    // The panel is informational. Its old permission bit cannot authorize a later command.
-    const fresh = await files(data, undefined, signal);
-    if (fresh.scope.viewerFence !== captured.scope.viewerFence) throw new DOMException('File authority changed', 'AbortError');
-    if (!fresh.manage?.[action]) throw new DOMException('File permission changed', 'AbortError');
-    if (fileId && !fresh.files.some(file => file.id === fileId)) throw new DOMException('File changed', 'AbortError');
-    return fresh;
+    if (data.fileInfoOpening !== opening) throw new DOMException('File info opening changed', 'AbortError');
   };
   const commandApi = (signal?: AbortSignal) => ({request: <T,>(path: string, method?: string, body?: unknown) => life.api.request<T>(path, method, body, signal)});
   const resolveEntry = async (itemId: string, signal?: AbortSignal) => {
@@ -138,7 +131,7 @@ export function createDetailBindings(context: ScreenContext) {
   const binding = {
     context, service, select, current, recommendations, readRecommendations, view,
     subject() { const target = service.getSnapshot().target; return life.current() && target?.itemId === subject?.itemId && target?.libraryId === subject?.libraryId ? subject?.title : undefined; },
-    readFileInfo: files, readVersions: versions, readSimilar: similar,
+    openFileInfo, readVersions: versions, readSimilar: similar,
     async chooseVersion(data: DetailProjection, captured: PlaybackOptions, signal: AbortSignal, returnFocusRef?: RefObject<HTMLElement | null>): Promise<void> {
       current(data);signal.throwIfAborted();
       const action = data.actions.find(value => value.enabled && value.playback?.itemId === data.item.id && value.id !== 'start_over');
@@ -153,33 +146,30 @@ export function createDetailBindings(context: ScreenContext) {
       if (!data.metadata.genres.some(value => value.name === genre)) throw new DOMException('Title genre changed', 'AbortError');
       return openGenre(context, life.api, data.scope.libraryId, genre, () => current(data), life.signal());
     },
-    async previewDelete(data: DetailProjection, captured: FileInfoProjection, fileId: string, signal?: AbortSignal) {
-      await authorizeFileCommand(data, captured, 'delete', fileId, signal);
-      const preview = await versionDeletionService(commandApi(signal).request).preview(data.item.id, fileId);
+    async previewDelete(data: DetailProjection, opening: string, file: FileInfoFileRow, signal?: AbortSignal) {
+      fileCommand(data, opening, signal);
+      const proof = {opening, occurrence: file.occurrence};
+      const preview = await versionDeletionService(commandApi(signal).request).preview(file.itemId, file.id, proof);
       current(data); signal?.throwIfAborted();
-      if (preview.assetId !== fileId || preview.targets.length !== 1 || preview.targets[0]?.itemId !== data.item.id) throw new Error('Delete preview target mismatch');
-      previews.set(preview, {data, fileId}); return preview;
+      if (preview.assetId !== file.id || preview.targets.length !== 1 || preview.targets[0]?.itemId !== file.itemId) throw new Error('Delete preview target mismatch');
+      previews.set(preview, {data, proof}); return preview;
     },
-    async deleteVersion(data: DetailProjection, captured: FileInfoProjection, preview: VersionDeletePreview, confirmation: string, operationId: string, signal?: AbortSignal) {
+    async deleteVersion(data: DetailProjection, preview: VersionDeletePreview, confirmation: string, operationId: string, signal?: AbortSignal) {
       const held = previews.get(preview);
       if (held?.data !== data || !deletionAllowed(preview) || confirmation !== preview.confirmation) throw new DOMException('Delete preview changed', 'AbortError');
-      await authorizeFileCommand(data, captured, 'delete', held.fileId, signal);
-      const result = await versionDeletionService(commandApi(signal).request).remove(preview, confirmation, operationId);
+      fileCommand(data, held.proof.opening, signal);
+      const result = await versionDeletionService(commandApi(signal).request).remove(preview, confirmation, operationId, held.proof);
       current(data); signal?.throwIfAborted(); return result;
     },
-    async splitVersion(data: DetailProjection, captured: FileInfoProjection, fileId: string, signal?: AbortSignal) {
-      const fresh = await authorizeFileCommand(data, captured, 'split', fileId, signal);
+    /** "Not this title": the server resolves the exact occurrence and separates that one file. */
+    async splitVersion(data: DetailProjection, opening: string, occurrence: string, signal?: AbortSignal) {
+      fileCommand(data, opening, signal);
       if (!SPLITTABLE_KINDS.includes(data.item.kind)) throw new Error('Title cannot be split');
-      const file = fresh.files.find(value => value.id === fileId)!;
-      const folders = file.path ? await libraryFolders(life.api, data.scope.libraryId, life.signal(signal)) : [];
-      current(data);
-      const record = await findLibraryFile(life.api, data.scope.libraryId, fileId, {folderId: file.path ? folderOfPath(folders, file.path) : undefined, signal: life.signal(signal)});
-      current(data); if (!record) return undefined;
-      const itemId = await separateLibraryFile(commandApi(signal), data.scope.libraryId, record);
+      const itemId = await separateFileInfoOccurrence(commandApi(signal), data.item.id, {opening, occurrence});
       current(data); signal?.throwIfAborted(); return resolveEntry(itemId, signal);
     },
-    async mergeTitle(data: DetailProjection, captured: FileInfoProjection, candidate: ContentEntry, keepId: string, signal?: AbortSignal) {
-      await authorizeFileCommand(data, captured, 'merge', undefined, signal);
+    async mergeTitle(data: DetailProjection, opening: string, candidate: ContentEntry, keepId: string, signal?: AbortSignal) {
+      fileCommand(data, opening, signal);
       if (!canMergeTitles(data.item, candidate) || ![data.item.id, candidate.id].includes(keepId) || candidate.libraryId !== data.scope.libraryId) throw new Error('Merge target changed');
       const fresh = await resolveEntry(candidate.id, signal); current(data);
       if (!canMergeTitles(data.item, fresh) || fresh.libraryId !== data.scope.libraryId) throw new Error('Merge target changed');

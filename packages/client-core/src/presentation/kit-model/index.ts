@@ -13,6 +13,7 @@ export type {ChannelIdentity, ChannelMark, MarkedChannel, LineupChannel, Channel
 export {versionModels, audioTrackModels, subtitleTrackModels} from './tracks.ts';
 export type {VersionInput, VersionModel, TrackFacts, TrackModel} from './tracks.ts';
 export {fileInfoModel} from './files.ts';
+export {fileInfoVersionFacts} from './file-info-versions.ts';
 export type {TechnicalRow, FileFacts, OwnerFileFacts, FileInfoAccess, FileInfoContext, FileInfoDisplay, ManageAction, FileInfoModel} from './files.ts';
 export {playbackInfoModel, sessionFactParts, qualityControlModel} from './playback.ts';
 export type {StreamDecision, StreamDecisions, SubtitleOrigin, PlaybackFacts, PlaybackInfoRow, SessionFacts, QualityFacts, QualityControlModel} from './playback.ts';

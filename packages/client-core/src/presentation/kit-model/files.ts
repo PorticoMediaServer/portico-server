@@ -17,7 +17,8 @@ export type FileInfoDisplay = Readonly<{
 }>;
 export type OwnerFileFacts = Readonly<{
   /** Already authorized facts, not a request for a formatter to decide permissions. */
-  locations?: readonly Readonly<{id: string; path?: string; canDelete?: boolean}>[];
+  /** One row per file. `versionId` names its version when a version has several files. */
+  locations?: readonly Readonly<{id: string; versionId?: string; path?: string; canDelete?: boolean}>[];
   canSplit?: boolean; canMerge?: boolean;
 }>;
 export type FileInfoAccess = Readonly<{audience: 'viewer'}> | Readonly<{audience: 'owner'; ownerFacts?: OwnerFileFacts; manageSurface?: 'desktop' | 'phone'}>;
@@ -25,7 +26,7 @@ export type ManageAction = Readonly<{id: 'delete-version' | 'split-versions' | '
 export type FileInfoModel = Readonly<{
   heading: string;
   files: readonly Readonly<{id: string; available: boolean; version: VersionModel; rows: readonly TechnicalRow[]; audio: readonly TrackModel[]; subtitles: readonly TrackModel[]; display: FileInfoDisplay}>[];
-  owner?: Readonly<{heading: string; locations: readonly Readonly<{id: string; path?: string; actions: readonly ManageAction[]}>[]; actions: readonly ManageAction[]}>;
+  owner?: Readonly<{heading: string; locations: readonly Readonly<{id: string; versionId: string; path?: string; actions: readonly ManageAction[]}>[]; actions: readonly ManageAction[]}>;
 }>;
 
 /** A File info panel model only. It has no page placement, picker, or playback commands. */
@@ -48,7 +49,7 @@ export function fileInfoModel(files: readonly FileFacts[], access: FileInfoAcces
   // Whitelist fields: spreading a source file or access object would leak owner-only facts.
   if (access.audience !== 'owner' || !access.ownerFacts) return Object.freeze({heading: t('next.kit.fileInfo'), files: Object.freeze(output)});
   const authorized = access.ownerFacts, known = new Set(files.map(f => f.id)), manage = !!access.manageSurface;
-  const locations = (authorized.locations ?? []).filter(x => known.has(x.id)).map(x => Object.freeze({id: x.id, ...(supplied(x.path) ? {path: x.path} : {}), actions: Object.freeze(manage && x.canDelete ? [{id: 'delete-version', label: t('next.kit.deleteVersion')} as const] : [])}));
+  const locations = (authorized.locations ?? []).filter(x => known.has(x.versionId ?? x.id)).map(x => Object.freeze({id: x.id, versionId: x.versionId ?? x.id, ...(supplied(x.path) ? {path: x.path} : {}), actions: Object.freeze(manage && x.canDelete ? [{id: 'delete-version', label: t('next.kit.deleteVersion')} as const] : [])}));
   const actions: ManageAction[] = [];
   if (manage && authorized.canSplit) actions.push({id: 'split-versions', label: t('next.kit.splitVersions')});
   if (manage && authorized.canMerge) actions.push({id: 'merge-title', label: t('next.kit.mergeTitle')});

@@ -77,18 +77,18 @@ test('resident rows are bounded: appending past the bound drops the earliest and
 import {FileInfoSession, fileInfoTrackKey} from '../src/file-info-session.ts';
 import type {FileInfoOpening} from '../src/file-info-pages.ts';
 
-const opening: FileInfoOpening = {scope: {serverId: 's1', viewerId: 'v1'}, target: {libraryId: 'l1', itemId: 'm1'}, revision: {catalog: 4, viewer: 2}};
-const envelope = (queryId: string, over: Record<string, unknown> = {}, window: Record<string, unknown> = {}) => ({
+const opening: FileInfoOpening = {token: 'o1', scope: {serverId: 's1', viewerId: 'v1'}, target: {libraryId: 'l1', itemId: 'm1'}, revision: {catalog: 4, viewer: 2}};
+const envelope = (kind: string, queryId: string, over: Record<string, unknown> = {}, window: Record<string, unknown> = {}) => ({
   scope: {serverId: 's1', libraryId: 'l1', itemId: 'm1', viewerFence: 'f1'}, detail: {scope: {serverId: 's1', libraryId: 'l1', itemId: 'm1', viewerFence: 'f1'}, revision: {catalog: 4, viewer: 2}},
-  basis: 'b1', kind: 'file-info', window: {queryId, limit: 40, returned: 1, ...window}, ...over});
+  basis: 'b1', kind, window: {queryId, limit: 40, returned: 1, ...window}, ...over});
 const surface = {fileCount: 2, eligibleFileCount: 2, groupCount: 2, canSplit: false, hasDiscColumns: false};
 const groupRow = (ordinal: number) => ({id: `g${ordinal}`, headOccurrence: `m1.a${ordinal}`, ordinal, memberCount: 1, container: 'mkv', sizeBytes: 10, durationMs: 1000, audioCount: 1, subtitleCount: 0});
 
 test('a File info session reads versions window by window and a finished lane gives up its lease', async () => {
   const replies = [
-    response(200, envelope('q1', {surface, groups: [groupRow(1)]}, {nextCursor: 'n1'})),
-    response(200, envelope('q2', {surface, groups: [groupRow(2)]})),
-    response(200, envelope('q3', {lane: 'audio', occurrence: 'm1.a1', total: 1, tracks: [{ordinal: 1, codec: 'aac', language: 'en'}]})),
+    response(200, envelope('file-info-groups', 'q1', {surface, groups: [groupRow(1)]}, {nextCursor: 'n1'})),
+    response(200, envelope('file-info-groups', 'q2', {surface, groups: [groupRow(2)]})),
+    response(200, envelope('file-info-tracks', 'q3', {lane: 'audio', occurrence: 'm1.a1', total: 1, tracks: [{ordinal: 1, codec: 'aac', language: 'en'}]})),
   ];
   const calls: string[] = [];
   const session = new FileInfoSession({opening, isCurrent: () => true, errorFromResponse: raw => new Error(String(raw.status)),
@@ -100,14 +100,32 @@ test('a File info session reads versions window by window and a finished lane gi
   assert.equal(session.getSnapshot().surface?.groupCount, 2);
   await session.tracks('m1.a1', 'audio');
   assert.equal(session.getSnapshot().tracks.get(fileInfoTrackKey('m1.a1', 'audio'))?.rows?.rows[0]?.language, 'en');
-  assert.deepEqual(calls, ['GET /v1/items/m1/groups?limit=40', 'GET /v1/items/m1/groups?limit=40&cursor=n1', 'DELETE /v1/file-info-preparations/q1', 'DELETE /v1/file-info-preparations/q2',
-    'GET /v1/items/m1/tracks?lane=audio&occurrence=m1.a1&limit=40', 'DELETE /v1/file-info-preparations/q3']);
+  assert.deepEqual(calls, ['GET /v1/items/m1/file-info/groups?opening=o1&limit=40', 'GET /v1/items/m1/file-info/groups?opening=o1&cursor=n1', 'DELETE /v1/file-info-queries/q1', 'DELETE /v1/file-info-queries/q2',
+    'GET /v1/items/m1/file-info/tracks?opening=o1&occurrence=m1.a1&lane=audio&limit=40', 'DELETE /v1/file-info-queries/q3']);
   session.retire();
 });
 
 test('a window from another Detail revision is refused', async () => {
   const session = new FileInfoSession({opening, isCurrent: () => true, errorFromResponse: raw => new Error(String(raw.status)),
-    api: {requestRaw: (_path, method) => Promise.resolve(method === 'DELETE' ? response(204) : response(200, {...envelope('q1', {surface, groups: [groupRow(1)]}), detail: {revision: {catalog: 5, viewer: 2}}}))}});
+    api: {requestRaw: (_path, method) => Promise.resolve(method === 'DELETE' ? response(204) : response(200, {...envelope('file-info-groups', 'q1', {surface, groups: [groupRow(1)]}), detail: {scope: {serverId: 's1', libraryId: 'l1', itemId: 'm1', viewerFence: 'f1'}, revision: {catalog: 5, viewer: 2}}}))}});
   await session.groups();
   assert.equal(session.getSnapshot().groups.status, 'failed');
+});
+
+import {parseFileInfoGroupsPage, parseFileInfoMembersPage} from '../src/file-info-pages.ts';
+
+test('frozen numerics: an exact decimal size stays lossless, and an unrepresentable length is absent, never zero', () => {
+  const page = parseFileInfoGroupsPage(envelope('file-info-groups', 'q1', {surface, groups: [{...groupRow(1), sizeBytes: undefined, sizeBytesExact: '18446744073709551615', durationMs: undefined, durationState: 'unrepresentable'}]}), opening);
+  assert.deepEqual(page.groups[0]!.size, {exact: '18446744073709551615'});
+  assert.equal(page.groups[0]!.durationMs, undefined);assert.equal(page.groups[0]!.durationUnrepresentable, true);
+  assert.throws(() => parseFileInfoGroupsPage(envelope('file-info-groups', 'q1', {surface, groups: [{...groupRow(1), sizeBytesExact: '10'}]}), opening), 'never both forms');
+  assert.throws(() => parseFileInfoGroupsPage(envelope('file-info-groups', 'q1', {surface, groups: [{...groupRow(1), durationState: 'unrepresentable'}]}), opening), 'an unrepresentable length is never sent');
+});
+
+test('paths are owner-only, and legal long text arrives whole', () => {
+  const path = '/media/' + 'x'.repeat(9000) + '.mkv';
+  const member = {occurrence: 'opaque-occurrence-1', itemId: 'm1', id: 'a1', path, size: 1, container: 'mkv', duration: 1.5, available: true, partIndex: 0, audioCount: 0, subtitleCount: 0};
+  const owned = parseFileInfoMembersPage(envelope('file-info-members', 'q1', {groupId: 'g1', total: 1, members: [member]}), opening, 'g1', true);
+  assert.equal(owned.members[0]!.path, path);assert.equal(owned.members[0]!.duration, 1.5);
+  assert.throws(() => parseFileInfoMembersPage(envelope('file-info-members', 'q1', {groupId: 'g1', total: 1, members: [member]}), opening, 'g1', false));
 });

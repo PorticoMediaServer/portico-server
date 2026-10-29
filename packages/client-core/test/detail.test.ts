@@ -210,16 +210,6 @@ test('a page of credits keeps the credits it can read; the group asked for, the 
  for(const broken of [{group:'crew',total:0,credits:[]},{group:'cast',total:0,credits:'nope'},{group:'cast',total:0,credits:[],nextCursor:7},{group:'cast',total:0,credits:Array(10001).fill(credit('1'))}])assert.throws(()=>parseCreditPage(broken,'item','cast'),{code:'invalid_detail'});
 });
 
-test('lazy file information binds scope and keeps member responses free of owner paths', async()=>{
- const {parseFileInfo,readFileInfo}=await import('../src/detail.ts');
- const raw={scope:{serverId:'server',libraryId:'library',itemId:'item',viewerFence:'fence'},revision:{catalog:1,viewer:0},kind:'movie',files:[{id:'version',container:'mkv',durationMs:100000,size:1000,available:true,audio:[{codec:'aac',language:'en'}],subtitles:[]}]};
- const parsed=parseFileInfo(raw,scope,target);assert.equal(parsed.files[0].duration,100);assert.equal(parsed.manage,undefined);
- assert.throws(()=>parseFileInfo({...raw,scope:{...raw.scope,itemId:'other'}},scope,target));
- assert.throws(()=>parseFileInfo({...raw,files:[{...raw.files[0],path:'/private/movie.mkv'}]},scope,target));
- const owner=parseFileInfo({...raw,manage:{delete:true,split:true,merge:true},files:[{...raw.files[0],path:'/private/movie.mkv'}]},scope,target);assert.equal(owner.files[0].path,'/private/movie.mkv');
- let requested='';await readFileInfo({request:async<T>(path:string)=>{requested=path;return raw as T;}},scope,target);assert.equal(requested,'/v1/items/item/file-info');
-});
-
 test('detail recommendation and credit pages preserve all 537 loaded entries and reject a different revision', async()=>{
  const {readCreditPage,appendCreditPage,readDetailMoreLike,appendDetailRecommendationPage}=await import('../src/detail.ts');
  const revision={catalog:3,viewer:1};

@@ -1,4 +1,5 @@
 import {routeBody} from "../../contracts/src/routes.ts";
+import type {FileInfoActionProof} from './file-info-pages.ts';
 import type {RouteResponse} from "../../contracts/src/route-paths.ts";
 import {routePath, encodedRoutePath} from "../../contracts/src/route-paths.ts";
 /** Titles as things in their own right: titles whose files are gone from disk,
@@ -158,6 +159,15 @@ export async function separateLibraryFolder(api:TitleIdentityApi,libraryId:strin
 }
 
 /** Says one file is not a version of the title it was grouped with: it becomes a title of its own, and the choice is remembered across scans. Returns the new title's id. */
+/** "Not this title" from File info: the server resolves the exact occurrence by point and applies
+ * the same separate action. No library inventory lookup. Returns the new title's id. */
+export async function separateFileInfoOccurrence(api:TitleIdentityApi,itemId:string,fileInfo:FileInfoActionProof):Promise<string>{
+ const token=(v:unknown)=>typeof v==='string'&&v.length>0&&v.length<=1024&&!/[\s\x00-\x1f\x7f]/.test(v);
+ if(!id(itemId)||!token(fileInfo.opening)||!token(fileInfo.occurrence))invalid('file to separate');
+ const out=await api.request<unknown>('/v1/admin/items/'+encodeURIComponent(itemId)+'/file-info/separate','POST',{fileInfo:{opening:fileInfo.opening,occurrence:fileInfo.occurrence}});
+ if(!obj(out)||!id(out.itemId))invalid('separated title');
+ return out.itemId;
+}
 export async function separateLibraryFile(api:TitleIdentityApi,libraryId:string,file:LibraryFileRecord):Promise<string>{
  if(!id(libraryId)||!id(file.objectId)||!id(file.revision))invalid('file to separate');
  const out=await api.request<unknown>(libraryBase(libraryId)+'/inventory/'+encodeURIComponent(file.objectId)+'/separate','POST',{revision:file.revision});

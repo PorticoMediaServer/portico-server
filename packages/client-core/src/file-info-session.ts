@@ -1,18 +1,23 @@
 import {FileInfoWindowSession, fileInfoRows, type FileInfoRows, type FileInfoWindowFacts} from './file-info-windows.ts';
 import {
-  FILE_INFO_DEFAULT_LIMIT, fileInfoReadyQueryId, parseFileInfoDiscPage, parseFileInfoGroupsPage, parseFileInfoMembersPage, parseFileInfoPreparing, parseFileInfoTracksPage,
-  type FileInfoDiscPage, type FileInfoFileRow, type FileInfoGroupRow, type FileInfoOpening, type FileInfoSurface, type FileInfoTrackRow,
+  FILE_INFO_DEFAULT_LIMIT, fileInfoReadyQueryId, parseFileInfoDiscPage, parseFileInfoGroupsPage, parseFileInfoHeadTracksPage, parseFileInfoMembersPage, parseFileInfoPreparing, parseFileInfoTracksPage,
+  type FileInfoDiscPage, type FileInfoFileRow, type FileInfoGroupRow, type FileInfoHeadTrackRow, type FileInfoOpening, type FileInfoSurface, type FileInfoTrackLane, type FileInfoTrackRow,
 } from './file-info-pages.ts';
 import type {PreparationRequestPort, PreparationResponse, PreparationRuntime} from './read-preparation.ts';
+import {browsePreparationError} from './browse-preparation.ts';
 
-/** Provisional paths until the frozen contract's generated route IDs land (P2-29). Every
- * FileInfo request is built here and nowhere else. */
+/** The frozen FileInfo routes (P2-29, 29 Oct). Every FileInfo request is built here and nowhere
+ * else; these become the generated route builders when the server contract lands. */
+const item = (itemId: string, lane: string) => `/v1/items/${encodeURIComponent(itemId)}/file-info${lane}`;
 export const fileInfoPaths = Object.freeze({
-  groups: (itemId: string) => `/v1/items/${encodeURIComponent(itemId)}/groups`,
-  members: (itemId: string) => `/v1/items/${encodeURIComponent(itemId)}/groups/members`,
-  tracks: (itemId: string) => `/v1/items/${encodeURIComponent(itemId)}/tracks`,
-  disc: (itemId: string) => `/v1/items/${encodeURIComponent(itemId)}/disc-titles`,
-  preparation: (queryId: string) => `/v1/file-info-preparations/${encodeURIComponent(queryId)}`,
+  files: (itemId: string) => item(itemId, ''),
+  groups: (itemId: string) => item(itemId, '/groups'),
+  members: (itemId: string) => item(itemId, '/groups/members'),
+  tracks: (itemId: string) => item(itemId, '/tracks'),
+  headTracks: (itemId: string) => item(itemId, '/groups/head-tracks'),
+  sources: (itemId: string) => item(itemId, '/sources'),
+  disc: (itemId: string) => item(itemId, '/disc-titles'),
+  query: (queryId: string) => `/v1/file-info-queries/${encodeURIComponent(queryId)}`,
 });
 
 export type FileInfoLane<Row> = Readonly<{
@@ -22,12 +27,14 @@ export type FileInfoLane<Row> = Readonly<{
   total?: number;
   error?: unknown;
 }>;
-export type FileInfoTrackLane = 'audio' | 'subtitles';
+export type {FileInfoTrackLane};
 export type FileInfoSnapshot = Readonly<{
   groups: FileInfoLane<FileInfoGroupRow>;
   surface?: FileInfoSurface;
-  /** Keyed by `fileInfoTrackKey(occurrence, lane)`. Absent until a renderer asks for it. */
+  /** Raw tracks, keyed by `fileInfoTrackKey(occurrence, lane)`. Absent until a renderer asks. */
   tracks: ReadonlyMap<string, FileInfoLane<FileInfoTrackRow>>;
+  /** Offered head tracks, keyed by `fileInfoTrackKey(groupId, lane)`. */
+  headTracks: ReadonlyMap<string, FileInfoLane<FileInfoHeadTrackRow>>;
   /** Owner only, keyed by group id. */
   members: ReadonlyMap<string, FileInfoLane<FileInfoFileRow>>;
   disc?: FileInfoLane<FileInfoDiscPage['titles'][number]> & Readonly<{occurrence?: string; discKind?: FileInfoDiscPage['discKind']}>;
@@ -37,7 +44,8 @@ export const fileInfoTrackKey = (occurrence: string, lane: FileInfoTrackLane) =>
 export type FileInfoSessionOptions = Readonly<{
   api: PreparationRequestPort;
   opening: FileInfoOpening;
-  errorFromResponse(response: PreparationResponse): Error;
+  /** Defaults to the shared typed preparation error (code, retry hint, response). */
+  errorFromResponse?(response: PreparationResponse): Error;
   isCurrent(): boolean;
   signal?: AbortSignal;
   runtime?: Partial<PreparationRuntime>;
@@ -57,7 +65,7 @@ type Lane<Read, Page, Row> = {
 export class FileInfoSession {
   private readonly options: FileInfoSessionOptions;
   private readonly listeners = new Set<() => void>();
-  private snapshot: FileInfoSnapshot = Object.freeze({groups: Object.freeze({status: 'loading'}), tracks: new Map(), members: new Map()});
+  private snapshot: FileInfoSnapshot = Object.freeze({groups: Object.freeze({status: 'loading'}), tracks: new Map(), headTracks: new Map(), members: new Map()});
   private readonly lanes = new Map<string, Lane<unknown, unknown, unknown>>();
   private readonly controller = new AbortController();
   private retired = false;
@@ -66,6 +74,8 @@ export class FileInfoSession {
     this.options = options;
     options.signal?.addEventListener('abort', () => this.retire(), {once: true});
   }
+  /** The opening this session reads; commands carry its token with an exact occurrence. */
+  get opening(): FileInfoOpening { return this.options.opening; }
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
   getSnapshot = (): FileInfoSnapshot => this.snapshot;
   private live = () => !this.retired && !this.controller.signal.aborted && this.options.isCurrent();
@@ -85,10 +95,10 @@ export class FileInfoSession {
   private limit(): number { return this.options.limit ?? FILE_INFO_DEFAULT_LIMIT; }
   private window<Read extends Readonly<{cursor?: string}>, Page extends Readonly<{window: FileInfoWindowFacts}>>(path: (read: Read, cursor?: string) => string, parse: (body: unknown, response: PreparationResponse) => Page, onPreparing: () => void) {
     return new FileInfoWindowSession<Read, Page>({
-      api: this.options.api, path, poll: fileInfoPaths.preparation, cancel: fileInfoPaths.preparation,
+      api: this.options.api, path, poll: fileInfoPaths.query, cancel: fileInfoPaths.query,
       parse: (body, _read, response) => parse(body, response), window: page => page.window,
       parsePreparing: (body, response) => parseFileInfoPreparing(body, this.options.opening, response),
-      readyQueryId: fileInfoReadyQueryId, errorFromResponse: this.options.errorFromResponse,
+      readyQueryId: fileInfoReadyQueryId, errorFromResponse: this.options.errorFromResponse ?? browsePreparationError,
       isCurrent: this.live, signal: this.controller.signal, runtime: this.options.runtime, onPreparing,
     });
   }
@@ -124,7 +134,7 @@ export class FileInfoSession {
     const {opening} = this.options, item = opening.target.itemId;
     const lane = this.lane('groups', () => ({
       read: {},
-      session: this.window((_read, cursor) => withQuery(fileInfoPaths.groups(item), {limit: this.limit(), cursor}),
+      session: this.window((_read, cursor) => lanePath(fileInfoPaths.groups(item), opening, this.limit(), cursor),
         (body, response) => parseFileInfoGroupsPage(body, opening, response), () => this.publish({groups: Object.freeze({...this.snapshot.groups, status: 'preparing'})})),
       rows: page => page.groups,
     }));
@@ -136,7 +146,7 @@ export class FileInfoSession {
     const set = (value: FileInfoLane<FileInfoTrackRow>) => this.publish({tracks: new Map([...this.snapshot.tracks, [key, value]])});
     const lane = this.lane(key, () => ({
       read: {},
-      session: this.window((_read, cursor) => withQuery(fileInfoPaths.tracks(item), {lane: kind, occurrence, limit: this.limit(), cursor}),
+      session: this.window((_read, cursor) => lanePath(fileInfoPaths.tracks(item), opening, this.limit(), cursor, {occurrence, lane: kind}),
         (body, response) => parseFileInfoTracksPage(body, opening, kind, occurrence, response), () => set(Object.freeze({...this.snapshot.tracks.get(key), status: 'preparing'}))),
       rows: page => page.tracks, total: page => page.total,
     }));
@@ -148,27 +158,44 @@ export class FileInfoSession {
     const set = (value: FileInfoLane<FileInfoFileRow>) => this.publish({members: new Map([...this.snapshot.members, [groupId, value]])});
     const lane = this.lane(key, () => ({
       read: {},
-      session: this.window((_read, cursor) => withQuery(fileInfoPaths.members(item), {group: groupId, limit: this.limit(), cursor}),
+      session: this.window((_read, cursor) => lanePath(fileInfoPaths.members(item), opening, this.limit(), cursor, {group: groupId}),
         (body, response) => parseFileInfoMembersPage(body, opening, groupId, owner, response), () => set(Object.freeze({...this.snapshot.members.get(groupId), status: 'preparing'}))),
       rows: page => page.members, total: page => page.total,
     }));
     return this.drive(lane, mode, () => this.snapshot.members.get(groupId), set);
   }
-  /** Owner only: the whole surface's disc titles. */
+  /** Native: one version's offered head tracks. */
+  headTracks(groupId: string, kind: FileInfoTrackLane, mode: 'open' | 'next' | 'restart' = 'open'): Promise<void> {
+    const {opening} = this.options, item = opening.target.itemId, key = fileInfoTrackKey(groupId, kind);
+    const set = (value: FileInfoLane<FileInfoHeadTrackRow>) => this.publish({headTracks: new Map([...this.snapshot.headTracks, [key, value]])});
+    const lane = this.lane(`head:${key}`, () => ({
+      read: {},
+      session: this.window((_read, cursor) => lanePath(fileInfoPaths.headTracks(item), opening, this.limit(), cursor, {group: groupId, lane: kind}),
+        (body, response) => parseFileInfoHeadTracksPage(body, opening, kind, groupId, response), () => set(Object.freeze({...this.snapshot.headTracks.get(key), status: 'preparing'}))),
+      rows: page => page.tracks, total: page => page.total,
+    }));
+    return this.drive(lane, mode, () => this.snapshot.headTracks.get(key), set);
+  }
+  /** Owner only: the titles of the surface's owner-disc file, once the surface names it. */
   disc(mode: 'open' | 'next' | 'restart' = 'open'): Promise<void> {
-    const {opening} = this.options, item = opening.target.itemId;
+    const {opening} = this.options, item = opening.target.itemId, at = this.snapshot.surface?.ownerDiscOccurrence;
+    if (!at) return Promise.resolve();
     type Disc = NonNullable<FileInfoSnapshot['disc']>;
     const set = (value: Disc) => this.publish({disc: Object.freeze({...this.snapshot.disc, ...value})});
-    const lane = this.lane('disc', () => ({
+    const lane = this.lane(`disc:${at}`, () => ({
       read: {},
-      session: this.window((_read, cursor) => withQuery(fileInfoPaths.disc(item), {limit: this.limit(), cursor}),
-        (body, response) => parseFileInfoDiscPage(body, opening, response), () => set(Object.freeze({status: 'preparing'}) as Disc)),
+      session: this.window((_read, cursor) => lanePath(fileInfoPaths.disc(item), opening, this.limit(), cursor, {occurrence: at}),
+        (body, response) => parseFileInfoDiscPage(body, opening, at, response), () => set(Object.freeze({status: 'preparing'}) as Disc)),
       rows: page => page.titles, total: page => page.total,
     }));
     return this.drive(lane, mode, () => this.snapshot.disc, value => set(value as Disc), page => set(Object.freeze({...this.snapshot.disc!, occurrence: page.occurrence, discKind: page.discKind})));
   }
 }
 
+/** Every lane names the opening. A continuation inherits its limit; only a first window sets it. */
+function lanePath(path: string, opening: FileInfoOpening, limit: number, cursor: string | undefined, query: Readonly<Record<string, string | undefined>> = {}): string {
+  return withQuery(path, {opening: opening.token, ...query, ...(cursor ? {cursor} : {limit})});
+}
 function withQuery(path: string, query: Readonly<Record<string, string | number | undefined>>): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) if (value !== undefined) search.set(key, String(value));
