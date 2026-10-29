@@ -50,8 +50,11 @@ export function parseCertificateStatus(v:unknown):CertificateStatus {
  for(const key of ['namespace','dnsName','issuer','routeHostname','routeUrl'])if(v[key]!==undefined&&!text(v[key],512))fail();
  for(const key of ['notAfter','renewAt','nextAttemptAt'])if(v[key]!==undefined&&(!text(v[key],64)||!/^\d{4}-\d\d-\d\dT/.test(v[key])||!Number.isFinite(Date.parse(v[key]))))fail();
  if(v.namespace!==undefined&&!/^ptc-[a-z2-7]{19}[aq]$/.test(v.namespace as string))fail();
- if(v.dnsName!==undefined&&v.dnsName!=='*.'+v.namespace+'.direct.getportico.tv')fail();
- if(v.routeUrl){let u:URL;try{u=new URL(v.routeUrl as string);}catch{fail();}if(u.protocol!=='https:'||u.username||u.password||u.search||u.hash||u.pathname!=='/'||u.hostname!==v.routeHostname||u.hostname!=='current.'+v.namespace+'.direct.getportico.tv'||(u.port||'443')!==String(c.publicPort))fail();}
+ // The direct domain is operator configuration (production portico.direct, P2-67 Gate 2): the
+ // wildcard is exactly one namespace under some domain, and the route name one label under that.
+ const zone=typeof v.dnsName==='string'&&typeof v.namespace==='string'&&v.dnsName.startsWith('*.'+v.namespace+'.')?v.dnsName.slice(2):undefined;
+ if(v.dnsName!==undefined&&(!zone||!/^ptc-[a-z2-7]{19}[aq](?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?){2,}$/.test(zone)))fail();
+ if(v.routeUrl){let u:URL;try{u=new URL(v.routeUrl as string);}catch{fail();}const label=u.hostname.split('.')[0]??'',under=u.hostname.slice(label.length+1);if(u.protocol!=='https:'||u.username||u.password||u.search||u.hash||u.pathname!=='/'||u.hostname!==v.routeHostname||!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label)||(zone?under!==zone:!under.startsWith(String(v.namespace)+'.'))||(u.port||'443')!==String(c.publicPort))fail();}
   // Build a whitelist projection: never retain unexpected keys, CSR, tokens or provider response bodies.
   // CD-10: keep Go wire order (enabled, publicPort, publicAddress, revision) for canonical bytes.
   const out:Record<string,unknown>={configured:v.configured,authorityId:v.authorityId,config:Object.freeze({enabled:c.enabled,publicPort:c.publicPort,publicAddress:c.publicAddress,revision:c.revision}),state:v.state,environment:v.environment,tlsReady:v.tlsReady,publiclyTrusted:v.publiclyTrusted,listenerBound:v.listenerBound,listenPort:v.listenPort,reachability:'probe_required'};

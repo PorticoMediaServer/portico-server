@@ -16,6 +16,6 @@ test('an address or a mapping this app cannot read is left out and the rest of t
 });
 
 test('the settings a save sends back, the generation and the list sizes still refuse the whole status',()=>{
- for(const patch of [{config:{...config,revision:'0'}},{config:{...config,enabled:'yes'}},{config:{...config,publicPort:70000}},{generation:'-1'},{authorityId:7},{candidates:new Array(17).fill(candidate)},{mappings:new Array(33).fill(mapping)},{candidates:{}},{topology:{lan:[7],public:[],bind:''}},{topology:{lan:new Array(9).fill('192.168.1.4'),public:[],bind:''}}])assert.throws(()=>parseRemoteAccess(status(patch)),JSON.stringify(patch));
+ for(const patch of [{config:{...config,revision:'0'}},{config:{...config,enabled:'yes'}},{config:{...config,publicPort:70000}},{generation:'-1'},{authorityId:7},{candidates:new Array(81).fill(candidate)},{mappings:new Array(33).fill(mapping)},{candidates:{}},{topology:{lan:[7],public:[],bind:''}},{topology:{lan:new Array(9).fill('192.168.1.4'),public:[],bind:''}}])assert.throws(()=>parseRemoteAccess(status(patch)),JSON.stringify(patch));
  assert.throws(()=>parseRemoteAccess(null));
 });

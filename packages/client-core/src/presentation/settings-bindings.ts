@@ -12,7 +12,7 @@ import {validatePreferencePatch,type PreferenceSnapshot,type PreferenceScope,typ
 import type {ReadingPreferences} from '../preference-effects.ts';
 
 export type SettingsBindingForm='runtime'|'connectivity'|'connectivityStatus'|'maintenance'|'alerts'|'preferences'|'device'|'remote'|'managedRoute'|'logs'|'library'|'metadata';
-export type SettingsBinding=Readonly<{form:SettingsBindingForm;key:string;scope?:PreferenceScope;readOnly?:boolean;scale?:number;codec?:'history-retention'|'number-choice'|'unlimited'|'domain'|'interface'|'remote-policy'|'away-quality'|'update-checks'|'window-mode'|'days'|'log-retention'|'still-watching'|'missing-rule'|'music-quality-choice'|'video-quality-choice'|'inherited-watched-threshold'|'surround'|'player-engine'|'tv-support'|'boolean'|'artwork-size'|'notice-audience'|'hardware-selection';fields?:Readonly<Record<string,string>>;window?:'heavy'|'backup'}>;
+export type SettingsBinding=Readonly<{form:SettingsBindingForm;key:string;scope?:PreferenceScope;readOnly?:boolean;scale?:number;codec?:'insecure-connections'|'history-retention'|'number-choice'|'unlimited'|'domain'|'interface'|'remote-policy'|'away-quality'|'update-checks'|'window-mode'|'days'|'log-retention'|'still-watching'|'missing-rule'|'music-quality-choice'|'video-quality-choice'|'inherited-watched-threshold'|'surround'|'player-engine'|'tv-support'|'boolean'|'artwork-size'|'notice-audience'|'hardware-selection';fields?:Readonly<Record<string,string>>;window?:'heavy'|'backup'}>;
 export type SettingsBindingSources=Readonly<{configuration?:SettingsConfiguration;preferences?:PreferenceSnapshot;forms?:Readonly<Partial<Record<SettingsBindingForm,Readonly<Record<string,unknown>>>>>;device?:Readonly<Record<string,unknown>>;deviceDefaults?:Readonly<Record<string,unknown>>}>;
 export type SettingsBindingValue=Readonly<{current:unknown;effective:unknown;default:unknown;source:string;configOnly:boolean;applicationMode?:string}>;
 export type SettingsBindingPatch=Readonly<{form:SettingsBindingForm;values:Readonly<Record<string,unknown>>}>;
@@ -22,6 +22,8 @@ const bindings:Readonly<Record<string,SettingsBinding>>={
  'device.player':{form:'device',key:'playerEngine',codec:'player-engine'},
  'device.receive':{form:'device',key:'receiveFromDevices',codec:'boolean'},
  'device.lossNotices':{form:'device',key:'lossNotices',codec:'boolean'},
+ // Plex's "Allow insecure connections" (P2-69): never, on the home network (default) or always.
+ 'device.allowInsecure':{form:'device',key:'allowInsecure',codec:'insecure-connections'},
  'audioSubtitles.surround':{form:'device',key:'forceStereo',codec:'surround'},
  'quality.disableHdr':{form:'device',key:'disableHdr',codec:'boolean'},
  'quality.tvSupports':{form:'device',key:'tvSupports',fields:{hdr:'tvHdr',surround:'tvSurround'},codec:'tv-support'},
@@ -88,6 +90,8 @@ const bindings:Readonly<Record<string,SettingsBinding>>={
  'remote.certFile':{form:'connectivity',key:'customCertificatePath'},
  'remote.certKey':{form:'connectivity',key:'customCertificateKeyPath'},
  'remote.homeNets':{form:'connectivity',key:'lanNetworks'},
+ // Plex's "Secure connections": Required refuses plain HTTP for everyone, at home too (P2-67/P2-69).
+ 'remote.secureConnections':{form:'connectivity',key:'secureConnections'},
  'remote.discovery':{form:'connectivity',key:'lanDiscoveryEnabled'},
  'remote.dlna':{form:'connectivity',key:'dlnaEnabled'},
  'remote.interface':{form:'connectivity',key:'advertisedInterface',codec:'interface'},
@@ -263,6 +267,7 @@ function presented(binding:SettingsBinding,v:unknown,sources:SettingsBindingSour
  if(binding.codec==='notice-audience')return validNoticeAudience(v)?v:undefined;
  if(binding.codec==='hardware-selection')return validHardwareSelection(v)?v:undefined;
  if(binding.codec==='boolean')return typeof v==='boolean'?v:undefined;
+ if(binding.codec==='insecure-connections')return v==='never'||v==='local'||v==='always'?v:undefined;
  if(binding.codec==='surround')return typeof v==='boolean'?(v?'stereo':'asis'):undefined;
  if(binding.codec==='player-engine')return v==='automatic'?'auto':v==='native'||v==='mpv'?v:undefined;
 
@@ -383,6 +388,7 @@ export function settingsBindingPatch(binding:SettingsBinding,value:unknown,sourc
   raw=value==='4k'?'2160p':value;
  }
  if(binding.codec==='boolean'&&typeof value!=='boolean')throw new Error('Invalid setting value.');
+ if(binding.codec==='insecure-connections'&&value!=='never'&&value!=='local'&&value!=='always')throw new Error('Invalid setting value.');
  if(binding.codec==='notice-audience'){if(!validNoticeAudience(value))throw new Error('Invalid setting matrix.');raw={...value};}
  if(binding.codec==='hardware-selection'&&!validHardwareSelection(value))throw new Error('Invalid setting value.');
  if(binding.codec==='surround'){if(value!=='asis'&&value!=='stereo')throw new Error('Invalid setting value.');raw=value==='stereo';}

@@ -1,4 +1,5 @@
 import {privateRouteHost} from './route-identity.ts';
+import type {InsecureConnections} from './connection-policy.ts';
 import {CodedError} from './server-messages.ts';
 
 /**
@@ -13,6 +14,8 @@ import {CodedError} from './server-messages.ts';
  * - With no port, the server's own port is tried as well as the scheme's default.
  * - A name or address that looks like it is on the home network is tried over plain HTTP first;
  *   anything else is tried over HTTPS first.
+ * - With insecure connections set to Never, a guess is HTTPS only. An address typed with `http://`
+ *   is the person's own choice and is kept.
  */
 export const DEFAULT_SERVER_PORT = 32500;
 const MAX_TYPED = 300;
@@ -47,7 +50,13 @@ function split(value: string): {host: string; port?: string} {
 }
 
 /** The addresses to try for what was typed, most likely first; at most four. Throws `invalid_address` for something that cannot be an address. */
-export function serverAddressCandidates(typed: string): readonly string[] {
+export function serverAddressCandidates(typed: string, options: {insecure?: InsecureConnections} = {}): readonly string[] {
+  const all = guessedAddresses(typed);
+  if (options.insecure !== 'never' || /^https?:\/\//i.test(typed.trim())) return all;
+  return Object.freeze(all.filter(origin => origin.startsWith('https://')));
+}
+
+function guessedAddresses(typed: string): readonly string[] {
   const value = typeof typed === 'string' ? typed.trim().replace(/\/+$/, '') : '';
   if (!value || value.length > MAX_TYPED || /[\s\\\x00-\x1f\x7f@]/.test(value)) invalid();
   if (/^https?:\/\//i.test(value)) return Object.freeze([value]);

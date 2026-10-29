@@ -71,3 +71,12 @@ test('certificate session subscriptions invalidate cached owner UI across token 
  assert.deepEqual(seen,[1,2]);
  unsubscribe();api.setAccessToken('');assert.deepEqual(seen,[1,2]);
 });
+test('the direct domain is operator configuration: portico.direct and its route names parse, other namespaces do not',()=>{
+ const zone=namespace+'.portico.direct',host='66-94-102-39.'+zone;
+ const s=parseCertificateStatus({...status(),dnsName:'*.'+zone,routeHostname:host,routeUrl:'https://'+host+':32500'});
+ assert.equal(s.dnsName,'*.'+zone);
+ assert.throws(()=>parseCertificateStatus({...status(),dnsName:'*.ptc-bbbbbbbbbbbbbbbbbbbb.portico.direct'}));
+ assert.throws(()=>parseCertificateStatus({...status(),dnsName:'*.'+namespace}));
+ assert.throws(()=>parseCertificateStatus({...status(),dnsName:'*.'+zone,routeHostname:'a.b.'+zone,routeUrl:'https://a.b.'+zone+':32500'}));
+ assert.throws(()=>parseCertificateStatus({...status(),dnsName:'*.'+zone,routeHostname:'x.'+namespace+'.direct.getportico.tv',routeUrl:'https://x.'+namespace+'.direct.getportico.tv:32500'}));
+});

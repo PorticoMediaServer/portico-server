@@ -13,6 +13,7 @@ export const remoteAccessMessages = {
   'remoteAccess.help.listener_loopback_only': 'The listener accepts only this device. Bind the server to its private LAN interface before enabling other devices.',
   'remoteAccess.help.gateway_not_found': 'No supported default gateway was found. Configure a private gateway or a manual HTTPS reverse proxy.',
   'remoteAccess.help.gateway_outside_listener': 'The gateway-selected interface is outside the server listener.',
+  'remoteAccess.warning.browserRestrictedPort': 'Web browsers can’t use port {port}. The apps still can.',
   'remoteAccess.help.no_public_route': 'The router may be behind carrier-grade NAT or another router. Use a reachable public IPv6 address, configure upstream forwarding, or provide a public HTTPS reverse proxy. Portico does not bypass carrier-grade NAT.',
   'remoteAccess.help.external_proof_or_hosted_unavailable': 'A router lease or certificate alone is not proof of reachability. Check upstream NAT, firewall rules, public HTTPS, and the account-service connection.',
   'remoteAccess.help.mapping_not_authorized': 'The router did not authorize this mapping.',

@@ -7,6 +7,7 @@ import {RouteConnection,discoveredRoutes} from '../src/route-connection.ts';
 import {SetupCodeService,normalizeSetupCode,type SetupCodeJournal} from '../src/setup-code.ts';
 import {initializeServer,type SetupDraft} from '../src/setup-onboarding.ts';
 import {setupQR} from '../src/setup-qr.ts';
+import {addressClass,formatIP,parseDirectName} from '../src/network-locality.ts';
 const delay=(ms=10)=>new Promise<void>(r=>setTimeout(r,ms));
 const keys=generateKeyPairSync('ed25519');
 const rawKey=keys.publicKey.export({format:'der',type:'spki'}).subarray(-32);
@@ -14,8 +15,16 @@ const publicKey=rawKey.toString('base64url');
 const pin:ServerPin={publicKey,serverId:'srv_'+createHash('sha256').update('portico.server.identity.v1\0').update(rawKey).digest('base64url'),fingerprint:createHash('sha256').update(rawKey).digest('base64url')};
 const key={keyId:'routes-key',publicKey};
 const signed=(value:unknown)=>{const raw=Buffer.from(JSON.stringify(value));return {payload:raw.toString('base64url'),signature:sign(null,raw,keys.privateKey).toString('base64url')};};
-function document(urls=['http://192.168.1.8:32500'],generation='1',issued=Date.now()){
- return {kind:'portico.routes',version:'1',algorithm:'Ed25519',keyId:key.keyId,audience:'account',...pin,name:'Media server',policyRevision:1,claimGeneration:'1',credentialGeneration:'1',generation,issuedAt:new Date(issued).toISOString(),expiresAt:new Date(issued+45*60000).toISOString(),candidates:urls.map(baseUrl=>({baseUrl,generation,class:baseUrl.startsWith('http:')?'lan':'public',quality:baseUrl.startsWith('http:')?'probe_required':'reachable'}))};
+// The signed LAN route for 192.168.1.8 (P2-67 Gate 2: an HTTPS IP name with its literal and port).
+const lan='https://192-168-1-8.ptc-aaaaaaaaaaaaaaaaaaaa.portico.direct:32500';
+/** A Gate 2 candidate: IP names are automatic routes; any other address is the owner's own (manual). */
+function candidate(baseUrl:string,generation:string){
+ const name=parseDirectName(new URL(baseUrl).hostname);
+ if(name){const address=formatIP(name.address),cls=addressClass(address)==='public'?'public':'lan';return {baseUrl,generation,class:cls,insecure:false,address,port:Number(new URL(baseUrl).port||443),quality:cls==='lan'?'probe_required':'reachable'};}
+ return {baseUrl,generation,class:'manual',insecure:baseUrl.startsWith('http:'),quality:'reachable'};
+}
+function document(urls=[lan],generation='1',issued=Date.now()){
+ return {kind:'portico.routes',version:'1',algorithm:'Ed25519',keyId:key.keyId,audience:'account',...pin,name:'Media server',policyRevision:1,claimGeneration:'1',credentialGeneration:'1',generation,issuedAt:new Date(issued).toISOString(),expiresAt:new Date(issued+45*60000).toISOString(),candidates:urls.map(baseUrl=>candidate(baseUrl,generation))};
 }
 async function routes(urls?:string[],generation?:string){return verifyRoutes({...signed(document(urls,generation)),keyId:key.keyId},key,{accountId:'account',serverId:pin.serverId});}
 test('route origins accept plaintext at any address and require canonical IP syntax',()=>{
@@ -47,7 +56,7 @@ test('fresh nonce proof uses no credentials and binds the actual requested origi
 });
 test('healthy cached LAN wins without a Hosted request',async()=>{
  let fresh=0;const memory={current:await routes(),paired:[]};const connection=new RouteConnection({pin,logicalOrigin:'https://old.example',memory,probe:async()=>pin,fresh:async()=>{fresh++;return memory.current;}});
- try{assert.equal(await connection.resolve(),'http://192.168.1.8:32500');assert.equal(fresh,0);assert.equal(connection.logicalOrigin,'https://old.example');}finally{connection.dispose();}
+ try{assert.equal(await connection.resolve(),lan);assert.equal(fresh,0);assert.equal(connection.logicalOrigin,'https://old.example');}finally{connection.dispose();}
 });
 test('Hosted discovery is hedged behind a hung cached route, not serial, and waits its full delay',async()=>{
  const old=await routes(),next=await routes(['https://new.example'],'2');let freshAt=0;const start=Date.now();
@@ -76,7 +85,7 @@ test('Bonjour hints cannot introduce public, expired or conflicting identities',
  assert.equal(discoveredRoutes([good,{...good,serverId:'other'}],pin).length,0);
 });
 test('transport remaps only the verified server and never blind-replays a mutation',async()=>{
- let calls=0;const connection=new RouteConnection({pin,logicalOrigin:'https://logical.example',memory:{paired:['http://192.168.1.8:32500']},probe:async()=>pin,fetcher:async()=>{calls++;throw new Error('lost response');}});
+ let calls=0;const connection=new RouteConnection({pin,logicalOrigin:'https://logical.example',memory:{paired:['http://192.168.1.8:32500']},probe:async()=>pin,fetcher:async input=>{if(!String(input).endsWith('/v1/networking/connection'))calls++;throw new Error('lost response');}});
  try{assert.equal(connection.mediaURL('/media'),'');await connection.resolve();assert.equal(connection.mediaURL('/media?ticket=opaque'),'http://192.168.1.8:32500/media?ticket=opaque');await assert.rejects(connection.fetch('https://logical.example/v1/action',{method:'POST'}));assert.equal(calls,1);await assert.rejects(connection.fetch('https://other.example/v1/action',{method:'POST'}));assert.equal(calls,1);}finally{connection.dispose();}
 });
 function journalStore<T>(initial?:SetupCodeJournal<T>){let value=initial;return {read:()=>value,change:async(update:(v:SetupCodeJournal<T>|undefined)=>SetupCodeJournal<T>)=>{value=update(value);return value;}};}

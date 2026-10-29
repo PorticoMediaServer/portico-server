@@ -151,7 +151,8 @@ test('identity rejection expires without relaxing the server pin or sending a be
 test('a meaningful network transition allows a fresh pinned proof for rejected Bonjour routes',async()=>{
  const {RouteError}=await import('../src/route-identity.ts');
  let valid=false,proofs=0;
- const connection=new RouteConnection({pin,logicalOrigin:lan,discover:async()=>[{baseUrl:lan,serverId:pin.serverId,fingerprint:pin.fingerprint,port:32500,path:'/',expiresAt:Date.now()+60000}],probe:async(_url,expected)=>{proofs++;assert.deepEqual(expected,pin);if(!valid)throw new RouteError('identity_mismatch','wrong server');return pin;}});
+ // Nearby plain HTTP is used only once the server counts this device as home (P2-69 C-3).
+ const connection=new RouteConnection({pin,logicalOrigin:lan,readConnection:async()=>({remote:false}),discover:async()=>[{baseUrl:lan,serverId:pin.serverId,fingerprint:pin.fingerprint,port:32500,path:'/',expiresAt:Date.now()+60000}],probe:async(_url,expected)=>{proofs++;assert.deepEqual(expected,pin);if(!valid)throw new RouteError('identity_mismatch','wrong server');return pin;}});
  try {await assert.rejects(connection.resolve());valid=true;connection.networkChanged('wifi-returned');assert.equal(await connection.resolve(),lan);assert.equal(proofs,2);}finally{connection.dispose();}
 });
 

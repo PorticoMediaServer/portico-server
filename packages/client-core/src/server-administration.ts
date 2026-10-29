@@ -12,6 +12,7 @@ import {parseServerInvitation,parsePeopleInvitationPage} from './direct-account.
  * half-typed object.
  */
 import {firstOfEach,keepReadable,oneOfOr} from './tolerant.ts';
+import {parseCIDR} from './network-locality.ts';
 export type AccessTier='owner'|'admin'|'member';
 export type InvitationState='pending'|'accepted'|'revoked'|'expired';
 export type LogLevel='error'|'warn'|'info'|'debug';
@@ -79,14 +80,18 @@ export type ConnectivityPolicy=Readonly<{revision:number;remoteSignInPolicy:Remo
  trustedProxies:readonly string[];uploadCapacityKbps:number;pausedSessionTimeoutMinutes:number;advertisedInterface:string;
  /** The owner's own address switch: the drawn "Use your own address" row edits this row of the same policy. Optional for typed consumers that predate it; the parser always supplies it. */
  ownAddressEnabled?:boolean;
- customCertificatePath:string;customCertificateKeyPath:string;customCertificateDomain:string}>;
+ customCertificatePath:string;customCertificateKeyPath:string;customCertificateDomain:string;
+ /** "Secure connections": `required` refuses plain HTTP for everyone; `preferred` (the default) allows it. */
+ secureConnections:'preferred'|'required'}>;
 export type ConnectivityAddress=Readonly<{address:string;family:'ipv4'|'ipv6'|'hostname';class:'public'|'lan'|'loopback';source:'interface'|'accessUrl'}>;
 export type ConnectivityInterface=Readonly<{name:string;up:boolean;loopback:boolean;virtual:boolean;addresses:readonly string[]}>;
 export type CustomCertificateStatus=Readonly<{serving:boolean;state:'none'|'ready'|'error';errorCode?:string;domain?:string;notAfter?:string;issuer?:string}>;
 export type ConnectivityTLS=Readonly<{configured:boolean;state?:string;errorCode?:string;dnsName?:string;issuer?:string;
  notAfter?:string;tlsReady:boolean;publiclyTrusted:boolean;listenerBound:boolean;listenPort:number;routeUrl?:string;reachability?:string;customCertificate?:CustomCertificateStatus}>;
 export type ConnectivityDiscovery=Readonly<{enabled:boolean;supported:boolean;state:DiscoveryState;detail?:string;serviceType?:string}>;
-export type ConnectionDocument=Readonly<{secure:boolean;remote:boolean;plainHttpOutsideHome:boolean;clientAddress:string;accessUrls:readonly string[]}>;
+export type ConnectionDocument=Readonly<{secure:boolean;remote:boolean;plainHttpOutsideHome:boolean;clientAddress:string;accessUrls:readonly string[];
+ /** The owner's LAN networks (the one definition of home) and "Secure connections", when the server says. */
+ lanNetworks?:readonly string[];secureConnections?:'preferred'|'required'}>;
 export type ConnectivityStatus=Readonly<{connection:ConnectionDocument;observedAt:string;policy:ConnectivityPolicy;tls:ConnectivityTLS;discovery:ConnectivityDiscovery;
  identityCode?:string;localUrl?:string;addresses:readonly ConnectivityAddress[];interfaces:readonly ConnectivityInterface[];warnings:readonly string[];omittedAddresses:number;omittedInterfaces:number}>;
 export type AdministrationPage<T>=Readonly<{limit:number;nextCursor:string;items:readonly T[]}>;
@@ -310,7 +315,8 @@ export function parseConnectivityPolicy(raw:unknown):ConnectivityPolicy{
   trustedProxies:list(raw.trustedProxies??[],32,x=>str(x,64)),
   uploadCapacityKbps:num(raw.uploadCapacityKbps??0,0,10000000),pausedSessionTimeoutMinutes:num(raw.pausedSessionTimeoutMinutes??0,0,1440),
   advertisedInterface:str(raw.advertisedInterface??'',64,true),ownAddressEnabled:raw.ownAddressEnabled===undefined?false:bool(raw.ownAddressEnabled),customCertificatePath:str(raw.customCertificatePath??'',1024,true),
-  customCertificateKeyPath:str(raw.customCertificateKeyPath??'',1024,true),customCertificateDomain:str(raw.customCertificateDomain??'',253,true)});
+  customCertificateKeyPath:str(raw.customCertificateKeyPath??'',1024,true),customCertificateDomain:str(raw.customCertificateDomain??'',253,true),
+  secureConnections:oneOf(raw.secureConnections??'preferred',['preferred','required'] as const)});
 }
 
 function parseCustomCertificate(raw:Record<string,unknown>):CustomCertificateStatus{
@@ -403,5 +409,7 @@ export function parseConnectionDocument(raw:unknown):ConnectionDocument {
  const secure=raw.secure===true;
  const address=typeof raw.clientAddress==='string'&&raw.clientAddress.length<=128&&!/[\x00-\x1f]/.test(raw.clientAddress)?raw.clientAddress:'';
  const offered=raw.accessUrls===undefined||raw.accessUrls===null?[]:raw.accessUrls;if(!Array.isArray(offered)||offered.length>16)return invalid();
- return Object.freeze({secure,remote:raw.remote===true,plainHttpOutsideHome:raw.plainHttpOutsideHome===true&&!secure,clientAddress:address,accessUrls:Object.freeze(keepReadable('server-administration','connection.accessUrls',offered,x=>typeof x==='string'&&x.length>0&&x.length<=300&&!/[\x00-\x1f]/.test(x)?x:undefined))});
+ return Object.freeze({secure,remote:raw.remote===true,plainHttpOutsideHome:raw.plainHttpOutsideHome===true&&!secure,clientAddress:address,accessUrls:Object.freeze(keepReadable('server-administration','connection.accessUrls',offered,x=>typeof x==='string'&&x.length>0&&x.length<=300&&!/[\x00-\x1f]/.test(x)?x:undefined)),
+  ...(Array.isArray(raw.lanNetworks)&&raw.lanNetworks.length<=64?{lanNetworks:Object.freeze(raw.lanNetworks.filter((x):x is string=>typeof x==='string'&&!!parseCIDR(x)))}:{}),
+  ...(raw.secureConnections==='preferred'||raw.secureConnections==='required'?{secureConnections:raw.secureConnections}:{})});
 }

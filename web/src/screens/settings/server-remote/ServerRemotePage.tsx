@@ -1,7 +1,7 @@
 import {useState, useSyncExternalStore} from 'react';
 import type {ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
-import {remoteAccessHelp, remoteAccessSummary} from '@core/remote-access.ts';
+import {remoteAccessHelp, remoteAccessSummary, remoteWarningLines} from '@core/remote-access.ts';
 import {secureConnectionView} from '@core/server-admin/secure-connection.ts';
 import {certificateProblemMessage} from '@core/certificates.ts';
 import type {RemoteFormSource} from './remote-form-source';
@@ -53,6 +53,7 @@ export function ServerRemotePage({isCurrent, source, certificate, groups, advanc
       <div><strong className={styles.reachTitle} role="status">{checking ? t('settings.server.remote.checking') : remote ? remoteAccessSummary(remote, t) : t('next.remoteStatus.reading')}</strong>
         {checkedAt && <p className={styles.note}>{t('web.servers.checked', {when: defaultI18n.dateTime(checkedAt)})}</p>}
         {help && <p className={styles.note}>{help}</p>}
+        {remote && remoteWarningLines(remote, t).map((line, index) => <p key={index} className={styles.note} data-tone="warn">{line}</p>)}
       </div>
       {source && <Button size="small" variant="glass" icon="i-refresh" loading={checking} disabled={!remote || formState?.saving || formState?.dirty} onClick={() => {
         if (!isCurrent() || checking) return;

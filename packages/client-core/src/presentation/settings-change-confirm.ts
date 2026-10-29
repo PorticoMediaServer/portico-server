@@ -12,6 +12,8 @@ const confirmations: Readonly<Record<string, Readonly<{message: MessageId; value
   'remote.who': {message: remote, values: ['owner', 'none']},
   'remote.mapping': {message: remote, values: ['off']},
   'remote.secure': {message: remote, values: [false]},
+  // Required drops every plain-HTTP connection, including the owner's own if they are on one.
+  'remote.secureConnections': {message: remote, values: ['required']},
   'remote.publicPort': {message: remote},
   'remote.interface': {message: remote},
   'remote.homeNets': {message: remote},

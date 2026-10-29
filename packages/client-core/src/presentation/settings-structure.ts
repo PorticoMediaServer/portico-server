@@ -100,7 +100,7 @@ export type CompositeId =
 export type SettingsActionId = 'signOut' | 'resetRecommendations' | 'linkTV' | 'customizeHome' | 'devicePlayerFixes';
 export type SettingsCustomId =
   | 'identity' | 'profiles' | 'password' | 'twoStep' | 'devices' | 'porticoAccount' | 'servers'
-  | 'subtitlePreview' | 'deviceName' | 'deviceServerAddress' | 'downloadsStorage' | 'equalizer' | 'about' | 'accessTokens' | 'privacyNote' | 'remoteControls'
+  | 'subtitlePreview' | 'deviceName' | 'deviceConnectionStatus' | 'deviceServerAddress' | 'deviceTestConnection' | 'deviceInsecureConnections' | 'downloadsStorage' | 'equalizer' | 'about' | 'accessTokens' | 'privacyNote' | 'remoteControls'
   // The Server heading's panels: each is drawn natively by the client.
   | 'server.nowPlaying' | 'server.alerts' | 'server.health' | 'server.activity' | 'server.statistics'
   | 'server.playHistory'
@@ -495,11 +495,15 @@ const accountPages: readonly AuthoredPage[] = [
       {id: 'remote', rows: [custom('remoteControls', 'remote.title')]},
       {id: 'servers', title: 'settings.section.servers', rows: [custom('servers', 'settings.section.servers')]},
       // account-device.json: About Portico is the last group of This device, not a page of its own.
-      // Frame 11's advanced Connection group. Only the read-only server address is drawn:
-      // no at-home/secure status is claimed without a canonical source. It sits before About
-      // so the Player section inserted ahead of it leaves About as the last group.
-      {id: 'deviceConnection', title: 'next.settingsSpec.account.device.advanced.groups.4.title', advanced: true, platforms: ['tv'], rows: [
+      // Frames 11 and 12's advanced Connection group. Status is the route in use: secure from its
+      // scheme, at home from the server's own answer (`ConnectionDocument.remote`, P2-69). It sits
+      // before About so the Player section inserted ahead of it leaves About as the last group.
+      // Insecure connections is Plex's "Allow insecure connections" (Never / On my network / Always).
+      {id: 'deviceConnection', title: 'next.settingsSpec.account.device.advanced.groups.4.title', advanced: true, platforms: ['tv', 'phone'], rows: [
+        {kind: 'custom', id: 'deviceConnectionStatus', label: 'next.settingsSpec.account.device.advanced.groups.4.rows.0.label'},
         {kind: 'custom', id: 'deviceServerAddress', label: 'next.settingsSpec.account.device.advanced.groups.4.rows.1.label'},
+        {kind: 'custom', id: 'deviceTestConnection', label: 'next.settingsSpec.account.device.advanced.groups.4.rows.2.label'},
+        {kind: 'custom', id: 'deviceInsecureConnections', label: 'next.settingsSpec.account.device.advanced.groups.4.rows.3.label'},
       ]},
       {id: 'about', title: 'settings.about', rows: [custom('about', 'settings.about')]},
     ],

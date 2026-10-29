@@ -1,4 +1,5 @@
 import {routePath} from "../../contracts/src/route-paths.ts";
+import {addressClass,formatIP,parseDirectName,parseIP,sameIP} from './network-locality.ts';
 /** P09 connection evidence. None of these values grants a viewer or media lease. */
 export type ServerPin = Readonly<{serverId:string;publicKey:string;fingerprint:string}>;
 /** Verified route identity plus optional authorization of exact TLS leaf certificates. */
@@ -20,7 +21,11 @@ export function observedRouteTLSLeaf(origin:string,proof:RouteProof,now=Date.now
 }
 export type SignedRoutes = Readonly<{payload:string;signature:string}>;
 export type RouteKey = Readonly<{keyId:string;publicKey:string}>;
-export type RouteCandidate = Readonly<{baseUrl:string;class:'lan'|'public'|'manual';quality:'reachable'|'probe_required';generation:string}>;
+/** A signed route (P2-67 Gate 2). Automatic `lan`/`public` routes are HTTPS IP names carrying their
+ * literal `address` and effective `port`; `manual` routes are the owner's addresses as entered, and
+ * `insecure` is exactly "this is plain HTTP". */
+export type RouteCandidate = Readonly<{baseUrl:string;class:'lan'|'public'|'manual';insecure:boolean;address?:string;port?:number;quality:'reachable'|'probe_required';generation:string}>;
+export const MAX_ROUTE_CANDIDATES=80;
 export type RouteDocument = Readonly<ServerPin & {kind:'portico.routes';version:'1';audience:string;name:string;policyRevision:number;claimGeneration:string;credentialGeneration:string;generation:string;candidates:readonly RouteCandidate[];issuedAt:string;expiresAt:string;algorithm:'Ed25519';keyId:string}>;
 export type VerifiedRoutes = Readonly<{envelope:SignedRoutes;document:RouteDocument}>;
 export interface RouteCrypto {
@@ -94,19 +99,30 @@ export const webRouteCrypto:RouteCrypto={
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const text=(v:unknown,max:number):v is string=>typeof v==='string'&&v.length>0&&v.length<=max&&!/[\x00-\x1f\x7f]/.test(v);
 const generation=(v:unknown):v is string=>typeof v==='string'&&/^[1-9][0-9]{0,18}$/.test(v)&&BigInt(v)<=9223372036854775807n;
+/** A loopback, private or link-local IP literal, `localhost`, or a `.local` name (one definition: network-locality.ts). */
 export function privateRouteHost(host:string):boolean {
- const h=host.replace(/^\[|\]$/g,'').toLowerCase();if(h==='localhost'||h==='::1'||h.endsWith('.local'))return true;
- if(h.includes(':'))return !h.includes('.')&&!h.includes('%')&&(/^(fc|fd)[0-9a-f]{2}:/.test(h)||/^fe[89ab][0-9a-f]:/.test(h));
- if(!/^(?:0|[1-9]\d{0,2})(?:\.(?:0|[1-9]\d{0,2})){3}$/.test(h))return false;
- const p=h.split('.').map(Number);return p.every(n=>n<=255)&&(p[0]===10||p[0]===127||p[0]===192&&p[1]===168||p[0]===172&&p[1]>=16&&p[1]<=31||p[0]===169&&p[1]===254);
+ const h=host.replace(/^\[|\]$/g,'').toLowerCase();if(h==='localhost'||h.endsWith('.local'))return true;
+ const c=addressClass(h);return !!parseIP(h)&&(c==='lan'||c==='loopback');
 }
-// Hosted's dedicated LAN alias resolves to private addresses and is covered by
-// the server's wildcard certificate. Accept it only in signed HTTPS candidates;
-// it never grants plaintext permission or substitutes for the pinned route proof.
-function signedLANOrigin(origin:string):boolean {
- const u=new URL(origin);
- return privateRouteHost(u.hostname)||(u.protocol==='https:'&&/^l-[0-9a-f]{32}\.ptc-[a-z2-7]{19}[aq]\.direct\.getportico\.tv$/.test(u.hostname));
+const candidateKeys=['baseUrl','class','insecure','address','port','quality','generation'];
+const invalidCandidate=()=>new RouteError('invalid_routes','Invalid signed route candidate.');
+function routeCandidate(c:unknown,documentGeneration:string,suffixes:Set<string>):RouteCandidate {
+ if(!object(c)||Object.keys(c).some(k=>!candidateKeys.includes(k))||!['lan','public','manual'].includes(String(c.class))||typeof c.insecure!=='boolean'||typeof c.baseUrl!=='string'||routeOrigin(c.baseUrl)!==c.baseUrl)throw invalidCandidate();
+ const quality=c.quality===undefined?'probe_required':c.quality,gen=c.generation===undefined?documentGeneration:c.generation;
+ if(!['reachable','probe_required'].includes(String(quality))||!generation(gen)||BigInt(gen)>BigInt(documentGeneration))throw invalidCandidate();
+ const url=new URL(c.baseUrl),insecure=url.protocol==='http:';
+ if(c.insecure!==insecure||(insecure&&c.class!=='manual'))throw invalidCandidate();
+ const cls=c.class as RouteCandidate['class'],base={baseUrl:c.baseUrl,class:cls,insecure,quality:quality as RouteCandidate['quality'],generation:gen};
+ if(cls==='manual'){if(c.address!==undefined||c.port!==undefined)throw invalidCandidate();return Object.freeze(base);}
+ // Automatic: the IP name must decode to exactly the signed literal, on the URL's own port.
+ const name=parseDirectName(url.hostname),address=typeof c.address==='string'?parseIP(c.address):undefined,port=Number(url.port||443);
+ if(!name||!address||!sameIP(name.address,address)||formatIP(address)!==c.address||c.port!==port)throw invalidCandidate();
+ const kind=addressClass(c.address);
+ if(cls==='lan'?(kind==='public'||kind==='loopback'||isLinkLocal(c.address)):kind!=='public')throw invalidCandidate();
+ suffixes.add(name.suffix);
+ return Object.freeze({...base,address:c.address,port});
 }
+const isLinkLocal=(address:string)=>{const ip=parseIP(address);return !!ip&&(ip.family===4?ip.bytes[0]===169&&ip.bytes[1]===254:ip.bytes[0]===0xfe&&(ip.bytes[1]!&0xc0)===0x80);};
 /** Origin only. No userinfo, path trick, query, IDNA ambiguity, or ambiguous host spellings. */
 export function routeOrigin(raw:string):string {
  if(typeof raw!=='string'||raw.length>300||/[\\\s\x00-\x1f\x7f]/.test(raw)||!/^https?:\/\//i.test(raw))throw new RouteError('invalid_address','Enter an HTTP or HTTPS server address.');
@@ -151,16 +167,20 @@ export async function verifyRoutes(value:unknown,key:RouteKey,expected:{accountI
  if(object(value)&&typeof value.keyId==='string'&&value.keyId!==key.keyId)throw new RouteError('invalid_signature','The account service signing key changed.');
  const signed=envelope(value,key.keyId),v=parseSignedJSON(signed);
  if(!text(key.keyId,256)||v.keyId!==key.keyId||!await crypto.verify(routeBytes(key.publicKey,32),routeBytes(signed.signature,64),routeBytes(signed.payload)))throw new RouteError('invalid_signature','The account service did not sign these server routes.');
- if(v.kind!=='portico.routes'||v.version!=='1'||v.algorithm!=='Ed25519'||v.audience!==expected.accountId||v.serverId!==expected.serverId||!text(v.name,2048)||typeof v.publicKey!=='string'||typeof v.fingerprint!=='string'||!generation(v.generation)||!generation(v.claimGeneration)||!generation(v.credentialGeneration)||!Number.isSafeInteger(v.policyRevision)||Number(v.policyRevision)<0||!Array.isArray(v.candidates)||v.candidates.length>24)throw new RouteError('invalid_routes','The account service returned incompatible connection information.');
+ if(v.kind!=='portico.routes'||v.version!=='1'||v.algorithm!=='Ed25519'||v.audience!==expected.accountId||v.serverId!==expected.serverId||!text(v.name,2048)||typeof v.publicKey!=='string'||typeof v.fingerprint!=='string'||!generation(v.generation)||!generation(v.claimGeneration)||!generation(v.credentialGeneration)||!Number.isSafeInteger(v.policyRevision)||Number(v.policyRevision)<0||!Array.isArray(v.candidates)||v.candidates.length>MAX_ROUTE_CANDIDATES)throw new RouteError('invalid_routes','The account service returned incompatible connection information.');
  const pin=await serverPin(v.serverId as string,v.publicKey,v.fingerprint,crypto);if(expected.pin&&!sameServerPin(pin,expected.pin))throw new RouteError('identity_mismatch','The selected server identity changed.');
  times(v,45*60000,expected.now??Date.now(),expected.allowExpiredHint===true);
- const candidates=v.candidates.map(c=>{if(!object(c)||!['lan','public','manual'].includes(String(c.class))||!['reachable','probe_required'].includes(String(c.quality))||!generation(c.generation)||BigInt(c.generation)>BigInt(v.generation as string)||typeof c.baseUrl!=='string'||routeOrigin(c.baseUrl)!==c.baseUrl||(c.class!=='lan'&&!c.baseUrl.startsWith('https://'))||(c.class==='lan'&&!signedLANOrigin(c.baseUrl)))throw new RouteError('invalid_routes','Invalid signed route candidate.');return Object.freeze({baseUrl:c.baseUrl,class:c.class as RouteCandidate['class'],quality:c.quality as RouteCandidate['quality'],generation:c.generation});});
+ const suffixes=new Set<string>(),candidates=v.candidates.map(c=>routeCandidate(c,v.generation as string,suffixes));
+ // One server, one namespace: every automatic name in a document shares its `ptc-<ns>.<domain>`.
+ if(suffixes.size>1)throw new RouteError('invalid_routes','Signed route candidates name more than one server.');
  if(new Set(candidates.map(c=>c.baseUrl)).size!==candidates.length)throw new RouteError('invalid_routes','Duplicate signed route candidates.');
  return Object.freeze({envelope:signed,document:Object.freeze({...v,...pin,candidates:Object.freeze(candidates)}) as RouteDocument});
 }
+/** The server's "Secure connections: Required" answer to plain HTTP (HTTP 426). */
+export const SECURE_CONNECTION_REQUIRED='secure_connection_required';
 /** Bounded JSON reader with neutral, non-sensitive diagnostics (also works with RN Response). */
 export async function routeJSON(response:Response,signal:AbortSignal,max=32768):Promise<unknown> {
- if(!response.ok){void response.body?.cancel().catch(()=>{});const e=new RouteError(response.status===401?'authentication_required':response.status===403?'access_denied':response.status===429?'rate_limited':'route_unavailable','The connection could not be verified.');throw e;}
+ if(!response.ok){void response.body?.cancel().catch(()=>{});const e=new RouteError(response.status===401?'authentication_required':response.status===403?'access_denied':response.status===426?SECURE_CONNECTION_REQUIRED:response.status===429?'rate_limited':'route_unavailable',response.status===426?'This server requires a secure connection.':'The connection could not be verified.');throw e;}
  if(response.headers.get('Content-Type')?.split(';')[0].toLowerCase().trim()!=='application/json'||Number(response.headers.get('Content-Length')??0)>max)throw new RouteError('invalid_response','Invalid connection response.');
  // Native's bounded NSURLSession transport has already limited bytes. Fetch
  // streams are consumed incrementally so a hostile endpoint cannot allocate arbitrarily.

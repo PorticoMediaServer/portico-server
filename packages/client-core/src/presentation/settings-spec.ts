@@ -4403,6 +4403,30 @@ export const settingsSpec: readonly SettingsSection[] = [
                 "style": "glass",
                 "label": "next.settingsSpec.account.device.advanced.groups.4.rows.2.control.label"
               }
+            },
+            {
+              "id": "device.allowInsecure",
+              "scope": "device",
+              "key": "allowInsecure",
+              "label": "next.settingsSpec.account.device.advanced.groups.4.rows.3.label",
+              "control": {
+                "type": "segmented",
+                "default": "local",
+                "options": [
+                  {
+                    "value": "never",
+                    "label": "next.settingsSpec.account.device.advanced.groups.4.rows.3.control.options.0.label"
+                  },
+                  {
+                    "value": "local",
+                    "label": "next.settingsSpec.account.device.advanced.groups.4.rows.3.control.options.1.label"
+                  },
+                  {
+                    "value": "always",
+                    "label": "next.settingsSpec.account.device.advanced.groups.4.rows.3.control.options.2.label"
+                  }
+                ]
+              }
             }
           ]
         },
@@ -12858,6 +12882,27 @@ export const settingsSpec: readonly SettingsSection[] = [
                 }
               }
             ]
+          },
+          {
+            "id": "remote.secureConnections",
+            "scope": "server",
+            "key": "secureConnections",
+            "label": "next.settingsSpec.server.remote.groups.0.rows.1.label",
+            "help": "next.settingsSpec.server.remote.groups.0.rows.1.help",
+            "control": {
+              "type": "segmented",
+              "default": "preferred",
+              "options": [
+                {
+                  "value": "preferred",
+                  "label": "next.settingsSpec.server.remote.groups.0.rows.1.control.options.0.label"
+                },
+                {
+                  "value": "required",
+                  "label": "next.settingsSpec.server.remote.groups.0.rows.1.control.options.1.label"
+                }
+              ]
+            }
           }
         ]
       },

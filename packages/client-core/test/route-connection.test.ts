@@ -15,7 +15,7 @@ const good = {
 
 test('a single good record yields one LAN candidate', () => {
   assert.deepEqual(discoveredRoutes([good], pin, now), [
-    {baseUrl: 'http://192.168.1.8:32500', class: 'lan', quality: 'probe_required', generation: '1'},
+    {baseUrl: 'http://192.168.1.8:32500', class: 'lan', insecure: true, quality: 'probe_required', generation: '1'},
   ]);
 });
 
@@ -83,6 +83,8 @@ test('a proxy error page for a down server is a lost route; Portico answers are 
 
 import {RouteConnection,type RouteProbeFailure} from '../src/route-connection.ts';
 import {RouteError} from '../src/route-identity.ts';
+// Promotion only ever moves to a secure route (P2-69), so nearby HTTPS stands in for recovered LAN.
+const secureGood = {...good, baseUrl: 'https://192.168.1.8:32500'};
 const tick = () => new Promise<void>(resolve => setImmediate(resolve));
 
 test('foreground activity promotes recovered LAN without blanking the ready remote route or asking Hosted', async () => {
@@ -91,8 +93,8 @@ test('foreground activity promotes recovered LAN without blanking the ready remo
   const remote = 'https://remote.example';
   const connection = new RouteConnection({pin, logicalOrigin: remote, memory: {paired: [remote]},
     fresh: async () => { hosted++; throw new Error('unexpected Hosted lookup'); },
-    discover: async () => local ? [{...good, expiresAt: Date.now() + 60000}] : [],
-    probe: async origin => { probes.push(origin); if (origin === good.baseUrl) await new Promise<void>(resolve => { release = resolve; }); return pin; },
+    discover: async () => local ? [{...secureGood, expiresAt: Date.now() + 60000}] : [],
+    probe: async origin => { probes.push(origin); if (origin === secureGood.baseUrl) await new Promise<void>(resolve => { release = resolve; }); return pin; },
   });
   try {
     assert.equal(await connection.resolve(), remote);
@@ -101,10 +103,10 @@ test('foreground activity promotes recovered LAN without blanking the ready remo
     assert.equal(connection.getSnapshot().phase, 'ready');
     assert.equal(connection.getSnapshot().origin, remote);
     release(); await tick();
-    assert.equal(connection.getSnapshot().origin, good.baseUrl);
-    assert.equal(connection.getMemory().lastGood, good.baseUrl);
+    assert.equal(connection.getSnapshot().origin, secureGood.baseUrl);
+    assert.equal(connection.getMemory().lastGood, secureGood.baseUrl);
     assert.equal(hosted, 0);
-    assert.deepEqual(probes, [remote, good.baseUrl]);
+    assert.deepEqual(probes, [remote, secureGood.baseUrl]);
   } finally { connection.dispose(); }
 });
 
@@ -112,7 +114,7 @@ test('failed local promotion keeps the remote route and throttles repeated activ
   let local = false, attempts = 0;
   const remote = 'https://remote.example';
   const connection = new RouteConnection({pin, logicalOrigin: remote, memory: {paired: [remote]},
-    discover: async () => local ? [{...good, expiresAt: Date.now() + 60000}] : [],
+    discover: async () => local ? [{...secureGood, expiresAt: Date.now() + 60000}] : [],
     probe: async origin => { if (origin !== remote) { attempts++; throw new Error('LAN still down'); } return pin; },
   });
   try {
@@ -129,7 +131,7 @@ test('a local proof arriving after disposal cannot promote the route', async () 
   let local = false, release!: () => void;
   const remote = 'https://remote.example';
   const connection = new RouteConnection({pin, logicalOrigin: remote, memory: {paired: [remote]},
-    discover: async () => local ? [{...good, expiresAt: Date.now() + 60000}] : [],
+    discover: async () => local ? [{...secureGood, expiresAt: Date.now() + 60000}] : [],
     probe: async origin => { if (origin !== remote) await new Promise<void>(resolve => { release = resolve; }); return pin; },
   });
   await connection.resolve(); local = true;
@@ -142,7 +144,7 @@ test('leaving the foreground cancels a held LAN promotion and keeps the working 
   let local = false, release!: () => void;
   const remote = 'https://remote.example';
   const connection = new RouteConnection({pin, logicalOrigin: remote, memory: {paired: [remote]},
-    discover: async () => local ? [{...good, expiresAt: Date.now() + 60000}] : [],
+    discover: async () => local ? [{...secureGood, expiresAt: Date.now() + 60000}] : [],
     probe: async origin => { if (origin !== remote) await new Promise<void>(resolve => { release = resolve; }); return pin; },
   });
   try {
