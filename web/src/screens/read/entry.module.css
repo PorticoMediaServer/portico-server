@@ -1,7 +1,7 @@
 .seriesSelect { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; padding: 6px 10px; border: 0; border-radius: 8px;
   background: color-mix(in srgb, var(--color-text) 8%, transparent); color: var(--color-text-secondary); font: inherit; font-size: var(--type-fixed-size-13px); cursor: pointer; }
 .seriesSelect[aria-pressed='true'] { background: color-mix(in srgb, var(--color-accent-strong) 18%, transparent); color: var(--color-text); }
-.loading { position: relative; min-height: 100dvh; background: var(--color-ink); }
+.loading { position: relative; min-height: 100dvh; }
 /* A reader that is still opening, or that could not open, keeps the drawn way back. */
 .escape { position: absolute; top: 16px; left: 16px; z-index: var(--layer-content); }
 .host { position: fixed; inset: 0; z-index: var(--layer-menu); background: var(--color-ink); }

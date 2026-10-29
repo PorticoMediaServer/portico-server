@@ -42,9 +42,6 @@ export function OwnerTag({identity, variant = 'badge', size = 'standard', classN
   return <span className={[styles.ownerState, className].filter(Boolean).join(' ')}><ServerMark />{identity}<span>{t('next.shell.ownerOnly')}</span></span>;
 }
 
-export function ServerBand({variant = 'settings', className}: {variant?: 'settings' | 'state'; className?: string}) {
-  return <div className={[styles.band, className].filter(Boolean).join(' ')} data-variant={variant} aria-hidden="true"><div /></div>;
-}
 
 export type ServerHeaderProps = {
   serverName: string;

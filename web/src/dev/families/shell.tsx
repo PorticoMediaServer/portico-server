@@ -3,7 +3,7 @@ import {defineGalleryFamily, type GalleryCase} from '../gallery-registry';
 import {createI18n} from '@i18n';
 import {playbackIdentity, titleFactParts} from '@core/presentation/kit-model';
 import {shellFixtures, shellReference as f, shellReferenceSamples} from '../../../../packages/i18n/src/catalog/en-US/next/dev/shell-fixtures';
-import {OwnerTag, ServerBand, ServerHeader, ServerMark, EditorHeader, ProfileAvatar, ProfileAvatarFace, AccountMenu, NotificationItem, WatchTogetherPill, SettingsNav, SettingsSheet, ShortcutTiles, LargeTitleHeader, PushedNavBar, SettingsRow, DefaultHint, ChoiceMatrix, ChoiceCards, LanguageList, SubtitlePreview, StatTiles, BarList, PersonRow, DeviceRow, WaitingNotice, SegmentWindows, TopBarActivity, ActivityPanel, type ShellAction, type ProfileAvatarSize, type ActivityPanelView, type ActivityStreamView, type LanguageValue, type SegmentMark, type SegmentEdit, type ServerRole} from '../../kit/shell';
+import {OwnerTag, ServerHeader, ServerMark, EditorHeader, ProfileAvatar, ProfileAvatarFace, AccountMenu, NotificationItem, WatchTogetherPill, SettingsNav, SettingsSheet, ShortcutTiles, LargeTitleHeader, PushedNavBar, SettingsRow, DefaultHint, ChoiceMatrix, ChoiceCards, LanguageList, SubtitlePreview, StatTiles, BarList, PersonRow, DeviceRow, WaitingNotice, SegmentWindows, TopBarActivity, ActivityPanel, type ShellAction, type ProfileAvatarSize, type ActivityPanelView, type ActivityStreamView, type LanguageValue, type SegmentMark, type SegmentEdit, type ServerRole} from '../../kit/shell';
 import {Artwork} from '../../kit/artwork/Artwork';
 import {Switch} from '../../kit/controls/Fields';
 import {Select} from '../../kit/controls/Select';
@@ -18,12 +18,12 @@ const facts = [
   {id: 'storage', text: shellFixtures['next.dev.shell.storage'], role: 'supplement' as const},
   {id: 'database', text: shellFixtures['next.dev.shell.database'], role: 'supplement' as const},
 ];
-function OwnerState() { return <div className={styles.stateStage}><ServerBand variant="state" /><div className={styles.stateIdentity}><OwnerTag variant="state" identity={t('next.shell.serverSettings')} /></div></div>; }
+function OwnerState() { return <div className={styles.stateStage}><div className={styles.stateIdentity}><OwnerTag variant="state" identity={t('next.shell.serverSettings')} /></div></div>; }
 function OwnerDetails() { return <div className={styles.detailStage}><div className={styles.detailHeading}><ServerMark />{t('next.shell.forOwner')}<OwnerTag /></div></div>; }
 function CompactOwner() { return <div className={styles.compactStage}><div className={styles.compactHeading}><ServerMark size={22} />{t('next.shell.forOwner')}<OwnerTag /></div></div>; }
-function HeaderOwner() { return <div className={styles.headerStage}><ServerBand /><div className={styles.headerPosition}><ServerHeader serverName={shellFixtures['next.dev.shell.serverName']} viewerRole="owner" audience="owner" health="normal" facts={facts} /></div></div>; }
-function HeaderShared() { return <div className={styles.headerStage}><ServerBand /><div className={styles.headerPosition}><ServerHeader serverName={shellFixtures['next.dev.shell.serverName']} viewerRole="owner" audience="administrators" health="normal" facts={facts} /></div></div>; }
-function HeaderAdministrator() { return <div className={styles.headerStage}><ServerBand /><div className={styles.headerPosition}><ServerHeader serverName={shellFixtures['next.dev.shell.serverName']} viewerRole="administrator" audience="administrators" health="attention" facts={facts} /></div></div>; }
+function HeaderOwner() { return <div className={styles.headerStage}><div className={styles.headerPosition}><ServerHeader serverName={shellFixtures['next.dev.shell.serverName']} viewerRole="owner" audience="owner" health="normal" facts={facts} /></div></div>; }
+function HeaderShared() { return <div className={styles.headerStage}><div className={styles.headerPosition}><ServerHeader serverName={shellFixtures['next.dev.shell.serverName']} viewerRole="owner" audience="administrators" health="normal" facts={facts} /></div></div>; }
+function HeaderAdministrator() { return <div className={styles.headerStage}><div className={styles.headerPosition}><ServerHeader serverName={shellFixtures['next.dev.shell.serverName']} viewerRole="administrator" audience="administrators" health="attention" facts={facts} /></div></div>; }
 
 function useAction() { const [last, setLast] = useState(''); return {act: (label: string) => () => setLast(label), output: <output className={styles.actionOutput} hidden={!last}>{last}</output>}; }
 function Stage({children, output, raised = false, padded = false}: {children: ReactNode; output?: ReactNode; raised?: boolean; padded?: boolean}) { return <div className={styles.componentStage} data-raised={raised || undefined} data-padded={padded || undefined}>{children}{output}</div>; }

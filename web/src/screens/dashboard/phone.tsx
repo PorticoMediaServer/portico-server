@@ -35,7 +35,6 @@ export function PhonePage({chrome, server, updatedAt, onBack, onRefresh, initial
       <span className={styles.phoneBarTitle}><b>{t('next.dashboard.title')}</b><small>{chrome.serverName}</small></span>
     </header>
     <div className={styles.phoneScroll} ref={scroll} onScroll={event => setSolid(event.currentTarget.scrollTop > 8)}>
-      <div className={styles.phoneBand} aria-hidden="true" />
       <header className={styles.phoneHead}>
         <div className={styles.phonePills}><span className={styles.phonePill}><Icon name="i-server" size={15} />{t('next.shell.server')}<span>{t(chrome.audience === 'owner' ? 'next.shell.serverVisibility.ownerShared' : 'next.shell.serverVisibility.administrator')}</span></span></div>
         <h1>{t('next.dashboard.title')}</h1>

@@ -12,7 +12,7 @@ import {homeChannelSelection, homeEntryCapabilities} from '@core/home-selection.
 import {homeCollectionCaption} from '@core/presentation/home-spotlight.ts';
 import {channelMonograms, programmeFactParts, type TimeEnvironment} from '@portico/client-core/kit-model';
 import {useFreshness, useRecovering} from '../../platform/freshness';
-import {Artwork, AmbientArt, ColourBackdrop, GeneratedArt} from '../../kit/artwork';
+import {Artwork, AmbientArt, GeneratedArt} from '../../kit/artwork';
 import {Hero, HeroFacts, type HeroCandidate, type LayoutPlatform} from '../../kit/layout';
 import {Button} from '../../kit/controls';
 import {Icon} from '../../kit/Icon';
@@ -69,7 +69,8 @@ type HeroArtworkContext = Readonly<{index: number; visible: boolean; onReady?: (
 export function HomeHeroArtwork({slide, context, platform, artwork, appearance, heroPixels, variant = 'hero'}: {slide: HeroArtworkSlide; context: HeroArtworkContext; platform: LayoutPlatform; artwork: ShellArtwork; appearance?: ScreenAppearance; heroPixels: number; variant?: 'hero' | 'panel'}) {
   const backdrop = slide.artwork.backdropUrl, poster = slide.artwork.posterUrl;
   const treatment = heroArtworkTreatment(slide.artwork, appearance?.showBackdrops !== false, variant);
-  if (treatment === 'colour') return <ColourBackdrop shape="side" fill/>;
+  // No artwork: the hero is transparent over the window's standard backdrop.
+  if (treatment === 'colour') return null;
   if (treatment === 'generated') return <GeneratedArt glyph={Array.from(slide.title.trim())[0] ?? ''}/>;
   if (treatment === 'poster') return <div className={styles.heroPoster}>
     <span className={styles.heroPosterWash}><Artwork source={artwork.foreground(poster, heroPixels, 2 / 3, {group: 'home-hero-poster', order: context.index, priority: 'high'})} alt="" visible={context.visible} onReady={context.onReady} onError={context.onError}/></span>

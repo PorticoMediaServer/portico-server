@@ -52,12 +52,13 @@ function card(overrides: Record<string, unknown> = {}, role: 'owner' | 'admin' =
 }
 const headings = (html: string) => [...html.matchAll(/<h[23][^>]*>([^<]*)<\/h[23]>/g)].map(match => '>' + match[1] + '<');
 
-test('the phone Dashboard is a page: its own bar, band and server header before the drawn sections', () => {
+test('the phone Dashboard is a page: its own bar and server header over the standard backdrop', () => {
   Object.assign(state, {authority: true, value: {...readValue, ...page, facts: [{id: 'uptime', role: 'value', text: 'Up for 6 days'}]}});
   const html = renderToStaticMarkup(createElement(DashboardScreen, {bindings: bindings() as never, phone: true, chrome: {serverName: 'Portico demo', audience: 'owner'}}));
   assert.match(html, /data-dashboard-page/);
   assert.match(html, /class="phoneBar"(?: [^>]*)?>.*<h1>Dashboard<\/h1>/s);
-  assert.match(html, /class="phoneBand"/);
+  // Justin, 29 Oct: no per-screen glow; the page shows the one standard backdrop.
+  assert.doesNotMatch(html, /phoneBand/);
   assert.match(html, /Only you and administrators see this page/);
   assert.match(html, /Portico demo/);
   assert.match(html, />Updated a few seconds ago</);

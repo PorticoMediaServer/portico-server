@@ -228,7 +228,6 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
     </section>}
   </div>;
   return <div className={styles.search} style={{'--search-card-scale': size, '--search-columns': Math.max(1, Math.round(7 / size))} as React.CSSProperties}>
-    <div className={styles.wash} aria-hidden="true" />
     {/* Phone-app 7 draws the Search title only before typing; frame 4's Cancel belongs to the
         results state, so it is absent on the empty one. */}
     {compact && !text.trim() && <h1 className={styles.phoneSearchTitle}>{t('web.search.title')}</h1>}
@@ -258,7 +257,7 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
       {clearFailed && <p role="alert">{t('web.search.clearFailed')}</p>}
       {problem && <p role="status">{t(problem === 'short' ? 'web.search.tooShort' : problem === 'words' ? 'web.search.tooManyWords' : 'web.search.tooLong')}</p>}
       {snapshot.phase === 'loading' && !showing && <SearchLoading key={snapshot.generation} />}
-      {(snapshot.phase === 'error' || snapshot.phase === 'refresh-required') && <ScreenProblem context={context} error={snapshot.error} retry={() => { if (binding.results.getSnapshot() === snapshot) void binding.results.retry().catch(context.effects.reportError); }} />}
+      {(snapshot.phase === 'error' || snapshot.phase === 'refresh-required') && <ScreenProblem embedded context={context} error={snapshot.error} retry={() => { if (binding.results.getSnapshot() === snapshot) void binding.results.retry().catch(context.effects.reportError); }} />}
       {failed.length > 0 && <div role="status" className={styles.partial}><Icon name="i-clock" size={22} /><span>{t('web.search.partial', {groups: new Intl.ListFormat(locale(), {style: 'long', type: 'conjunction'}).format(failed.map(value => t(searchGroupLabel(value.id))))})}</span><Button icon="i-retry" size="small" onClick={() => { void service.refresh(); }}>{t('next.states.tryAgain')}</Button></div>}
       {empty && <SearchEmpty title={t(group ? 'web.search.nothingIn' : 'web.search.noMatches', group ? {group: t(searchGroupLabel(group))} : {query: text.trim()})} body={group ? undefined : t('web.search.noMatchesBody')}
         action={group ? <Button variant="primary" size="compact" onClick={() => setChip('all')}>{t('web.search.everything')}</Button> : undefined} />}

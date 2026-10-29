@@ -192,3 +192,6 @@
 .preplayRow > svg { flex: none; opacity: 0; color: var(--color-accent-strong); }
 .preplayRow[aria-checked='true'] > svg { opacity: 1; }
 .preplayRow:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 2px; }
+
+/* A destination's problem state owns the window under the fixed bar, as the shell's own states do. */
+.problem { min-height: 100dvh; }

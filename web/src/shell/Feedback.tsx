@@ -1,4 +1,4 @@
-import {useSyncExternalStore} from 'react';
+import {useLayoutEffect, useSyncExternalStore} from 'react';
 import type {I18n} from '@i18n';
 import {presentError} from '@core/presentation/errors.ts';
 import {ToastHost, type ToastData} from '../kit/overlays';
@@ -21,7 +21,19 @@ export class ShellFeedback {
   dismiss = (id: string) => { if (this.value?.id === id) this.publish(null); };
   dispose = () => { this.retired = true; this.publish(null); this.listeners.clear(); };
 }
+/** Where a toast rests: above the tab bar, and above the player bar when there is one
+ * (motion.html 2.15, 3.10). Phone values clear the home indicator too. */
+export function shellToastBottom(width: number, dockVisible: boolean): string {
+  return width >= 1024 ? `${dockVisible ? 108 : 24}px` : `calc(${dockVisible ? 150 : 80}px + env(safe-area-inset-bottom, 0px))`;
+}
 export function ShellFeedbackHost({source, dockVisible}: {source: ShellFeedback; dockVisible: boolean}) {
   const toast = useSyncExternalStore(source.subscribe, source.getSnapshot, source.getSnapshot), width = useShellWidth();
-  return <ToastHost toast={toast} onDismiss={source.dismiss} bottomInset={width >= 1024 ? dockVisible ? 108 : 24 : dockVisible ? 150 : 80} />;
+  const bottom = shellToastBottom(width, dockVisible);
+  // Screen-owned toast hosts portal to the document, outside the shell; they read the same rest.
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty('--shell-toast-bottom', bottom);
+    return () => {root.style.removeProperty('--shell-toast-bottom');};
+  }, [bottom]);
+  return <ToastHost toast={toast} onDismiss={source.dismiss} />;
 }

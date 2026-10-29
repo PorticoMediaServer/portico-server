@@ -69,7 +69,7 @@ export function HomeSkeleton({elapsedMs, window, header, art, visible = true, he
   const gutter = phone ? 20 : window.width < 1440 ? 32 + (window.width - 1024) / 13 : 64;
   let nextRowTop = phone ? 586 : 668;
   return <div className={[styles.page, styles.home, phone && styles.phone, className].filter(Boolean).join(' ')} aria-busy="true" aria-label={defaultI18n.t('next.states.homeSkeleton')}>
-    {art ? <div className={styles.homeArt}><AmbientArt {...art} visible={visible && art.visible !== false} arrivalDurationMs={240} treatment={phone ? 'phone' : 'hero'}/></div> : <div className={styles.homeGlow}/>}{header}
+    {art ? <div className={styles.homeArt}><AmbientArt {...art} visible={visible && art.visible !== false} arrivalDurationMs={240} treatment={phone ? 'phone' : 'hero'}/></div> : null}{header}
     {phase === 'slow' && slowNotice}
     {hero ?? (phase !== 'waiting' && <div className={styles.heroWords}>
       <Skeleton line small={phone} width={phone ? 170 : 230} height={phone ? 11 : 15} className={styles.accentLine}/>

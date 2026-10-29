@@ -8,7 +8,7 @@ import {Artwork, type AmbientArtSource, type ArtworkImage, type ArtworkSource} f
 import {Icon} from '../../kit/Icon';
 import {Button, Tabs} from '../../kit/controls';
 import {PosterCard, WideCard} from '../../kit/cards';
-import {OwnerTag, ServerBand, ServerMark} from '../../kit/shell';
+import {OwnerTag, ServerMark} from '../../kit/shell';
 import {CountdownRing, DetailsPanel, GridSkeleton, HomeSkeleton, KeyboardShortcuts, StateLayout, StateSentence, StateSteps, StateView, TitleSkeleton, type DetailsFact, type SkeletonArtwork, type StateAction, type StateContentProps} from '../../kit/states';
 import styles from '../../kit/states/gallery.module.css';
 
@@ -149,7 +149,7 @@ function Empty({kind}: {kind: EmptyKind}) {
   };
   return <StateLayout {...content[kind]} className={kind === 'owner' ? styles.ownerDenied : kind === 'restricted' ? styles.restricted : kind === 'member' ? styles.memberEmpty : kind === 'live' ? styles.liveEmpty : undefined}
     backdrop={kind === 'my-list' || kind === 'recordings' || kind === 'owner' ? null : {kind:'colour',shape:kind === 'not-found' || kind === 'first-library' ? 'side':'top'}}
-    chrome={kind === 'owner' ? <ServerBand variant="state"/> : undefined}
+    chrome={undefined}
     contentStyle={{top:kind === 'first-library' || kind === 'not-found' ? 330 : kind === 'member' ? 286 : kind === 'my-list' ? 178 : kind === 'owner' ? 44 : 250,...(kind === 'owner' ? {left:20,right:20} : {})}} after={output}/>;
 }
 function FirstScan() {

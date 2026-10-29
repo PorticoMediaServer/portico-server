@@ -4,7 +4,6 @@ import type {SettingsRow, SettingsValue} from '@core/presentation/settings-spec.
 import {Button, TextField} from '../../kit/controls';
 import {Dialog} from '../../kit/overlays';
 import {SettingsOrderedList, type SettingPresentation} from '../../kit/settings';
-import {ColourBackdrop} from '../../kit/artwork';
 import styles from './audio-subtitles.module.css';
 import {maxPreferredLanguages, preferredLanguageChoices, preferredLanguageEntryName, type PreferredLanguageKind} from './audio-subtitles-model';
 
@@ -59,7 +58,6 @@ export function AudioSubtitleLanguageList({row, state, locale, appLocale, onChan
 /** The drawn subtitle preview: the player's own palette over a still-like backdrop. */
 export function SubtitlePreview({paint, text}: {paint: {color: string; backgroundColor: string; textShadow: string; scale: number; position: 'bottom' | 'raised' | 'top'}; text: string}) {
   return <div className={styles.preview} role="img" aria-label={t('next.settings.audioSubtitles.previewLabel', {text})}>
-    <ColourBackdrop shape="side" fill />
     <div className={styles.previewCaption} data-position={paint.position}>
       <span className={styles.previewText} style={{'--preview-size': `calc(5.2cqh * ${paint.scale})`, '--preview-color': paint.color, '--preview-background': paint.backgroundColor, '--preview-shadow': paint.textShadow} as CSSProperties}>{text}</span>
     </div>
