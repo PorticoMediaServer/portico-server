@@ -8,3 +8,4 @@
 .arc { stroke: var(--color-accent-strong); stroke-linecap: round; stroke-dasharray: 56.55; stroke-dashoffset: 20; }
 @keyframes capacity-turn { from { transform: rotate(-90deg); } to { transform: rotate(270deg); } }
 @media (prefers-reduced-motion: reduce) { .ring { animation: none; transform: rotate(-90deg); } }
+:global([data-reduce-motion='true']) .ring { animation: none; transform: rotate(-90deg); }

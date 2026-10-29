@@ -21,16 +21,16 @@ export function loadScale(kind: DashboardLoadKind, max: number): ChartScale {
     : niceScale(max * (kind === 'bandwidth' ? 1.06 : 1.12), 4);
 }
 /** Drawing fmtMbps/fmtPct/fmtDur/fmtHrs; only their unit text goes through the catalogue. */
-export const fmtMbps = (v: number): string => t('next.dashboard.mbps', {value: v >= 100 ? String(Math.round(v)) : v.toFixed(1)});
-export const formatStreamRate = (kbps: number): string => kbps < 1000 ? t('next.dashboard.format.kbps', {value: String(Math.round(kbps))}) : t('next.dashboard.mbps', {value: String(Number((kbps / 1000).toFixed(1)))});
-export const fmtPct = (v: number): string => t('next.dashboard.percent', {value: v.toFixed(1)});
+export const fmtMbps = (v: number): string => t('next.dashboard.mbps', {value: v >= 100 ? String(Math.round(v)) : defaultI18n.number(v, {minimumFractionDigits: 1, maximumFractionDigits: 1})});
+export const formatStreamRate = (kbps: number): string => kbps < 1000 ? t('next.dashboard.format.kbps', {value: String(Math.round(kbps))}) : t('next.dashboard.mbps', {value: defaultI18n.number(kbps / 1000, {maximumFractionDigits: 1})});
+export const fmtPct = (v: number): string => t('next.dashboard.percent', {value: defaultI18n.number(v, {minimumFractionDigits: 1, maximumFractionDigits: 1})});
 export function fmtDur(h: number): string {
   if (h >= 100) return t('next.dashboard.hours', {value: String(Math.round(h))});
   const m = Math.round(h * 60);
   if (m < 60) return t('next.dashboard.format.minutes', {minutes: String(m)});
   return t('next.dashboard.format.hoursMinutes', {hours: String(Math.floor(m / 60)), minutes: String(m % 60).padStart(2, '0')});
 }
-export const fmtHrs = (h: number): string => t('next.dashboard.hours', {value: String(h >= 10 ? Math.round(h) : Math.round(h * 10) / 10)});
+export const fmtHrs = (h: number): string => t('next.dashboard.hours', {value: String(h >= 10 ? Math.round(h) : defaultI18n.number(h, {maximumFractionDigits: 1}))});
 /** History's human lengths: whole-minute labels follow ruling 7, short exact totals retain their seconds. */
 export function formatHistoryDuration(seconds: number, exactShort = false): string {
   const total = Math.max(0, Math.floor(seconds)), minutes = Math.round(total / 60);

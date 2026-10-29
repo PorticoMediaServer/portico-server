@@ -19,6 +19,7 @@
 .tapDot { position: absolute; width: 38px; height: 38px; transform: translate(-50%, -50%); border-radius: 50%; border: 2px solid color-mix(in srgb, var(--color-white) 70%, transparent); background: color-mix(in srgb, var(--color-white) 20%, transparent); }
 @keyframes tapFeedback { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .tapFeedback { animation-duration: var(--motion-reduced); animation-timing-function: linear; } }
+:global([data-reduce-motion='true']) .tapFeedback { animation-duration: var(--motion-reduced); animation-timing-function: linear; }
 .shade { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, color-mix(in srgb, var(--color-dim) 84%, transparent) 0, color-mix(in srgb, var(--color-dim) 38%, transparent) 130px, transparent 240px), linear-gradient(0deg, color-mix(in srgb, var(--color-dim) 94%, transparent) 0, color-mix(in srgb, var(--color-dim) 62%, transparent) 150px, transparent 340px); }
 .top { position: absolute; inset: 0 0 auto; display: flex; align-items: flex-start; gap: 18px; padding: 30px 40px; }
 .identity { min-width: 0; flex: 0 1 auto; text-shadow: 0 2px 24px color-mix(in srgb, var(--color-shadow) 45%, transparent); }
@@ -91,7 +92,7 @@
 .watch[data-controls-exit='tap'] { --watch-controls-exit: var(--motion-standard); }
 .watch[data-controls-exit='close'] { --watch-controls-exit: var(--motion-quick); }
 .top, .bottom, .center, .shade { opacity: 1; visibility: visible; transition: opacity var(--motion-standard) var(--ease-out), visibility 0s; }
-.watch[data-controls-visible='false'] .top, .watch[data-controls-visible='false'] .bottom, .watch[data-controls-visible='false'] .center, .watch[data-controls-visible='false'] .shade { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity var(--watch-controls-exit) var(--ease-out), visibility 0s var(--watch-controls-exit); }
+.watch[data-controls-visible='false'] .top, .watch[data-controls-visible='false'] .bottom, .watch[data-controls-visible='false'] .center, .watch[data-controls-visible='false'] .shade { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity var(--watch-controls-exit) var(--ease-in), visibility 0s var(--watch-controls-exit); }
 /* phone-player f6e: while the admitted Still watching modal holds, the player's
    top bar, transport and bottom bar are not drawn; the stage and scrim remain. */
 .watch[data-still-watching='true'] .top, .watch[data-still-watching='true'] .center, .watch[data-still-watching='true'] .bottom { opacity: 0; visibility: hidden; pointer-events: none; transition: none; }
@@ -162,7 +163,7 @@
 
 /* The drawn live player branch; the generic VOD/phone chrome is unchanged when no live port exists. */
 .liveOverlay { position: absolute; inset: 0; opacity: 1; visibility: visible; pointer-events: none; transition: opacity var(--motion-standard) var(--ease-out), visibility 0s; }
-.liveOverlay[data-visible='false'] { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity var(--watch-controls-exit) var(--ease-out), visibility 0s var(--watch-controls-exit); }
+.liveOverlay[data-visible='false'] { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity var(--watch-controls-exit) var(--ease-in), visibility 0s var(--watch-controls-exit); }
 
 /* desktop-player f4b: the finished film's own backdrop, blurred under a veil. */
 .endAmbient { position: absolute; inset: -14%; width: 128%; height: 128%; overflow: hidden; opacity: .55; filter: blur(80px) saturate(1.5); pointer-events: none; }

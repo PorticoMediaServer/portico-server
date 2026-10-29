@@ -87,7 +87,7 @@
 .guideCell[data-state='past'] .guideCellTitle { color: var(--color-text-tertiary); }
 .guideCell[data-state='past'] .guideCellDetail { opacity: .65; }
 .guideCell[data-selected] { background: var(--color-raised-bright); box-shadow: inset 0 0 0 2px var(--color-accent-strong); }
-.guideCell:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 2px; z-index: var(--layer-content); }
+.guideCell:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 0; z-index: var(--layer-content); }
 .guideCell[data-kind='gap'] { cursor: default; background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--color-text) 3.5%, transparent) 0 7px, transparent 7px 14px); box-shadow: inset 0 0 0 1px var(--color-line); }
 .guideCell[data-wide-gap] { padding-left: 18px; }
 .guideCellTitle { line-height: normal; position: relative; z-index: var(--layer-hero-navigation); display: flex; align-items: center; gap: 7px; min-width: 0; font-size: calc(var(--type-body-size) - .5px); font-weight: var(--type-row-heading-weight); }

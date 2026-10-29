@@ -82,7 +82,7 @@
 .phoneHeader .brand img { height: calc(16px * var(--spec-navigation-web-wordmark-scale)); }
 .destinations { position: relative; display: flex; flex: 1; gap: 26px; list-style: none; margin: 0; padding: 0; min-width: 0; align-items: center; }
 .destinations > li { flex: none; }
-.destinations a, .more, .destinationMeasure { position: relative; color: var(--color-text-secondary); font-size: var(--type-nav-size); font-weight: var(--type-nav-weight); line-height: var(--type-nav-line); text-decoration: none; padding: 6px 0; white-space: nowrap; display: flex; align-items: center; gap: 4px; }
+.destinations a, .more, .destinationMeasure { position: relative; transition: color 160ms var(--ease-out); color: var(--color-text-secondary); font-size: var(--type-nav-size); font-weight: var(--type-nav-weight); line-height: var(--type-nav-line); text-decoration: none; padding: 6px 0; white-space: nowrap; display: flex; align-items: center; gap: 4px; }
 .destinationMeasurements { position: fixed; inset: 0 auto auto 0; width: 0; height: 0; overflow: hidden; visibility: hidden; display: flex; pointer-events: none; }
 .destinationMeasure { flex: none; }
 .more { border: 0; background: none; cursor: pointer; }
