@@ -37,11 +37,9 @@ function SignInScreen() {
   }, []);
   return instance ? <AccountSignInView entry={instance.entry} form={instance.form} initialize={!instance.continuation} takeReturn={takeAccountReturn} takeMove={takeAccountMove} /> : null;
 }
-/** At web.getportico.tv a server is signed in to from the account's chooser (P2-66); the
- * Portico Account sign-in itself is the account page at this same address. */
-function HostedSignIn() {
-  useLayoutEffect(() => {void router.navigate({to: '/servers', replace: true});}, []);
-  return null;
-}
+/** At web.getportico.tv /sign-in is the Portico Account sign-in, drawn by the account pages in
+ * this same document (H14); a server is then opened from the chooser. This screen draws and does
+ * nothing there, even for the moment the router keeps it while leaving. */
+function HostedSignIn() {return null;}
 function SignInRoute() {return currentWebEnvironment().hostedWeb ? <HostedSignIn /> : <SignInScreen />;}
 export default defineWebScreen({id: 'signIn', component: SignInRoute, chrome: 'standalone'});

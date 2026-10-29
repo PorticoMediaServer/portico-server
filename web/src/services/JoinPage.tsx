@@ -1,4 +1,10 @@
 import {useMemo, useState, useSyncExternalStore} from 'react';
+import {goTo} from '../platform/hosted-navigation';
+/** After joining: a Portico Account server opens from the account's chooser, here at this same
+ * address (H14). A local-account server keeps its own web app at its own address. */
+const joined = (destination: Readonly<{origin: string; signIn: 'local' | 'portico'}>) => {
+  if (destination.signIn === 'portico') goTo('/servers'); else location.assign(destination.origin);
+};
 import type {JoinLink} from '@core/join-link.ts';
 import {AccountInvitationScreen} from '../screens/accounts/AccountInvitation';
 import {ShortInvitationEntry} from '../screens/accounts/ShortInvitationEntry';
@@ -22,7 +28,7 @@ export function JoinPage({account, link, onBack}: {account: ServicesAccount; lin
     signedOutContent={<><HostedError error={error} /><ServicesAuthForm account={account} embedded invitation onSignedIn={() => {}} /></>}
     // The canonical invitation controller has retired its temporary Server grant.
     // This opens the proved origin for fresh admission; no credential crosses origins.
-    onJoined={destination => location.assign(destination.origin)} />;
+    onJoined={joined} />;
 }
 
 /** The typed address/code step. It carries only a verified destination out,
@@ -36,7 +42,7 @@ export function ShortJoinPage({account, onBack, initialCode}: {account: Services
   };
   return <ShortInvitationEntry initialCode={initialCode} account={current} onBack={onBack} onDifferentAccount={different}
     signedOutContent={<><HostedError error={error} /><ServicesAuthForm account={account} embedded invitation onSignedIn={() => {}} /></>}
-    onJoined={destination => location.assign(destination.origin)} />;
+    onJoined={joined} />;
 }
 
 /** Connect 27: the same canonical invitation screen, drawn as the dialog the start
@@ -53,6 +59,6 @@ export function ServicesInvitationDialog({account, link, pasted, onBack, onUnava
     <p className={dialogStyles.link} title={pasted}>{pasted}</p>
     <AccountInvitationScreen presentation="dialog" onUnavailable={onUnavailable} link={link} account={current} onBack={onBack} onDifferentAccount={different}
       signedOutContent={<><HostedError error={error} /><ServicesAuthForm account={account} embedded invitation onSignedIn={() => {}} /></>}
-      onJoined={destination => location.assign(destination.origin)} />
+      onJoined={joined} />
   </Dialog>;
 }

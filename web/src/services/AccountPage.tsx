@@ -2,7 +2,8 @@ import {HostedError, ServicesQuiet} from '../kit/accounts/ServicesAuth';
 import {useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode} from 'react';
 import type {HostedSession} from '@core/index.ts';
 import {ProfileAvatar} from '../kit/shell/AccountSurfaces';
-import {ServicesHeader, ServicesWorkspace, type ServicesSection} from '../kit/accounts/ServicesWorkspace';
+import {ServicesHeader, ServicesWorkspace, ServicesWorkspaceActions, type ServicesSection} from '../kit/accounts/ServicesWorkspace';
+import {goTo} from '../platform/hosted-navigation';
 import {Button} from '../kit/controls';
 import {DevicesPanel} from './DevicesPanel';
 import {FeedPanel} from './FeedPanel';
@@ -43,15 +44,18 @@ function ReadyAccount({account, session, section, identityTransaction, onDeleted
     return () => controller.abort();
   }, [api]);
   const name = session.account.displayName || session.account.username, initial = [...name][0]?.toLocaleUpperCase() ?? '';
-  const select = (tab: ServicesSection) => location.assign('/account?tab=' + tab);
+  // Sections change in place: the workspace (header, sidebar, backdrop) stays mounted and only
+  // the pane swaps (H14). Every section renders inside the one workspace below.
+  const select = (tab: ServicesSection) => goTo('/account?tab=' + tab);
   const signOut = () => { void account.service.logoutIfCurrent(identity).catch(setError); };
   const header = <ServicesHeader unread={state.unread > 0} avatar={<ProfileAvatar appearance="session" initial={initial} name={name} onClick={() => select('devices')} />} />;
-  const frame = (children: ReactNode, actions?: ReactNode, description?: ReactNode) => <ServicesWorkspace header={header} account={{name, email: contact, initial}} section={section}
-    onSection={select} onSignOut={signOut} actions={actions} phoneActions={section === 'devices' ? actions : undefined} unread={state.unread} description={description}>{error ? <HostedError error={error} /> : null}{children}</ServicesWorkspace>;
-  if (section === 'devices') return <DevicesPanel api={api} frame={(children, actions) => frame(children, actions, t('services.workspace.devicesBody'))} />;
-  if (section === 'notifications') return frame(<FeedPanel feed={feed} onReviewDevices={() => select('devices')} />,
-    <Button size="small" icon="i-check" disabled={state.busy || !state.unread} onClick={() => void feed.markRead('all')}>{t('web.account.notif.markAll')}</Button>);
-  if (section === 'security') return frame(<SecurityPanel identityTransaction={identityTransaction} account={account} api={api} identity={identity} username={session.account.username} onDeleted={onDeleted} onSecurityEnded={onSecurityEnded} />,
-    undefined, t('services.workspace.securityBody'));
-  return frame(<ServersPanel api={api} />, undefined, t('web.hostedAccount.serversHelp'));
+  const devicesFrame = (children: ReactNode, actions: ReactNode) => <>{children}{actions ? <ServicesWorkspaceActions>{actions}</ServicesWorkspaceActions> : null}</>;
+  const pane = section === 'devices' ? <DevicesPanel api={api} frame={devicesFrame} />
+    : section === 'notifications' ? <FeedPanel feed={feed} onReviewDevices={() => select('devices')} />
+      : section === 'security' ? <SecurityPanel identityTransaction={identityTransaction} account={account} api={api} identity={identity} username={session.account.username} onDeleted={onDeleted} onSecurityEnded={onSecurityEnded} />
+        : <ServersPanel api={api} />;
+  const actions = section === 'notifications' ? <Button size="small" icon="i-check" disabled={state.busy || !state.unread} onClick={() => void feed.markRead('all')}>{t('web.account.notif.markAll')}</Button> : undefined;
+  const description = section === 'notifications' ? undefined : t(section === 'devices' ? 'services.workspace.devicesBody' : section === 'security' ? 'services.workspace.securityBody' : 'web.hostedAccount.serversHelp');
+  return <ServicesWorkspace header={header} account={{name, email: contact, initial}} section={section}
+    onSection={select} onSignOut={signOut} actions={actions} unread={state.unread} description={description}>{error ? <HostedError error={error} /> : null}{pane}</ServicesWorkspace>;
 }

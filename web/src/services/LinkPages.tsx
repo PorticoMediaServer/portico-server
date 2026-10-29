@@ -1,4 +1,5 @@
 import {useLayoutEffect, useMemo, useRef, useState} from 'react';
+import {goTo} from '../platform/hosted-navigation';
 import {passwordStrength} from '@core/password-strength.ts';
 import {AuthPasswordField} from '../kit/accounts';
 import {HostedError, ServicesBackLink, ServicesAuthStage, ServicesHeading, ServicesLead, ServicesNotice, ServicesStrength, ServicesActions, ServicesLabel, ServicesStateIcon} from '../kit/accounts/ServicesAuth';
@@ -10,7 +11,7 @@ import styles from './services.module.css';
 
 export function PasswordChanged() {
   const {t} = useMemo(servicesI18n, []);
-  return <ServicesAuthStage variant="state"><ServicesStateIcon /><ServicesHeading>{t('web.reset.doneTitle')}</ServicesHeading><ServicesLead>{t('web.reset.done')}</ServicesLead><ServicesActions><Button variant="primary" onClick={() => location.assign('/')}>{t('web.link.continue')}</Button></ServicesActions></ServicesAuthStage>;
+  return <ServicesAuthStage variant="state"><ServicesStateIcon /><ServicesHeading>{t('web.reset.doneTitle')}</ServicesHeading><ServicesLead>{t('web.reset.done')}</ServicesLead><ServicesActions><Button variant="primary" onClick={() => goTo('/')}>{t('web.link.continue')}</Button></ServicesActions></ServicesAuthStage>;
 }
 
 export function EmailVerified({outcome}: {outcome: VerificationOutcome}) {
@@ -18,7 +19,7 @@ export function EmailVerified({outcome}: {outcome: VerificationOutcome}) {
   return <ServicesAuthStage variant="state"><ServicesStateIcon />
     <ServicesHeading>{t(outcome === 'changed' ? 'web.verify.changedTitle' : 'web.verify.doneTitle')}</ServicesHeading>
     <ServicesLead>{t(outcome === 'changed' ? 'web.verify.changed' : outcome === 'elsewhere' ? 'web.verify.confirmedElsewhere' : 'web.verify.done')}</ServicesLead>
-    {outcome !== 'elsewhere' && <ServicesActions><Button variant="primary" onClick={() => location.assign('/')}>{t(outcome === 'changed' ? 'web.verify.signIn' : 'web.link.continue')}</Button></ServicesActions>}
+    {outcome !== 'elsewhere' && <ServicesActions><Button variant="primary" onClick={() => goTo('/')}>{t(outcome === 'changed' ? 'web.verify.signIn' : 'web.link.continue')}</Button></ServicesActions>}
   </ServicesAuthStage>;
 }
 
@@ -103,6 +104,6 @@ export function VerifyPage({account, token}: {account: ServicesAccount; token?: 
   return <ServicesAuthStage variant="reset">
     <ServicesHeading>{t('web.verify.title')}</ServicesHeading>
     {cutOff ? <ServicesNotice>{t('web.link.invalid')}</ServicesNotice> : expired ? <ServicesNotice icon="i-clock">{t('web.verify.expired')}</ServicesNotice> : error ? <HostedError error={error} /> : <ServicesNotice tone="info" busy>{t('web.verify.working')}</ServicesNotice>}
-    {!token || error ? <ServicesActions><Button onClick={() => location.assign('/')}>{t('web.link.backToPortico')}</Button></ServicesActions> : null}
+    {!token || error ? <ServicesActions><Button onClick={() => goTo('/')}>{t('web.link.backToPortico')}</Button></ServicesActions> : null}
   </ServicesAuthStage>;
 }

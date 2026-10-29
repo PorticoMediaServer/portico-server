@@ -2,6 +2,7 @@ import {useEffect, useLayoutEffect, useState, useSyncExternalStore} from 'react'
 import {defaultI18n} from '@i18n';
 import {RouteError} from '@core/route-identity.ts';
 import {browserAccount} from '../../platform/account';
+import {goTo} from '../../platform/hosted-navigation';
 import {accountIdentity} from '../../platform/account-work';
 import {createAccountServerDirectory} from '../../platform/account-server-directory';
 import {createAccountServerAccess} from '../../platform/account-server-access';
@@ -53,7 +54,7 @@ export function HostedServersScreen() {
 }
 
 function Replace({to}: {to: string}) {
-  useLayoutEffect(() => {location.replace(to);}, [to]);
+  useLayoutEffect(() => {goTo(to, {replace: true});}, [to]);
   return <ServicesAuthStage><></></ServicesAuthStage>;
 }
 
@@ -69,22 +70,27 @@ function BoundServers({session}: {session: Session}) {
     const controller = new AbortController(), directory = createAccountServerDirectory(account, scope), access = createAccountServerAccess(account, scope);
     const current = () => live && access.isCurrent();
     let flow: ServicesDirectoryFlow<Admitted> | undefined;
+    // A server just joined opens straight away (the person asked for it), here, in place.
+    const opening = new URLSearchParams(location.search).get('open');
+
     setError(undefined);
     void (async () => {
       try {
         const [initial, record] = await Promise.all([directory.read(controller.signal), browserAppSessions().read()]);
         if (!current()) return;
-        if (!initial.items.length) {location.replace('/#join'); return;}
+        if (!initial.items.length) {goTo('/welcome#join', {replace: true}); return;}
         // Where each saved sign-in last worked, for the one fallback a state may offer.
         const saved = new Map<string, string>();
         for (const row of record.servers) if (row.signIn === 'portico' && row.connection.hosted?.accountId === scope.accountId && row.connection.routes.lastGood) saved.set(row.connection.pin.serverId, row.connection.routes.lastGood);
-        flow = new ServicesDirectoryFlow<Admitted>(initial, {current, read: directory.read, empty: () => {if (current()) location.replace('/#join');},
+        flow = new ServicesDirectoryFlow<Admitted>(initial, {current, read: directory.read, empty: () => {if (current()) goTo('/welcome#join', {replace: true});},
           admit: (server, signal) => admitServer(server, scope.accountId, access, signal)}, !record.selectedServerId);
         setLoaded({flow, saved});
+        const asked = opening ? initial.items.find(item => item.id === opening) : undefined;
+        if (opening) goTo('/servers', {replace: true});
+        if (asked) void flow.open(asked, flow.getSnapshot());
       } catch (failure) {if (current()) setError(failure);}
     })();
-    const off = access.observe?.(() => {if (!access.isCurrent()) location.replace('/servers');});
-    return () => {live = false; controller.abort(); off?.(); flow?.getSnapshot().admitted?.dispose(); flow?.dispose();};
+    return () => {live = false; controller.abort(); flow?.getSnapshot().admitted?.dispose(); flow?.dispose();};
   }, [account, scope, attempt]);
   if (error) return <DocumentBootReady><ServicesAuthStage><HostedError error={error} /><Button variant="primary" onClick={() => setAttempt(value => value + 1)}>{t('next.states.tryAgain')}</Button></ServicesAuthStage></DocumentBootReady>;
   if (!loaded) return <ServicesAuthStage><></></ServicesAuthStage>;
@@ -157,9 +163,9 @@ function Chooser({session, flow, saved}: {session: Session; flow: ServicesDirect
     return () => {live = false; clearTimeout(timer); document.removeEventListener('visibilitychange', reconcile);};
   }, [flow, state.phase, state.waitingId, state.items, blocked, allOffline]);
   const name = session.account.displayName || session.account.username;
-  const signOut = () => {setWorking(true); void signOutBrowserPorticoAccount().then(() => location.replace('/sign-in'), failure => {setWorking(false); setFailure(failure);});};
+  const signOut = () => {setWorking(true); void signOutBrowserPorticoAccount().then(() => goTo('/sign-in', {replace: true}), failure => {setWorking(false); setFailure(failure);});};
   const header = <ServicesHeader notifications={false} avatar={<ServerlessAccountMenu username={session.account.username} name={name} t={t}
-    onAccount={() => location.assign('/account')} onJoin={() => location.assign('/#join')} onSetup={() => location.assign('/#setup')} onApps={() => location.assign(distributionPage)}
+    onAccount={() => goTo('/account')} onJoin={() => goTo('/welcome#join')} onSetup={() => goTo('/welcome#setup')} onApps={() => location.assign(distributionPage)}
     onHelp={() => window.open('https://getportico.tv/docs/', '_blank', 'noopener,noreferrer')} onSignOut={signOut} />} />;
   const admitted = state.phase === 'opened' ? state.admitted : undefined;
   if (admitted) return <AccountSignInView entry={admitted.entry} form={admitted.form} initialize={false} onCancel={() => flow.cancelOpening(flow.getSnapshot())} />;
@@ -191,7 +197,7 @@ function Chooser({session, flow, saved}: {session: Session; flow: ServicesDirect
       offline={allOffline} connecting={allOffline && connecting} seconds={state.seconds} pendingId={state.pendingId} busy={state.phase === 'reading' || working}
       error={failure ? <HostedError error={failure} /> : <Notice notice={connecting && transient ? undefined : directoryNotice(state, 'list', target?.name)} />}
       onOpen={id => {const item = state.items.find(value => value.id === id); if (item) void flow.open(item, state);}} onRefresh={() => void flow.refresh(state)}
-      onAccount={() => location.assign('/account')} onJoin={() => location.assign('/#join')} onSetup={() => location.assign('/#setup')} onLocal={() => location.assign('/#local')}
+      onAccount={() => goTo('/account')} onJoin={() => goTo('/welcome#join')} onSetup={() => goTo('/welcome#setup')} onLocal={() => goTo('/welcome#local')}
       onDifferentAccount={signOut} onRemove={id => setRemoving(state.items.find(item => item.id === id))} />
     {removing && <Dialog open onOpenChange={open => {if (!open && !working) setRemoving(undefined);}} size="sm" role="alertdialog"
       title={t(removing.ownedByMe ? 'web.chooser.removeTitle' : 'web.chooser.leaveTitle', {server: removing.name})}

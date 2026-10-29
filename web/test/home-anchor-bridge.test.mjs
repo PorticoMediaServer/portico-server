@@ -53,7 +53,9 @@ async function mount({hash = '', pathname = '/', search = '', servers = [server(
     },
     './workspace-api': {workspaceApi: () => api}, './i18n': {servicesI18n: () => ({t: x => x})},
     '../kit/accounts/ServicesAuth': {ServicesAuthStage: 'Stage'}, '../kit/accounts/ServicesWorkspace': {ServicesStart: 'Start', ServicesHeader: 'Header'},
-    './DirectoryPage': {ServicesLocalServerPage: 'Local'}, './use-membership-ending': {useMembershipEnding: () => ({visible: false})},
+    './DirectoryPage': {ServicesLocalServerPage: 'Local'},
+    // No app is registered here, so goTo is an ordinary page load (platform/hosted-navigation).
+    '../platform/hosted-navigation': {goTo: (to, options) => options?.replace ? globalThis.location.replace(to) : globalThis.location.assign(to)}, './use-membership-ending': {useMembershipEnding: () => ({visible: false})},
   });
   // The original prop never changes: a successor session exists only in the service
   // snapshot, so a stale-callback vector cannot create a rightful successor Home.

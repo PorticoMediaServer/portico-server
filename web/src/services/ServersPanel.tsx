@@ -1,4 +1,5 @@
 import {useEffect, useMemo, useRef, useState} from 'react';
+import {goTo} from '../platform/hosted-navigation';
 import {encodedRoutePath, routeBody} from '../../../packages/contracts/src/hosted/routes.ts';
 import {ServicesBadge, ServicesDangerAction, ServicesEmpty, ServicesGroup, ServicesWorkspaceRow} from '../kit/accounts/ServicesWorkspace';
 import {Button} from '../kit/controls';
@@ -74,16 +75,16 @@ export function ServersPanel({api}: {api: WorkspaceApi}) {
       {!copy.online ? <Button size="small" variant="glass" disabled={busy || Boolean(retrying)} loading={retrying === server.id} onClick={() => void retry(server)}>{t('next.states.tryAgain')}</Button> : null}
       {server.ownedByMe ? <ServicesQuiet>{t('web.hostedAccount.leaveOwner')}</ServicesQuiet> : <Button size="small" disabled={busy} onClick={() => setLeaving(server)}>{t('web.hostedAccount.leaveServer')}</Button>}
     </ServicesWorkspaceRow>;}) : <ServicesEmpty title={t('services.workspace.emptyServers')} description={t('services.workspace.emptyServersBody')}
-      actions={<><Button size="small" variant="primary" onClick={() => location.assign('/#join')}>{t('services.start.join')}</Button><Button size="small" onClick={() => location.assign('/#setup')}>{t('services.start.setup')}</Button></>} />}</ServicesGroup>}
+      actions={<><Button size="small" variant="primary" onClick={() => goTo('/welcome#join')}>{t('services.start.join')}</Button><Button size="small" onClick={() => goTo('/welcome#setup')}>{t('services.start.setup')}</Button></>} />}</ServicesGroup>}
     {allOffline ? <ServicesGroup title={t('web.hostedAccount.accountActions')}>
       <ServicesWorkspaceRow icon="i-person" title={t('web.hostedAccount.stillWorksAccount')} help={t('web.hostedAccount.stillWorksAccountBody')}>
-        <Button size="small" variant="glass" icon="i-right" iconOnly aria-label={t('web.hostedAccount.stillWorksAccount')} onClick={() => location.assign('/account')} />
+        <Button size="small" variant="glass" icon="i-right" iconOnly aria-label={t('web.hostedAccount.stillWorksAccount')} onClick={() => goTo('/account')} />
       </ServicesWorkspaceRow>
       <ServicesWorkspaceRow icon="i-link" title={t('web.hostedAccount.stillWorksJoin')} help={t('web.hostedAccount.stillWorksJoinBody')}>
-        <Button size="small" variant="glass" icon="i-right" iconOnly aria-label={t('web.hostedAccount.stillWorksJoin')} onClick={() => location.assign('/#join')} />
+        <Button size="small" variant="glass" icon="i-right" iconOnly aria-label={t('web.hostedAccount.stillWorksJoin')} onClick={() => goTo('/welcome#join')} />
       </ServicesWorkspaceRow>
       <ServicesWorkspaceRow icon="i-server" title={t('web.hostedAccount.stillWorksSetup')} help={t('web.hostedAccount.stillWorksSetupBody')}>
-        <Button size="small" variant="glass" icon="i-right" iconOnly aria-label={t('web.hostedAccount.stillWorksSetup')} onClick={() => location.assign('/#setup')} />
+        <Button size="small" variant="glass" icon="i-right" iconOnly aria-label={t('web.hostedAccount.stillWorksSetup')} onClick={() => goTo('/welcome#setup')} />
       </ServicesWorkspaceRow>
     </ServicesGroup> : null}
     <Dialog open={Boolean(leaving)} onOpenChange={open => { if (!open && !busy) setLeaving(undefined); }} className={servicesStyles.overlaySpacing} title={t('web.hostedAccount.leaveTitle', {server: leaving?.name ?? ''})}

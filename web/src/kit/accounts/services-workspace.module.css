@@ -26,6 +26,7 @@
 .heading { display: flex; align-items: flex-end; gap: 18px; }
 .heading h2 { font-size: 48px; line-height: 1; font-weight: 800; letter-spacing: -.04em; margin: 0; }
 .heading > div { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+.headingActions:empty { display: none; }
 .lead { font-size: 16px; line-height: 1.55; color: var(--color-text-secondary); margin: 14px 0 0; max-width: 660px; }
 .phoneTabs { display: none; }
 .phoneActions, .factPhone { display: none; }
@@ -56,6 +57,8 @@
 .badge[data-tone="healthy"] { background: rgba(134,207,179,.14); color: var(--color-healthy); }
 .empty { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 48px 24px 52px; }
 .empty > b { font-size: 20px; font-weight: 800; letter-spacing: -.02em; margin: 6px 0; }
+.emptyActions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+.groupNote { margin-top: 16px; }
 .empty > p { margin: 0 0 20px; font-size: 15px; line-height: 1.5; color: var(--color-text-secondary); max-width: 420px; }
 .feedRow { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 16px; align-items: start; padding: 18px 22px 18px 34px; border-top: 1px solid var(--color-line-soft); position: relative; }
 .feedRow:first-child { border-top: 0; }
@@ -157,6 +160,7 @@
   .icon[data-phone-tone="green"] { background: rgba(134,207,179,.13); color: var(--color-healthy); }
   .badge { margin-left: 6px; height: 20px; font-size: 11.5px; }
   .phoneActions { display: flex; flex-direction: column; margin-top: 16px; }
+  .phoneActions:empty { display: none; }
   .phoneActions > button { width: 100%; height: 48px; padding: 0 20px; border-radius: 11px; font-size: 16px; line-height: normal; font-weight: 700; letter-spacing: normal; }
   .factDesktop { display: none; }
   .factPhone { display: contents; }

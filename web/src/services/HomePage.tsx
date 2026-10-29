@@ -1,4 +1,5 @@
 import {useLayoutEffect, useCallback, useMemo, useRef, useState} from 'react';
+import {goTo} from '../platform/hosted-navigation';
 import type {HostedSession} from '@core/index.ts';
 import {parseJoinLink, type JoinLink} from '@core/join-link.ts';
 import {DocumentBootReady} from '../shell/DocumentBootReady';
@@ -81,14 +82,14 @@ function BoundHome({account, session}: {account: ServicesAccount; session: Omit<
   if (error) return <DocumentBootReady><StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
     primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => retry(value => value + 1)}} /></DocumentBootReady>;
   if (!servers) return <ServicesAuthStage><></></ServicesAuthStage>;
-  if(intent==='local')return <ServicesLocalServerPage current={localCurrent} onBack={()=>{if(servers.items.length)location.replace('/servers');else setIntent(undefined);}} />;
+  if(intent==='local')return <ServicesLocalServerPage current={localCurrent} onBack={()=>{if(servers.items.length)goTo('/servers',{replace:true});else setIntent(undefined);}} />;
   if(!servers.items.length||intent==='join'||intent==='setup')return <DocumentBootReady><Start account={account} session={session} servers={servers} sourceCurrent={sourceCurrent} initialSection={intent} reveal={reveal} /></DocumentBootReady>;
   return <OpenChooser />;
 }
 /** The account has servers: the chooser is the app's own (connect 1), on this same address,
  * so opening a server lands on its Home here and never sends the browser to the server. */
 function OpenChooser() {
-  useLayoutEffect(() => {location.replace('/servers');}, []);
+  useLayoutEffect(() => {goTo('/servers', {replace: true});}, []);
   return <ServicesAuthStage><></></ServicesAuthStage>;
 }
 function Start({account, session, servers, sourceCurrent, initialSection, reveal = 0}: {account: ServicesAccount; session: Omit<HostedSession, 'refreshToken'>; servers: WorkspaceServers; sourceCurrent: () => boolean; initialSection?: 'join'|'setup'; reveal?: number}) {
@@ -118,7 +119,7 @@ function Start({account, session, servers, sourceCurrent, initialSection, reveal
   const name = session.account.displayName || session.account.username;
   const ending = servers.membershipEnding;
   return <><ServicesStart returning={Boolean(ending)||Boolean(initialSection)} notice={showEnding.visible && ending ? <div ref={showEnding.mount}><ServicesNotice tone="info"><b>{t('services.start.endedTitle', {server: ending.serverName ?? t('services.start.thisServer')})}</b> {t('web.chooser.refusedBody')}</ServicesNotice></div> : undefined} header={<ServicesHeader notifications={false} avatar={<ServerlessAccountMenu username={session.account.username} name={name} t={t}
-    onAccount={() => location.assign('/account')} onJoin={() => scrollToCard('join')} onSetup={() => scrollToCard('setup')} onApps={() => scrollToCard('apps')}
+    onAccount={() => goTo('/account')} onJoin={() => scrollToCard('join')} onSetup={() => scrollToCard('setup')} onApps={() => scrollToCard('apps')}
     onHelp={() => window.open('https://getportico.tv/docs/', '_blank', 'noopener,noreferrer')}
     onSignOut={() => run(async () => {await account.service.logoutIfCurrent(accountIdentity(session));})} />} />}
     invitation={invitation} onInvitationChange={value => { setInvitation(value); setInvalid(false); setJoinState(previous => previous.expired ? {} : previous); }} onJoin={() => inspect()}

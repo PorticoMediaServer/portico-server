@@ -1,6 +1,6 @@
 import {useCallback, useMemo, useSyncExternalStore} from 'react';
 import {runAccountExport} from '@core/account-notifications.ts';
-import {ServicesGroup, ServicesWorkspaceRow} from '../kit/accounts/ServicesWorkspace';
+import {ServicesGroup, ServicesGroupNote, ServicesWorkspaceRow} from '../kit/accounts/ServicesWorkspace';
 import {HostedError, ServicesQuiet} from '../kit/accounts/ServicesAuth';
 import {Button} from '../kit/controls';
 import {accountIdentity, sameAccount, type AccountIdentity, type ServicesAccount} from './session';
@@ -26,8 +26,8 @@ function ExportBody({download}: {download: AccountExportDownload}) {
     <ServicesGroup title={t('services.security.yourData')}><ServicesWorkspaceRow phoneIcon="i-file" title={t('web.account.export.button')} help={t('web.account.export.help')}>
       <Button size="small" icon="i-download" loading={state.phase === 'exporting'} onClick={() => void download.download(state)}>{t('web.account.export.button')}</Button>
     </ServicesWorkspaceRow></ServicesGroup>
-    {state.phase === 'pending' && <ServicesQuiet>{t('web.account.export.preparing')}</ServicesQuiet>}
-    {state.phase === 'downloaded' && <ServicesQuiet>{t('web.account.export.downloaded')}</ServicesQuiet>}
-    {state.phase === 'failed' && <HostedError error={state.error}/>}
+    {state.phase === 'pending' && <ServicesGroupNote><ServicesQuiet>{t('web.account.export.preparing')}</ServicesQuiet></ServicesGroupNote>}
+    {state.phase === 'downloaded' && <ServicesGroupNote><ServicesQuiet>{t('web.account.export.downloaded')}</ServicesQuiet></ServicesGroupNote>}
+    {state.phase === 'failed' && <ServicesGroupNote><HostedError error={state.error}/></ServicesGroupNote>}
   </>;
 }

@@ -1,4 +1,6 @@
-import {useEffect, useState, type ReactNode} from 'react';
+import {createContext, useContext, useEffect, useState, type ReactNode} from 'react';
+import {createPortal} from 'react-dom';
+import {inPageClick} from '../../platform/hosted-navigation';
 import {createI18n, deviceRegion, resolveRegion} from '@i18n';
 import {Icon, type IconName} from '../Icon';
 import {ProfileAvatarFace} from '../shell/AccountSurfaces';
@@ -45,9 +47,9 @@ const sections: readonly {id: ServicesSection; icon: IconName; label: string}[] 
 /** No server/library controls exist in the Services header. */
 export function ServicesHeader({avatar, unread = false, notifications = true}: {avatar: ReactNode; unread?: boolean; notifications?: boolean}) {
   return <header className={styles.header}>
-    <a className={styles.brand} href="/" aria-label={t('next.platform.appName')}><img src={wordmark} alt="" /></a>
-    <a className={styles.home} href="/">{t('web.shell.home')}</a>
-    <div className={styles.tools}>{notifications && <a className={styles.bell} href="/account?tab=notifications" aria-label={t('services.workspace.notifications')}><Icon name="i-bell" size={22} />{unread && <span className={styles.unread} />}</a>}{avatar}</div>
+    <a className={styles.brand} href="/" aria-label={t('next.platform.appName')} onClick={event => inPageClick(event.nativeEvent, '/')}><img src={wordmark} alt="" /></a>
+    <a className={styles.home} href="/" onClick={event => inPageClick(event.nativeEvent, '/')}>{t('web.shell.home')}</a>
+    <div className={styles.tools}>{notifications && <a className={styles.bell} href="/account?tab=notifications" aria-label={t('services.workspace.notifications')} onClick={event => inPageClick(event.nativeEvent, '/account?tab=notifications')}><Icon name="i-bell" size={22} />{unread && <span className={styles.unread} />}</a>}{avatar}</div>
   </header>;
 }
 
@@ -71,23 +73,31 @@ export function ServicesDangerAction({children, onClick, disabled = false, loadi
   return <Button className={styles.dangerAction} size={compact ? 'xs' : 'small'} icon={icon} onClick={onClick} disabled={disabled} loading={loading}>{children}</Button>;
 }
 
+/** Where a section's own heading and phone actions render (H14). The workspace stays mounted while
+ * sections change; a section that owns its actions (Devices) places them here. */
+const WorkspaceSlots = createContext<Readonly<{heading: HTMLElement | null; phone: HTMLElement | null}>>({heading: null, phone: null});
+export function ServicesWorkspaceActions({children}: {children: ReactNode}) {
+  const slots = useContext(WorkspaceSlots);
+  return <>{slots.heading && createPortal(children, slots.heading)}{slots.phone && createPortal(children, slots.phone)}</>;
+}
 export function ServicesWorkspace({header, account, section, onSection, onSignOut, description, actions, phoneActions, unread = 0, children}: {
   header: ReactNode; account: {name: string; email?: string; initial: string}; section: ServicesSection;
   onSection: (section: ServicesSection) => void; onSignOut: () => void; description?: ReactNode; actions?: ReactNode; phoneActions?: ReactNode; unread?: number; children: ReactNode;
 }) {
   const selected = sections.find(item => item.id === section)!;
-  return <div className={styles.workspace}>{header}<ColourBackdrop shape="workspace" viewport />
+  const [heading, setHeading] = useState<HTMLDivElement | null>(null), [phone, setPhone] = useState<HTMLDivElement | null>(null);
+  return <WorkspaceSlots.Provider value={{heading, phone}}><div className={styles.workspace}>{header}<ColourBackdrop shape="workspace" viewport />
     <div className={styles.workspaceGrid}><aside className={styles.aside}>
       <h1>{t('services.workspace.title')}</h1><div className={styles.who}><ProfileAvatarFace initial={account.initial} size={48} /><span><b>{account.name}</b>{account.email && <small>{account.email}</small>}</span></div>
       <nav aria-label={t('services.workspace.sections')}>{sections.map(item => <button type="button" key={item.id} aria-current={item.id === section ? 'page' : undefined} onClick={() => onSection(item.id)}><Icon name={item.icon} size={19} />{item.label}</button>)}<div className={styles.navSpacer} /><button type="button" onClick={onSignOut}><Icon name="i-signout" size={19} />{t('action.signOut')}</button></nav>
     </aside><main className={styles.pane}>
       <span className={styles.pill}><Icon name="i-person" size={16} />{t('services.workspace.title')}<span>{t('services.workspace.subtitle')}</span></span>
-      <div className={styles.heading}><h2>{selected.label}</h2>{actions && <div>{actions}</div>}</div>{description && <p className={styles.lead}>{description}</p>}
+      <div className={styles.heading}><h2>{selected.label}</h2><div ref={setHeading} className={styles.headingActions}>{actions}</div></div>{description && <p className={styles.lead}>{description}</p>}
       <nav className={styles.phoneTabs} aria-label={t('services.workspace.sections')}>{sections.map(item => <button key={item.id} type="button" aria-current={item.id === section ? 'page' : undefined} onClick={() => onSection(item.id)}>{item.label}</button>)}</nav>
       {children}
-      {phoneActions && <div className={styles.phoneActions}>{phoneActions}</div>}
+      <div ref={setPhone} className={styles.phoneActions}>{phoneActions}</div>
     </main></div>
-  </div>;
+  </div></WorkspaceSlots.Provider>;
 }
 
 export function ServicesGroup({title, description, actions, danger = false, children}: {title?: ReactNode; description?: ReactNode; actions?: ReactNode; danger?: boolean; children: ReactNode}) {
@@ -97,13 +107,15 @@ export function ServicesWorkspaceRow({title, help, helpPhone, children, icon, ph
   if (!icon && !phoneIcon) return <SettingsRow className={styles.plainRow} label={<>{title}{badge}</>} help={help}>{children}</SettingsRow>;
   return <div className={styles.iconRow} data-phone-icon-only={!icon || undefined} data-dim={dim || undefined}><span className={styles.icon} data-icon={icon ?? phoneIcon} data-phone-tone={phoneTone}><WorkspaceIcon name={(icon ?? phoneIcon)!} size={22} /></span><div><b>{title}{badge}</b>{help && <p>{helpPhone === undefined ? help : <><span className={styles.factDesktop}>{help}</span><span className={styles.factPhone}>{helpPhone}</span></>}</p>}</div><div>{children}</div></div>;
 }
+/** A notice or note that follows a group: the standard gap above it (H14). */
+export function ServicesGroupNote({children}: {children: ReactNode}) { return <div className={styles.groupNote}>{children}</div>; }
 export function ServicesRowNote({children}: {children: ReactNode}) { return <p className={styles.rowNote}>{children}</p>; }
 export function ServicesInlineFacts({items}: {items: readonly string[]}) { return <span className={styles.inlineFacts}>{items.filter(Boolean).map((item, index) => <span key={index}>{item}</span>)}</span>; }
 export function ServicesDeviceFacts({desktop, phone}: {desktop: readonly string[]; phone: readonly string[]}) {
   return <><span className={styles.factDesktop}><ServicesInlineFacts items={desktop} /></span><span className={styles.factPhone}><ServicesInlineFacts items={phone} /></span></>;
 }
 export function ServicesBadge({children, tone = 'default'}: {children: ReactNode; tone?: 'default' | 'accent' | 'healthy'}) { return <span className={styles.badge} data-tone={tone}>{children}</span>; }
-export function ServicesEmpty({title, description, actions}: {title: ReactNode; description: ReactNode; actions?: ReactNode}) { return <div className={styles.empty}><b>{title}</b><p>{description}</p>{actions}</div>; }
+export function ServicesEmpty({title, description, actions}: {title: ReactNode; description: ReactNode; actions?: ReactNode}) { return <div className={styles.empty}><b>{title}</b><p>{description}</p>{actions && <div className={styles.emptyActions}>{actions}</div>}</div>; }
 export function ServicesFeedRow({unread, icon, tone = 'blue', title, body, when, actions}: {unread: boolean; icon: IconName; tone?: 'blue' | 'green' | 'amber'; title: ReactNode; body: ReactNode; when: ReactNode; actions?: ReactNode}) {
   return <article className={styles.feedRow} data-unread={unread || undefined}><span className={styles.icon} data-tone={tone}><Icon name={icon} size={24} /></span><div><b>{title}</b><p>{body}</p>{actions && <div className={styles.feedActions}>{actions}</div>}</div><time>{when}</time></article>;
 }

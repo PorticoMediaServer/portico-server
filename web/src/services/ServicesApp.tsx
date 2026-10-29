@@ -1,5 +1,7 @@
 import {createContext, useContext, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
-import {createRootRouteWithContext, createRoute, createRouter, Outlet, RouterProvider} from '@tanstack/react-router';
+import {goTo} from '../platform/hosted-navigation';
+import {createRootRouteWithContext, createRoute, createRouter, Outlet, RouterProvider, type RouterHistory} from '@tanstack/react-router';
+import {registerInPageNavigation} from '../platform/hosted-navigation';
 import type {JoinLink} from '@core/join-link.ts';
 import {IconSprite} from '../kit/Icon';
 import {StateView} from '../kit/states';
@@ -31,6 +33,12 @@ const root = createRootRouteWithContext<Context>()({component: ServicesRoot, not
 const home = createRoute({getParentRoute: () => root, path: '/', component: HomeRoute});
 // The app's own sign-in address at web.getportico.tv is the Portico Account sign-in (P2-66).
 const signIn = createRoute({getParentRoute: () => root, path: '/sign-in', component: HomeRoute});
+// Join and Set up inside the app at web.getportico.tv, where `/` is a server's Home (H14).
+const welcome = createRoute({getParentRoute: () => root, path: '/welcome', component: HomeRoute});
+// Inside the app every other address is the app's own; these pages draw nothing there.
+const elsewhere = createRoute({getParentRoute: () => root, path: '$', component: () => null});
+/** The account pages' own addresses, opened in place by either router. */
+export const servicesRoutePaths: ReadonlySet<string> = new Set(['/', '/sign-in', '/welcome', '/account', '/device', '/reset', '/reset-password', '/verify-email', '/claim', '/join']);
 const workspace = createRoute({getParentRoute: () => root, path: '/account', component: AccountRoute,
   validateSearch: (value: Record<string, unknown>) => {
     const transaction = typeof value.identityTransaction === 'string' && /^[A-Za-z0-9_-]{1,160}$/.test(value.identityTransaction) ? value.identityTransaction : undefined;
@@ -44,23 +52,30 @@ const invitation = createRoute({getParentRoute: () => root, path: '/join', compo
 // Owner continuation stays separate from the ordinary signed sign-in root.
 const claim = createRoute({getParentRoute: () => root, path: '/claim', component: ClaimStart});
 type ServicesRouter = ReturnType<typeof makeRouter>;
-function makeRouter(context: Context) {
-  return createRouter({routeTree: root.addChildren([home, signIn, workspace, device, reset, resetPassword, verify, claim, invitation]), context});
+function makeRouter(context: Context, history?: RouterHistory) {
+  const routes = [home, signIn, welcome, workspace, device, reset, resetPassword, verify, claim, invitation];
+  return createRouter({...(history ? {history} : {}), routeTree: root.addChildren(history ? [...routes, elsewhere] : routes), context});
 }
 // This router's types stay local. The server app remains the only global TanStack Register.
-export function ServicesApp({capture, invalidContinuation, join, plainShortJoin, signIn, owner, identityTransaction, providerFailure, providerReturn}: {capture?: LinkCapture; invalidContinuation?: boolean; join?: JoinLink; plainShortJoin?: boolean; signIn?: SignInCapture; owner?: HostedOwnerClaimCapture; identityTransaction?: string; providerFailure?: 'google' | 'apple' | 'unknown'; providerReturn?: boolean} = {}) {
+export function ServicesApp({capture, invalidContinuation, join, plainShortJoin, signIn, owner, identityTransaction, providerFailure, providerReturn, history}: {history?: RouterHistory; capture?: LinkCapture; invalidContinuation?: boolean; join?: JoinLink; plainShortJoin?: boolean; signIn?: SignInCapture; owner?: HostedOwnerClaimCapture; identityTransaction?: string; providerFailure?: 'google' | 'apple' | 'unknown'; providerReturn?: boolean} = {}) {
   // main.tsx captures and scrubs intake once, before React. A discarded render
   // must not reread a scrubbed URL or allocate a terminal bootstrap controller.
   const create = useCallback(() => {
     const account = servicesAccount(), bootstrap = new ServicesBootstrap(account, servicesLinkStore, capture, {origin: location.origin, capture: signIn},
       location.pathname === '/claim' ? {origin: location.origin, capture: owner} : undefined);
-    return {account, bootstrap, router: makeRouter({account, bootstrap, invalidContinuation: invalidContinuation === true, join, plainShortJoin, identityTransaction, providerFailure, providerReturn}), dispose: () => bootstrap.dispose()};
-  }, [capture, invalidContinuation, join, plainShortJoin, signIn, owner, identityTransaction, providerFailure, providerReturn]);
+    return {account, bootstrap, embedded: Boolean(history), router: makeRouter({account, bootstrap, invalidContinuation: invalidContinuation === true, join, plainShortJoin, identityTransaction, providerFailure, providerReturn}, history), dispose: () => bootstrap.dispose()};
+  }, [capture, invalidContinuation, join, plainShortJoin, signIn, owner, identityTransaction, providerFailure, providerReturn, history]);
   const bound = useAccountResource(create);
   return <><IconSprite />{bound ? <MountedServicesRouter key={bound.id} value={bound.value} /> : <ServicesAuthStage><></></ServicesAuthStage>}</>;
 }
-function MountedServicesRouter({value}: {value: {bootstrap: ServicesBootstrap; router: ServicesRouter}}) {
+function MountedServicesRouter({value}: {value: {bootstrap: ServicesBootstrap; router: ServicesRouter; embedded: boolean}}) {
   useLayoutEffect(() => {void value.bootstrap.start();}, [value]);
+  // Opened alone (a captured link), the account pages still change pages in place; the app's
+  // own pages are a page load away. Inside the app, the app's router owns this.
+  useLayoutEffect(() => value.embedded ? undefined : registerInPageNavigation((to, replace) => {
+    if (servicesRoutePaths.has(new URL(to, location.origin).pathname)) {if (replace) value.router.history.replace(to); else value.router.history.push(to);}
+    else if (replace) location.replace(to); else location.assign(to);
+  }), [value]);
   return <RouterProvider router={value.router} />;
 }
 function ServicesRoot() {
@@ -113,7 +128,7 @@ function AccountRoute() {
   useEffect(() => { if (!session) setAuthenticating(true); }, [session]);
   if (securityEnded?.codes?.length && !session) return <SignedOutRecoveryCodes codes={securityEnded.codes} onDone={() => setSecurityEnded({})}/>;
   if (deleted && !session) return <ServicesAuthStage><ServicesStateIcon/><ServicesHeading>{t('web.deleteAccount.doneTitle')}</ServicesHeading>
-    <ServicesLead>{t('web.deleteAccount.doneBody')}</ServicesLead><ServicesActions><Button variant="glass" onClick={() => {setDeleted(false);location.assign('/');}}>{t('web.link.backToPortico')}</Button></ServicesActions></ServicesAuthStage>;
+    <ServicesLead>{t('web.deleteAccount.doneBody')}</ServicesLead><ServicesActions><Button variant="glass" onClick={() => {setDeleted(false);goTo('/');}}>{t('web.link.backToPortico')}</Button></ServicesActions></ServicesAuthStage>;
   if (!session || authenticating) return <ServicesAuthForm account={account} providerFailure={providerFailure} before={securityEnded ? <ServicesNotice>{t('services.signin.ended')}</ServicesNotice> : undefined} onSignedIn={() => {setSecurityEnded(undefined);setAuthenticating(false);}} />;
   return <AccountPage identityTransaction={identityTransaction} account={account} session={session} section={tab as 'devices' | 'security' | 'servers' | 'notifications'} onDeleted={() => setDeleted(true)} onSecurityEnded={codes => setSecurityEnded({...(codes ? {codes: Object.freeze([...codes])} : {})})} />;
 }
@@ -131,13 +146,13 @@ function VerifyRoute() {
 }
 function JoinRoute() {
   const {account, join, plainShortJoin} = root.useRouteContext<ServicesRouter>();
-  return join ? <JoinPage account={account} link={join} onBack={() => location.assign('/')} />
-    : plainShortJoin ? <ShortJoinPage account={account} onBack={() => location.assign('/')} /> : <InvalidLink />;
+  return join ? <JoinPage account={account} link={join} onBack={() => goTo('/')} />
+    : plainShortJoin ? <ShortJoinPage account={account} onBack={() => goTo('/')} /> : <InvalidLink />;
 }
 function InvalidLink() {
   const {t} = servicesI18n();
   return <DocumentBootReady><ServicesAuthStage variant="reset"><ServicesHeading>{t('auth.welcomeHome')}</ServicesHeading><ServicesNotice>{t('web.link.invalid')}</ServicesNotice>
-    <ServicesActions><Button onClick={() => location.assign('/')}>{t('web.link.backToPortico')}</Button></ServicesActions></ServicesAuthStage></DocumentBootReady>;
+    <ServicesActions><Button onClick={() => goTo('/')}>{t('web.link.backToPortico')}</Button></ServicesActions></ServicesAuthStage></DocumentBootReady>;
 }
 export {InvalidLink as ServicesInvalidLink};
 function ClaimStart() {
@@ -151,7 +166,7 @@ function ClaimStart() {
     return <ClaimApprovalRoute account={account} bootstrap={bootstrap} />;
   }
   return <ServicesAuthStage variant="reset"><ServicesHeading>{t('web.claim.titleGeneric')}</ServicesHeading><ServicesNotice tone="info">{t('web.claim.openFromServer')}</ServicesNotice>
-    <ServicesActions><Button onClick={() => location.assign('/')}>{t('web.claim.backToPortico')}</Button></ServicesActions></ServicesAuthStage>;
+    <ServicesActions><Button onClick={() => goTo('/')}>{t('web.claim.backToPortico')}</Button></ServicesActions></ServicesAuthStage>;
 }
 
 /** The scrubbed code is an intake locator only. An authenticated server lookup

@@ -5,21 +5,13 @@ import {hostedServicesPage} from '../src/services/mode.ts';
 import type {ServicesAccount} from '../src/services/session.ts';
 import type {ServicesLinkStore} from '../src/services/intake.ts';
 
-test('web.getportico.tv starts Services only for account pages and the signed-out front door', async () => {
-  const none = async () => undefined, chosen = async () => ({serverId: 'a'}), broken = async () => {throw new Error('locked');};
+test('web.getportico.tv starts the Services entry only to capture a link (H14)', async () => {
   const page = (pathname: string, search = '', hash = '') => ({pathname, search, hash});
-  for (const path of ['/account', '/device', '/reset', '/reset-password', '/verify-email', '/claim', '/join', '/sign-in', '/app/account-return'])
-    assert.equal(await hostedServicesPage(page(path), chosen), true, path);
-  for (const path of ['/servers', '/settings', '/item/x', '/profiles', '/library/a'])
-    assert.equal(await hostedServicesPage(page(path), none), false, path);
-  assert.equal(await hostedServicesPage(page('/'), none), true);
-  assert.equal(await hostedServicesPage(page('/'), broken), true);
-  assert.equal(await hostedServicesPage(page('/'), chosen), false);
-  assert.equal(await hostedServicesPage(page('/', '', '#signIn=abc'), chosen), true);
-  assert.equal(await hostedServicesPage(page('/', '', '#join'), chosen), true);
-  assert.equal(await hostedServicesPage(page('/', '?mode=forgot'), chosen), true);
-  assert.equal(await hostedServicesPage(page('/', '?identityError=google'), chosen), true);
-  assert.equal(await hostedServicesPage(page('/', '', '#other'), chosen), false);
+  for (const [path, search, hash] of [['/claim', '', '#code=x'], ['/join', '?code=abc', ''], ['/join', '', '#abc'], ['/reset', '?token=x', ''], ['/reset-password', '', '#t'], ['/verify-email', '?token=x', ''], ['/device', '?code=ABCD', ''],
+    ['/account', '?securityIntent=x', ''], ['/account', '?identityTransaction=x', ''], ['/app/account-return', '', ''], ['/', '', '#signIn=abc'], ['/', '', '#join'], ['/', '?mode=forgot', ''], ['/', '?identityError=google', ''], ['/servers', '', '#signIn=abc']] as const)
+    assert.equal(await hostedServicesPage(page(path, search, hash)), true, path + search + hash);
+  for (const [path, search] of [['/', ''], ['/account', ''], ['/account', '?tab=security'], ['/device', ''], ['/join', ''], ['/sign-in', ''], ['/sign-in', '?x=1'], ['/welcome', ''], ['/servers', ''], ['/settings', ''], ['/item/x', ''], ['/profiles', '']] as const)
+    assert.equal(await hostedServicesPage(page(path, search)), false, path + search);
 });
 
 function ports(signedIn = false) {

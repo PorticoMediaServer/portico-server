@@ -1,4 +1,5 @@
 import {useEffect, useLayoutEffect, useState, useSyncExternalStore, type ComponentType} from 'react';
+import {goTo} from '../platform/hosted-navigation';
 import {ApiError} from '@core/index.ts';
 import type {ServicesAccount} from './session';
 import type {ServicesBootstrap} from './bootstrap';
@@ -45,7 +46,7 @@ export function SetupApprovalPage({account, bootstrap, Review}: {account: Servic
     if(state.phase==='loading'&&!error)return <ServicesAuthStage><p role="status">{t('web.claim.loading')}</p></ServicesAuthStage>;
     return <ServicesAuthStage><ServicesHeading>{t('web.claim.titleGeneric')}</ServicesHeading>
       {state.phase==='expired'?<ServicesLead>{t('web.claim.expired')}</ServicesLead>:<HostedError error={error}/>}
-      <ServicesActions><Button onClick={()=>window.location.assign('/')}>{t('web.claim.backToPortico')}</Button></ServicesActions></ServicesAuthStage>;
+      <ServicesActions><Button onClick={()=>goTo('/')}>{t('web.claim.backToPortico')}</Button></ServicesActions></ServicesAuthStage>;
   }
   const display=state.display, requested=Date.now()-Date.parse(display.requestedAt)<45000?t('services.claim.justNow'):servicesRelativeTime(servicesI18n(),display.requestedAt);
   return <Review phase={state.phase} serverName={display.name} address={new URL(display.address).host} accountName={display.accountName}

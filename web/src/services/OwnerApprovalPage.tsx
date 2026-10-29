@@ -1,4 +1,5 @@
 import {useEffect, useLayoutEffect, useState, useSyncExternalStore, type ReactNode} from 'react';
+import {goTo} from '../platform/hosted-navigation';
 import {ApiError} from '@core/index.ts';
 import type {MessageId} from '@i18n';
 import {HostedError, ServicesActions, ServicesAuthStage, ServicesFacts, ServicesHeading, ServicesLead, ServicesNotice, ServicesQuiet} from '../kit/accounts/ServicesAuth';
@@ -94,7 +95,7 @@ export function OwnerApprovalPage({account, bootstrap}: {account: ServicesAccoun
     <ServicesHeading>{t('web.claim.titleGeneric')}</ServicesHeading>
     {state.phase === 'expired' ? <ServicesLead>{t('web.claim.expired')}</ServicesLead> : <HostedError error={error} />}
     <ServicesActions>{!flow || state.phase === 'expired'
-      ? <Button onClick={() => window.location.assign('/')}>{t('web.claim.backToPortico')}</Button>
+      ? <Button onClick={() => goTo('/')}>{t('web.claim.backToPortico')}</Button>
       : <Button onClick={() => {void flow.start();}}>{t('next.states.tryAgain')}</Button>}</ServicesActions>
   </ServicesAuthStage>;
   if (!state.display || state.phase === 'loading') return <ServicesAuthStage variant="ownerReview"><></></ServicesAuthStage>;
