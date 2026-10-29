@@ -69,6 +69,18 @@ func TestBrowserSetupLocalOriginAndSingleUse(t *testing.T) {
 	if w := httptest.NewRecorder(); func() int { h.ServeHTTP(w, spoof); return w.Code }() != http.StatusForbidden {
 		t.Fatal("a spoofed forwarded address made a public source local")
 	}
+	// Behind a reverse proxy nobody could trust yet, every visitor looks like the proxy's LAN
+	// address: forwarding headers from an untrusted local peer mean "not local" (S1).
+	for _, header := range []string{"X-Forwarded-For", "Forwarded", "X-Real-Ip", "Via"} {
+		proxied := httptest.NewRequest("POST", "http://127.0.0.1:32500/v1/setup/browser", bytes.NewReader([]byte(`{}`)))
+		proxied.RemoteAddr = "192.168.1.5:5000"
+		proxied.Header.Set("Origin", "http://127.0.0.1:32500")
+		proxied.Header.Set("Content-Type", "application/json")
+		proxied.Header.Set(header, "198.51.100.8")
+		if w := httptest.NewRecorder(); func() int { h.ServeHTTP(w, proxied); return w.Code }() != http.StatusForbidden {
+			t.Fatalf("a proxied public visitor (%s) started setup", header)
+		}
+	}
 	for _, tc := range []struct{ name, address, origin, peer string }{
 		{"hosted origin", "http://127.0.0.1:32500", "https://web.getportico.tv", "127.0.0.1:5000"},
 		{"cross-site origin", "http://127.0.0.1:32500", "http://evil.example", "127.0.0.1:5000"},
@@ -157,6 +169,13 @@ func TestAppSetupWithoutOriginAndNeverFromABrowser(t *testing.T) {
 		if w := call("/v1/setup/app", headers, map[string]any{}); w.Code != http.StatusUnauthorized && w.Code != http.StatusForbidden && w.Code != http.StatusUnsupportedMediaType {
 			t.Fatalf("%s: got status %d", name, w.Code)
 		}
+	}
+	// An app reaches the server at a local address, never through a name that rebinds to it.
+	rebound := httptest.NewRequest("POST", "http://media.example.com/v1/setup/app", bytes.NewReader([]byte(`{}`)))
+	rebound.RemoteAddr = "192.168.1.30:5000"
+	rebound.Header.Set("Content-Type", "application/json")
+	if w := httptest.NewRecorder(); func() int { h.ServeHTTP(w, rebound); return w.Code }() == http.StatusOK {
+		t.Fatal("an app setup start through an unconfigured name was answered")
 	}
 	w := call("/v1/setup/app", nil, map[string]any{})
 	if w.Code != http.StatusOK {

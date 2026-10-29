@@ -104,8 +104,11 @@ func TestAnApprovedOrInstalledSetupIsNeverSuperseded(t *testing.T) {
 		t.Run(stage, func(t *testing.T) {
 			s, db, _ := pendingHostedSetup(t, stage)
 			age(t, db)
-			if _, err := s.BrowserSetupToken(context.Background()); !errors.Is(err, ErrConflict) {
-				t.Fatalf("a %s claim was superseded: %v", stage, err)
+			// Approved and finishing reads as in progress (it can still complete), with no
+			// moment to start over at, and is never superseded.
+			var progress *SetupInProgressError
+			if _, err := s.BrowserSetupToken(context.Background()); !errors.As(err, &progress) || !progress.Until.IsZero() {
+				t.Fatalf("a %s claim was superseded or misreported: %v", stage, err)
 			}
 			var count int
 			if err := db.QueryRow(`SELECT count(*) FROM onboarding_state_v1`).Scan(&count); err != nil || count != 1 {
@@ -124,7 +127,24 @@ func TestAnApprovedOrInstalledSetupIsNeverSuperseded(t *testing.T) {
 	if _, err := db.Exec(`UPDATE networking_claim_identity SET installed_operation_id=NULL; UPDATE networking_claim_intents SET account_id='acct_owner'`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.BrowserSetupToken(context.Background()); !errors.Is(err, ErrConflict) {
+	var progress *SetupInProgressError
+	if _, err := s.BrowserSetupToken(context.Background()); !errors.As(err, &progress) {
 		t.Fatalf("a claim bound to an account was superseded: %v", err)
+	}
+}
+
+// Two browsers starting together after expiry: one retires the old attempt and writes the
+// new secret; the other reads that same secret, never a second one that silently replaces it.
+func TestConcurrentStartsAfterExpiryShareOneSecret(t *testing.T) {
+	s, db, _ := pendingHostedSetup(t, "prepared")
+	age(t, db)
+	ctx := context.Background()
+	first, err := s.BrowserSetupToken(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := s.BrowserSetupToken(ctx)
+	if err != nil || second != first {
+		t.Fatalf("a second start replaced the secret: %v", err)
 	}
 }

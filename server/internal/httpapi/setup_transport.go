@@ -104,14 +104,28 @@ type BrowserSetupResponse struct {
 // without a preflight, which the router refuses for the setup routes. Whoever can reach the
 // server may set it up from a browser at its address; an app at its address may do the same.
 func (d Dependencies) appSetupRequest(r *http.Request) bool {
-	return d.setupRequestAllowed(r) && r.Header.Get("Origin") == "" && r.Header.Get("Sec-Fetch-Mode") == ""
+	// The same address check as a browser start: an app reached the server at a local or
+	// configured address, never through a name that rebinds to it.
+	return d.setupRequestAllowed(r) && r.Header.Get("Origin") == "" && r.Header.Get("Sec-Fetch-Mode") == "" && d.browserSetupAuthorityAllowed(r)
 }
 
 // setupSourceAllowed is PLEX-SETUP-NOTES S1: first-run setup is open to this machine and
 // the local network over plain HTTP — loopback, RFC 1918, CGNAT, link-local, IPv6 ULA —
 // plus the owner's LAN networks, never a public-internet source.
+//
+// A reverse proxy the owner hasn't trusted (no one can configure trust before setup) makes
+// every visitor look like the proxy's own LAN address. So a request carrying forwarding
+// headers from an untrusted peer is not local: set up at the server's own address instead.
 func (d Dependencies) setupSourceAllowed(r *http.Request) bool {
-	client, ok := networkpolicy.Client(r, d.trustedProxyPrefixes(r.Context()))
+	proxies := d.trustedProxyPrefixes(r.Context())
+	if peer, ok := networkpolicy.Peer(r); !ok || !networkpolicy.Contains(proxies, peer) {
+		for _, header := range []string{"Forwarded", "X-Forwarded-For", "X-Forwarded-Host", "X-Real-Ip", "Cf-Connecting-Ip", "True-Client-Ip", "Via"} {
+			if r.Header.Get(header) != "" {
+				return false
+			}
+		}
+	}
+	client, ok := networkpolicy.Client(r, proxies)
 	return ok && (claimweb.LocalSetupAddr(client.Unmap()) || !d.requestIsRemote(r))
 }
 
@@ -161,6 +175,10 @@ func setupTransportError(err error) error {
 	}
 	var progress *identity.SetupInProgressError
 	if errors.As(err, &progress) {
+		if progress.Until.IsZero() {
+			// Approved and finishing: no moment to start over at.
+			return &apierror.Error{Code: "setup_in_progress"}
+		}
 		wait := int(time.Until(progress.Until).Seconds()) + 1
 		return &apierror.Error{Code: "setup_in_progress", RetryAfterSeconds: max(wait, 1)}
 	}

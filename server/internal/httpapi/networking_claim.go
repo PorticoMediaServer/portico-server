@@ -167,7 +167,7 @@ func (d Dependencies) setupWebOrigin(r *http.Request) string {
 	if supplied := r.Header.Get("Origin"); supplied != "" && supplied != origin {
 		return ""
 	}
-	if u.Scheme == "https" && d.secureTransport(r) {
+	if u.Scheme == "https" && d.secureTransport(r) && d.browserSetupAuthorityAllowed(r) {
 		return origin
 	}
 	if u.Scheme == "http" && d.setupSourceAllowed(r) && d.browserSetupAuthorityAllowed(r) && claimweb.SetupStartAddress(origin) {

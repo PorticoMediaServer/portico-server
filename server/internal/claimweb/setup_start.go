@@ -80,7 +80,11 @@ func SetupStartAddress(value string) bool {
 	if ip, e := netip.ParseAddr(host); e == nil {
 		return LocalSetupAddr(ip)
 	}
-	return !strings.Contains(host, ":") && strings.ContainsAny(host, "abcdefghijklmnopqrstuvwxyz")
+	// A host name, never a legacy numeric IPv4 spelling a resolver may read as an address
+	// (0xc6336401, 0x7f.1, 3325256705): its last label must be a name, not a number.
+	last := host[strings.LastIndex(host, ".")+1:]
+	return !strings.Contains(host, ":") && last != "" && !strings.HasPrefix(last, "0x") &&
+		strings.ContainsAny(last, "abcdefghijklmnopqrstuvwxyz") && !strings.HasPrefix(last, "-")
 }
 
 var localSetupPrefixes = []netip.Prefix{

@@ -18,7 +18,9 @@ export function setupAddressAllowed(origin: string): boolean {
   if (host.startsWith('[')) return localIPv6(host.slice(1, -1));
   const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
   if (v4) return localIPv4(Number(v4[1]), Number(v4[2]));
-  return true;
+  // A host name (as claimweb.SetupStartAddress): its last label is a name, never a number.
+  const last = host.slice(host.lastIndexOf('.') + 1);
+  return last !== '' && !last.startsWith('0x') && !last.startsWith('-') && /[a-z]/.test(last);
 }
 function localIPv4(a: number, b: number): boolean {
   return a === 127 || a === 10 || a === 172 && b >= 16 && b <= 31 || a === 192 && b === 168 || a === 100 && b >= 64 && b <= 127 || a === 169 && b === 254;

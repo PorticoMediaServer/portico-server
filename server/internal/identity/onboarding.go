@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"golang.org/x/crypto/bcrypt"
 	"os"
+	"path/filepath"
 	"portico.local/server/internal/authorityfiles"
 	"portico.local/server/internal/claimweb"
 	"portico.local/server/internal/dbwork"
@@ -318,20 +319,42 @@ func (s *Service) BrowserSetupToken(ctx context.Context) (string, error) {
 	if pending {
 		// An abandoned Portico Account attempt must never strand the server: once its
 		// window has passed without approval it gives way to this new start.
-		if err := s.supersedeStaleSetup(ctx); err != nil {
+		token, err := s.supersedeStaleSetup(ctx)
+		if err != nil {
 			return "", err
 		}
-		token := Token()
-		if err := os.WriteFile(s.setupPath, []byte(token), 0600); err != nil {
-			return "", err
+		if token != "" {
+			return token, nil
 		}
-		return token, nil
 	}
 	token, err := os.ReadFile(s.setupPath)
 	if err != nil {
 		return "", err
 	}
 	return string(token), nil
+}
+
+// writeSetupSecret replaces the setup secret file atomically: a reader sees the old secret
+// or the new one, never a partly written file.
+func writeSetupSecret(path, token string) error {
+	f, err := os.CreateTemp(filepath.Dir(path), ".setup-token-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	if _, err = f.WriteString(token); err == nil {
+		err = f.Sync()
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Chmod(f.Name(), 0600)
+	}
+	if err != nil {
+		return err
+	}
+	return os.Rename(f.Name(), path)
 }
 
 // SetupInProgressError refuses a new setup start while another browser's Portico
@@ -344,35 +367,39 @@ func (e *SetupInProgressError) Error() string { return "setup_in_progress" }
 // finish: never approved, never installed, and past its window (claimweb.SetupLifetime
 // after its newest start, or after it began when it never reached Hosted). A live attempt
 // refuses with SetupInProgressError; a local, approved or installed one keeps ErrConflict.
-func (s *Service) supersedeStaleSetup(ctx context.Context) error {
+//
+// It returns the new setup secret, written (atomically, inside the same fence) only when
+// it retired the old attempt; "" when a concurrent start already did, so the caller reads
+// the secret that start wrote.
+func (s *Service) supersedeStaleSetup(ctx context.Context) (string, error) {
 	gated, err := dbwork.Begin(ctx, s.db, dbwork.ClassSecurityFence)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer gated.Rollback()
 	tx := gated.Tx()
 	var accounts int
 	if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM accounts`).Scan(&accounts); err != nil {
-		return err
+		return "", err
 	}
 	var operation, mode string
 	var ready, receiptUntil int64
 	err = tx.QueryRowContext(ctx, `SELECT operation_id,auth_mode,ready,receipt_until FROM onboarding_state_v1 WHERE singleton=1`).Scan(&operation, &mode, &ready, &receiptUntil)
 	if errors.Is(err, sql.ErrNoRows) {
-		return gated.Commit()
+		return "", gated.Commit()
 	}
 	if err != nil {
-		return err
+		return "", err
 	}
 	if accounts != 0 || mode != "hosted" || ready != 0 {
-		return ErrConflict
+		return "", ErrConflict
 	}
 	var active, installed sql.NullString
 	if err = tx.QueryRowContext(ctx, `SELECT active_operation_id,installed_operation_id FROM networking_claim_identity WHERE singleton=1`).Scan(&active, &installed); err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return err
+		return "", err
 	}
 	if installed.Valid {
-		return ErrConflict
+		return "", ErrConflict
 	}
 	if active.Valid {
 		// Only this setup's own claim, still exactly as prepared, may be retired.
@@ -380,21 +407,26 @@ func (s *Service) supersedeStaleSetup(ctx context.Context) error {
 		var approval int64
 		if err = tx.QueryRowContext(ctx, `SELECT setup_operation_id,stage,account_id,approval_revision FROM networking_claim_intents WHERE operation_id=?`, active.String).Scan(&setupOperation, &stage, &account, &approval); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				return ErrConflict
+				return "", ErrConflict
 			}
-			return err
+			return "", err
 		}
-		if setupOperation != operation || stage != "prepared" || account != "account-unbound" || approval != 0 {
-			return ErrConflict
+		if setupOperation != operation {
+			return "", ErrConflict
+		}
+		// Approved and still finishing: honestly in progress (it can still complete), never
+		// "already set up", and never superseded.
+		if stage != "prepared" || account != "account-unbound" || approval != 0 {
+			return "", &SetupInProgressError{}
 		}
 	}
 	var settled int
 	var newest sql.NullInt64
 	if err = tx.QueryRowContext(ctx, `SELECT count(*) FILTER (WHERE phase IN('installed','consumed','completed')),max(expires_ms) FROM identity_setup_completions WHERE setup_request_id=?`, operation).Scan(&settled, &newest); err != nil {
-		return err
+		return "", err
 	}
 	if settled != 0 {
-		return ErrConflict
+		return "", ErrConflict
 	}
 	now := time.Now()
 	// receipt_until is the start plus setupReceiptSeconds; a start never prepared at
@@ -404,7 +436,7 @@ func (s *Service) supersedeStaleSetup(ctx context.Context) error {
 		until = time.UnixMilli(newest.Int64)
 	}
 	if now.Before(until) {
-		return &SetupInProgressError{Until: until}
+		return "", &SetupInProgressError{Until: until}
 	}
 	for _, q := range []struct {
 		query string
@@ -416,10 +448,14 @@ func (s *Service) supersedeStaleSetup(ctx context.Context) error {
 		{`DELETE FROM onboarding_state_v1 WHERE singleton=1 AND operation_id=? AND ready=0`, []any{operation}},
 	} {
 		if _, err = tx.ExecContext(ctx, q.query, q.args...); err != nil {
-			return err
+			return "", err
 		}
 	}
-	return gated.Commit()
+	token := Token()
+	if err = writeSetupSecret(s.setupPath, token); err != nil {
+		return "", err
+	}
+	return token, gated.Commit()
 }
 
 // SetupClaimAuthority verifies the continuation secret without inventing a

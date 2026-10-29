@@ -29,3 +29,10 @@ test('non-canonical spellings and other schemes are refused', () => {
     'http://[0:0:0:0:0:0:0:1]', 'http://localhost:32400/'])
     assert.equal(setupAddressAllowed(origin), false, origin);
 });
+
+test('a host name is a name: legacy numeric IPv4 spellings are refused, as on the server', () => {
+  for (const origin of ['http://0xc6336401', 'http://0x7f.1', 'http://3325256705', 'http://nas.0x1', 'http://198.51.0x64.1'])
+    assert.equal(setupAddressAllowed(origin), false, origin);
+  for (const origin of ['http://tower.local:32400', 'http://nas', 'http://my-nas.home.arpa'])
+    assert.equal(setupAddressAllowed(origin), true, origin);
+});
