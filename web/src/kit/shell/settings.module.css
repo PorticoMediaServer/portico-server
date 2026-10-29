@@ -147,4 +147,7 @@ input:focus-visible + .radio { outline: 3px solid var(--color-focus); outline-of
 @media (max-width: 599px) {
   .matrixLabel { min-width: 0; flex-wrap: wrap; gap: 6px; }
   .matrixLabel .defaultHint { flex-basis: 100%; }
+  /* E-web-20: a typed field takes the row's width under its label, as the phone forms draw it. */
+  .row:has(> .rowControl :is(input[type='text'], input[type='email'], input[type='url'], input[type='password'])) { grid-template-columns: minmax(0, 1fr); }
+  .row:has(> .rowControl :is(input[type='text'], input[type='email'], input[type='url'], input[type='password'])) > .rowControl { justify-content: stretch; }
 }

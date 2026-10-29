@@ -14,6 +14,7 @@ import {Artwork, GeneratedArt} from '../../kit/artwork';
 import {Button} from '../../kit/controls';
 import {Icon} from '../../kit/Icon';
 import {SelectionCircle} from '../../kit/selection';
+import {usePhone} from '../../kit/overlays/shared';
 import type {ShellArtwork} from '../../shell/artwork';
 import {useRetainedLayoutPaint} from '../../kit/layout/retained-paint';
 import {BrowseEntryCard, type BrowseItemActions} from './EntryCard';
@@ -62,7 +63,7 @@ const musicColumns: readonly BrowseColumn[] = [
 ];
 export function BrowseResults(props: BrowseResultsProps) {
   const {controller, view, shape, cardWidth, onVisibleRange} = props;
-  const root = useRef<HTMLDivElement>(null), grid = useRef<WindowedGridHandle>(null);
+  const root = useRef<HTMLDivElement>(null), grid = useRef<WindowedGridHandle>(null), phone = usePhone();
   const [size, setSize] = useState({width: 0, grid: 0, height: 600}), [visible, setVisible] = useState({first: -1, last: -1});
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const snapshot = useSyncExternalStore(controller.collection.subscribe, controller.collection.getSnapshot, controller.collection.getSnapshot);
@@ -115,7 +116,7 @@ export function BrowseResults(props: BrowseResultsProps) {
       onVisibleRange={range} renderPlaceholder={() => <Skeleton height={list ? 54 : musicGenres ? 152 : width / ratio} width={list ? '100%' : width}/>}
       renderItem={(member, context) => list ? <BrowseListRow {...props} member={member} index={context.index} reading={reading} music={music}/> : <BrowseEntryCard entry={member.entry} actions={props.actions(member, context.index)} artwork={props.artwork} env={props.env}
         width={width} family={props.familyForEntry?.(member.entry) ?? state.capabilities?.library.kind} mixed={controller.source.libraryId === '*'} visible order={context.index} group={controller.source.libraryId} backdrops={props.backdrops}/>} />
-    {state.sort?.field === 'title' && anchors.length > 0 && !tiles && <AlphabetRail anchors={anchors} visibleRange={visible} onJump={anchor => grid.current?.scrollToIndex(anchor.index)} className={styles.rail}/>}
+    {state.sort?.field === 'title' && anchors.length > 0 && !tiles && <AlphabetRail anchors={anchors} visibleRange={visible} onJump={anchor => grid.current?.scrollToIndex(anchor.index)} platform={phone ? 'phone' : 'desktop'} className={styles.rail}/>}
   </div>;
 }
 function BrowseListRow({member, index, artwork, env, actions, reading, music}: BrowseResultsProps & {member: BrowseMember; index: number; reading: boolean; music: boolean}) {

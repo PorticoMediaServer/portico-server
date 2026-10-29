@@ -132,3 +132,11 @@ test('desktop retains only its existing real owner Activity component and non-Ho
     assert.equal(mounts, 0); assert.doesNotMatch(html, /phoneHeader|phoneActivity|i-activity/);
   }
 });
+test('E-web-21: the switcher names the main profile as the Main profile to assistive tech, and only that profile', () => {
+  const {menu} = render('owner');
+  const profiles = [{id: 'main', name: 'walkowner', initial: 'W', primary: true}, {id: 'guest', name: 'Guest', initial: 'G'}, {id: 'kids', name: 'Kids', initial: 'K'}];
+  const tree = AccountMenu({...menu, current: profiles[1], primary: false, profiles});
+  const labelled = (name: string) => find(tree, element => String(element.key).endsWith('$' + name));
+  assert.equal(labelled('main')?.props['aria-label'], 'walkowner, Main profile');
+  assert.equal(labelled('kids')?.props['aria-label'], undefined, 'other profiles keep their visible name as their label');
+});
