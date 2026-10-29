@@ -4,6 +4,14 @@ from datetime import datetime, timedelta, timezone
 from common import run, art
 import xml.etree.ElementTree as ET
 
+LIVE_PORT = 32511
+CHANNELS = [('Harbour Workshop','Education'), ('Orbit Classroom','Science'), ('Nocturne Radio','Music')]
+
+
+def channel_url(number: int) -> str:
+    """Playlist URL the channel advertises; serve_live.py serves this exact name."""
+    return f'http://127.0.0.1:{LIVE_PORT}/channel-{number}.m3u8'
+
 
 def generate(root: Path, ffmpeg: str, full: bool = True) -> list[dict]:
     live = root / 'Live'
@@ -18,13 +26,13 @@ def generate(root: Path, ffmpeg: str, full: bool = True) -> list[dict]:
     xml = ET.Element('tv', {'generator-info-name':'Portico original synthetic source'})
     playlist = ['#EXTM3U']
     manifest = []
-    for i, name in enumerate(['Harbour Workshop','Orbit Classroom','Nocturne Radio'], 1):
+    for i, (name, category) in enumerate(CHANNELS, 1):
         cid = 'synthetic-'+str(i)
         channel = ET.SubElement(xml,'channel',{'id':cid})
         ET.SubElement(channel,'display-name').text = name
         art(live / f'channel-{i}.png', name, (400,225), seed=i)
-        playlist += [f'#EXTINF:-1 tvg-id="{cid}" tvg-name="{name}" tvg-logo="http://127.0.0.1:32511/channel-{i}.png" group-title="Original Synthetic",{name}',
-                     'http://127.0.0.1:32511/live.m3u8']
+        playlist += [f'#EXTINF:-1 tvg-id="{cid}" tvg-name="{name}" tvg-logo="http://127.0.0.1:{LIVE_PORT}/channel-{i}.png" group-title="Original Synthetic",{name}',
+                     channel_url(i)]
         slots = []
         for day in range(14):
             # One channel has short fixed guide slots for the campaign's
@@ -38,7 +46,7 @@ def generate(root: Path, ffmpeg: str, full: bool = True) -> list[dict]:
                 'stop':end.strftime('%Y%m%d%H%M%S +0000')})
             ET.SubElement(programme,'title',{'lang':'en'}).text = f'{name}: Session {number}'
             ET.SubElement(programme,'desc').text = 'Original generated picture and synthesized tone. No external content.'
-            ET.SubElement(programme,'category').text = ['Education','Science','Music'][i-1]
+            ET.SubElement(programme,'category').text = category
         manifest.append({'kind':'live-channel','title':name,'path':f'Live/channel-{i}.png',
                          'features':['local-m3u','rolling-hls','xmltv-14-days','synthetic-av']})
     (live/'channels.m3u').write_text('\n'.join(playlist)+'\n')
