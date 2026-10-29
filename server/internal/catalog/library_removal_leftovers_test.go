@@ -89,6 +89,7 @@ func TestRemovedLibraryLeavesNoRowsUnderItsHandle(t *testing.T) {
 			c.Exec(`UPDATE catalog_libraries SET retired=1 WHERE library_id='m'`)
 			removeLibraryFully(t, c, "m", drainBetween)
 			c.Drain()
+			drainRemovedLibraryMutationReceipts(t, c)
 			if n := rows(t, c, `SELECT count(*) FROM catalog_libraries WHERE library_id='m'`); n != 0 {
 				t.Fatalf("the library row lingers: %d", n)
 			}
@@ -106,4 +107,31 @@ func TestRemovedLibraryLeavesNoRowsUnderItsHandle(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Catalogue derivation and acknowledged command cleanup are separate production
+// rails. Run the actual cleanup adapter before the all-tables lifetime oracle;
+// c.Drain only advances compact catalogue derivation, not operations jobs.
+func drainRemovedLibraryMutationReceipts(t *testing.T, c *catalogtest.Catalog) {
+	t.Helper()
+	var pending, debt int
+	if err := c.DB.QueryRow(`SELECT count(*),COALESCE(sum(status<>'terminal' OR acknowledged<>1 OR child_count<>0),0) FROM catalog_entity_mutations`).Scan(&pending, &debt); err != nil {
+		t.Fatal(err)
+	}
+	if debt != 0 {
+		t.Fatalf("library removal left unacknowledged or live command custody: %d", debt)
+	}
+	adapter := New(c.DB).MutationAdapter()
+	// This fixture has one acknowledged terminal leaf per removed film. The
+	// production cleanup deletes one leaf per turn, then proves exhaustion.
+	for turn := 0; turn <= pending; turn++ {
+		out, err := adapter.Step(context.Background(), mutationCleanupResource)
+		if err != nil {
+			t.Fatal("actual mutation cleanup", err)
+		}
+		if out.State == "succeeded" {
+			return
+		}
+	}
+	t.Fatalf("acknowledged command cleanup did not exhaust %d leaves", pending)
 }

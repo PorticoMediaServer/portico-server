@@ -267,17 +267,24 @@ var containerKindOrder = []int{3, 6, 8, 10, 2, 5}
 // and reports whether nothing is left to do. Its place is saved with each
 // piece, so a restart carries on where it stopped.
 func removeLibraryBatchTx(ctx context.Context, tx *sql.Tx, library string) (bool, error) {
+	progress, err := loadRemovalProgressTx(ctx, tx, "library", library)
+	if err != nil {
+		return false, err
+	}
 	var handle int64
 	var retired bool
-	if err := tx.QueryRowContext(ctx, `SELECT id,retired FROM catalog_libraries WHERE library_id=?`, library).Scan(&handle, &retired); err != nil {
+	err = tx.QueryRowContext(ctx, `SELECT id,retired FROM catalog_libraries WHERE library_id=?`, library).Scan(&handle, &retired)
+	if errors.Is(err, sql.ErrNoRows) {
+		// The catalogue row is gone. That used to be the end of the removal; a
+		// Reading settle state still owes its bounded residue proof, which does
+		// not need the public rows. Everything else finishes as before.
+		return readingRemovalAfterRowTx(ctx, tx, library, &progress)
+	}
+	if err != nil {
 		return false, err
 	}
 	if !retired {
 		return true, nil
-	}
-	progress, err := loadRemovalProgressTx(ctx, tx, "library", library)
-	if err != nil {
-		return false, err
 	}
 	for {
 		var more bool
@@ -294,6 +301,12 @@ func removeLibraryBatchTx(ctx context.Context, tx *sql.Tx, library string) (bool
 			var clear bool
 			clear, err = compactcatalog.ClearLibraryTx(ctx, tx, library, 64)
 			more = !clear
+		case removalLibrary:
+			// Private Reading lifetime is reclaimed here, before and after the
+			// final rows, because no dispatcher owns it for a retired library.
+			// Every path persists its own phase-5 state in this transaction and
+			// reports whether the removal is finished.
+			return removeLibraryReadingTx(ctx, tx, library, handle, &progress)
 		default:
 			return true, removeLibraryRowTx(ctx, tx, library)
 		}
