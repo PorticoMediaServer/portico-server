@@ -31,3 +31,24 @@ func (s *Service) AllowedTxContext(ctx context.Context, principal identity.Princ
 	}
 	return err
 }
+
+// AllowedSetTxContext is the local membership policy over a library set. The
+// Portico-account path is a server-local membership too; no Hosted call occurs.
+func (s *Service) AllowedSetTxContext(ctx context.Context, principal identity.Principal, libraries []string, tx *sql.Tx) (map[string]bool, error) {
+	if principal.Authority != "local" || tx == nil {
+		return nil, identity.ErrUnauthorized
+	}
+	all, ids, _, _, err := identity.DirectAccess(transactionPolicyReader{ctx, tx}, principal)
+	if err != nil {
+		return nil, err
+	}
+	grants := map[string]bool{}
+	for _, id := range ids {
+		grants[id] = true
+	}
+	out := map[string]bool{}
+	for _, id := range libraries {
+		out[id] = id == "" || all || grants[id]
+	}
+	return out, ctx.Err()
+}
