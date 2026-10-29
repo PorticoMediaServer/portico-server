@@ -76,6 +76,7 @@ export const overlaysMessages = {
   'next.overlays.detailsCopied': 'Details copied.',
   'next.overlays.copyFailed': 'Couldn’t copy the details.',
   'next.overlays.copyLink': 'Copy link',
+  'next.overlays.share': 'Share',
   'next.overlays.linkCopied': 'Link copied',
   'next.overlays.copyLinkFailed': 'Couldn’t copy the link.',
   'next.overlays.detailsSafe': 'No passwords or sign-in details are included.',
