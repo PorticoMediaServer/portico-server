@@ -53,7 +53,7 @@ func (c *Client) ReadVersionedDescriptor(ctx context.Context, path string) (Vers
 	if err := ctx.Err(); err != nil {
 		return VersionedDescriptor{}, err
 	}
-	// The adapter owns this revision format (mtime:ctime-seconds:ctime-nanos).
+	// The adapter owns this revision format (mtime:0:0; ctime fields retired).
 	parts := strings.Split(evidence.Revision, ":")
 	if len(parts) != 3 {
 		return VersionedDescriptor{}, mediasource.ErrEvidence

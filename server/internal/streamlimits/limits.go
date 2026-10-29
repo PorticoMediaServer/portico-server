@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"errors"
 	"time"
+
+	"portico.local/server/internal/identity"
 )
 
 type Mode string
@@ -155,7 +157,7 @@ func CountTx(ctx context.Context, tx *sql.Tx, authority, account string, scoped 
 	var count int64
 	e := tx.QueryRowContext(ctx, `SELECT
  (SELECT count(*) FROM playback_v1_sessions v WHERE v.ended_ms=0 AND v.lease_expires_ms>?1 AND v.id<>?2 AND (?3='' OR v.media_session_id<>?3)`+vScope+`)
- + (SELECT count(*) FROM playback_sessions ps JOIN authorization_access auth ON auth.hash=ps.session_hash WHERE ps.state NOT IN('stopped','ended','failed') AND ps.expires_at>?4 AND auth.expires_at>?4 AND auth.revoked=0 AND ps.id<>?3`+mediaScope+`
+ + (SELECT count(*) FROM playback_sessions ps JOIN authorization_access auth ON auth.hash=`+identity.CurrentFamilyTokenSQL("ps.session_hash")+` WHERE ps.state NOT IN('stopped','ended','failed') AND ps.expires_at>?4 AND auth.expires_at>?4 AND auth.revoked=0 AND ps.id<>?3`+mediaScope+`
  AND NOT EXISTS(SELECT 1 FROM playback_v1_sessions v WHERE v.media_session_id=ps.id AND v.ended_ms=0 AND v.lease_expires_ms>?1)
  AND NOT EXISTS(SELECT 1 FROM playback_private_presentations pp JOIN playback_sessions owner ON owner.id=pp.owner_session_id WHERE pp.session_id=ps.id AND owner.state NOT IN('stopped','ended','failed') AND owner.expires_at>?4))`, args...).Scan(&count)
 	return count, e

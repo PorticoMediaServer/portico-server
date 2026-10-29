@@ -211686,14 +211686,21 @@ var PorticoCastContracts = (function(exports) {
 		}
 		return length;
 	}
-	/** Objects accept additive fields unless explicitly closed. Optional nulls are absent unless explicitly allowed by the field schema. */
-	function value(schema, input, path) {
+	/** An enum value this client does not know, met while reading a response in the open tier (O-159). */
+	var UnknownEnumValue = class extends Error {};
+	/** Objects accept additive fields unless explicitly closed. Optional nulls are absent unless explicitly allowed by the field schema.
+	* With `open` (see decodeOpen) an unknown string enum value leaves out the array item or optional member holding it.
+	* Every other failure, including closed objects and required members, stays exact. */
+	function value(schema, input, path, open = false) {
 		const reject = () => {
 			throw new Error(`Invalid contract value at ${path}`);
 		};
 		if (input === null && schema.nullable) return null;
 		if ("const" in schema && input !== schema.const) return reject();
-		if (schema.enum && !schema.enum.some((entry) => entry === input)) return reject();
+		if (schema.enum && !schema.enum.some((entry) => entry === input)) {
+			if (open && typeof input === "string" && schema.enum.every((entry) => typeof entry === "string")) throw new UnknownEnumValue(`Unknown enum value at ${path}`);
+			return reject();
+		}
 		if (typeof input === "string") {
 			if (schema.minLength !== void 0 || schema.maxLength !== void 0) {
 				const length = codePointLength(input);
@@ -211706,13 +211713,16 @@ var PorticoCastContracts = (function(exports) {
 		if (Array.isArray(input) && (schema.minItems !== void 0 && input.length < schema.minItems || schema.maxItems !== void 0 && input.length > schema.maxItems)) return reject();
 		const alternatives = schema.anyOf ?? schema.oneOf;
 		if (alternatives) {
-			let matches = 0, result;
+			let matches = 0, result, unknownEnum;
 			for (const alternative of alternatives) try {
-				const candidate = value(alternative, input, path);
+				const candidate = value(alternative, input, path, open);
 				if (schema.anyOf) return candidate;
 				result = candidate;
 				matches++;
-			} catch {}
+			} catch (error) {
+				if (error instanceof UnknownEnumValue) unknownEnum = error;
+			}
+			if (matches === 0 && unknownEnum) throw unknownEnum;
 			return matches === 1 ? result : reject();
 		}
 		if (schema.type === void 0) return input;
@@ -211737,7 +211747,15 @@ var PorticoCastContracts = (function(exports) {
 				return input;
 			case "array": {
 				if (!Array.isArray(input) || !schema.items) return reject();
-				const result = input.map((entry, i) => value(schema.items, entry, `${path}[${i}]`));
+				const items = schema.items, result = [];
+				input.forEach((entry, i) => {
+					try {
+						result.push(value(items, entry, `${path}[${i}]`, open));
+					} catch (error) {
+						if (!(error instanceof UnknownEnumValue)) throw error;
+					}
+				});
+				if (schema.minItems !== void 0 && result.length < schema.minItems) return reject();
 				if (schema.uniqueItems && new Set(result.map(itemIdentity)).size !== result.length) return reject();
 				return result;
 			}
@@ -211746,10 +211764,15 @@ var PorticoCastContracts = (function(exports) {
 				const source = input;
 				const result = Object.create(null);
 				if (schema.additionalProperties === false && Object.keys(source).some((key) => !Object.prototype.hasOwnProperty.call(schema.properties ?? {}, key))) return reject();
-				if (schema.additionalProperties) for (const [key, entry] of Object.entries(source)) result[key] = value(schema.additionalProperties, entry, `${path}.${key}`);
+				if (schema.additionalProperties) for (const [key, entry] of Object.entries(source)) result[key] = value(schema.additionalProperties, entry, `${path}.${key}`, open);
 				else for (const [key, field] of Object.entries(schema.properties ?? {})) {
-					if (!(schema.required?.includes(key) ?? false) && (source[key] === void 0 || source[key] === null && schema.additionalProperties !== false && !acceptsNull(field))) continue;
-					result[key] = value(field, source[key], `${path}.${key}`);
+					const required = schema.required?.includes(key) ?? false;
+					if (!required && (source[key] === void 0 || source[key] === null && schema.additionalProperties !== false && !acceptsNull(field))) continue;
+					try {
+						result[key] = value(field, source[key], `${path}.${key}`, open);
+					} catch (error) {
+						if (required || !(error instanceof UnknownEnumValue)) throw error;
+					}
 				}
 				return result;
 			}

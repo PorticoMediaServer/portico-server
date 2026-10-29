@@ -363,13 +363,22 @@ type DirectSelectionResult struct {
 // profilePINProof is what was established about a PIN outside the selection
 // transaction.
 type profilePINProof struct {
-	// checked: the profile has a PIN, no remembered trust covers this
-	// same-profile selection (any switch from another profile is never covered
-	// by it), and the PIN offered was compared with it.
+	// checked: the profile has a PIN, no remembered trust covers this selection
+	// (an account-scoped launch or a same-profile one; a switch from another
+	// profile is never covered by it), and the PIN offered was compared with it.
 	checked bool
 	correct bool
 	// pinRevision is the PIN the comparison was made against.
 	pinRevision int64
+}
+
+// switchingProfile reports whether choosing id is an actual switch away from the
+// profile this session is viewing. An account-scoped sign-in has not chosen a
+// profile yet: the primary profile id it carries is a placeholder, so its first
+// choice is a launch and not a switch. Every session that has viewed a profile
+// keeps that profile's id, and choosing any other one from it is a switch.
+func (c directCaller) switchingProfile(id string) bool {
+	return !c.accountScoped && c.profileID != id
 }
 
 // proveProfilePIN compares the offered PIN with the profile's, reading what it
@@ -397,10 +406,11 @@ func (s *Service) proveProfilePIN(ctx context.Context, bearer, id string, q Dire
 		gated.Rollback()
 		return proof, ErrUnauthorized
 	}
-	// Remembered selection is a convenience for the profile it was made on. It
-	// never covers an actual switch from another profile: that needs the
-	// destination profile's own PIN, whatever its role.
-	switching := c.profileID != id
+	// Remembered selection is a convenience for a profile this installation
+	// already proved: a launch from an account-scoped sign-in, or a same-profile
+	// selection. It never covers an actual switch from another profile: that
+	// needs the destination profile's own PIN, whatever its role.
+	switching := c.switchingProfile(id)
 	trusted := false
 	if !switching && q.TrustToken != "" && validFamilyID(q.InstallationID) {
 		if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM direct_profile_trust WHERE token_hash=? AND account_id=? AND profile_id=? AND installation_id=? AND pin_revision=? AND membership_revision=? AND profile_revision=? AND expires_at>? AND EXISTS(SELECT 1 FROM identity_sign_in_policy WHERE pin_remember_days>0))`, Digest(q.TrustToken), c.account.ID, id, q.InstallationID, proof.pinRevision, c.account.Revision, revision, time.Now().UTC().Format(time.RFC3339)).Scan(&trusted); e != nil {
@@ -475,10 +485,11 @@ func (s *Service) SelectDirectProfileFrom(ctx context.Context, bearer, id string
 	if e != nil {
 		return out, ErrUnauthorized
 	}
-	// A remembered selection covers the profile it was made on. It never covers
-	// an actual switch from another profile: that needs the destination
-	// profile's own PIN, checked afresh, whatever its role.
-	switching := c.profileID != id
+	// A remembered selection covers a profile this installation already proved:
+	// a launch from an account-scoped sign-in, or a same-profile selection. It
+	// never covers an actual switch from another profile: that needs the
+	// destination profile's own PIN, checked afresh, whatever its role.
+	switching := c.switchingProfile(id)
 	trusted := false
 	if !switching && q.TrustToken != "" && validFamilyID(q.InstallationID) {
 		e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM direct_profile_trust WHERE token_hash=? AND account_id=? AND profile_id=? AND installation_id=? AND pin_revision=? AND membership_revision=? AND profile_revision=? AND expires_at>? AND EXISTS(SELECT 1 FROM identity_sign_in_policy WHERE pin_remember_days>0))`, Digest(q.TrustToken), c.account.ID, id, q.InstallationID, pinRevision, c.account.Revision, revision, time.Now().UTC().Format(time.RFC3339)).Scan(&trusted)

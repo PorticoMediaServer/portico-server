@@ -91,13 +91,20 @@ func (f *FiniteHLS) input(ctx context.Context, id string) (vod.Input, error) {
 		}}, nil
 }
 func (f *FiniteHLS) live(id string) bool {
-	var live bool
-	err := f.h.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM playback_sessions p JOIN authorization_access s ON s.hash=p.session_hash LEFT JOIN accounts a ON a.id=s.account_id WHERE p.id=? AND p.state NOT IN ('stopped','ended','failed') AND p.expires_at>? AND s.expires_at>? AND s.revoked=0 AND (s.authority!='local' OR s.epoch=a.epoch))`, id, time.Now().UTC().Format(time.RFC3339), time.Now().UTC().Format(time.RFC3339)).Scan(&live)
-	return err == nil && live
+	return occurrenceLive(f.h.db, id, 0)
 }
 func (f *FiniteHLS) liveGeneration(id string, generation int) bool {
+	return occurrenceLive(f.h.db, id, generation)
+}
+
+// occurrenceLive reports whether an admitted occurrence may keep producing.
+// Authentication is checked through the session family's current token, not
+// the token that started playback: a routine refresh mid-film must not cancel
+// the transcode (R-03). generation 0 accepts any generation.
+func occurrenceLive(db *sql.DB, id string, generation int) bool {
 	var live bool
-	err := f.h.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM playback_sessions p JOIN authorization_access s ON s.hash=p.session_hash LEFT JOIN accounts a ON a.id=s.account_id WHERE p.id=? AND p.generation=? AND p.state NOT IN ('stopped','ended','failed') AND p.expires_at>? AND s.expires_at>? AND s.revoked=0 AND (s.authority!='local' OR s.epoch=a.epoch))`, id, generation, time.Now().UTC().Format(time.RFC3339), time.Now().UTC().Format(time.RFC3339)).Scan(&live)
+	now := time.Now().UTC().Format(time.RFC3339)
+	err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM playback_sessions p JOIN authorization_access s ON s.hash=`+identity.CurrentFamilyTokenSQL("p.session_hash")+` LEFT JOIN accounts a ON a.id=s.account_id WHERE p.id=? AND (?=0 OR p.generation=?) AND p.state NOT IN ('stopped','ended','failed') AND p.expires_at>? AND s.expires_at>? AND s.revoked=0 AND (s.authority!='local' OR s.epoch=a.epoch))`, id, generation, generation, now, now).Scan(&live)
 	return err == nil && live
 }
 func finiteManifest(s *vod.Source) []byte {
@@ -256,7 +263,7 @@ func (f *FiniteHLS) publishPreparation(ctx context.Context, id string, a *finite
 	ctx = gated.Context()
 	var live bool
 	run := a.run
-	err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM playback_sessions p JOIN authorization_access s ON s.hash=p.session_hash LEFT JOIN accounts account ON account.id=s.account_id JOIN playback_source_pins pin ON pin.session_id=p.id WHERE p.id=? AND p.generation=? AND p.request_id=? AND p.item_id=? AND p.asset_id=? AND p.state NOT IN('stopped','ended','failed') AND p.expires_at>? AND s.expires_at>? AND s.revoked=0 AND (s.authority!='local' OR s.epoch=account.epoch) AND pin.asset_id=p.asset_id AND pin.size=? AND pin.modified_ns=?)`, id, run.generation, run.requestID, run.itemID, run.assetID, time.Now().UTC().Format(time.RFC3339), time.Now().UTC().Format(time.RFC3339), source.Size, source.ModifiedNS).Scan(&live)
+	err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM playback_sessions p JOIN authorization_access s ON s.hash=`+identity.CurrentFamilyTokenSQL("p.session_hash")+` LEFT JOIN accounts account ON account.id=s.account_id JOIN playback_source_pins pin ON pin.session_id=p.id WHERE p.id=? AND p.generation=? AND p.request_id=? AND p.item_id=? AND p.asset_id=? AND p.state NOT IN('stopped','ended','failed') AND p.expires_at>? AND s.expires_at>? AND s.revoked=0 AND (s.authority!='local' OR s.epoch=account.epoch) AND pin.asset_id=p.asset_id AND pin.size=? AND pin.modified_ns=?)`, id, run.generation, run.requestID, run.itemID, run.assetID, time.Now().UTC().Format(time.RFC3339), time.Now().UTC().Format(time.RFC3339), source.Size, source.ModifiedNS).Scan(&live)
 	if err != nil {
 		return err
 	}

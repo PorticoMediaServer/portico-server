@@ -303,7 +303,7 @@ jobs:
         run: |
           (cd server && go run ./cmd/apigen)
           node scripts/cast/generate.mjs
-          git diff --exit-code -- server/api/portico.openapi.json packages/contracts/src server/receiver/cast/contracts.js
+          git diff --exit-code -- server/api/portico.openapi.json packages/contracts/src packages/player-core/src/quality-ladder.ts server/internal/httpapi/route_lanes.go server/receiver/cast/contracts.js
       - if: ${{ !cancelled() }}
         name: Web lint (required)
         run: |

@@ -60,3 +60,40 @@ func TestLocalObjectBindingRejectsStaleAttributes(t *testing.T) {
 		t.Fatal("stale attributes accepted")
 	}
 }
+
+// R-05: toggling the read-only attribute moves FILE_BASIC_INFO.ChangeTime but
+// no byte. The change token must hold; a real write must move it.
+func TestLocalChangeTokenIgnoresAttributeWrites(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "publication.pdf")
+	if err := os.WriteFile(path, []byte("%PDF-1.7 first edition"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	token := func() string {
+		t.Helper()
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, value, err := observedObjectBinding(info, path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return value
+	}
+	first := token()
+	if err := os.Chmod(path, 0400); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if got := token(); got != first {
+		t.Fatalf("an attribute write moved the change token: %q -> %q", first, got)
+	}
+	if err := os.WriteFile(path, []byte("%PDF-1.7 second edition, longer"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if got := token(); got == first {
+		t.Fatal("a content write kept the change token")
+	}
+}
