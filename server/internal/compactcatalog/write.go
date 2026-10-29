@@ -908,6 +908,9 @@ func LinkAssetTx(ctx context.Context, tx *sql.Tx, item, asset int64, l Link) err
 // UnlinkAssetTx detaches a file from an item. An item left with no file stays
 // in the catalogue, marked missing.
 func UnlinkAssetTx(ctx context.Context, tx *sql.Tx, item, asset int64) error {
+	if err := RequireEntityAcquirableTx(ctx, tx, item); err != nil {
+		return err
+	}
 	res, err := tx.ExecContext(ctx, `DELETE FROM catalog_asset_links WHERE entity_id=? AND asset_id=?`, item, asset)
 	if err != nil {
 		return err

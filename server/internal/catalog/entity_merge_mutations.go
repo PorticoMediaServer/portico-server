@@ -12,7 +12,7 @@ import (
 
 func MergeTitlesStepTx(ctx context.Context, tx *sql.Tx, ref compactcatalog.MutationRef) (compactcatalog.MutationStep, error) {
 	m, step, err := checkedMutationTx(ctx, tx, ref)
-	if err != nil || m.Status != "active" || step.Complete || step.Outcome == "blocked" {
+	if err != nil || m.Status != "active" || step.Complete || step.SourcePaused || step.Outcome == "blocked" {
 		return step, err
 	}
 	if m.OwnerKind == "identity" || m.OwnerKind == "mb-adoption" {

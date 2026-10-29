@@ -149,7 +149,7 @@ func hasOtherShowLifetimeTx(ctx context.Context, tx *sql.Tx, show int64, own str
 
 func emptyParentStepTx(ctx context.Context, tx *sql.Tx, ref compactcatalog.MutationRef) (compactcatalog.MutationStep, error) {
 	m, step, e := checkedMutationTx(ctx, tx, ref)
-	if e != nil || m.Status != "active" || step.Complete {
+	if e != nil || m.Status != "active" || step.Complete || step.SourcePaused {
 		return step, e
 	}
 	if m.OwnerKind != "empty-parent" || m.Kind != compactcatalog.Show || m.Mode != "members" || m.CauseOperation != "empty-show" || m.Parent != "" || m.Child != "" || m.Target != 0 {

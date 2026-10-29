@@ -315,6 +315,7 @@ type PlanOverrun struct {
 
 // PlanStats is the process-wide picture of write budgets.
 type PlanStats struct {
+	CatalogItemIngest []CatalogItemIngestWait `json:"catalogItemIngest,omitempty"`
 	// Measured counts committed gated transactions whose cost was read.
 	Measured       uint64              `json:"measured"`
 	MusicBrainzWAL *AccountingWALStats `json:"musicBrainzWal,omitempty"`
@@ -346,7 +347,7 @@ var plans struct {
 // Plans snapshots write-budget telemetry.
 func Plans() PlanStats {
 	accounting := AccountingWAL()
-	out := PlanStats{Measured: plans.measured.Load(), Overruns: plans.overruns.Load(), OverrunsByClass: map[string]uint64{}, OverrunsByDimension: map[string]uint64{}, MusicBrainzWAL: &accounting}
+	out := PlanStats{CatalogItemIngest: CatalogItemIngestWaits(), Measured: plans.measured.Load(), Overruns: plans.overruns.Load(), OverrunsByClass: map[string]uint64{}, OverrunsByDimension: map[string]uint64{}, MusicBrainzWAL: &accounting}
 	plans.mu.Lock()
 	defer plans.mu.Unlock()
 	for class, count := range plans.byClass {

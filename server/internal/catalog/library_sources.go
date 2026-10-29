@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/storage"
@@ -435,6 +436,9 @@ func (s *Service) SaveSourceThen(ctx context.Context, library, id string, input 
 		id = identity.Token()
 		_, err = tx.ExecContext(ctx, `INSERT INTO library_sources(id,library_id,name,configured_root,root,classification,root_identity,follow_symlinks,interval_seconds,next_scan_at,identity_confirmed,remote_source_id) VALUES(?,?,?,?,?,?,?,?,?,?,1,`+remoteSourceIDExpr+`)`, id, library, input.Name, input.Path, observed.Path, input.Classification, rootID, input.FollowSymlinks, input.IntervalSeconds, next, input.Path, input.Path)
 	} else {
+		if e := compactcatalog.RequireLibraryInventoryFreeTx(ctx, tx, library); e != nil {
+			return result, e
+		}
 		old, e := scanLibrarySource(tx.QueryRowContext(ctx, `SELECT `+sourceColumns+` FROM library_sources WHERE id=? AND library_id=?`, id, library))
 		if e != nil {
 			return result, e
@@ -488,6 +492,13 @@ func (s *Service) SaveSourceThen(ctx context.Context, library, id string, input 
 	return s.LibrarySource(ctx, id)
 }
 func sourcePlaybackBusy(ctx context.Context, tx *sql.Tx, source string) error {
+	var library string
+	if err := tx.QueryRowContext(ctx, `SELECT library_id FROM library_sources WHERE id=?`, source).Scan(&library); err != nil {
+		return err
+	}
+	if err := compactcatalog.RequireLibraryInventoryFreeTx(ctx, tx, library); err != nil {
+		return err
+	}
 	var busy int
 	// Legacy established sessions plus contract-32 preparation/live occurrences.
 	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM playback_sessions p JOIN catalog_entities i ON i.id=p.item_id JOIN catalog_libraries cl ON cl.id=i.library_id WHERE (EXISTS(SELECT 1 FROM inventory_objects o WHERE o.asset_id=p.asset_id AND o.source_id=?) OR cl.library_id=? AND NOT EXISTS(SELECT 1 FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id WHERE o.asset_id=p.asset_id AND s.library_id=cl.library_id)) AND p.state NOT IN('ended','stopped','failed') AND p.expires_at>?)`, source, source, time.Now().UTC().Format(time.RFC3339)).Scan(&busy)
@@ -607,6 +618,9 @@ func (s *Service) AdoptRootIdentity(ctx context.Context, job string, source Libr
 		return ErrSourceChanged
 	}
 	return dbwork.WithWriteTx(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassBackgroundMedia), func(tx *sql.Tx) error {
+		if err := requireInventorySourceFreeTx(ctx, tx, source.ID); err != nil {
+			return err
+		}
 		res, err := tx.ExecContext(ctx, `UPDATE library_sources SET root_identity=? WHERE id=? AND generation=? AND root_identity=?`, observed, source.ID, source.Generation, source.RootIdentity)
 		if err != nil {
 			return err

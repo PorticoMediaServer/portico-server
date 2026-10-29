@@ -62,6 +62,9 @@ func (s *Service) RemoveLibrary(ctx context.Context, id, name string, expected i
 		if _, err := compactcatalog.LibraryTx(ctx, tx, id); err != nil {
 			return err
 		}
+		if err := compactcatalog.RequireLibraryInventoryFreeTx(ctx, tx, id); err != nil {
+			return err
+		}
 		for _, q := range []string{
 			`UPDATE catalog_libraries SET retired=1 WHERE library_id=?`,
 			`UPDATE jobs SET status='cancelled' WHERE library_id=? AND status IN('queued','running')`,
