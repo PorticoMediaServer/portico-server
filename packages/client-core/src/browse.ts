@@ -43,7 +43,7 @@ export type BrowseQuickFilter=Readonly<{id:string;labelKey:string;query:BrowseNo
 export type BrowseQueryLimits=Readonly<{maximumDepth:number;maximumClauses:number;maximumBytes:number;maximumSorts:number;defaultLimit:number;maximumLimit:number;cursorTtlMs:number}>;
 export type BrowseLibraryScope=Readonly<{id:string;name:string;kind:string;defaultView:string;pinned:boolean}>;
 export type BrowseSurfaceCapability=Readonly<{id:string;endpoint:string;membershipField?:string;sorts:readonly string[];filters:readonly string[];paging:BrowsePaging}>;
-export type BrowseCapabilities=Readonly<{surfaces?:readonly BrowseSurfaceCapability[];library:BrowseLibraryScope;pivots:readonly BrowsePivotCapability[];resolvedPivot:BrowsePivotCapability|null;fields:readonly BrowseFieldCapability[];sorts:readonly BrowseSortCapability[];quickFilters:readonly BrowseQuickFilter[];queryLimits:BrowseQueryLimits}>;
+export type BrowseCapabilities=Readonly<{/** A newer published Reading image is being built; what is shown stays current-eligible. */importing?:true;surfaces?:readonly BrowseSurfaceCapability[];library:BrowseLibraryScope;pivots:readonly BrowsePivotCapability[];resolvedPivot:BrowsePivotCapability|null;fields:readonly BrowseFieldCapability[];sorts:readonly BrowseSortCapability[];quickFilters:readonly BrowseQuickFilter[];queryLimits:BrowseQueryLimits}>;
 export type BrowsePositionAnchor=Readonly<{key:string;index:number}>;
 /** `totalIsLowerBound`: a filter matched more titles than the server counts (10,000); `total` then
  * grows as pages arrive and the count reads "10,000+". */
@@ -59,7 +59,7 @@ export type BrowseSelectionType=Readonly<{kind:string;count:number;capabilities:
  * its absence is supported only for legacy ordinary-200 descriptors. */
 export type BrowseWholeSelection=Readonly<{libraryId:string;pivot:string;filter:BrowseNode|null;sort:readonly BrowseSortSelection[];catalogRevision:string;selectionBasis?:string;total:number;types:readonly BrowseSelectionType[];unavailableActions?:import('./selection-model/types.ts').SelectionUnavailableActions}>;
 export type BrowseWholeSelectionUnavailable=Readonly<{reason:'search_not_bounded'}>;
-export type BrowseResult=Readonly<{pivot:string;applied:BrowseApplied;entries:readonly ContentEntry[];pageInfo:BrowsePageInfo;positionIndex:readonly BrowsePositionAnchor[];displayTargets?:readonly BrowseDisplayTarget[];wholeSelection?:BrowseWholeSelection;wholeSelectionUnavailable?:BrowseWholeSelectionUnavailable}>;
+export type BrowseResult=Readonly<{/** This page's Reading image is being built or updated; an empty page is not an exact zero. */importing?:true;pivot:string;applied:BrowseApplied;entries:readonly ContentEntry[];pageInfo:BrowsePageInfo;positionIndex:readonly BrowsePositionAnchor[];displayTargets?:readonly BrowseDisplayTarget[];wholeSelection?:BrowseWholeSelection;wholeSelectionUnavailable?:BrowseWholeSelectionUnavailable}>;
 export type BrowseDisplayTarget=Readonly<{membershipId:string;entryId:string}>;
 export type BrowseFacetValue=Readonly<{value:string;label:string;count:number;countIsLowerBound?:boolean;seriesId?:string}>;
 export type BrowseFacetPage=Readonly<{field:string;total:number;values:readonly BrowseFacetValue[];totalIsLowerBound?:boolean;revision?:string}>;
@@ -199,7 +199,8 @@ export function parseBrowseCapabilities(raw:unknown):BrowseCapabilities{
  // The fields and sorts describe the resolved pivot, so it must be one this app could read.
  const resolved=raw.resolvedPivot===undefined||raw.resolvedPivot===null?null:pivot(raw.resolvedPivot);
  if(resolved&&!pivots.some(p=>p.id===resolved.id))bad();
- return freeze({
+ // P2-59: `importing` (omitted when false) says a newer Reading image is still being built.
+ return freeze({...(raw.importing===true?{importing:true as const}:{}),
   library:{id:across?acrossLibraries:library.id as string,name:(library.name??'') as string,kind:across?'':library.kind as string,defaultView:(library.defaultView??'') as string,pinned:library.pinned===true},
   surfaces:keepReadable('browse','surfaces',rows(raw.surfaces??[],32),v=>{
    if(!obj(v)||!id(v.id)||!str(v.endpoint,256)||(v.paging!=='keyset'&&v.paging!=='offset'))bad();
@@ -250,7 +251,7 @@ export function parseBrowseResult(raw:unknown):BrowseResult{
  if(unavailable!==undefined&&(!obj(unavailable)||Object.keys(unavailable).length!==1||unavailable.reason!=='search_not_bounded'))bad();
  const wholeSelectionUnavailable=unavailable===undefined?undefined:freeze({reason:'search_not_bounded' as const});
  const wholeSelection=parseWholeSelection(raw.wholeSelection,{revision:info.revision,pivot:raw.pivot,query:appliedQuery,sort:appliedSort});
- return freeze({
+ return freeze({...(raw.importing===true?{importing:true as const}:{}),
   pivot:raw.pivot,
   applied:{
    query:appliedQuery,

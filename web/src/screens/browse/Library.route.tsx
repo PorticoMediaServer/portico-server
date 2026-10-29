@@ -460,6 +460,7 @@ function CommittedLibrary({captured, library, search, readingMarkAll, frame, res
       if (tab.shows === 'playlists') {void router.navigate({to: '/saved', search: {view: 'playlists'}}).catch(context.effects.reportError);return;}
       navigate({view: tab.id === 'discover' ? 'discover' : 'browse', ...(tab.pivot ? {pivot: tab.pivot} : {}), ...(tab.defaultSort ? {sort: [tab.defaultSort]} : {})});}};
   const empty = <LibraryEmpty api={resources.life.api} scope={context.scope} libraryId={library.id} libraryName={library.name}
+    importing={state.capabilities?.importing === true || state.importing === true}
     owner={context.identity?.viewer.role === 'owner'} onActivity={() => {if (context.isCurrent()) void router.navigate({to: '/dashboard'}).catch(context.effects.reportError);}}/>;
   const bindings: LibraryBindings = {...header, controller: resources.controller,
     unmatchedHelp: context.effects.editMetadata ? t('metadata.attention.browseHelp') : undefined,

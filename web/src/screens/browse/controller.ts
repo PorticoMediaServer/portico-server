@@ -12,7 +12,9 @@ export type BrowseMember = Readonly<{membershipId: string; entry: ContentEntry}>
 export type BrowseSource = Readonly<{libraryId: string; pivot: string; base?: readonly BrowseNode[]; predicates?: readonly BrowseNode[]; homeRowId?: string; sort?: BrowseSortSelection; sorts?: readonly BrowseSortSelection[]}>;
 export type BrowseState = Readonly<{phase: 'loading' | 'ready' | 'error'; capabilities?: BrowseCapabilities; predicates: readonly BrowseNode[]; sort?: BrowseSortSelection; error?: unknown;
   /** Actual opaque page token, absent until this applied query has replied. */
-  revision?: string; queryRevision: number}>;
+  revision?: string; queryRevision: number;
+  /** The latest page said its Reading image is still being built (P2-59): an empty page is not an exact zero. */
+  importing?: true}>;
 function captureNode(input: BrowseNode): BrowseNode {
   const freeze = (node: BrowseNode): BrowseNode => {
     if ('field' in node) return Object.freeze({...node, value: Array.isArray(node.value) ? Object.freeze([...node.value]) : node.value});
@@ -122,7 +124,7 @@ export class BrowseController {
     const epoch = ++this.epoch;
     this.session?.retire();
     this.session = undefined;
-    this.publish({...next, revision: undefined, queryRevision: this.state.queryRevision + 1});
+    this.publish({...next, revision: undefined, importing: undefined, queryRevision: this.state.queryRevision + 1});
     if (!this.current() || epoch !== this.epoch) return;
     const session = new BrowseSession<BrowseMember>({query: this.sessionQuery(caps, predicates, sort),
       request: (path, method, body, signal) => this.api.request(path, method, body, signal),
@@ -130,6 +132,7 @@ export class BrowseController {
       current: () => this.current() && epoch === this.epoch,
       item: (entry, page, index) => Object.freeze({membershipId: browseMembershipId(page, index)!, entry}),
       onRevision: revision => this.publish({revision}),
+      onPage: page => {if (page.importing !== this.state.importing) this.publish({importing: page.importing});},
       onWhole: () => this.publish({}),
       onWholeUnavailable: () => this.publish({}),
       onPreparationError: error => this.publish({error}),

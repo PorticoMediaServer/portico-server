@@ -83,3 +83,14 @@ test('a malformed filter or sort drops only the descriptor, never the page', () 
   assert.equal(parsed.wholeSelection, undefined);
   assert.equal(parsed.pageInfo.revision, 'r1');
 });
+
+import {parseBrowseCapabilities} from '../src/browse.ts';
+
+test('P2-59: an optional `importing` says a Reading image is still being built; only `true` means anything', () => {
+  assert.equal(parseBrowseResult(page(undefined, {importing: true})).importing, true);
+  for (const value of [false, undefined, 'yes', 1]) assert.equal('importing' in parseBrowseResult(page(undefined, {importing: value})), false, String(value));
+  const caps = {library: {id: 'books', name: 'Books', kind: 'book', defaultView: 'discover'}, pivots: [], resolvedPivot: null, fields: [], sorts: [], quickFilters: [],
+    queryLimits: {maximumDepth: 5, maximumClauses: 40, maximumBytes: 65536, maximumSorts: 1, defaultLimit: 40, maximumLimit: 100, cursorTtlMs: 1800000}};
+  assert.equal(parseBrowseCapabilities({...caps, importing: true}).importing, true);
+  assert.equal('importing' in parseBrowseCapabilities(caps), false, 'old servers that never send it stay compatible');
+});

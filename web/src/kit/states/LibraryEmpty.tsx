@@ -4,9 +4,11 @@ import type {LibraryContentApi, ContentScope} from '@core/library-content.ts';
 import {LibraryManagementService} from '@core/library-management.ts';
 import {StateView} from './State';
 const t = defaultI18n.t;
-/** Only the owner's actual, complete one-job history establishes a first scan. */
-export function LibraryEmpty({api, scope, libraryId, libraryName, owner, onActivity}: Readonly<{
-  api: LibraryContentApi; scope: ContentScope; libraryId: string; libraryName: string; owner: boolean; onActivity: () => void;
+/** Only the owner's actual, complete one-job history establishes a first scan, or the server's own
+ * word that this library's image is still being built (`importing`), which anyone may see. Library
+ * pages never show scanning progress (Justin, 21 Oct); only the owner is offered View activity. */
+export function LibraryEmpty({api, scope, libraryId, libraryName, owner, importing = false, onActivity}: Readonly<{
+  api: LibraryContentApi; scope: ContentScope; libraryId: string; libraryName: string; owner: boolean; importing?: boolean; onActivity: () => void;
 }>) {
   const [firstScan, setFirstScan] = useState(false);
   // Publish only at commit, then sample once for this setup's original lifetime.
@@ -29,7 +31,7 @@ export function LibraryEmpty({api, scope, libraryId, libraryName, owner, onActiv
     void service.selectLibrary(libraryId).then(update).catch(() => {if (current) setFirstScan(false);});
     return () => {current = false;off();service.dispose();};
   }, [api, scope.serverId, scope.viewerId, libraryId, owner]);
-  return firstScan ? <StateView title={t('next.states.firstScan')} body={t('next.states.firstScanBody', {library: libraryName})}
-    primary={{id: 'activity', label: t('next.states.viewActivity'), onPress: onActivity}}/>
+  return firstScan || importing ? <StateView title={t('next.states.firstScan')} body={t('next.states.firstScanBody', {library: libraryName})}
+    {...(owner ? {primary: {id: 'activity', label: t('next.states.viewActivity'), onPress: onActivity}} : {})}/>
     : <StateView title={t('library.emptyLibrary')} body={t('library.emptyLibraryBody')}/>;
 }
