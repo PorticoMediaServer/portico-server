@@ -27,8 +27,9 @@ func (s *Service) VerifySetupReturn(ctx context.Context, raw json.RawMessage, q 
 	if err != nil || len(fields) != 1 || d.Decode(&grant) != nil {
 		return none, "", identity.ErrUnauthorized
 	}
-	who, nonce, err := s.parseRegisteredReturn(ctx, grant.Assertion, RegisteredReturnExchange{TransactionID: q.TransactionID, Verifier: q.Verifier, RegistrationID: q.RegistrationID, InstallationID: q.InstallationID, ServerChallenge: q.ServerChallenge, Purpose: q.Purpose})
-	if err != nil || who.Return.CurrentOwnerAccountID != "" || who.Return.PreviousOwnerRole != "" {
+	who, nonce, err := s.parseRegisteredReturn(ctx, grant.Assertion, RegisteredReturnExchange{TransactionID: q.TransactionID, Verifier: q.Verifier, InstallationID: q.InstallationID, ServerChallenge: q.ServerChallenge, Purpose: q.Purpose})
+	// Setup names no registration (O-163): the assertion's must be empty, as compared above.
+	if err != nil || who.Return.CurrentOwnerAccountID != "" || who.Return.PreviousOwnerRole != "" || who.Return.RegistrationID != "" {
 		return none, "", identity.ErrUnauthorized
 	}
 	return who, nonce, nil

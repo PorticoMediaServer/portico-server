@@ -151753,21 +151753,6 @@ export const schemas = {
           "phase": {
             "type": "string"
           },
-          "returnRegistration": {
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "origin": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "id",
-              "origin"
-            ],
-            "type": "object"
-          },
           "start": {
             "properties": {
               "payload": {
@@ -231141,12 +231126,6 @@ export const schemas = {
             "const": "setup",
             "type": "string"
           },
-          "registrationId": {
-            "maxLength": 128,
-            "minLength": 1,
-            "pattern": "^[A-Za-z0-9_-]+$",
-            "type": "string"
-          },
           "serverChallenge": {
             "maxLength": 128,
             "minLength": 32,
@@ -231176,7 +231155,6 @@ export const schemas = {
           "transactionId",
           "state",
           "verifier",
-          "registrationId",
           "installationId",
           "serverChallenge",
           "purpose"
@@ -244605,21 +244583,6 @@ export const schemas = {
           "phase": {
             "type": "string"
           },
-          "returnRegistration": {
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "origin": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "id",
-              "origin"
-            ],
-            "type": "object"
-          },
           "start": {
             "properties": {
               "payload": {
@@ -244876,21 +244839,6 @@ export const schemas = {
           },
           "phase": {
             "type": "string"
-          },
-          "returnRegistration": {
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "origin": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "id",
-              "origin"
-            ],
-            "type": "object"
           },
           "start": {
             "properties": {
@@ -245152,21 +245100,6 @@ export const schemas = {
           "phase": {
             "type": "string"
           },
-          "returnRegistration": {
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "origin": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "id",
-              "origin"
-            ],
-            "type": "object"
-          },
           "start": {
             "properties": {
               "payload": {
@@ -245426,21 +245359,6 @@ export const schemas = {
           },
           "phase": {
             "type": "string"
-          },
-          "returnRegistration": {
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "origin": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "id",
-              "origin"
-            ],
-            "type": "object"
           },
           "start": {
             "properties": {
@@ -245773,21 +245691,6 @@ export const schemas = {
           },
           "phase": {
             "type": "string"
-          },
-          "returnRegistration": {
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "origin": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "id",
-              "origin"
-            ],
-            "type": "object"
           },
           "start": {
             "properties": {
@@ -246142,21 +246045,6 @@ export const schemas = {
           },
           "phase": {
             "type": "string"
-          },
-          "returnRegistration": {
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "origin": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "id",
-              "origin"
-            ],
-            "type": "object"
           },
           "start": {
             "properties": {

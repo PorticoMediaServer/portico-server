@@ -9344,8 +9344,7 @@ CREATE TABLE identity_setup_completions(
  state_hash TEXT NOT NULL,code_challenge TEXT NOT NULL CHECK(length(code_challenge)=43),installation_id TEXT NOT NULL,server_challenge_hash TEXT NOT NULL,
  created_ms INTEGER NOT NULL,expires_ms INTEGER NOT NULL CHECK(expires_ms>created_ms AND expires_ms<=created_ms+300000),
  installed_ms INTEGER NOT NULL DEFAULT 0,completed_ms INTEGER NOT NULL DEFAULT 0,consumed_ms INTEGER NOT NULL DEFAULT 0,
- attempt_id TEXT NOT NULL DEFAULT '',transaction_id TEXT NOT NULL DEFAULT '',
- registration_id TEXT NOT NULL DEFAULT '',registration_origin TEXT NOT NULL DEFAULT '',route_generation INTEGER NOT NULL DEFAULT 0 CHECK(route_generation>=0)
+ attempt_id TEXT NOT NULL DEFAULT '',transaction_id TEXT NOT NULL DEFAULT ''
 ) STRICT;
 CREATE UNIQUE INDEX identity_setup_one_active ON identity_setup_completions(setup_request_id) WHERE phase IN('prepared','installed','consumed');
 CREATE TABLE identity_move_link_tickets(token_hash TEXT PRIMARY KEY,account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,installation_id TEXT NOT NULL,epoch INTEGER NOT NULL,expires_ms INTEGER NOT NULL,UNIQUE(account_id,installation_id)) STRICT;

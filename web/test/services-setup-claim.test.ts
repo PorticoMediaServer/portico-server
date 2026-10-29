@@ -31,7 +31,7 @@ function fixture() {
   return {account, calls, request: capture().result!.request!, signal: new AbortController().signal,
     patch: (value: Partial<ServerClaimLookupResponse>) => {claim = {...claim, ...value};}, after: (work: typeof after) => {after = work;},
     replace: () => {session = {...session, familyId: 'replacement'};},
-    installed: () => {claim = {...claim, status: 'approved', returnRegistration: {id: 'ret_' + Buffer.alloc(32, 2).toString('base64url'), origin: 'https://managed.example'}};},
+    installed: () => {claim = {...claim, status: 'approved', setupInstalled: true};},
     location: (value: string) => {location = value;}, rejectComplete: () => {rejectComplete = true;}};
 }
 
@@ -78,7 +78,7 @@ test('setup, unsigned name hints, changed transactions and expired claims never 
   const f = fixture(), review = await reviewHostedSetupClaim(f.account, f.request, f.signal); f.patch({setupTransactionId: 'different_transaction'});
   await assert.rejects(decideHostedSetupClaim(f.account, review, 'approve', f.signal)); assert.equal(f.calls.length, 2);
 });
-test('completion waits for actual installed registration, then returns only the original signed address callback', async () => {
+test('completion waits for the claim to install, then returns only the original signed address callback', async () => {
   const f = fixture(), review = await reviewHostedSetupClaim(f.account, f.request, f.signal);
   assert.equal(await completeHostedSetupClaim(f.account, review, f.signal), undefined);
   assert(f.calls.every(value => value.path.endsWith('/lookup')));
@@ -88,9 +88,9 @@ test('completion waits for actual installed registration, then returns only the 
   assert.deepEqual(f.calls.at(-1)?.body, {});
   assert(f.calls.every(value => !value.path.endsWith('/start') && !value.path.endsWith('/exchange')));
 });
-test('registration retarget, response redirect and post-completion family changes cannot return a location', async () => {
+test('response redirect and post-completion family changes cannot return a location', async () => {
   const f = fixture(); f.installed(); const review = await reviewHostedSetupClaim(f.account, f.request, f.signal);
-  f.patch({returnRegistration: {id: 'ret_' + Buffer.alloc(32, 3).toString('base64url'), origin: 'https://changed.example'}});
+  f.patch({setupInstalled: undefined});
   await assert.rejects(completeHostedSetupClaim(f.account, review, f.signal)); assert.equal(f.calls.length, 2);
   const g = fixture(), before = await reviewHostedSetupClaim(g.account, g.request, g.signal); g.installed(); g.location('https://evil.example/auth/portico-return#transaction=opaque_setup_transaction');
   await assert.rejects(completeHostedSetupClaim(g.account, before, g.signal));
@@ -112,4 +112,17 @@ test('setup return accepts the narrow original localhost exception, never networ
     location.replace('localhost', '127.0.0.1'), location.replace('/auth/', '/auth/../auth/'), location.replace('#', '?return=1#')])
     assert.throws(() => validateHostedSetupReturn(invalid, review));
   assert.throws(() => validateHostedSetupReturn('http://server.example/auth/portico-return#transaction=opaque_setup_transaction', {...review, address: 'http://server.example'}));
+});
+
+test('setupInstalled with an approved claim offers Return; absent offers none', async () => {
+  const f = fixture(); f.installed();
+  assert.equal((await reviewHostedSetupClaim(f.account, f.request, f.signal)).installed, true);
+  const g = fixture(); g.patch({status: 'approved'});
+  assert.equal((await reviewHostedSetupClaim(g.account, g.request, g.signal)).installed, false);
+});
+test('setupInstalled with a pending claim, a non-true value or a setup registration is invalid', async () => {
+  for (const patch of [{setupInstalled: true}, {status: 'approved', setupInstalled: false}, {status: 'approved', setupInstalled: 'yes'},
+    {status: 'approved', returnRegistration: {id: 'ret_' + Buffer.alloc(32, 2).toString('base64url'), origin: 'https://managed.example'}}]) {
+    const f = fixture(); f.patch(patch as never); await assert.rejects(reviewHostedSetupClaim(f.account, f.request, f.signal));
+  }
 });

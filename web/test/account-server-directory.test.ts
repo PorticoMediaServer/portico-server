@@ -8,7 +8,7 @@ function fixture() {
   let session={account:{id:scope.accountId},familyId:scope.familyId,accessToken:'current-bearer'};
   let gate:Promise<void>|undefined;let release=()=>{},started=()=>{};
   const calls:unknown[][]=[];
-  const row={id:'srv_'+ 'A'.repeat(43),name:'Lake house',baseUrl:'',publicKey:'A'.repeat(43),endpointVerified:false,policyRevision:1,
+  const row={id:'srv_'+ 'A'.repeat(43),name:'Lake house',baseUrl:'',publicKey:'A'.repeat(43),endpointVerified:false,secureConnection:'ready',policyRevision:1,
     lastSeenAt:'2026-10-18T12:00:00Z',ownedByMe:false,role:'admin',status:'active',presence:{lastSeenAt:'2026-10-18T12:00:00Z'}};
   const account={api:{send:async(...args:unknown[])=>{calls.push(['send',...args]);started();await gate;return {items:[row],version:'actual-version',watch:'actual-watch'};}},
     service:{synchronize:async()=>{calls.push(['sync']);},accessSession:async()=>{calls.push(['access']);return session;},getSnapshot:()=>({session})}} as unknown as ReturnType<typeof browserAccount>;
