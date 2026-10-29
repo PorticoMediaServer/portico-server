@@ -1567,7 +1567,6 @@ func run() (runErr error) {
 		}
 	}
 	if manager := claimHandler.Remote(); manager != nil {
-		control.OnRouteLabel(manager.RouteLabel)
 		networkCtx, stopNetwork := context.WithCancel(ctx)
 		networkDone := make(chan struct{})
 		supervise.Go("cmd.remote-network", func() {

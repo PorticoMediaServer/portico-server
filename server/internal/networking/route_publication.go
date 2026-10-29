@@ -8,8 +8,11 @@ import (
 )
 
 type PublishedCandidate struct {
-	BaseURL string `json:"baseUrl"`
-	Class   string `json:"class"`
+	BaseURL  string `json:"baseUrl"`
+	Class    string `json:"class"`
+	Insecure bool   `json:"insecure"`
+	Address  string `json:"address,omitempty"`
+	Port     int    `json:"port,omitempty"`
 }
 type RouteObservation struct {
 	Generation    int64                `json:"generation,string"`
@@ -58,7 +61,7 @@ func (h *ClaimHandler) proveRoute(ctx context.Context, v Intent, generation int6
 	return out, h.store.Current(ctx, v)
 }
 
-const maxPublishedCandidates = 12
+const maxPublishedCandidates = 80
 
 // The directory is TLS-only. Local discovery remains available over HTTP.
 // Manual routes arrive first, in the owner's chosen order, ahead of automatic
@@ -67,7 +70,7 @@ func boundedRouteCandidates(candidates []RemoteCandidate) []RemoteCandidate {
 	out := make([]RemoteCandidate, 0, min(len(candidates), maxPublishedCandidates))
 	seen := map[string]bool{}
 	for _, c := range candidates {
-		if !strings.HasPrefix(c.BaseURL, "https://") || seen[c.BaseURL] {
+		if (!strings.HasPrefix(c.BaseURL, "https://") && !(c.Class == "manual" && strings.HasPrefix(c.BaseURL, "http://") && c.Insecure)) || seen[c.BaseURL] {
 			continue
 		}
 		seen[c.BaseURL] = true

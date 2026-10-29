@@ -222,43 +222,6 @@ func TestPinholeProbeBacksOffWithoutFirewallControl(t *testing.T) {
 	}
 }
 
-// A86: a new members-only label from Hosted drops cached route names under
-// another label (so the manager re-asks and republishes) and keeps current ones.
-func TestRouteLabelDropsStaleCachedNames(t *testing.T) {
-	f, m, _, _, ctx := contactFixture(t)
-	const oldLabel, newLabel = "0123456789abcdef0123456789abcdef", "fedcba9876543210fedcba9876543210"
-	for _, row := range [][2]string{{"188.68.34.120", "https://c-" + oldLabel + ".ptc-aaaaaaaaaaaaaaaaaaaa.direct.getportico.tv:32500"}, {"2a03:4000:6:8::1", "https://c-" + newLabel + ".ptc-aaaaaaaaaaaaaaaaaaaa.direct.getportico.tv:32500"}} {
-		if _, e := f.db.Exec(`INSERT INTO networking_route_names(authority,address,port,url) VALUES('auth',?,32500,?)`, row[0], row[1]); e != nil {
-			t.Fatal(e)
-		}
-	}
-	if e := m.RouteLabel(ctx, newLabel); e != nil {
-		t.Fatal(e)
-	}
-	var left []string
-	rows, e := f.db.Query(`SELECT address FROM networking_route_names ORDER BY address`)
-	if e != nil {
-		t.Fatal(e)
-	}
-	for rows.Next() {
-		var a string
-		_ = rows.Scan(&a)
-		left = append(left, a)
-	}
-	rows.Close()
-	if len(left) != 1 || left[0] != "2a03:4000:6:8::1" {
-		t.Fatalf("left %v", left)
-	}
-	select {
-	case <-m.wake:
-	default:
-		t.Fatal("manager not woken to re-ask its name")
-	}
-	if m.RouteLabel(ctx, "not-a-label") == nil {
-		t.Fatal("invalid label accepted")
-	}
-}
-
 // A88: without PCP, NAT-PMP or UPnP the IPv4 mapping probes back off to a day
 // instead of every two minutes; a topology change probes again at once.
 func TestMappingProbeBacksOffWithoutGatewaySupport(t *testing.T) {

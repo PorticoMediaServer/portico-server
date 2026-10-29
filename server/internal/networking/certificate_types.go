@@ -13,26 +13,28 @@ import (
 // CertificateManager consumes the existing claim authority, never substitutes a
 // second identity system. TLS, claim, Hosted ACME and DNS-MAC keys are distinct.
 type CertificateManager struct {
-	servingMu   sync.Mutex
-	serving     *servingCertificate
-	store       *SQLiteStore
-	runner      *AuthorityRunner
-	transport   *HTTPTransport
-	tlsKey      *ecdsa.PrivateKey
-	roots       *x509.CertPool
-	environment string
-	bootError   string
-	wake        chan struct{}
-	listening   atomic.Bool
-	listenPort  atomic.Int64
+	directDomain, acmeDomain string
+	servingMu                sync.Mutex
+	serving                  *servingCertificate
+	store                    *SQLiteStore
+	runner                   *AuthorityRunner
+	transport                *HTTPTransport
+	tlsKey                   *ecdsa.PrivateKey
+	roots                    *x509.CertPool
+	environment              string
+	bootError                string
+	wake                     chan struct{}
+	listening                atomic.Bool
+	listenPort               atomic.Int64
 	// quiescent means there is no scope and no pending order, so nothing this
 	// loop does can make progress until something wakes it. See CertificateManager.Run.
 	quiescent atomic.Bool
 }
 
 type CertificateOptions struct {
-	Environment      string
-	StagingRootsFile string
+	DirectDomain, ACMEDomain string
+	Environment              string
+	StagingRootsFile         string
 }
 type CertificateConfig struct {
 	Enabled       bool   `json:"enabled"`

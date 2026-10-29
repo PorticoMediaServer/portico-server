@@ -6,8 +6,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"net/url"
+	"net/netip"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/directname"
 	"portico.local/server/internal/usermutation"
 	"strconv"
 	"strings"
@@ -24,9 +25,7 @@ type RemoteConfig struct {
 	UPnP       bool   `json:"upnp"`
 	PublicPort int    `json:"publicPort"`
 	Gateway    string `json:"gateway"`
-	// IPv6Open: the owner says inbound IPv6 reaches this server (their router
-	// allows it and has no IGDv2 firewall control). Without it, or a pinhole,
-	// the server's global IPv6 address is not published.
+	// IPv6Open allows Hosted-proven inbound IPv6 by default; false disables it.
 	IPv6Open bool `json:"ipv6Open"`
 }
 type RemoteStatus struct {
@@ -46,6 +45,9 @@ type RemoteStatus struct {
 }
 type RemoteCandidate struct {
 	BaseURL    string     `json:"baseUrl"`
+	Insecure   bool       `json:"insecure"`
+	Address    string     `json:"address,omitempty"`
+	Port       int        `json:"port,omitempty"`
 	Class      string     `json:"class"`
 	State      string     `json:"state"`
 	VerifiedAt *time.Time `json:"verifiedAt,omitempty"`
@@ -83,7 +85,7 @@ func seedRemoteSettings(ctx context.Context, db *sql.DB) error {
 		return e
 	}
 	defer clear(key)
-	if _, e = tx.ExecContext(ctx, `INSERT OR IGNORE INTO networking_remote_settings(singleton,signature_key) VALUES(1,?)`, key); e != nil {
+	if _, e = tx.ExecContext(ctx, `INSERT OR IGNORE INTO networking_remote_settings(singleton,signature_key,ipv6_open) VALUES(1,?,1)`, key); e != nil {
 		return e
 	}
 	return commitClaimDatabaseTx(ctx, gated)
@@ -121,8 +123,8 @@ func (m *RemoteManager) snapshot(ctx context.Context) (RemoteConfig, certificate
 				return c, cert, authority, state, key, e
 			}
 		}
-		c = RemoteConfig{Revision: c.Revision + 1, Enabled: enabled, PCP: true, NATPMP: true, UPnP: true, PublicPort: 32500}
-		if _, e = tx.ExecContext(ctx, `UPDATE networking_remote_settings SET authority=?,revision=?,enabled=?,lan_sharing=0,mapping=0,pcp=1,natpmp=1,upnp=1,public_port=32500,gateway='',manual_url='',ipv6_open=0 WHERE singleton=1`, authority, c.Revision, enabled); e != nil {
+		c = RemoteConfig{Revision: c.Revision + 1, Enabled: enabled, PCP: true, NATPMP: true, UPnP: true, PublicPort: 32500, IPv6Open: true}
+		if _, e = tx.ExecContext(ctx, `UPDATE networking_remote_settings SET authority=?,revision=?,enabled=?,lan_sharing=0,mapping=0,pcp=1,natpmp=1,upnp=1,public_port=32500,gateway='',manual_url='',ipv6_open=1 WHERE singleton=1`, authority, c.Revision, enabled); e != nil {
 			return c, cert, authority, state, key, e
 		}
 		if _, e = tx.ExecContext(ctx, `UPDATE networking_remote_state SET generation=generation+1,topology_digest='',route_digest='',next_attempt=0,attempts=0,status='{}' WHERE singleton=1`); e != nil {
@@ -253,47 +255,20 @@ func (m *RemoteManager) removeMapping(ctx context.Context, id string) error {
 	}
 	return commitClaimDatabaseTx(ctx, gated4)
 }
-func (m *RemoteManager) routeName(ctx context.Context, q certificateState, address string, port int, allowRequest bool) (string, error) {
-	var origin string
-	e := m.h.store.db.QueryRowContext(ctx, `SELECT url FROM networking_route_names WHERE authority=? AND address=? AND port=?`, q.Scope.ID, address, port).Scan(&origin)
-	if e == nil {
-		if port == 443 {
-			origin = strings.TrimSuffix(origin, ":443")
-		}
-		return origin, nil
-	}
-	if !errors.Is(e, sql.ErrNoRows) {
-		return "", e
-	}
-	if !allowRequest {
-		return "", ErrUnavailable
-	}
-	var route certificateRoute
-	e = m.h.certificates.transport.certificateCall(ctx, q.Scope.Intent, "route", "", struct {
-		Address string `json:"address"`
-		Port    int    `json:"port"`
-	}{address, port}, &route)
-	if e != nil {
-		return "", e
-	}
-	u, e := url.Parse(route.BaseURL)
-	if e != nil || !endpointOrigin(route.BaseURL) || u.Hostname() != route.Hostname || route.Namespace != q.Namespace || route.CertificateDNSName != "*."+q.Namespace+".direct.getportico.tv" || !validHostedRouteName(route.Hostname, q.Namespace) || ((u.Port() == "" && port != 443) || (u.Port() != "" && u.Port() != strconv.Itoa(port))) {
+func (m *RemoteManager) routeName(q certificateState, address string, port int) (string, error) {
+	ip, err := netip.ParseAddr(address)
+	if err != nil || port < 1 || port > 65535 {
 		return "", ErrInvalid
 	}
-	e = m.h.store.WithInstalledTransaction(ctx, q.Scope.Intent, func(ctx context.Context, tx *sql.Tx) error {
-		if _, e := tx.ExecContext(ctx, `DELETE FROM networking_route_names WHERE authority<>?`, q.Scope.ID); e != nil {
-			return e
-		}
-		// This row means "Hosted was last told this address". Keep only the newest per address
-		// family: if a connection flips A, B, then back to A, a remembered A would skip the
-		// report and leave Hosted and DNS pointing at B.
-		if _, e := tx.ExecContext(ctx, `DELETE FROM networking_route_names WHERE address<>? AND (instr(address,':')>0)=(instr(?,':')>0)`, address, address); e != nil {
-			return e
-		}
-		_, e := tx.ExecContext(ctx, `INSERT OR REPLACE INTO networking_route_names(authority,address,port,url) VALUES(?,?,?,?)`, q.Scope.ID, address, port, route.BaseURL)
-		return e
-	})
-	return route.BaseURL, e
+	host := directname.IPHostname(ip, q.Namespace, m.h.certificates.directDomain)
+	if host == "" {
+		return "", ErrInvalid
+	}
+	origin := "https://" + host
+	if port != 443 {
+		origin += ":" + strconv.Itoa(port)
+	}
+	return origin, nil
 }
 
 // Settings alone are not installed-claim authority. They may still contain the
@@ -316,24 +291,4 @@ func (m *RemoteManager) currentConfigTx(ctx context.Context, tx *sql.Tx, authori
 		return ErrStale
 	}
 	return ctx.Err()
-}
-
-func validHostedRouteName(host, namespace string) bool {
-	suffix := "." + namespace + ".direct.getportico.tv"
-	if host == "current"+suffix {
-		return true
-	}
-	if !strings.HasSuffix(host, suffix) {
-		return false
-	}
-	label := strings.TrimSuffix(host, suffix)
-	if len(label) != 34 || !strings.HasPrefix(label, "c-") {
-		return false
-	}
-	for _, r := range label[2:] {
-		if !(r >= '0' && r <= '9' || r >= 'a' && r <= 'f') {
-			return false
-		}
-	}
-	return true
 }

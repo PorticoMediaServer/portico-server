@@ -56,7 +56,7 @@ func (m *CertificateManager) newMaterial(s certificateScope, namespace string) (
 	if _, e := rand.Read(id); e != nil {
 		return certificateMaterial{}, e
 	}
-	name := "*." + namespace + ".direct.getportico.tv"
+	name := "*." + namespace + "." + m.directDomain
 	csr, e := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{Subject: pkix.Name{}, DNSNames: []string{name}}, m.tlsKey)
 	if e != nil {
 		return certificateMaterial{}, e
@@ -100,7 +100,7 @@ func (m *CertificateManager) validateMaterial(s certificateScope, namespace stri
 	if e != nil || csr.CheckSignature() != nil {
 		return nil, errCertificateMaterial
 	}
-	want := "*." + namespace + ".direct.getportico.tv"
+	want := "*." + namespace + "." + m.directDomain
 	pub, e := x509.MarshalPKIXPublicKey(key.Public())
 	if e != nil || !bytes.Equal(pub, csr.RawSubjectPublicKeyInfo) || len(csr.Extensions) != 1 || !exactWildcardSAN(csr.Extensions, want) {
 		return nil, errCertificateMaterial
@@ -135,7 +135,7 @@ func (m *CertificateManager) validateMaterial(s certificateScope, namespace stri
 	for _, c := range certs[1:] {
 		pool.AddCert(c)
 	}
-	if _, e = leaf.Verify(x509.VerifyOptions{Roots: m.roots, Intermediates: pool, CurrentTime: now, DNSName: "probe." + namespace + ".direct.getportico.tv", KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}); e != nil {
+	if _, e = leaf.Verify(x509.VerifyOptions{Roots: m.roots, Intermediates: pool, CurrentTime: now, DNSName: "probe." + namespace + "." + m.directDomain, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}); e != nil {
 		return nil, errCertificateMaterial
 	}
 	return &tls.Certificate{Certificate: ders, PrivateKey: key, Leaf: leaf}, nil
