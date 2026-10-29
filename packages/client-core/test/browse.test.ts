@@ -360,7 +360,7 @@ test('public music Unmatched navigation follows actual capabilities for member, 
  assert.equal(canBrowseMusicUnmatched(caps),true);
  for(const caller of ['member','owner','tv']){
   const tabs=libraryTabs('music',{owner:caller==='owner',unmatched:canBrowseMusicUnmatched(caps)});const tab=tabs.find(t=>t.id==='unmatched')!;
-  assert.equal(tab.pivot,'albums');assert.deepEqual(tab.fixedFilter,[{field:'match',operator:'equals',value:'unmatched'}]);assert.equal(browsePath(caps.library.id),'/v1/libraries/music/browse');
+  assert.equal(tab.pivot,'albums');assert.deepEqual(tab.fixedFilter,[{variant:'predicate',field:'match',operator:'equals',value:'unmatched'}]);assert.equal(browsePath(caps.library.id),'/v1/libraries/music/browse');
  }
  const local={...caps,fields:caps.fields.filter(f=>f.id!=='match'),pivots:caps.pivots.map(p=>({...p,filters:[]}))};
  for(const unavailable of [undefined,local])for(const owner of [false,true])assert.equal(libraryTabs('music',{owner,unmatched:canBrowseMusicUnmatched(unavailable)}).some(t=>t.id==='unmatched'),false);
