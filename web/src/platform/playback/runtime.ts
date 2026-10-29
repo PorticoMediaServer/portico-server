@@ -1367,7 +1367,7 @@ export class WebShellPlaybackRuntime {
     const mine = () => this.startingState === state;
     return {
       /** The stack whose own presentation means this start is drawn. */
-      attach: (stack: Stack) => {if (mine()) state.stack = stack;},
+      attach: (stack: Stack) => {if (mine()) {state.stack = stack; this.sync();}},
       identify: (next: WebPlaybackStartDisplay) => {if (mine() && !state.display) {state.display = next; this.sync();}},
       stopWith: (stop: () => void) => {if (mine()) state.stop = stop;},
       accepted: () => {if (mine()) state.accepted = true;},

@@ -3329,3 +3329,72 @@ test('P2-74 E-web-14: artist and album Play mount the music dock AND start the m
     assert.ok(f.video.plays > 0, `${kind}: the media element was told to play`);
   }
 });
+
+// O-159 watchdog: an accepted start is drawn at once, and is never left silent.
+const startingDisplay = {subject: {kind: 'music' as const, item: {id: 'song_album', kind: 'song' as const, title: 'The pressed album'}}};
+const hangOffers = (request: {path: string; signal?: AbortSignal}) => new Promise<never>((_, reject) => {
+  const stop = () => reject(Object.assign(new Error('aborted'), {name: 'AbortError'}));
+  if (request.signal?.aborted) stop(); else request.signal?.addEventListener('abort', stop, {once: true});
+});
+const spin = async () => {for (let i = 0; i < 20; i++) await new Promise(setImmediate);};
+
+test('O-159: offers that never become current draw the starting dock at once, then stop with a diagnostic at the deadline', async t => {
+  const {openAppLogContext, captureAppLog} = await import('../src/platform/app-log.ts');
+  const closeLog = openAppLogContext(() => true); t.after(closeLog);
+  const f = setup(t, {}, {}, undefined, undefined, {homeFence: false}), life = new AbortController();
+  f.intercept(async (request, response) => /\/playback-offers/.test(request.path) ? hangOffers(request) : response);
+  const start = f.runtime.playFromQueue({container: {kind: 'album', id: 'song_album'}}, {signal: life.signal, isCurrent: () => true}, {display: startingDisplay});
+  // Drawn within the press itself, before any answer: the card's own title.
+  const drawn = f.runtime.getSnapshot().starting;
+  assert.equal(drawn?.display.subject.item.title, 'The pressed album');
+  await start; await f.arrive(); await spin();
+  let s = f.runtime.getSnapshot();
+  assert.ok(s.starting, 'accepted but not drawable: still starting');
+  assert.equal(s.presentation, undefined, 'never claims playing: no Pause, no progress');
+  for (let step = 0; step < 10; step++) {f.clock.advance?.(2500); await spin();}
+  s = f.runtime.getSnapshot();
+  assert.equal(s.starting, undefined);
+  assert.ok(s.startTimedOut, '"Couldn\'t start playback" with Try again');
+  assert.equal(s.session, undefined, 'the accepted start was ended, nothing half-started is left');
+  assert.ok(captureAppLog().entries.some(entry => entry.code === 'playback_not_drawn_offers'), 'the diagnostic names the read that never became current');
+});
+
+test('O-159: a slow but successful start goes from the starting dock to the real dock with no gap', async t => {
+  const f = setup(t, {}, {}, undefined, undefined, {homeFence: false}), life = new AbortController();
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => {release = resolve;});
+  f.intercept(async (request, response) => {if (/\/playback-offers/.test(request.path)) await gate; return response;});
+  const seen: {starting: boolean; presented: boolean}[] = [];
+  const off = f.runtime.subscribe(() => {const s = f.runtime.getSnapshot(); seen.push({starting: !!s.starting, presented: !!s.presentation});});
+  t.after(off);
+  await f.runtime.playFromQueue({container: {kind: 'album', id: 'song_album'}}, {signal: life.signal, isCurrent: () => true}, {display: startingDisplay});
+  await f.arrive(); f.clock.advance?.(3000); await spin();
+  assert.ok(f.runtime.getSnapshot().starting, 'starting while the offers are slow');
+  release(); for (let step = 0; step < 3; step++) await f.arrive();
+  const s = f.runtime.getSnapshot();
+  assert.equal(s.starting, undefined); assert.equal(s.presentation?.kind, 'music'); assert.equal(s.startTimedOut, undefined);
+  const first = seen.findIndex(value => value.starting);
+  assert.ok(first >= 0 && seen.slice(first).every(value => value.starting || value.presented), 'no publication between them draws nothing');
+  f.clock.advance?.(25000); await spin();
+  assert.equal(f.runtime.getSnapshot().startTimedOut, undefined, 'a drawn dock ends the watch; buffering never trips it');
+});
+
+test('O-159: Stop on the starting dock cancels the accepted start cleanly', async t => {
+  const f = setup(t, {}, {}, undefined, undefined, {homeFence: false}), life = new AbortController();
+  f.intercept(async (request, response) => /\/playback-offers/.test(request.path) ? hangOffers(request) : response);
+  await f.runtime.playFromQueue({container: {kind: 'album', id: 'song_album'}}, {signal: life.signal, isCurrent: () => true}, {display: startingDisplay});
+  await f.arrive(); await spin();
+  f.runtime.getSnapshot().starting!.stop(); await spin();
+  let s = f.runtime.getSnapshot();
+  assert.equal(s.starting, undefined); assert.equal(s.session, undefined); assert.equal(s.dock.local, null);
+  f.clock.advance?.(25000); await spin();
+  s = f.runtime.getSnapshot();
+  assert.equal(s.startTimedOut, undefined, 'a stopped start is never reported as a failure');
+  // Before acceptance, Stop is the viewer's own cancel.
+  const g = setup(t, {}, {}, undefined, undefined, {homeFence: false});
+  g.intercept(async (request, response) => request.method === 'POST' && request.path === '/v1/queues' ? hangOffers(request) : response);
+  const early = g.runtime.playFromQueue({container: {kind: 'album', id: 'song_album'}}, {signal: life.signal, isCurrent: () => true}, {display: startingDisplay});
+  g.runtime.getSnapshot().starting!.stop();
+  await assert.rejects(early, (error: Error) => error.name === 'AbortError');
+  assert.equal(g.runtime.getSnapshot().starting, undefined);
+});
