@@ -84,3 +84,11 @@
   .bottom { padding: 0 14px 14px; }
   .miniGuide { right: 14px; top: 74px; width: calc(100vw - 28px); }
 }
+
+/* motion.html 3.7-3.9: the panel arrives with a fade and a 8px rise over standard 180 (out);
+   reduced motion keeps the fade. Its exit is still immediate: the panel is unmounted by its owner. */
+.miniGuide { animation: miniGuide-arrive var(--motion-standard) var(--ease-out) both; }
+@keyframes miniGuide-arrive { from { opacity: 0; transform: translateY(8px); } }
+@media (prefers-reduced-motion: reduce) { .miniGuide { animation: miniGuide-arrive-fade var(--motion-reduced) linear both; } }
+:global([data-reduce-motion='true']) .miniGuide { animation: miniGuide-arrive-fade var(--motion-reduced) linear both; }
+@keyframes miniGuide-arrive-fade { from { opacity: 0; } }

@@ -83,3 +83,11 @@
 .landscapeHeader { padding: 14px 48px 8px 18px; }
 @media (pointer: coarse) { .timingStep button { min-width: 44px; min-height: 44px; } }
 @media (prefers-reduced-transparency: reduce) { .landscapeOptions.landscapeOptions[data-placement='right'] { background: var(--color-raised); backdrop-filter: none; } }
+
+/* motion.html 3.7-3.9: the panel arrives with a fade and a 8px rise over standard 180 (out);
+   reduced motion keeps the fade. Its exit is still immediate: the panel is unmounted by its owner. */
+.options { animation: options-arrive var(--motion-standard) var(--ease-out) both; }
+@keyframes options-arrive { from { opacity: 0; transform: translateY(8px); } }
+@media (prefers-reduced-motion: reduce) { .options { animation: options-arrive-fade var(--motion-reduced) linear both; } }
+:global([data-reduce-motion='true']) .options { animation: options-arrive-fade var(--motion-reduced) linear both; }
+@keyframes options-arrive-fade { from { opacity: 0; } }

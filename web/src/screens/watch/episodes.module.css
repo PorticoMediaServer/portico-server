@@ -49,3 +49,11 @@
 }
 :global([data-reduce-motion='true']) .still { transition: none; }
 :global([data-reduce-motion='true']) .ep:hover .still, :global([data-reduce-motion='true']) .ep:focus-visible .still { transform: none; }
+
+/* motion.html 3.7-3.9: the panel arrives with a fade and a 24px rise over standard 180 (out);
+   reduced motion keeps the fade. Its exit is still immediate: the panel is unmounted by its owner. */
+.drawer { animation: drawer-arrive var(--motion-standard) var(--ease-out) both; }
+@keyframes drawer-arrive { from { opacity: 0; transform: translateY(24px); } }
+@media (prefers-reduced-motion: reduce) { .drawer { animation: drawer-arrive-fade var(--motion-reduced) linear both; } }
+:global([data-reduce-motion='true']) .drawer { animation: drawer-arrive-fade var(--motion-reduced) linear both; }
+@keyframes drawer-arrive-fade { from { opacity: 0; } }

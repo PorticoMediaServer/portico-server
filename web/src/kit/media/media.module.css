@@ -187,3 +187,11 @@
 @media (prefers-reduced-motion:reduce) { .lossCountdown { animation:none; width:100%; } }
 /* The app's own reduced-motion preference can sit on the root or a stage ancestor (Root). */
 [data-reduce-motion="true"] .lossCountdown { animation:none; width:100%; }
+
+/* motion.html 3.7-3.9: the panel arrives with a fade and a 8px rise over standard 180 (out);
+   reduced motion keeps the fade. Its exit is still immediate: the panel is unmounted by its owner. */
+.playbackInfo { animation: playbackInfo-arrive var(--motion-standard) var(--ease-out) both; }
+@keyframes playbackInfo-arrive { from { opacity: 0; transform: translateY(8px); } }
+@media (prefers-reduced-motion: reduce) { .playbackInfo { animation: playbackInfo-arrive-fade var(--motion-reduced) linear both; } }
+:global([data-reduce-motion='true']) .playbackInfo { animation: playbackInfo-arrive-fade var(--motion-reduced) linear both; }
+@keyframes playbackInfo-arrive-fade { from { opacity: 0; } }
