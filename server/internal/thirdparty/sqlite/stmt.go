@@ -86,6 +86,18 @@ func (s *stmt) StatementMemoryBytes() int64 {
 	return int64(sqlite3.Xsqlite3_stmt_status(s.c.tls, s.pstmt, sqlite3.SQLITE_STMTSTATUS_MEMUSED, 0))
 }
 
+// StatementReprepareCount reports how many times SQLite has recompiled this
+// statement's VM automatically. A retained statement that is stepped again
+// after a schema reload reports a higher count without any Prepare call from
+// the driver, which is the one piece of native work a cache hit cannot see.
+// The read uses SQLite's own counter and does not reset it or run the VM.
+func (s *stmt) StatementReprepareCount() int64 {
+	if s.pstmt == 0 {
+		return 0
+	}
+	return int64(sqlite3.Xsqlite3_stmt_status(s.c.tls, s.pstmt, sqlite3.SQLITE_STMTSTATUS_REPREPARE, 0))
+}
+
 // Exec executes a query that doesn't return rows, such as an INSERT or UPDATE.
 //
 // Deprecated: Drivers should implement StmtExecContext instead (or
