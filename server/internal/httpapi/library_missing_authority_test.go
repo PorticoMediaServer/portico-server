@@ -38,6 +38,8 @@ func TestLibraryMissingManagementFiltersBeforeCountPageAndRemoval(t *testing.T) 
 			return catalog.MarkInventoryMissingTx(ctx, tx, source, "missing-job", "missing:"+item.Token, time.Now().Add(-time.Hour))
 		})
 	}
+	// Missing evidence is published by the real source41→44 worker.
+	c.Drain()
 	read := func(token string, expected int) catalog.MissingTitlesPage {
 		t.Helper()
 		w := f.call("GET", "/v1/admin/missing-titles?limit=1", token, "")
@@ -133,6 +135,7 @@ func TestLibraryMissingManagementKeepsAssetsLinkedToHiddenTitles(t *testing.T) {
 	c.Write(func(ctx context.Context, tx *sql.Tx) error {
 		return catalog.MarkInventoryMissingTx(ctx, tx, "library", "missing-job", "shared", time.Now().Add(-time.Hour))
 	})
+	c.Drain()
 	w := f.call("POST", "/v1/admin/missing-titles/empty", f.admin, `{}`)
 	var removed catalog.MissingEmptied
 	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &removed) != nil || removed.Titles != 1 || removed.Files != 0 {
