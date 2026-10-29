@@ -42,7 +42,7 @@ func (s *Service) BrowseCapabilitiesForViewer(viewer Viewer, library, pivot stri
 	if err != nil {
 		return BrowseCapabilities{}, err
 	}
-	out := BrowseCapabilities{Library: lib, Pivots: []BrowsePivotCapability{}, Fields: []BrowseFieldCapability{}, Sorts: []BrowseSortCapability{}, QuickFilters: []BrowseQuickFilter{}, QueryLimits: browseQueryLimits()}
+	out := BrowseCapabilities{Importing: r.importing, Library: lib, Pivots: []BrowsePivotCapability{}, Fields: []BrowseFieldCapability{}, Sorts: []BrowseSortCapability{}, QuickFilters: []BrowseQuickFilter{}, QueryLimits: browseQueryLimits()}
 	visible, args := EntityRestrictionSQL("m.item_id", viewer.EffectiveRestrictions())
 	var author, series bool
 	common := r.memberScope() + ` AND ` + r.eligibleSQL("m.item_id") + ` AND (` + visible + `)`
