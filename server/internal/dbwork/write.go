@@ -86,6 +86,12 @@ type Write struct {
 	meter         *writeMeter
 	site          callSite
 	accountingWAL AccountingWALPhase
+	// testHold is set only for a caller that opted into bounded hold diagnostics
+	// with WithTestWriterHolds. It is nil in production and in every ordinary
+	// test, so the ordinary path does no timing work. testRows describes a
+	// committed transaction to that sample.
+	testHold *testHold
+	testRows int64
 }
 
 // Begin acquires the write gate for class and opens a transaction. It is the
@@ -120,6 +126,9 @@ func Begin(ctx context.Context, db *sql.DB, class Class) (*Write, error) {
 	if err != nil {
 		return nil, err
 	}
+	// The hold starts at the actual acquisition, before BEGIN, and only an
+	// opted-in caller pays for knowing that.
+	hold := newTestHold(ctx)
 	changes := &changeSet{}
 	meter := &writeMeter{}
 	ctx = context.WithValue(context.WithValue(ctx, changeKey{}, changes), meterKey{}, meter)
@@ -137,7 +146,7 @@ func Begin(ctx context.Context, db *sql.DB, class Class) (*Write, error) {
 		return nil, err
 	}
 	held := &carried{tx: tx, class: class}
-	w := &Write{changes: changes, tx: tx, conn: conn, ctx: context.WithValue(ctx, writeKey{}, held), release: release, owned: held, plan: planFor(ctx, class), meter: meter, site: site}
+	w := &Write{changes: changes, tx: tx, conn: conn, ctx: context.WithValue(ctx, writeKey{}, held), release: release, owned: held, plan: planFor(ctx, class), meter: meter, site: site, testHold: hold}
 	liveWrites.Store(tx, w)
 	w.changesAtStart = rowChanges(ctx, tx)
 	return w, nil
@@ -275,7 +284,14 @@ func (w *Write) Commit() error {
 		w.finish()
 		return ErrSnapshotWrite
 	}
+	txStart := w.testTxStart()
 	err := w.tx.Commit()
+	if w.testHold != nil {
+		w.noteTestTxEnd(err == nil, txStart)
+		if err == nil {
+			w.testRows = max(changesAtEnd-w.changesAtStart, 0)
+		}
+	}
 	if err == nil {
 		// Retirement must happen after durable acceptance and before the gate
 		// admits another sender. A rollback must never retire live authority.
@@ -344,7 +360,9 @@ func (w *Write) Rollback() error {
 		w.parent.abort()
 		return nil
 	}
+	txStart := w.testTxStart()
 	err := w.tx.Rollback()
+	w.noteTestTxEnd(false, txStart)
 	w.finish()
 	return err
 }
@@ -357,8 +375,14 @@ func (w *Write) finish() {
 		// The connection goes back before the gate does, so the next writer never
 		// finds the pool one connection short.
 		releaseDurable(w.ctx, w.conn)
+		// Stop the diagnostic clock before release and publish only afterwards:
+		// measuring must not lengthen the hold it measures.
+		hold := w.sampleTestHold()
 		if w.release != nil {
 			w.release()
+		}
+		if hold != nil {
+			hold.publish(w)
 		}
 	})
 }
