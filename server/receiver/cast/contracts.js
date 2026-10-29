@@ -118356,294 +118356,159 @@ var PorticoCastContracts = (function(exports) {
 			"type": "object"
 		},
 		"GetReadingDiscoverResponse": {
-			"properties": { "rows": {
-				"items": {
+			"properties": {
+				"importing": { "type": "boolean" },
+				"revision": {
 					"properties": {
-						"items": {
-							"items": {
-								"properties": {
-									"author": {
-										"additionalProperties": false,
-										"properties": {
-											"source": {
-												"enum": [
-													"owner",
-													"file-metadata",
-													"file-name",
-													"folder"
-												],
-												"type": "string"
-											},
-											"value": {
-												"maxLength": 4096,
-												"minLength": 1,
-												"type": "string"
-											}
-										},
-										"required": ["value", "source"],
-										"type": "object"
-									},
-									"coverUrl": { "type": "string" },
-									"format": {
-										"enum": [
-											"epub",
-											"pdf",
-											"cbz",
-											"mobi",
-											"azw3",
-											"cb7",
-											"cbr"
-										],
-										"type": "string"
-									},
-									"id": { "type": "string" },
-									"inventoryAvailable": { "type": "boolean" },
-									"libraryId": { "type": "string" },
-									"publicationType": {
-										"properties": {
-											"source": {
-												"enum": ["owner", "file-metadata"],
-												"type": "string"
-											},
-											"value": {
-												"enum": [
-													"book",
-													"magazine",
-													"newspaper"
-												],
-												"type": "string"
-											}
-										},
-										"required": ["value", "source"],
-										"type": "object"
-									},
-									"readingMark": {
-										"additionalProperties": false,
-										"properties": {
-											"itemId": {
-												"maxLength": 64,
-												"minLength": 1,
-												"pattern": "^[A-Za-z0-9_-]{1,64}$",
-												"type": "string"
-											},
-											"read": { "type": "boolean" },
-											"revision": {
-												"maximum": 9007199254740991,
-												"minimum": 0,
-												"type": "integer"
-											}
-										},
-										"required": [
-											"itemId",
-											"read",
-											"revision"
-										],
-										"type": "object"
-									},
-									"series": {
-										"additionalProperties": false,
-										"properties": {
-											"id": {
-												"minLength": 1,
-												"type": "string"
-											},
-											"name": {
-												"maxLength": 4096,
-												"minLength": 1,
-												"type": "string"
-											},
-											"number": {
-												"minimum": 0,
-												"type": "number"
-											},
-											"source": {
-												"enum": [
-													"owner",
-													"file-metadata",
-													"file-name",
-													"folder"
-												],
-												"type": "string"
-											}
-										},
-										"required": [
-											"id",
-											"name",
-											"source"
-										],
-										"type": "object"
-									},
-									"sourceId": { "type": "string" },
-									"title": { "type": "string" }
-								},
-								"required": [
-									"id",
-									"libraryId",
-									"title",
-									"format",
-									"sourceId",
-									"inventoryAvailable"
-								],
-								"type": "object"
-							},
-							"type": "array"
+						"catalog": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
 						},
-						"key": { "type": "string" },
-						"newIssues": {
+						"viewer": {
+							"maximum": 9007199254740991,
+							"minimum": -9007199254740991,
+							"type": "integer"
+						}
+					},
+					"required": ["catalog", "viewer"],
+					"type": "object"
+				},
+				"rows": {
+					"items": {
+						"properties": {
 							"items": {
-								"additionalProperties": false,
-								"properties": {
-									"issueDate": {
-										"maxLength": 10,
-										"minLength": 7,
-										"pattern": "^[0-9]{4}-[0-9]{2}(-[0-9]{2})?$",
-										"type": "string"
-									},
-									"item": {
-										"properties": {
-											"author": {
-												"additionalProperties": false,
-												"properties": {
-													"source": {
-														"enum": [
-															"owner",
-															"file-metadata",
-															"file-name",
-															"folder"
-														],
-														"type": "string"
-													},
-													"value": {
-														"maxLength": 4096,
-														"minLength": 1,
-														"type": "string"
-													}
+								"items": {
+									"properties": {
+										"author": {
+											"additionalProperties": false,
+											"properties": {
+												"source": {
+													"enum": [
+														"owner",
+														"file-metadata",
+														"file-name",
+														"folder"
+													],
+													"type": "string"
 												},
-												"required": ["value", "source"],
-												"type": "object"
+												"value": {
+													"maxLength": 4096,
+													"minLength": 1,
+													"type": "string"
+												}
 											},
-											"coverUrl": { "type": "string" },
-											"format": {
-												"enum": [
-													"epub",
-													"pdf",
-													"cbz",
-													"mobi",
-													"azw3",
-													"cb7",
-													"cbr"
-												],
-												"type": "string"
-											},
-											"id": { "type": "string" },
-											"inventoryAvailable": { "type": "boolean" },
-											"libraryId": { "type": "string" },
-											"publicationType": {
-												"properties": {
-													"source": {
-														"enum": ["owner", "file-metadata"],
-														"type": "string"
-													},
-													"value": {
-														"enum": [
-															"book",
-															"magazine",
-															"newspaper"
-														],
-														"type": "string"
-													}
-												},
-												"required": ["value", "source"],
-												"type": "object"
-											},
-											"readingMark": {
-												"additionalProperties": false,
-												"properties": {
-													"itemId": {
-														"maxLength": 64,
-														"minLength": 1,
-														"pattern": "^[A-Za-z0-9_-]{1,64}$",
-														"type": "string"
-													},
-													"read": { "type": "boolean" },
-													"revision": {
-														"maximum": 9007199254740991,
-														"minimum": 0,
-														"type": "integer"
-													}
-												},
-												"required": [
-													"itemId",
-													"read",
-													"revision"
-												],
-												"type": "object"
-											},
-											"series": {
-												"additionalProperties": false,
-												"properties": {
-													"id": {
-														"minLength": 1,
-														"type": "string"
-													},
-													"name": {
-														"maxLength": 4096,
-														"minLength": 1,
-														"type": "string"
-													},
-													"number": {
-														"minimum": 0,
-														"type": "number"
-													},
-													"source": {
-														"enum": [
-															"owner",
-															"file-metadata",
-															"file-name",
-															"folder"
-														],
-														"type": "string"
-													}
-												},
-												"required": [
-													"id",
-													"name",
-													"source"
-												],
-												"type": "object"
-											},
-											"sourceId": { "type": "string" },
-											"title": { "type": "string" }
+											"required": ["value", "source"],
+											"type": "object"
 										},
-										"required": [
-											"id",
-											"libraryId",
-											"title",
-											"format",
-											"sourceId",
-											"inventoryAvailable"
-										],
-										"type": "object"
-									}
+										"coverUrl": { "type": "string" },
+										"format": {
+											"enum": [
+												"epub",
+												"pdf",
+												"cbz",
+												"mobi",
+												"azw3",
+												"cb7",
+												"cbr"
+											],
+											"type": "string"
+										},
+										"id": { "type": "string" },
+										"inventoryAvailable": { "type": "boolean" },
+										"libraryId": { "type": "string" },
+										"publicationType": {
+											"properties": {
+												"source": {
+													"enum": ["owner", "file-metadata"],
+													"type": "string"
+												},
+												"value": {
+													"enum": [
+														"book",
+														"magazine",
+														"newspaper"
+													],
+													"type": "string"
+												}
+											},
+											"required": ["value", "source"],
+											"type": "object"
+										},
+										"readingMark": {
+											"additionalProperties": false,
+											"properties": {
+												"itemId": {
+													"maxLength": 64,
+													"minLength": 1,
+													"pattern": "^[A-Za-z0-9_-]{1,64}$",
+													"type": "string"
+												},
+												"read": { "type": "boolean" },
+												"revision": {
+													"maximum": 9007199254740991,
+													"minimum": 0,
+													"type": "integer"
+												}
+											},
+											"required": [
+												"itemId",
+												"read",
+												"revision"
+											],
+											"type": "object"
+										},
+										"series": {
+											"additionalProperties": false,
+											"properties": {
+												"id": {
+													"minLength": 1,
+													"type": "string"
+												},
+												"name": {
+													"maxLength": 4096,
+													"minLength": 1,
+													"type": "string"
+												},
+												"number": {
+													"minimum": 0,
+													"type": "number"
+												},
+												"source": {
+													"enum": [
+														"owner",
+														"file-metadata",
+														"file-name",
+														"folder"
+													],
+													"type": "string"
+												}
+											},
+											"required": [
+												"id",
+												"name",
+												"source"
+											],
+											"type": "object"
+										},
+										"sourceId": { "type": "string" },
+										"title": { "type": "string" }
+									},
+									"required": [
+										"id",
+										"libraryId",
+										"title",
+										"format",
+										"sourceId",
+										"inventoryAvailable"
+									],
+									"type": "object"
 								},
-								"required": ["item", "issueDate"],
-								"type": "object"
+								"type": "array"
 							},
-							"type": "array"
-						},
-						"newspaper": {
-							"additionalProperties": false,
-							"properties": {
-								"id": {
-									"pattern": "^[A-Za-z0-9_-]{43}$",
-									"type": "string"
-								},
-								"issueCount": {
-									"maximum": 9007199254740991,
-									"minimum": 1,
-									"type": "integer"
-								},
-								"latest": {
+							"key": { "type": "string" },
+							"newIssues": {
+								"items": {
 									"additionalProperties": false,
 									"properties": {
 										"issueDate": {
@@ -118782,45 +118647,355 @@ var PorticoCastContracts = (function(exports) {
 									"required": ["item", "issueDate"],
 									"type": "object"
 								},
-								"name": {
-									"maxLength": 4096,
-									"minLength": 1,
-									"type": "string"
-								}
+								"type": "array"
 							},
-							"required": [
-								"id",
-								"name",
-								"issueCount",
-								"latest"
-							],
-							"type": "object"
-						},
-						"nextCursor": { "type": "string" },
-						"series": {
-							"items": {
+							"newspaper": {
 								"additionalProperties": false,
 								"properties": {
-									"count": {
-										"maximum": 9007199254740991,
-										"minimum": 1,
-										"type": "integer"
-									},
 									"id": {
 										"pattern": "^[A-Za-z0-9_-]{43}$",
 										"type": "string"
 									},
-									"libraryId": {
-										"minLength": 1,
-										"type": "string"
+									"issueCount": {
+										"maximum": 9007199254740991,
+										"minimum": 1,
+										"type": "integer"
+									},
+									"latest": {
+										"additionalProperties": false,
+										"properties": {
+											"issueDate": {
+												"maxLength": 10,
+												"minLength": 7,
+												"pattern": "^[0-9]{4}-[0-9]{2}(-[0-9]{2})?$",
+												"type": "string"
+											},
+											"item": {
+												"properties": {
+													"author": {
+														"additionalProperties": false,
+														"properties": {
+															"source": {
+																"enum": [
+																	"owner",
+																	"file-metadata",
+																	"file-name",
+																	"folder"
+																],
+																"type": "string"
+															},
+															"value": {
+																"maxLength": 4096,
+																"minLength": 1,
+																"type": "string"
+															}
+														},
+														"required": ["value", "source"],
+														"type": "object"
+													},
+													"coverUrl": { "type": "string" },
+													"format": {
+														"enum": [
+															"epub",
+															"pdf",
+															"cbz",
+															"mobi",
+															"azw3",
+															"cb7",
+															"cbr"
+														],
+														"type": "string"
+													},
+													"id": { "type": "string" },
+													"inventoryAvailable": { "type": "boolean" },
+													"libraryId": { "type": "string" },
+													"publicationType": {
+														"properties": {
+															"source": {
+																"enum": ["owner", "file-metadata"],
+																"type": "string"
+															},
+															"value": {
+																"enum": [
+																	"book",
+																	"magazine",
+																	"newspaper"
+																],
+																"type": "string"
+															}
+														},
+														"required": ["value", "source"],
+														"type": "object"
+													},
+													"readingMark": {
+														"additionalProperties": false,
+														"properties": {
+															"itemId": {
+																"maxLength": 64,
+																"minLength": 1,
+																"pattern": "^[A-Za-z0-9_-]{1,64}$",
+																"type": "string"
+															},
+															"read": { "type": "boolean" },
+															"revision": {
+																"maximum": 9007199254740991,
+																"minimum": 0,
+																"type": "integer"
+															}
+														},
+														"required": [
+															"itemId",
+															"read",
+															"revision"
+														],
+														"type": "object"
+													},
+													"series": {
+														"additionalProperties": false,
+														"properties": {
+															"id": {
+																"minLength": 1,
+																"type": "string"
+															},
+															"name": {
+																"maxLength": 4096,
+																"minLength": 1,
+																"type": "string"
+															},
+															"number": {
+																"minimum": 0,
+																"type": "number"
+															},
+															"source": {
+																"enum": [
+																	"owner",
+																	"file-metadata",
+																	"file-name",
+																	"folder"
+																],
+																"type": "string"
+															}
+														},
+														"required": [
+															"id",
+															"name",
+															"source"
+														],
+														"type": "object"
+													},
+													"sourceId": { "type": "string" },
+													"title": { "type": "string" }
+												},
+												"required": [
+													"id",
+													"libraryId",
+													"title",
+													"format",
+													"sourceId",
+													"inventoryAvailable"
+												],
+												"type": "object"
+											}
+										},
+										"required": ["item", "issueDate"],
+										"type": "object"
 									},
 									"name": {
 										"maxLength": 4096,
 										"minLength": 1,
 										"type": "string"
+									}
+								},
+								"required": [
+									"id",
+									"name",
+									"issueCount",
+									"latest"
+								],
+								"type": "object"
+							},
+							"nextCursor": { "type": "string" },
+							"series": {
+								"items": {
+									"additionalProperties": false,
+									"properties": {
+										"count": {
+											"maximum": 9007199254740991,
+											"minimum": 1,
+											"type": "integer"
+										},
+										"id": {
+											"pattern": "^[A-Za-z0-9_-]{43}$",
+											"type": "string"
+										},
+										"libraryId": {
+											"minLength": 1,
+											"type": "string"
+										},
+										"name": {
+											"maxLength": 4096,
+											"minLength": 1,
+											"type": "string"
+										},
+										"preview": {
+											"items": {
+												"properties": {
+													"author": {
+														"additionalProperties": false,
+														"properties": {
+															"source": {
+																"enum": [
+																	"owner",
+																	"file-metadata",
+																	"file-name",
+																	"folder"
+																],
+																"type": "string"
+															},
+															"value": {
+																"maxLength": 4096,
+																"minLength": 1,
+																"type": "string"
+															}
+														},
+														"required": ["value", "source"],
+														"type": "object"
+													},
+													"coverUrl": { "type": "string" },
+													"format": {
+														"enum": [
+															"epub",
+															"pdf",
+															"cbz",
+															"mobi",
+															"azw3",
+															"cb7",
+															"cbr"
+														],
+														"type": "string"
+													},
+													"id": { "type": "string" },
+													"inventoryAvailable": { "type": "boolean" },
+													"libraryId": { "type": "string" },
+													"publicationType": {
+														"properties": {
+															"source": {
+																"enum": ["owner", "file-metadata"],
+																"type": "string"
+															},
+															"value": {
+																"enum": [
+																	"book",
+																	"magazine",
+																	"newspaper"
+																],
+																"type": "string"
+															}
+														},
+														"required": ["value", "source"],
+														"type": "object"
+													},
+													"readingMark": {
+														"additionalProperties": false,
+														"properties": {
+															"itemId": {
+																"maxLength": 64,
+																"minLength": 1,
+																"pattern": "^[A-Za-z0-9_-]{1,64}$",
+																"type": "string"
+															},
+															"read": { "type": "boolean" },
+															"revision": {
+																"maximum": 9007199254740991,
+																"minimum": 0,
+																"type": "integer"
+															}
+														},
+														"required": [
+															"itemId",
+															"read",
+															"revision"
+														],
+														"type": "object"
+													},
+													"series": {
+														"additionalProperties": false,
+														"properties": {
+															"id": {
+																"minLength": 1,
+																"type": "string"
+															},
+															"name": {
+																"maxLength": 4096,
+																"minLength": 1,
+																"type": "string"
+															},
+															"number": {
+																"minimum": 0,
+																"type": "number"
+															},
+															"source": {
+																"enum": [
+																	"owner",
+																	"file-metadata",
+																	"file-name",
+																	"folder"
+																],
+																"type": "string"
+															}
+														},
+														"required": [
+															"id",
+															"name",
+															"source"
+														],
+														"type": "object"
+													},
+													"sourceId": { "type": "string" },
+													"title": { "type": "string" }
+												},
+												"required": [
+													"id",
+													"libraryId",
+													"title",
+													"format",
+													"sourceId",
+													"inventoryAvailable"
+												],
+												"type": "object"
+											},
+											"maxItems": 3,
+											"minItems": 1,
+											"type": "array"
+										},
+										"readCount": {
+											"maximum": 9007199254740991,
+											"minimum": 0,
+											"type": "integer"
+										}
 									},
-									"preview": {
-										"items": {
+									"required": [
+										"id",
+										"libraryId",
+										"name",
+										"count",
+										"readCount",
+										"preview"
+									],
+									"type": "object"
+								},
+								"type": "array"
+							},
+							"shortReads": {
+								"items": {
+									"additionalProperties": false,
+									"properties": {
+										"estimatedSeconds": {
+											"maximum": 10800,
+											"minimum": 1,
+											"type": "integer"
+										},
+										"item": {
 											"properties": {
 												"author": {
 													"additionalProperties": false,
@@ -118946,184 +119121,28 @@ var PorticoCastContracts = (function(exports) {
 											],
 											"type": "object"
 										},
-										"maxItems": 3,
-										"minItems": 1,
-										"type": "array"
+										"wordCount": {
+											"maximum": 44999,
+											"minimum": 1,
+											"type": "integer"
+										}
 									},
-									"readCount": {
-										"maximum": 9007199254740991,
-										"minimum": 0,
-										"type": "integer"
-									}
+									"required": [
+										"item",
+										"wordCount",
+										"estimatedSeconds"
+									],
+									"type": "object"
 								},
-								"required": [
-									"id",
-									"libraryId",
-									"name",
-									"count",
-									"readCount",
-									"preview"
-								],
-								"type": "object"
-							},
-							"type": "array"
+								"type": "array"
+							}
 						},
-						"shortReads": {
-							"items": {
-								"additionalProperties": false,
-								"properties": {
-									"estimatedSeconds": {
-										"maximum": 10800,
-										"minimum": 1,
-										"type": "integer"
-									},
-									"item": {
-										"properties": {
-											"author": {
-												"additionalProperties": false,
-												"properties": {
-													"source": {
-														"enum": [
-															"owner",
-															"file-metadata",
-															"file-name",
-															"folder"
-														],
-														"type": "string"
-													},
-													"value": {
-														"maxLength": 4096,
-														"minLength": 1,
-														"type": "string"
-													}
-												},
-												"required": ["value", "source"],
-												"type": "object"
-											},
-											"coverUrl": { "type": "string" },
-											"format": {
-												"enum": [
-													"epub",
-													"pdf",
-													"cbz",
-													"mobi",
-													"azw3",
-													"cb7",
-													"cbr"
-												],
-												"type": "string"
-											},
-											"id": { "type": "string" },
-											"inventoryAvailable": { "type": "boolean" },
-											"libraryId": { "type": "string" },
-											"publicationType": {
-												"properties": {
-													"source": {
-														"enum": ["owner", "file-metadata"],
-														"type": "string"
-													},
-													"value": {
-														"enum": [
-															"book",
-															"magazine",
-															"newspaper"
-														],
-														"type": "string"
-													}
-												},
-												"required": ["value", "source"],
-												"type": "object"
-											},
-											"readingMark": {
-												"additionalProperties": false,
-												"properties": {
-													"itemId": {
-														"maxLength": 64,
-														"minLength": 1,
-														"pattern": "^[A-Za-z0-9_-]{1,64}$",
-														"type": "string"
-													},
-													"read": { "type": "boolean" },
-													"revision": {
-														"maximum": 9007199254740991,
-														"minimum": 0,
-														"type": "integer"
-													}
-												},
-												"required": [
-													"itemId",
-													"read",
-													"revision"
-												],
-												"type": "object"
-											},
-											"series": {
-												"additionalProperties": false,
-												"properties": {
-													"id": {
-														"minLength": 1,
-														"type": "string"
-													},
-													"name": {
-														"maxLength": 4096,
-														"minLength": 1,
-														"type": "string"
-													},
-													"number": {
-														"minimum": 0,
-														"type": "number"
-													},
-													"source": {
-														"enum": [
-															"owner",
-															"file-metadata",
-															"file-name",
-															"folder"
-														],
-														"type": "string"
-													}
-												},
-												"required": [
-													"id",
-													"name",
-													"source"
-												],
-												"type": "object"
-											},
-											"sourceId": { "type": "string" },
-											"title": { "type": "string" }
-										},
-										"required": [
-											"id",
-											"libraryId",
-											"title",
-											"format",
-											"sourceId",
-											"inventoryAvailable"
-										],
-										"type": "object"
-									},
-									"wordCount": {
-										"maximum": 44999,
-										"minimum": 1,
-										"type": "integer"
-									}
-								},
-								"required": [
-									"item",
-									"wordCount",
-									"estimatedSeconds"
-								],
-								"type": "object"
-							},
-							"type": "array"
-						}
+						"required": ["key", "items"],
+						"type": "object"
 					},
-					"required": ["key", "items"],
-					"type": "object"
-				},
-				"type": "array"
-			} },
+					"type": "array"
+				}
+			},
 			"required": ["rows"],
 			"type": "object"
 		},
