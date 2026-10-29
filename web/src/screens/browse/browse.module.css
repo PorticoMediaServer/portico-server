@@ -47,6 +47,8 @@
 .listRow:hover .listActions, .listRow:focus-within .listActions { opacity: 1; }
 @media (pointer: coarse) { .listActions { opacity: 1; } }
 @media (max-width: 1023px) { .results { margin: 0 20px; margin-right: calc(20px - var(--grid-overflow, 0px)); } .rail { right: calc(-18px + var(--grid-overflow, 0px)); } }
+/* E-web-20: the phone rail sits 4px from the edge in a 30px gutter of its own, clear of the cards. */
+@media (max-width: 599px) { .results:has(> .rail) { margin-right: calc(30px - var(--grid-overflow, 0px)); } .rail { right: calc(-26px + var(--grid-overflow, 0px)); } }
 @media (prefers-reduced-motion: reduce) { .results * { scroll-behavior: auto; } }
 .library { min-height: 100dvh; padding-bottom: 72px; }
 .headerTabs { margin-top: 22px; padding-inline: var(--shell-gutter, var(--gutter-desktop)); }
@@ -97,7 +99,7 @@
 .songBadge { flex: none; white-space: nowrap; border: 1px solid color-mix(in srgb, var(--color-text) 30%, transparent); border-radius: 4px; padding: 2px 5px; color: var(--color-text-secondary); font-size: var(--type-fixed-size-12px); line-height: var(--type-fixed-line-1); font-weight: var(--type-fixed-weight-600); font-variant-numeric: tabular-nums; }
 
 /* Expanded touch libraries keep their results live beside the Filters region. */
-.browseContent { min-width: 0; }
+.browseContent { min-width: 0; overflow-x: clip; } /* E-web-20: the A–Z rail's widened hit areas never widen the page. */
 .browseContent[data-filters-docked='true'] { margin-right: 380px; }
 .dockedFilters { border-radius: 0; }
 .dockedFilters > footer { display: flex; gap: 10px; }

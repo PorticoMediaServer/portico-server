@@ -187,6 +187,8 @@
   .panelTabs { padding-inline: 20px; }
   .panelFooter { padding: 16px; }
   .advancedToggle { gap: 12px; padding-inline: 14px; }
+  .control:has(> div > div > :is(input[type='text'], input[type='email'], input[type='url'], input[type='password'])) { flex: 1; justify-content: stretch; }
+  .control > div:has(> div > :is(input[type='text'], input[type='email'], input[type='url'], input[type='password'])) { width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) { .advancedToggle, .advancedToggle > svg { transition: none; } }
 

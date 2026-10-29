@@ -130,7 +130,7 @@ test('local account facts supply genuine username separately from differing or m
     assert.equal(restored.username, 'local-user'); assert.equal(restored.profileName, name);
     assert.equal(restored.primaryProfile, true); assert.equal(restored.profileArt, 'mint'); assert.equal(restored.canManageProfiles, true);
     assert.deepEqual(restored.accountFacts, []);
-    assert.deepEqual(restored.profiles, [{id: 'profile-a', name, initial: Array.from(name)[0], art: 'mint', pinRequired: false}]);
+    assert.deepEqual(restored.profiles, [{id: 'profile-a', name, initial: Array.from(name)[0], art: 'mint', pinRequired: false, primary: true}]);
     assert.deepEqual(calls, [['/v1/direct', 'GET', undefined, controller.signal]]);
   }
 });
