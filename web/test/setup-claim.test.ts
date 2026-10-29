@@ -35,14 +35,15 @@ async function fixture(t: TestContext, origin = original.address) {
       {id: 'second', name: 'Second', primary: false, art: 'blue', position: 1, revision: 1, pinRevision: 1, pinRequired: false}], session: nextSession};
   const expected = {operationId: original.operationId, localGeneration: original.localGeneration, revision: '2'};
   const transactionId = 'actual_setup_transaction', registration = {id: 'ret_' + 'r'.repeat(43), origin: 'https://managed.example.test'};
-  let handoff: NonNullable<Pending>['handoff'], firstSetupStart: unknown;
+  let handoff: NonNullable<Pending>['handoff'], firstSetupStart: unknown, generation = expected.localGeneration;
   const sent: {path: string; method: string; body: any; authorization: string | null}[] = [], retired: string[] = [];
   let hook = async (_path: string) => {}, lost = false, failStorage = false;
   const stamp = (time: number) => new Date(time).toISOString().replace('.000Z', 'Z');
-  const status = () => ({state: installed ? 'installed' : prepared ? 'prepared' : 'unconfigured', identity: {serverId: pin.serverId, localGeneration: cancelled && !installed ? String(BigInt(expected.localGeneration) + 1n) : expected.localGeneration},
-    ...(prepared ? {operation: {...expected, revision: installed ? '5' : expected.revision}, accountId: 'account-unbound',
+  // A cancel advances the server's local generation; a later prepare lives in it.
+  const status = () => ({state: installed ? 'installed' : prepared ? 'prepared' : 'unconfigured', identity: {serverId: pin.serverId, localGeneration: generation},
+    ...(prepared ? {operation: {...expected, localGeneration: generation, revision: installed ? '5' : expected.revision}, accountId: installed ? 'account-approved' : 'account-unbound',
       approvalRequest: {purpose: 'setup', currentOwnerAccountId: '', previousOwnerRole: '', returnRegistrationId: '', operationId: expected.operationId, serverId: pin.serverId,
-        publicKey: pin.publicKey, localGeneration: expected.localGeneration, name: original.name, expectedRevision: expected.revision}} : {}),
+        publicKey: pin.publicKey, localGeneration: generation, name: original.name, expectedRevision: expected.revision}} : {}),
     installationAcknowledged: installed, approvalRequired: prepared && !installed, actions: prepared ? ['cancel', installed ? 'continue' : 'approve'] : ['prepare'],
     ...(installed ? {setupContinuation: {transactionId, phase: cancelled ? 'cancelled' : 'installed', expiresAt: handoff!.expiresAt, returnRegistration: registration}} : {})});
   const fetcher: typeof fetch = async (input, init) => {
@@ -53,19 +54,22 @@ async function fixture(t: TestContext, origin = original.address) {
     else if (path === '/v1/networking/claim/prepare') {assert.equal(body.purpose, 'setup'); prepared = true; response = status();}
     else if (path === '/v1/networking/claim') response = status();
     else if (path === '/v1/networking/claim/cancel') {
-      assert.deepEqual(body.expected, {...expected, revision: installed ? '5' : expected.revision});
-      cancelled = true; if (!installed) prepared = false; response = status();
+      assert.deepEqual(body.expected, {...expected, localGeneration: generation, revision: installed ? '5' : expected.revision});
+      cancelled = true; if (!installed) {prepared = false; firstSetupStart = undefined; generation = String(BigInt(generation) + 1n);} response = status();
     }
     else if (path === '/v1/networking/claim/web-approval') {
-      if (firstSetupStart) assert.deepEqual(body.setupStart, firstSetupStart, 'retry must freeze the original PKCE/state/installation');
+      // A retry freezes the original PKCE/state/installation; only an installed setup whose start
+      // lapsed (a slow certificate) renews it with a fresh one.
+      if (firstSetupStart && !installed) assert.deepEqual(body.setupStart, firstSetupStart, 'retry must freeze the original PKCE/state/installation');
+      if (firstSetupStart && installed) assert.notDeepEqual(body.setupStart, firstSetupStart, 'a renewal binds a fresh browser start');
       firstSetupStart = body.setupStart;
-      const claim = {...original, address: origin, issuedAt: stamp(now - 1000), expiresAt: stamp(now + 599000)}, proof = signed(claim);
+      const claim = {...original, localGeneration: generation, address: origin, issuedAt: stamp(now - 1000), expiresAt: stamp(now + 599000)}, proof = signed(claim);
       const inherited=JSON.parse(vector.startPayload);
       const start = {kind: 'portico.setup-start.v1', audience: hostedOrigin, claimHash: routeBase64(await webRouteCrypto.sha256(routeBytes(proof.payload))),
-        operationId: expected.operationId, serverId: pin.serverId, publicKey: pin.publicKey, localGeneration: expected.localGeneration, address: origin, purpose: 'setup',
+        operationId: expected.operationId, serverId: pin.serverId, publicKey: pin.publicKey, localGeneration: generation, address: origin, purpose: 'setup',
         setupRequestId: draft!.requestId, setupRevision: '2', state: body.setupStart.state, codeChallenge: body.setupStart.codeChallenge, installationId: body.setupStart.installationId,
         serverChallenge: inherited.serverChallenge, issuedAt: stamp(now), expiresAt: stamp(now + 299000)};
-      handoff = {expected, binding: {pin, origin, hostedOrigin, operationId: expected.operationId, localGeneration: expected.localGeneration, setupRequestId: draft!.requestId, setupRevision: '2', ...body.setupStart},
+      handoff = {expected: {...expected, localGeneration: generation}, binding: {pin, origin, hostedOrigin, operationId: expected.operationId, localGeneration: generation, setupRequestId: draft!.requestId, setupRevision: '2', ...body.setupStart},
         transactionId, expiresAt: start.expiresAt, claim: proof, start: signed(start)};
       const code = 'claim_' + 'K'.repeat(43);
       response = {...status(), approvalUrl: hostedOrigin + '/claim#' + new URLSearchParams({code, operation: expected.operationId, server: original.name}), claimCode: code,
@@ -184,4 +188,45 @@ test('a lost cancel response never clears the private receipt or borrows a new c
  assert.equal(f.pending(),pending);assert.deepEqual(f.draft(),draft);
  await assert.rejects(f.receipt.useLocal());
  assert.equal(f.sent.filter(value=>value.path.endsWith('/cancel')).length,1);assert.equal(f.pending(),pending);
+});
+
+// A certificate issued after several attempts outlives the five-minute attempt. Back on the
+// original setup page, continuing renews the start for the installed claim, and the setup
+// return then admits the owner exactly as before: no second approval, no cleared state.
+test('a slow installation renews the lapsed start and setup completes', async t => {
+ const f = await fixture(t); await f.prepare(); const first = f.pending()!;
+ f.install(); f.expire();
+ const url = await f.prepare(), renewed = f.pending()!;
+ assert.match(url, /\/claim#/);
+ assert.notEqual(renewed.attemptId, first.attemptId); assert.notEqual(renewed.verifier, first.verifier);
+ assert.equal(renewed.expected?.revision, '5', 'the renewal names the installed operation');
+ assert.equal(renewed.setupRequestId, first.setupRequestId, 'the same setup, never a new one');
+ assert.equal(f.sent.filter(v => v.path === '/v1/networking/claim/web-approval').length, 2);
+ assert.equal(f.sent.some(v => v.path === '/v1/networking/claim/cancel'), false, 'an installed claim is never cancelled');
+ const done = await f.flow.finish(f.callback);
+ assert.equal(done.result.snapshot.account.role, 'owner');
+ assert.equal(f.pending(), undefined);
+});
+
+test('an expired attempt whose claim was never approved restarts setup cleanly', async t => {
+ const f = await fixture(t); await f.prepare(); const first = f.pending()!;
+ f.expire();
+ await f.prepare(); const fresh = f.pending()!;
+ assert.equal(f.sent.filter(v => v.path === '/v1/networking/claim/cancel').length, 1, 'only this record\'s own operation is retired');
+ assert.equal(f.sent.filter(v => v.path === '/v1/networking/claim/prepare').length, 2);
+ assert.notEqual(fresh.attemptId, first.attemptId);
+ assert.equal(f.draft()?.setupToken, 'actual-protected-setup-secret', 'the setup proof is kept');
+});
+
+// P2-59 on Contabo: back on the original page, Try again on the captured receipt after the
+// certificate finally issued. It renews instead of throwing "pending setup changed".
+test('Try again after a slow certificate renews from the original receipt', async t => {
+ const f = await recovery(t); const first = f.pending()!;
+ f.install(); f.expire();
+ const url = await f.receipt.retry();
+ assert.match(url, /\/claim#/);
+ assert.notEqual(f.pending()!.attemptId, first.attemptId);
+ assert.equal(f.sent.some(value => value.path.endsWith('/cancel')), false);
+ // Use local still refuses a lapsed receipt: it never cancels on a stale record.
+ await assert.rejects(f.receipt.useLocal());
 });
