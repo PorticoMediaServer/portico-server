@@ -13,12 +13,14 @@ type HomeRequest struct {
 	ReadingPersonalAuthorize       func(*sql.Tx, string) error
 	Viewer                         Viewer
 	ServerID, Profile, ViewerFence string
-	Libraries                      []string
-	RowOrder                       []string
-	HiddenRowIDs                   []string
-	LayoutRevision                 int64
-	CommunityActivity              bool
-	Limit                          int
+	// PrivacyFence is ViewerFence without the library list (see the httpapi Home scope).
+	PrivacyFence      string
+	Libraries         []string
+	RowOrder          []string
+	HiddenRowIDs      []string
+	LayoutRevision    int64
+	CommunityActivity bool
+	Limit             int
 	// Rows, when set, stops composing once this many rows with entries are
 	// composed (the Top Shelf feed shows four): the rest are never read.
 	Rows          int

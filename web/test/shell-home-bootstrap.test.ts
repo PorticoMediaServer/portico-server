@@ -86,6 +86,18 @@ test('a later genuine Home fence replacement retires only this boundary and neve
   assert.equal(replacements, 1); assert.equal(boundary.viewerFence, undefined);
   response = homeDocument('third'); await home.load(); assert.equal(replacements, 1); home.dispose();
 });
+// H-11: a library added or removed changes the viewer fence only; Settings and the player
+// host stay mounted, and Home-data checks follow the current document's viewer fence.
+test('a viewer-fence-only change keeps the boundary and follows the new fence; a privacy change retires it', async () => {
+  let response: unknown = {...homeDocument('first'), privacyFence: 'privacy'}, replacements = 0;
+  const home = new HomeService({request: async <T>() => response as T});
+  const boundary = watchHomeViewerFence(home, () => true, () => {replacements++;});
+  await home.load(); assert.equal(boundary.viewerFence, 'first');
+  response = {...homeDocument('more-libraries'), privacyFence: 'privacy'}; await home.load();
+  assert.equal(replacements, 0); assert.equal(boundary.viewerFence, 'more-libraries');
+  response = {...homeDocument('more-libraries'), privacyFence: 'another-viewer'}; await home.load();
+  assert.equal(replacements, 1); assert.equal(boundary.viewerFence, undefined); home.dispose();
+});
 test('explicitly clearing an established document fences before its next request finishes', async () => {
   const gate = deferred<unknown>(); let response: Promise<unknown> | unknown = homeDocument('first'), replacements = 0;
   const home = new HomeService({request: async <T>() => await response as T});

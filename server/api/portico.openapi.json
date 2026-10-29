@@ -64176,6 +64176,9 @@
             ],
             "type": "object"
           },
+          "privacyFence": {
+            "type": "string"
+          },
           "revision": {
             "properties": {
               "catalog": {
@@ -218644,6 +218647,9 @@
               "hiddenRowIds"
             ],
             "type": "object"
+          },
+          "privacyFence": {
+            "type": "string"
           },
           "revision": {
             "properties": {
@@ -532650,6 +532656,9 @@
                         "hiddenRowIds"
                       ],
                       "type": "object"
+                    },
+                    "privacyFence": {
+                      "type": "string"
                     },
                     "revision": {
                       "properties": {

@@ -45674,6 +45674,7 @@ var PorticoCastContracts = (function(exports) {
 					],
 					"type": "object"
 				},
+				"privacyFence": { "type": "string" },
 				"revision": {
 					"properties": {
 						"catalog": {

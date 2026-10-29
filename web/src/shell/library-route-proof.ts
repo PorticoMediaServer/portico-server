@@ -86,8 +86,11 @@ export function createLibraryRouteProof(o: Readonly<{
     /** Called ONLY after bootstrap's requested-server/fence retirement checks accept. */
     observeHome(value: Readonly<{serverId: string; viewerFence: string}>) {
       if (!current() || value.serverId !== viewer.serverId || !text(value.viewerFence, 8192)) return;
-      if (fence !== undefined && fence !== value.viewerFence) {invalidate();return;}
+      const replaced = fence !== undefined && fence !== value.viewerFence;
       fence = value.viewerFence;observation = Object.freeze({serverId: value.serverId, viewerFence: value.viewerFence});
+      // A library added or removed keeps the shell (H-11): every guard proven on the old list
+      // retires, and both inputs are read again under the new fence.
+      if (replaced) {invalidate();queueMicrotask(() => source.request());}
     },
     homeAnswered(ticket: HomeTicket) {
       const accepted = observation;

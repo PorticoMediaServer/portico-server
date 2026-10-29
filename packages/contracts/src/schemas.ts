@@ -61568,6 +61568,9 @@ export const schemas = {
         ],
         "type": "object"
       },
+      "privacyFence": {
+        "type": "string"
+      },
       "revision": {
         "properties": {
           "catalog": {
