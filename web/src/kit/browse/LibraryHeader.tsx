@@ -48,12 +48,14 @@ export function LibrarySwitcher({libraries, value, onValueChange, open: controll
 export type LibraryMenuProps = Readonly<{
   /** Each row is drawn only when the surface has a real port for it. */
   read?: boolean; onSaveView?: () => void; onMarkAll?: () => void; onEditPins?: () => void;
+  /** O-161: copy this library's shareable address. */
+  onCopyLink?: () => void;
   viewSummary?: ReactNode; countSummary?: ReactNode; ownerMark?: ReactNode; open?: boolean; onOpenChange?: (open: boolean) => void;
   owner: boolean;
   /** Owner-only rows; the owner group is drawn only when one of them exists. */
   onUnmatched?: () => void; onLibrarySettings?: () => void; onScan?: () => void;
 }>;
-export function LibraryMenu({owner, read = false, onSaveView, onMarkAll, onEditPins, onUnmatched, onLibrarySettings, onScan, viewSummary, countSummary, ownerMark, open: controlledOpen, onOpenChange}: LibraryMenuProps) {
+export function LibraryMenu({owner, read = false, onSaveView, onMarkAll, onEditPins, onCopyLink, onUnmatched, onLibrarySettings, onScan, viewSummary, countSummary, ownerMark, open: controlledOpen, onOpenChange}: LibraryMenuProps) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [localOpen, setLocalOpen] = useState(false), open = controlledOpen ?? localOpen;
   const setOpen = (next: boolean) => { setLocalOpen(next); onOpenChange?.(next); };
@@ -64,6 +66,7 @@ export function LibraryMenu({owner, read = false, onSaveView, onMarkAll, onEditP
     {onSaveView && <MenuItem icon={read ? 'i-save' : 'i-filter'} description={viewSummary} onSelect={act(onSaveView)}>{t('next.browse.saveThisView')}</MenuItem>}
     {onMarkAll && <MenuItem icon="i-check" description={countSummary} onSelect={act(onMarkAll)}>{t(read ? 'next.browse.markAllRead' : 'next.browse.markAllWatched')}</MenuItem>}
     {onEditPins && <MenuItem icon="i-updown" onSelect={act(onEditPins)}>{t('next.browse.editPins')}</MenuItem>}
+    {onCopyLink && <MenuItem icon="i-copy" onSelect={act(onCopyLink)}>{t('next.overlays.copyLink')}</MenuItem>}
     {owner && (onUnmatched || onLibrarySettings || onScan) && <MenuGroup ownerOnly className={styles.ownerGroup} label={<span className={styles.ownerLabel}>{t('next.browse.server')}{ownerMark}</span>}>
       {onUnmatched && <MenuItem icon="i-list" onSelect={act(onUnmatched)}>{t('next.ownerLibraries.tab.attention')}</MenuItem>}
       {onLibrarySettings && <MenuItem icon="i-cog" onSelect={act(onLibrarySettings)}>{t('next.browse.librarySettings')}</MenuItem>}

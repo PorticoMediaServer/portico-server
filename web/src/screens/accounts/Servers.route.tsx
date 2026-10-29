@@ -372,4 +372,6 @@ function BoundServers({entry, form}: {entry: BrowserAccountEntry; form: AccountS
   return <ServerSwitcher choices={choices} busy={busy || working} error={error} onChoose={choice => void openServer(choice)} onRefresh={() => void refresh()}
     onLocal={() => {form.clear(); entry.cancel(); setError(undefined); setMode('address');}} onClose={close} />;
 }
-export default defineWebScreen({id: 'servers', component: ServersRoute, chrome: 'standalone', validateSearch: raw => raw.local === true || raw.local === 'true' ? {local: true} : {}});
+export default defineWebScreen({id: 'servers', component: ServersRoute, chrome: 'standalone', validateSearch: raw => ({...(raw.local === true || raw.local === 'true' ? {local: true} : {}),
+  // O-161: the server a shared link names; the Hosted chooser opens it when this account can.
+  ...(typeof raw.link === 'string' && /^[A-Za-z0-9._~-]{1,128}$/.test(raw.link) ? {link: raw.link} : {})})});

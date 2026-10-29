@@ -2,6 +2,7 @@ import {useEffect, useLayoutEffect, useState, useSyncExternalStore} from 'react'
 import {defaultI18n} from '@i18n';
 import {RouteError} from '@core/route-identity.ts';
 import {browserAccount} from '../../platform/account';
+import {router} from '../../router';
 import {goTo} from '../../platform/hosted-navigation';
 import {accountIdentity} from '../../platform/account-work';
 import {createAccountServerDirectory} from '../../platform/account-server-directory';
@@ -77,12 +78,18 @@ function BoundServers({session}: {session: Session}) {
     let flow: ServicesDirectoryFlow<Admitted> | undefined;
     // A server just joined opens straight away (the person asked for it), here, in place.
     const opening = new URLSearchParams(location.search).get('open');
+    // O-161: a shared link for a server this browser has not joined opens it here, if this account can.
+    const linked = new URLSearchParams(location.search).get('link');
 
     setError(undefined);
     void (async () => {
       try {
         const [initial, record] = await Promise.all([directory.read(controller.signal), browserAppSessions().read()]);
         if (!current()) return;
+        if (linked) {
+          const item = initial.items.find(value => value.id === linked);
+          if (!item || item.status !== 'active') {void router.navigate({to: '/link-unavailable', search: {reason: item ? 'offline' : 'access'}, replace: true}); return;}
+        }
         if (!initial.items.length) {goTo('/welcome#join', {replace: true}); return;}
         // Where each saved sign-in last worked, for the one fallback a state may offer.
         const saved = new Map<string, string>();
@@ -90,8 +97,8 @@ function BoundServers({session}: {session: Session}) {
         flow = new ServicesDirectoryFlow<Admitted>(initial, {current, read: directory.read, empty: () => {if (current()) goTo('/welcome#join', {replace: true});},
           admit: (server, signal) => admitServer(server, scope.accountId, access, signal)}, !record.selectedServerId);
         setLoaded({flow, saved});
-        const asked = opening ? initial.items.find(item => item.id === opening) : undefined;
-        if (opening) goTo('/servers', {replace: true});
+        const asked = opening || linked ? initial.items.find(item => item.id === (opening ?? linked)) : undefined;
+        if (opening || linked) goTo('/servers', {replace: true});
         if (asked) void flow.open(asked, flow.getSnapshot());
       } catch (failure) {if (current()) setError(failure);}
     })();

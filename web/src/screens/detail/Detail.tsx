@@ -22,7 +22,7 @@ import {AmbientArt, Artwork, PersonCircle, type AmbientArtProps} from '../../kit
 import {Button, ResumeButton, Select, Tabs} from '../../kit/controls';
 import {Lockup, Shelf} from '../../kit/layout';
 import {CollectionBanner, PosterCard, SquareCard} from '../../kit/cards';
-import {Menu, MenuGroup, MenuItem, MenuSeparator, FileInfo, DiscTitles, Dialog, type FileInfoAction} from '../../kit/overlays';
+import {Menu, MenuGroup, MenuItem, MenuSeparator, FileInfo, DiscTitles, Dialog, ToastHost, type FileInfoAction, type ToastData} from '../../kit/overlays';
 import {StateView} from '../../kit/states';
 import {Icon} from '../../kit/Icon';
 import {useShellWidth} from '../../shell/viewport';
@@ -38,6 +38,7 @@ import type {SourceArtClaim} from '../../kit/cards/source-art-transition';
 import {useLayoutMotion} from '../../kit/layout/motion';
 import motionStyles from './title-hero-motion.module.css';
 import {FileManagement} from './FileManagement';
+import {copyLink} from '../../shell/copy-link';
 import {TitleTabs} from './TitleTabs';
 import {ScreenProblem} from './ScreenProblem';
 import {runScreenCommand} from './context';
@@ -201,7 +202,7 @@ function TitlePinnedActions({binding, data}: {binding: DetailBindings; data: Det
 function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjection}) {
   const [open, setOpen] = useState(false), [fileOpen, setFileOpen] = useState(false), [titlesOpen, setTitlesOpen] = useState(false);
   const [files, setFiles] = useState<FileInfoProjection>(), [failed, setFailed] = useState(false);
-  const [manage, setManage] = useState<FileInfoAction>(), [rating, setRating] = useState(false);
+  const [manage, setManage] = useState<FileInfoAction>(), [rating, setRating] = useState(false), [linkToast, setLinkToast] = useState<ToastData | null>(null);
   const trigger = useRef<HTMLButtonElement>(null), fileRead = useRef<AbortController | undefined>(undefined), width = useShellWidth(), phone = width < 1024;
   // music-plus: Start radio's admission lease belongs to this exact menu for this binding and
   // page, owned by a layout effect so a replayed setup gets a fresh, live lease.
@@ -330,6 +331,8 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
         {differentVersion && <MenuItem icon="i-film" onSelect={chooseVersion}>{t('next.overlays.differentVersion')}</MenuItem>}
         <MenuItem icon="i-info" onSelect={loadFiles}>{t('next.overlays.fileInfo')}</MenuItem>
         <MenuItem icon="i-stack" onSelect={loadTitles}>{t('next.overlays.discTitles')}</MenuItem>
+        {/* O-161: the mock-ups have no share slot; the title's ⋯ menu carries its shareable link. */}
+        <MenuItem icon="i-copy" onSelect={() => { void copyLink({to: '/item/$itemId', params: {itemId: data.item.id}}, trigger.current ?? undefined).then(() => setLinkToast({id: crypto.randomUUID(), icon: 'i-check', message: t('next.overlays.linkCopied')}), () => setLinkToast({id: crypto.randomUUID(), icon: 'i-warn', tone: 'warning', message: t('next.overlays.copyLinkFailed')})); }}>{t('next.overlays.copyLink')}</MenuItem>
       </MenuGroup>
       {ownerRows && <MenuGroup label={t(sheet ? 'next.overlays.ownerOnly' : 'next.overlays.owner')} ownerOnly>{canEditMetadata && <MenuItem onSelect={() => destination(binding.context.effects.editMetadata)}>{t('entry.editMetadata')}</MenuItem>}{refreshPath && <MenuItem icon="i-refresh" onSelect={refresh}>{t('entry.refreshMetadata')}</MenuItem>}{canDelete && <MenuItem icon="i-trash" destructive onSelect={() => destination(binding.context.effects.deleteTitle)}>{t('entry.delete')}</MenuItem>}</MenuGroup>}
     </Menu>
@@ -340,6 +343,7 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
           {downloadView.options ? <StateView title={t('web.downloads.offTitle')} body={t('web.downloads.offMember')} />
             : downloadView.failed ? <ScreenFailure retry={() => { void loadDownload(downloadView.active); }} /> : <DetailLoading shape="panel" />}
         </Dialog>)}
+    <ToastHost toast={linkToast} onDismiss={() => setLinkToast(null)} />
     {rating && <TitleRating binding={binding} data={data} returnFocusRef={trigger} onClose={() => setRating(false)} />}
     {fileOpen && model && <FileInfo model={model} subject={data.item.title} disc={files?.disc} layout={phone ? 'phone' : 'desktop'} open onOpenChange={closeFiles} returnFocusRef={trigger} onManage={action => runScreenCommand(binding.context, () => { binding.current(data); closeFiles(false); setManage(action); })} />}
     {fileOpen && !model && <Dialog open onOpenChange={closeFiles} title={t('next.overlays.fileInfo')} returnFocusRef={trigger}>{failed ? <ScreenFailure retry={loadFiles} /> : <DetailLoading shape="panel" />}</Dialog>}

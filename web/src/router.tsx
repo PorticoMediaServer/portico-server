@@ -11,10 +11,16 @@ import {useShellBindings} from './shell/bindings';
 import {HomeScreen} from './screens/home/Home';
 import {librarySearch, searchQuery} from './shell/navigation';
 import {localDeviceHint} from './platform/local-device-entry';
+import {createServerScope, scopedLinks} from './platform/server-scope';
+import {currentWebEnvironment} from './platform/environment';
+import {LinkUnavailableScreen, linkUnavailableSearch} from './shell/LinkUnavailable';
 
 // Local approval links are hints, not grants. Scrub before Router parses/stores
 // the initial history entry; account return/Security paths are never captured.
 if (typeof location !== 'undefined' && typeof history !== 'undefined') localDeviceHint.capture(location, history);
+
+/** O-161: Hosted paths name their server; the router reads and writes them through this scope. */
+export const serverScope = createServerScope(typeof location !== 'undefined' && currentWebEnvironment().hostedWeb, link => scopedLinks.remember(link));
 
 function BoundHome() { const binding = useShellBindings(); return binding ? <HomeScreen {...binding.home} /> : null; }
 
@@ -47,6 +53,7 @@ export const aboutRoute = createRoute({getParentRoute: () => rootRoute, componen
 export const helpRoute = createRoute({getParentRoute: () => rootRoute, component: screen('help'), path: '/help', validateSearch: screenSearch('help')});
 export const personRoute = createRoute({getParentRoute: () => rootRoute, component: screen('person'), path: '/person/$personId', validateSearch: screenSearch('person')});
 export const readRoute = createRoute({getParentRoute: () => rootRoute, component: screen('read'), path: '/read/$itemId', validateSearch: screenSearch('read')});
+export const linkUnavailableRoute = createRoute({getParentRoute: () => rootRoute, component: LinkUnavailableScreen, path: '/link-unavailable', validateSearch: linkUnavailableSearch});
 export const deviceRoute = createRoute({getParentRoute: () => rootRoute, component: screen('device'), path: '/device', validateSearch: screenSearch('device'), beforeLoad: ({location: entry, preload}) => {
   if (preload || !entry.hash) return;
   const url = new URL(entry.href, window.location.origin);
@@ -59,7 +66,7 @@ export const profileSettingsAliasRoute = createRoute({getParentRoute: () => root
   browserEntryDestination.rememberProfileSettings();
   throw redirect({...profileSettingsDestination, replace: true});
 }});
-const destinations = [homeRoute, searchRoute, readingSearchRoute, librariesRoute, libraryRoute, liveRoute, savedRoute, itemRoute, homeRowRoute, playerRoute, settingsRoute, dashboardRoute, notificationsRoute, profilesRoute, serversRoute, accountRoute, setupRoute, signInRoute, accountReturnRoute, togetherRoute, helpRoute, aboutRoute, personRoute, readRoute, deviceRoute, profileSettingsAliasRoute];
+const destinations = [homeRoute, searchRoute, readingSearchRoute, librariesRoute, libraryRoute, liveRoute, savedRoute, itemRoute, homeRowRoute, playerRoute, settingsRoute, dashboardRoute, notificationsRoute, profilesRoute, serversRoute, accountRoute, setupRoute, signInRoute, accountReturnRoute, togetherRoute, helpRoute, aboutRoute, personRoute, readRoute, deviceRoute, linkUnavailableRoute, profileSettingsAliasRoute];
 const devRoutes = import.meta.env.DEV ? [createRoute({
   getParentRoute: () => rootRoute, path: '/dev/kit', validateSearch: gallerySearch,
   component: lazyRouteComponent(() => import('./dev/KitGallery'), 'KitGallery'),
@@ -73,5 +80,5 @@ export const routeTree = rootRoute.addChildren([...destinations, ...devRoutes]);
 // The shell's real-render listener enables native transitions for later routes.
 // The global catch boundary would consume a root rethrow before App's last resort; per-child
 // errorComponents still catch their own destinations.
-export const router = createRouter({routeTree, defaultViewTransition: false, scrollRestorationBehavior: 'instant', disableGlobalCatchBoundary: true});
+export const router = createRouter({routeTree, rewrite: serverScope.rewrite, defaultViewTransition: false, scrollRestorationBehavior: 'instant', disableGlobalCatchBoundary: true});
 declare module '@tanstack/react-router' { interface Register { router: typeof router } }

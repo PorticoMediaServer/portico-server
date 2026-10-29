@@ -7,7 +7,8 @@ import {EntryActionHost} from './shell/entry-actions.tsx';
 import {bindWebAccountEntry} from './route-registry-lifecycle';
 import {WebScreenProvider, webScreens} from './route-registry-view';
 import type {ShellAssemblyContext} from './shell/bootstrap';
-import {router} from './router';
+import {router, serverScope} from './router';
+import {bindServerScope} from './shell/server-scope-binding';
 import {LastResortBoundary} from './shell/Errors';
 import {ShellBindingsProvider, type ShellBindings} from './shell/bindings';
 import {bindShellRouteMotion} from './shell/route-motion';
@@ -23,6 +24,7 @@ export function App({binding, bootstrap, takeAccountReturn, takeAccountMove}: {b
 function RestoredApp({bootstrap, takeAccountReturn, takeAccountMove}: {bootstrap: ShellBootstrap; takeAccountReturn?: TakeAccountReturn; takeAccountMove?: TakeAccountMove}) {
   const snapshot = useSyncExternalStore(bootstrap.subscribe, bootstrap.getSnapshot, bootstrap.getSnapshot);
   useEffect(() => bindWebAccountEntry(router, bootstrap), [bootstrap]);
+  useEffect(() => bindServerScope(router as unknown as Parameters<typeof bindServerScope>[0], bootstrap, serverScope), [bootstrap]);
   return <ShellBootstrapState value={{snapshot, retry: bootstrap.start, retryNow: bootstrap.retryNow}}><BoundApp binding={snapshot.binding} context={snapshot.context} bootstrap={bootstrap} takeAccountReturn={takeAccountReturn} takeAccountMove={takeAccountMove} /></ShellBootstrapState>;
 }
 function BoundApp({binding, context, bootstrap, takeAccountReturn, takeAccountMove}: {binding?: ShellBindings; context?: ShellAssemblyContext; bootstrap?: ShellBootstrap; takeAccountReturn?: TakeAccountReturn; takeAccountMove?: TakeAccountMove}) {
