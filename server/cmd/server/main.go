@@ -808,6 +808,9 @@ func run() (runErr error) {
 		}, nil
 	})
 	if e != nil {
+		// Keep the public recovery refusal generic; the local operator needs
+		// the underlying cause to distinguish authority, storage and admission.
+		log.Printf("Private recording storage startup failed: %v", e)
 		return errors.New("private recording storage configuration could not be accepted")
 	}
 	recordingLocks, e := livechannels.NewPhysicalLocks(storagepaths.Path(state, "live-source-locks"))
