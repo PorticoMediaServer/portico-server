@@ -16,16 +16,7 @@ cp "$ROOT/packaging/macos/tv.getportico.server.service.plist" "$ROOT/packaging/m
 sed -e "s/__PORTICO_VERSION__/$VERSION/g" -e "s/__PORTICO_BUILD__/$BUILD_NUMBER/g" "$ROOT/packaging/macos/Info.plist" > "$APP/Contents/Info.plist"
 cp "$ROOT/packaging/macos/launcher.sh" "$APP/Contents/MacOS/Portico Media Server"
 chmod +x "$APP/Contents/MacOS/Portico Media Server" "$APP/Contents/Resources/server/portico-server" "$APP/Contents/Resources/server/third_party/ffmpeg/bin/"* "$APP/Contents/Resources/server/third_party/rclone/rclone"
-icon="$(find "$APP/Contents/Resources/server/web" -name 'portico-app-icon-512.png' -print -quit)"
-if [[ -n "$icon" ]]; then
-  iconset="$OUT/PorticoServer.iconset"
-  rm -rf "${iconset:?}"; mkdir -p "$iconset"
-  for spec in "16:16x16" "32:16x16@2x" "32:32x32" "64:32x32@2x" "128:128x128" "256:128x128@2x" "256:256x256" "512:256x256@2x" "512:512x512" "1024:512x512@2x"; do
-    sips -z "${spec%%:*}" "${spec%%:*}" "$icon" --out "$iconset/icon_${spec#*:}.png" >/dev/null
-  done
-  iconutil -c icns "$iconset" -o "$APP/Contents/Resources/PorticoServer.icns"
-  rm -rf "${iconset:?}"
-fi
+cp "$ROOT/packaging/macos/PorticoServer.icns" "$APP/Contents/Resources/PorticoServer.icns"
 if [[ -n "${PORTICO_MACOS_SIGNING_IDENTITY:-}" ]]; then
   : "${PORTICO_RELEASE_SIGNING_KEY_FILE:?A private release key is required to seal codesigned binaries}"
   PUBLIC_KEY_FILE="${PORTICO_RELEASE_PUBLIC_KEY_FILE:?A pinned public release key is required}"
