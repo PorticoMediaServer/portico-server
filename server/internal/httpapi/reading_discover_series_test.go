@@ -250,7 +250,7 @@ func TestReadingDiscoverSeriesHTTPOptInAndActualAuthority(t *testing.T) {
 	// membership: both the recent row and the preview item carry the pending
 	// owner value while the summary membership and count stay frozen.
 	for _, item := range []ReadingItem{published.Rows[0].Items[0], published.Rows[1].Series[0].Preview[0]} {
-		if item.ID != r.item || item.Series == nil || item.Series.Name != "Changed" || item.Series.Source != compactcatalog.ReadingOwner {
+		if item.ID != r.item || item.Series == nil || item.Series.Name != "Changed" || item.Series.Source != ReadingAttributionSource(compactcatalog.ReadingOwner) {
 			t.Fatalf("live item detail %+v", item)
 		}
 	}

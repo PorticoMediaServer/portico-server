@@ -165402,6 +165402,28 @@ export const schemas = {
   },
   "GetReadingDiscoverResponse": {
     "properties": {
+      "importing": {
+        "type": "boolean"
+      },
+      "revision": {
+        "properties": {
+          "catalog": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "viewer": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "catalog",
+          "viewer"
+        ],
+        "type": "object"
+      },
       "rows": {
         "items": {
           "properties": {
