@@ -20,7 +20,7 @@ import {randomId} from '@core/random-id.ts';
 export type SetupTarget = Readonly<{server: ServerSignIn; api: HttpLocalApi; pin: ServerPin; draft: SetupDraftStore; dispose: () => void; admittedOwner?: true}>;
 type CompositionPorts = Readonly<{
   sessions: typeof browserAppSessions; environment: typeof browserConnectionEnvironment; restore: typeof restoreBrowserConnection;
-  remember: typeof rememberNativeSession; claim: () => Pick<BrowserSetupClaim,'prepare'|'cancel'>;
+  remember: typeof rememberNativeSession; claim: () => Pick<BrowserSetupClaim,'prepare'|'cancel'> & Partial<Pick<BrowserSetupClaim,'discardStale'>>;
   draft: (id: string) => SetupDraftStore & {assertAvailable: () => void};
 }>;
 const defaultPorts: CompositionPorts = {sessions: browserAppSessions, environment: browserConnectionEnvironment, restore: restoreBrowserConnection,
@@ -39,7 +39,7 @@ export class BrowserSetupComposition {
   private readonly abort = new AbortController();
   private readonly captures = new WeakMap<SetupTarget, {revision: number; installationId: string}>();
   private owner?: {api: HttpLocalApi; session: LocalSession};
-  private claim?: Pick<BrowserSetupClaim,'prepare'|'cancel'>;
+  private claim?: Pick<BrowserSetupClaim,'prepare'|'cancel'> & Partial<Pick<BrowserSetupClaim,'discardStale'>>;
   private handoffDelivered = false;
   private hosted?: HostedOpening;
   constructor(private readonly hostedOrigin: string, private readonly navigate: (url: string) => void = url => location.assign(url), private readonly ports: CompositionPorts = defaultPorts,
@@ -213,6 +213,16 @@ export class BrowserSetupComposition {
     this.hosted = held;
     try {await this.prepareHosted(held);} finally {held.busy = false;}
   }
+  /** The server's own setup page found a saved account setup whose attempt expired unapproved:
+   * drop it so the page shows the ordinary start form instead of resuming a dead continuation. */
+  discardStaleDraft = async (server: SetupTarget): Promise<boolean> => {
+    this.current(); await this.assert(server);
+    const discard = (this.claim ??= this.ports.claim()).discardStale;
+    if (!discard) return false;
+    const done = await this.claim!.discardStale!(server.api);
+    this.current();
+    return done;
+  };
   continueHosted = (server: SetupTarget, input: Readonly<{name: string}>): Promise<void> => this.startHosted(server, input.name);
   resumeHosted = (server: SetupTarget, pending: PendingAccountSetup): Promise<void> => this.startHosted(server, server.server.name, pending);
   /** Only the admitted owner's fixed folder-listing endpoint, never setup bearer IO. */

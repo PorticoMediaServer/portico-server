@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {captureHostedOwnerClaim} from '../src/services/owner-claim.ts';
-import {hostedOwnerPendingStore, restoreHostedOwnerPending, forgetHostedOwnerPending, scopedHostedOwnerClaim,
+import {hostedOwnerPendingStore, hostedClaimExpired, restoreHostedOwnerPending, forgetHostedOwnerPending, scopedHostedOwnerClaim,
   type HostedOwnerPending, type HostedOwnerPendingStore} from '../src/services/owner-pending.ts';
 import type {ServicesAccount} from '../src/services/session.ts';
 
@@ -41,8 +41,19 @@ test('owner approval restores its scrubbed code without renewing the local budge
   const pending = await restoreHostedOwnerPending(f.store, origin, capture(), now);
   assert.equal(pending?.kind, 'owner-approval'); assert.equal(pending?.request.code, code);
   const restored = await restoreHostedOwnerPending(f.store, origin, undefined, now + 1000);
-  assert.equal(restored?.attemptId, pending?.attemptId); assert.equal(restored?.deadline, now + 300000);
-  await assert.rejects(restoreHostedOwnerPending(f.store, origin, undefined, now + 300000)); assert.equal(f.saved(), undefined);
+  assert.equal(restored?.attemptId, pending?.attemptId); assert.equal(restored?.deadline, now + 1_800_000);
+  await assert.rejects(restoreHostedOwnerPending(f.store, origin, undefined, now + 1_800_000)); assert.equal(f.saved(), undefined);
+});
+test('a 25-minute-old setup capture restores; a 31-minute-old one is honestly expired, not malformed', async () => {
+  const f = vault(), now = Date.now();
+  await restoreHostedOwnerPending(f.store, origin, capture(), now);
+  assert.ok(await restoreHostedOwnerPending(f.store, origin, undefined, now + 25 * 60_000));
+  await assert.rejects(restoreHostedOwnerPending(f.store, origin, undefined, now + 31 * 60_000), (error: unknown) => hostedClaimExpired(error));
+  assert.equal(f.saved(), undefined);
+});
+test('a malformed capture is still invalid, never expired', async () => {
+  const f = vault();
+  await assert.rejects(restoreHostedOwnerPending(f.store, origin, {} as never), (error: unknown) => !hostedClaimExpired(error) && (error as {code?: string}).code === 'invalid_return');
 });
 test('secure storage refusal happens before pending read/write', async () => {
   let effects = 0;

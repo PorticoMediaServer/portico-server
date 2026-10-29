@@ -12,7 +12,7 @@ function session(serverId = 'server-1') {
     viewer: {accountId: 'owner-account', profileId: 'main-profile', serverId, authority: 'local', role: 'owner'}};
 }
 
-function fixture(input: Readonly<{draft?: boolean; resume?: unknown; hosted?: () => Promise<void>; add?: (value: unknown) => Promise<void>; admittedOwner?: boolean; setupRequired?: boolean}> = {}) {
+function fixture(input: Readonly<{draft?: boolean; resume?: unknown; hosted?: () => Promise<void>; add?: (value: unknown) => Promise<void>; admittedOwner?: boolean; setupRequired?: boolean; discardStale?: () => Promise<boolean>}> = {}) {
   const calls: {name: string; value?: unknown}[] = [], completions: number[] = [];
   let requests = 0;
   const server: SetupServer = {
@@ -34,6 +34,7 @@ function fixture(input: Readonly<{draft?: boolean; resume?: unknown; hosted?: ()
     addLibrary: input.add ?? (async value => {calls.push({name: 'addLibrary', value});}),
     complete: () => {completions.push(1);},
     hostname: () => 'demo.getportico.tv',
+    ...(input.discardStale ? {discardStaleDraft: input.discardStale} : {}),
   };
   return {flow: new SetupFlow(ports), calls, completions, requests: () => requests, accepted: () => accepted, server};
 }
@@ -214,4 +215,39 @@ test('a not-local refusal on a local setup keeps the form and says the same line
     await f.flow.submitLocal();
     assert.equal(f.flow.getSnapshot().error, notLocalLine);
   } finally {f.flow.dispose();}
+});
+
+test('a saved draft whose attempt expired unapproved is dropped for the start form and a quiet line, never a failure', async () => {
+  const f = fixture({draft: true, discardStale: async () => true});
+  try {
+    await f.flow.start();
+    const state = f.flow.getSnapshot();
+    assert.equal(state.phase, 'form'); assert.equal(state.earlierExpired, true); assert.equal(state.error, undefined); assert.equal(state.failure, undefined);
+    assert.equal(f.accepted(), 0); assert.equal(f.requests(), 0, 'no resume request for a dead draft');
+  } finally {f.flow.dispose();}
+});
+test('a saved draft that is still live resumes as before', async () => {
+  const f = fixture({draft: true, discardStale: async () => false});
+  try {
+    await f.flow.start();
+    const state = f.flow.getSnapshot();
+    assert.equal(state.phase, 'library'); assert.equal(state.earlierExpired, undefined); assert.equal(f.accepted(), 1);
+  } finally {f.flow.dispose();}
+});
+test('setup_in_progress says so honestly with a local time, and Try again just connects again', async () => {
+  const refusal = () => new SetupStageFailure('browser-start', Object.assign(new Error('another browser'), {status: 409, code: 'setup_in_progress', retryAfterSeconds: 600}));
+  const now = Date.UTC(2030, 0, 2, 3, 4, 5), time = new Date(now + 600_000).toLocaleTimeString(undefined, {hour: 'numeric', minute: '2-digit'});
+  assert.equal(setupErrorMessage(refusal(), now), `Setup is already in progress in another browser. You can start over after ${time}.`);
+  assert.doesNotMatch(setupErrorMessage(refusal(), now), /changed while you were looking/);
+  assert.equal(setupErrorMessage(Object.assign(new Error('x'), {status: 409, code: 'setup_in_progress'})), 'Setup is already in progress in another browser.');
+  let attempts = 0;
+  const f = fixture();
+  const flow = new SetupFlow({...(f as never as {flow: {ports: SetupPorts}}).flow?.ports, connect: async () => {if (attempts++ === 0) throw refusal(); return f.server;},
+    acceptLocal: async () => {}, continueHosted: async () => {}, addLibrary: async () => {}, complete: () => {}, hostname: () => 'demo.getportico.tv'});
+  try {
+    await flow.start();
+    assert.equal(flow.getSnapshot().phase, 'error'); assert.match(flow.getSnapshot().error ?? '', /already in progress in another browser/);
+    await flow.retry();
+    assert.equal(attempts, 2); assert.equal(flow.getSnapshot().phase, 'form');
+  } finally {flow.dispose();}
 });

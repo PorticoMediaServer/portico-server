@@ -2,6 +2,7 @@ import {ApiError} from '@core/index.ts';
 import {currentUTCTimestamp} from '@core/local-session.ts';
 import {routeBytes, routeOrigin} from '@core/route-identity.ts';
 import {setupAddressAllowed} from '@core/setup-address.ts';
+import {SETUP_CLAIM_LIFETIME_MS} from '@core/setup-claim-attempt.ts';
 import {decodeServerClaimLookupResponse, decodeServerClaimApproveCodeResponse, decodeServerClaimDenyResponse, decodeServerReturnCompleteResponse} from '../../../packages/contracts/src/hosted/decoders.ts';
 import {routePath, encodedRoutePath} from '../../../packages/contracts/src/hosted/routes.ts';
 import {accountIdentity, currentAccountWork, type AccountIdentity, type ServicesAccount} from './session';
@@ -78,7 +79,7 @@ async function lookup(account: ServicesAccount, request: HostedSetupClaimLink, s
         claim.status !== 'pending' && claim.status !== 'approved' || claim.name !== request.nameHint || !claim.name ||
         new TextEncoder().encode(claim.name).length > 120 || !claim.serverId.startsWith('srv_') ||
         !currentUTCTimestamp(claim.requestedAt) || Date.parse(claim.requestedAt) > now + 60000 ||
-        !currentUTCTimestamp(claim.expiresAt) || Date.parse(claim.expiresAt) - now > 300000 ||
+        !currentUTCTimestamp(claim.expiresAt) || Date.parse(claim.expiresAt) - now > SETUP_CLAIM_LIFETIME_MS ||
         Date.parse(claim.expiresAt) <= Date.parse(claim.requestedAt) || claim.currentOwnerUsername !== undefined || claim.previousOwnerRole !== undefined) throw invalid();
     routeBytes(claim.serverId.slice(4), 32);
     setupOrigin(claim.address);

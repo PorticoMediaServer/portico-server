@@ -83,6 +83,33 @@ export class BrowserSetupClaim {
     if (id) await this.ports.journal.change(old => old?.attemptId === id ? undefined : old);
   }
   async dispose() {await this.cancel();}
+  /** A saved Portico Account setup whose attempt expired and was never approved is dropped (its
+   * prepared operation cancelled, the draft and journal cleared) so setup starts cleanly. Anything
+   * that might have been approved, a live attempt, or a read that fails leaves everything as it is. */
+  async discardStale(api: HttpLocalApi): Promise<boolean> {
+    this.ports.journal.assertAvailable();
+    const route = api.getRouteConnection(), record = await this.ports.journal.read();
+    if (!route || !record || record.kind !== 'setup' || !this.expired(record) || record.pin.serverId !== route.pin.serverId) return false;
+    const store = this.ports.draft(route.pin.serverId), draft = await store.read();
+    if (!draft || draft.version !== 1 || draft.authMode !== 'hosted' || draft.serverId !== route.pin.serverId || draft.requestId !== record.setupRequestId) return false;
+    if (this.busy) return false;
+    const owned = this.operation();
+    try {
+      const captured = new HttpLocalApi(api.baseUrl, draft.setupToken); captured.useRoutes(route);
+      const status = parseClaimStatus(await captured.request(routePath('get_networking_claim'), 'GET', undefined, owned.signal), route.pin);
+      if (!owned.current() || status.state === 'approved' || status.state === 'finalizing' || status.state === 'retrieving' || status.state === 'installed') return false;
+      const mine = !!record.expected && !!status.operation && status.operation.operationId === record.expected.operationId && status.operation.localGeneration === record.expected.localGeneration;
+      if (status.operation && !mine) return false;
+      if (mine && status.state === 'prepared') {
+        if (!status.actions.includes('cancel')) return false;
+        if (!absentClaim(parseClaimStatus(await captured.request(routePath('post_networking_claim_cancel'), 'POST', {expected: status.operation}, owned.signal), route.pin))) return false;
+      }
+      if (!owned.current()) return false;
+      await this.ports.journal.change(old => same(old, record) ? undefined : old);
+      await store.change(old => old?.requestId === draft.requestId && old.setupToken === draft.setupToken ? undefined : old);
+      return true;
+    } catch {return false;} finally {this.busy = false;}
+  }
   async prepare(api: HttpLocalApi, hostedOrigin: string, opening?: PrepareOpening): Promise<string> {
     return this.prepareOriginal(api, hostedOrigin, opening);
   }

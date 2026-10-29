@@ -33,8 +33,8 @@ export async function verifySetupClaimStart(original: unknown, signedStart: unkn
     !claim.name || new TextEncoder().encode(claim.name).length > 120 || start.setupRequestId !== expected.setupRequestId || start.setupRevision !== expected.setupRevision ||
     start.state !== expected.state || start.codeChallenge !== expected.codeChallenge || start.installationId !== expected.installationId || !/^[A-Za-z0-9_-]{32,128}$/.test(start.serverChallenge)) invalid();
   const issued = timestamp(claim.issuedAt), expires = timestamp(claim.expiresAt), startIssued = timestamp(start.issuedAt), startExpires = timestamp(start.expiresAt), nowNS = BigInt(now) * 1000000n;
-  if (issued > nowNS + 60000000000n || expires <= nowNS || expires <= issued || expires - issued > 600000000000n || startIssued < issued || startIssued > nowNS + 60000000000n ||
-    startExpires <= nowNS || startExpires <= startIssued || startExpires - startIssued > 300000000000n || startExpires > expires) invalid();
+  if (issued > nowNS + 60000000000n || expires <= nowNS || expires <= issued || expires - issued > 1800000000000n || startIssued < issued || startIssued > nowNS + 60000000000n ||
+    startExpires <= nowNS || startExpires <= startIssued || startExpires - startIssued > 1800000000000n || startExpires > expires) invalid();
   if (routeBase64(await crypto.sha256(c.raw)) !== start.claimHash) invalid();
   routeBytes(start.claimHash, 32);
   const pin = await serverPin(claim.serverId, claim.publicKey, expected.pin.fingerprint, crypto);

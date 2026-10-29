@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {ApiError} from '@core/index.ts';
 import {captureHostedSetupClaim, reviewHostedSetupClaim, decideHostedSetupClaim, completeHostedSetupClaim, validateHostedSetupReturn} from '../src/services/setup-claim.ts';
+import {claimStartView} from '../src/services/claim-start.ts';
 import type {ServicesAccount} from '../src/services/session.ts';
 import type {ServerClaimLookupResponse} from '../../packages/contracts/src/hosted/types.ts';
 
@@ -47,6 +48,28 @@ test('authenticated lookup provides setup facts and never starts or approves any
   assert.equal(review.name, 'Actual server'); assert.equal(review.transactionId, 'opaque_setup_transaction');
   assert(Object.isFrozen(review) && Object.isFrozen(review.identity) && Object.isFrozen(review.request));
   assert.deepEqual(f.calls.map(value => [value.path, value.body]), [['/v1/server-claims/lookup', {code}]]);
+});
+test('a setup claim 25 minutes from expiry reviews; one 31 minutes out is refused', async () => {
+  const ok = fixture(); ok.patch({expiresAt: new Date(Date.now() + 25 * 60_000).toISOString()});
+  assert.equal((await reviewHostedSetupClaim(ok.account, ok.request, ok.signal)).name, 'Actual server');
+  const bad = fixture(); bad.patch({expiresAt: new Date(Date.now() + 31 * 60_000).toISOString()});
+  await assert.rejects(reviewHostedSetupClaim(bad.account, bad.request, bad.signal));
+});
+test('a session that appears from another tab reaches the approval view but approves nothing by itself', async () => {
+  assert.equal(claimStartView({ownerPending: true, signedIn: false}), 'form');
+  assert.equal(claimStartView({ownerPending: true, signedIn: true}), 'approval');
+  assert.equal(claimStartView({ownerPending: false, signedIn: true}), 'open-from-server');
+  const f = fixture(), review = await reviewHostedSetupClaim(f.account, f.request, f.signal);
+  assert.equal(review.identity.accountId, 'actual-account');
+  assert(f.calls.every(value => value.path.endsWith('/lookup')), 'review is lookup only');
+  await decideHostedSetupClaim(f.account, review, 'approve', f.signal);
+  assert.equal(f.calls.filter(value => value.path.endsWith('/approve') || value.path.includes('approve')).length, 1, 'only the explicit Approve decides');
+});
+test('another account signing in elsewhere cannot approve what the first account reviewed', async () => {
+  const f = fixture(), review = await reviewHostedSetupClaim(f.account, f.request, f.signal);
+  f.replace();
+  await assert.rejects(decideHostedSetupClaim(f.account, review, 'approve', f.signal), {code: 'account_changed'});
+  assert(f.calls.every(value => value.path.endsWith('/lookup')));
 });
 test('setup rejects switch-only owner/count facts',async()=>{
  for(const patch of [{ownerTransactionId:'owner-custody'},{otherPeopleCount:0},{currentOwnerUsername:'existing_owner'},{previousOwnerRole:'member'}]){
