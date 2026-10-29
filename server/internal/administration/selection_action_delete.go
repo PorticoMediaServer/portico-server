@@ -427,13 +427,18 @@ func (s *Service) ApplySelectionDelete(ctx context.Context, p identity.Principal
 			if !errors.Is(err, sql.ErrNoRows) {
 				return err
 			}
+			// The journal reauthorizes target visibility in its checkpoint. Run
+			// it while the exact target is still live, then remove the catalogue
+			// entity in this same gated transaction. Any subsequent domain error
+			// rolls back the journal outcome together with the removal.
+			if err = checkpoint(tx, selectionactions.Effect{}); err != nil {
+				return err
+			}
 			if err = catalog.RemoveTitleTx(ctx, tx, target.EntityID); err != nil {
 				return err
 			}
-			if _, err = tx.ExecContext(ctx, `UPDATE library_revisions SET revision=revision+1 WHERE library_id=?`, target.LibraryID); err != nil {
-				return err
-			}
-			return checkpoint(tx, selectionactions.Effect{})
+			_, err = tx.ExecContext(ctx, `UPDATE library_revisions SET revision=revision+1 WHERE library_id=?`, target.LibraryID)
+			return err
 		})
 	}
 	if file.TargetID != target.EntityID || file.AssetID <= 0 {

@@ -164,6 +164,12 @@ func (s *Service) ListSelectionAction(ctx context.Context, p identity.Principal,
 	if _, _, e = s.requestAccess(ctx, tx, p, deviceID); e != nil {
 		return out, e
 	}
+	closed, err := selectionActionTransferClosedTx(ctx, tx, p, operationID, deviceID)
+	if err != nil {
+		return out, err
+	}
+	out.Closed = &closed
+
 	settings, e := readSettings(tx)
 	if e != nil {
 		return out, e
@@ -255,7 +261,7 @@ func (s *Service) ApplySelectionDownload(ctx context.Context, p identity.Princip
 		}
 	} else {
 		found, err := selectionPinnedSource(ctx, tx, target)
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, sql.ErrNoRows) || errors.Is(err, selectionactions.ErrCapacity) {
 			effect.Code = ReasonSourceChanged
 		} else if err != nil {
 			return err
@@ -303,7 +309,7 @@ func selectionPinnedSource(ctx context.Context, tx *sql.Tx, t selectionactions.T
 	s.Available = available != 0
 	s.Parts = 1
 	if s.Library != t.LibraryID || s.Kind != t.Kind {
-		return s, ErrConflict
+		return s, selectionDownloadChanged()
 	}
 	return s, nil
 }
@@ -549,7 +555,7 @@ func selectionDownloadTargetTx(ctx context.Context, tx *sql.Tx, t selectionactio
 	var parent, added sql.NullInt64
 	e := tx.QueryRowContext(ctx, `SELECT pid(e.public_id),cl.library_id,k.name,e.parent_id,e.added_ms FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id JOIN catalog_kinds k ON k.id=e.kind WHERE e.id=? AND e.public_id=pid_blob(?) AND e.retired=0 AND cl.retired=0`, t.EntityID, t.ItemID).Scan(&public, &library, &kind, &parent, &added)
 	if errors.Is(e, sql.ErrNoRows) {
-		return ErrConflict
+		return selectionDownloadChanged()
 	}
 	if e != nil {
 		return e
@@ -563,7 +569,13 @@ func selectionDownloadTargetTx(ctx context.Context, tx *sql.Tx, t selectionactio
 		lifetime = strconv.FormatInt(added.Int64, 10)
 	}
 	if library != t.LibraryID || kind != t.Kind || lifetime != t.Lifetime || selectionactions.TargetIdentity(public, library, kind, parentValue) != t.Identity {
-		return ErrConflict
+		return selectionDownloadChanged()
 	}
 	return nil
+}
+
+// A changed lifetime or source identity is a proved target refusal. The
+// journal must finish it honestly instead of retrying it as storage uncertainty.
+func selectionDownloadChanged() error {
+	return &selectionactions.TargetFailure{Code: ReasonSourceChanged, Cause: ErrConflict}
 }

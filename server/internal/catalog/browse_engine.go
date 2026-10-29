@@ -582,6 +582,11 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 		return out, nil, err
 	}
 	out.Applied = BrowseApplied{Query: request.Query, Sort: sorts, Seek: request.Seek}
+	if len(sorts) == 1 && sorts[0].Field == "forYou" {
+		fixed := *s
+		fixed.browseInstant = s.recommendationNow(s.browseInstant)
+		s = &fixed
+	}
 	requestedLimit := request.Limit
 	request.Limit = pageLimit(request.Limit)
 	// A held whole view may resolve one bounded explicit selection (at most200).
@@ -646,7 +651,7 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 		return out, nil, err
 	}
 	out.PageInfo.Revision = revision
-	out.Bound = &BoundBrowseQuery{Where: where, Args: append([]any{}, args...), Library: request.Library, Pivot: pivot.ID, Sorts: sorts, Query: request.Query, Revision: revision, snapshot: dbwork.Snapshot(s.Context())}
+	out.Bound = &BoundBrowseQuery{Where: where, Args: append([]any{}, args...), Library: request.Library, Pivot: pivot.ID, Sorts: sorts, Query: request.Query, Revision: revision, snapshot: dbwork.Snapshot(s.Context()), orderInstant: s.browseInstant}
 	stale := request.Range != nil && request.Range.Revision != "" && request.Range.Revision != revision
 	if stale && compiler.reading != nil {
 		return out, nil, ErrStaleContinuation

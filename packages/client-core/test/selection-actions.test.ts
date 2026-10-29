@@ -93,15 +93,21 @@ test('selection action transports use registered routes and real parser runtime 
 
 test('selection action exact transfer inventory uses paired operation/device filter and refuses lost or duplicate claims', async () => {
   const calls: {path: string; method?: string; signal?: AbortSignal}[] = [];
-  let raw: unknown = {items: [], nextCursor: 'next-page'};
+  let raw: unknown = {closed:true,items: [], nextCursor: 'next-page'};
   const api: SelectionActionsApi = {async request<T>(path: string, method?: string, _body?: unknown, signal?: AbortSignal) {calls.push({path, method, signal}); return raw as T;}};
   const signal = new AbortController().signal;
-  assert.deepEqual(await listSelectionActionPreparations(api, 'operation', 'device', {limit: 20, cursor: 'page1', signal}), {items: [], nextCursor: 'next-page'});
+  assert.deepEqual(await listSelectionActionPreparations(api, 'operation', 'device', {limit: 20, cursor: 'page1', signal}), {closed:true,items: [], nextCursor: 'next-page'});
   const path = new URL(calls[0].path, 'https://example.invalid');
   assert.equal(path.pathname, routePath('list_download_preparations'));
   assert.deepEqual(Object.fromEntries(path.searchParams), {operationId: 'operation', deviceId: 'device', limit: '20', cursor: 'page1'});
   assert.equal(calls[0].signal, signal);
-  raw = {items: [{id: 'unreadable-claim'}], nextCursor: ''};
+  for (const closed of [undefined, null, 0, 'true']) {
+    raw = {items: [], nextCursor: '', closed};
+    await assert.rejects(listSelectionActionPreparations(api, 'operation', 'device'));
+  }
+  raw = {items: [], nextCursor: 'still-active', closed: false};
+  assert.deepEqual(await listSelectionActionPreparations(api, 'operation', 'device'), raw);
+  raw = {closed:true,items: [{id: 'unreadable-claim'}], nextCursor: ''};
   await assert.rejects(listSelectionActionPreparations(api, 'operation', 'device'));
   const before = calls.length;
   for (const options of [{limit: 0}, {limit: 101}, {cursor: '\u0000'}]) await assert.rejects(listSelectionActionPreparations(api, 'operation', 'device', options));

@@ -60,7 +60,12 @@ func NewSelectionActions(d Dependencies) *selectionactions.Service {
 		}
 		return selectionactions.ErrInput
 	}
-	return selectionactions.New(d.DB, nil, authorize, apply)
+	service := selectionactions.New(d.DB, nil, authorize, apply)
+	if d.Downloads != nil {
+		service.OnAccepted = d.Downloads.OpenSelectionActionTransferTx
+		service.OnTerminal = d.Downloads.CloseSelectionActionTransferTx
+	}
+	return service
 }
 
 type selectionActionPreparationResult struct {
@@ -156,7 +161,7 @@ func actionError(err error) error {
 		return &apierror.Error{Code: "stale_continuation", Cause: err}
 	case errors.Is(err, readprep.ErrCapacity), errors.Is(err, selectionactions.ErrCapacity), errors.Is(err, readprep.ErrClosed):
 		return &apierror.Error{Code: "rate_limited", RetryAfterSeconds: 1, Cause: err}
-	case errors.Is(err, selectionactions.ErrConflict):
+	case errors.Is(err, selectionactions.ErrConflict), errors.Is(err, downloads.ErrRequestConflict):
 		return &apierror.Error{Code: "idempotency_key_reused", Cause: err}
 	case errors.Is(err, selectionactions.ErrNotFound):
 		return &apierror.Error{Code: "not_found", Cause: err}
@@ -420,7 +425,12 @@ func (d Dependencies) confirmSelectionAction(ctx context.Context, r *http.Reques
 	}
 	accepted := selectionactions.Acceptance{Principal: p, Binding: binding, Account: p.AccountID, Library: r.PathValue("id"), Action: intent.Input.Action, RequestHash: hash, OperationID: in.OperationID, Options: intent.Input.Options, Total: intent.Preview.Total, Digest: intent.Digest,
 		Factory: func(inner context.Context) (selectionactions.Source, error) {
-			return d.newSelectionActionSource(inner, p, intent.Input, viewer)
+			source, err := d.newSelectionActionSource(inner, p, intent.Input, viewer)
+			if err != nil {
+				return nil, err
+			}
+			source.(*selectionActionSource).captureLease = &result
+			return source, nil
 		},
 		Check: func(inner context.Context, tx *sql.Tx) error {
 			if err := d.selectionActionAuthorize(inner, tx, p, intent.Input.Action, intent.Input.Selector.Query.LibraryID, nil, intent.Input.Options.DeviceID); err != nil {

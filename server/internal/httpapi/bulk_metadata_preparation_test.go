@@ -163,6 +163,99 @@ func TestBulkMetadataPreparationHTTPReadyCannotSurviveMetadataDrift(t *testing.T
 	}
 }
 
+func TestBulkMetadataPreparationHTTPPreparingAndErrorHoldThroughWrite(t *testing.T) {
+	f := newBulkPreviewHTTPFixture(t)
+	releaseWorker := blockBulkPreviewWorker(t, f.store)
+	defer releaseWorker()
+	id := editorItemPublic(t, f.d.DB, "Alpha")
+	request := catalog.BulkMetadataPreviewRequest{Targets: []catalog.BulkMetadataTarget{{Kind: "item", ContentKind: "movie", ID: id, LibraryID: "private-library"}}}
+	raw, _ := json.Marshal(request)
+	w := editorRequest(t, f.h, "POST", "/v1/metadata/bulk/preview", f.owner, "application/json", raw)
+	if w.Code != 202 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	path := w.Header().Get("Location")
+	for _, drift := range []bool{false, true} {
+		if drift {
+			if _, err := dbwork.ExecWrite(context.Background(), f.d.DB, dbwork.ClassInteractive, `UPDATE catalog_entities SET year=1999 WHERE public_id=pid_blob(?)`, id); err != nil {
+				t.Fatal(err)
+			}
+		}
+		r := httptest.NewRequest("GET", path, nil)
+		r.Header.Set("Authorization", "Bearer "+f.owner)
+		r.Header.Set("If-None-Match", "*")
+		inspected := false
+		writer := facetDisconnectedWriter{httptest.NewRecorder(), func() {
+			inspected = true
+			if stats := f.store.Stats(); stats.Deliveries != 1 || stats.DeliveryBytes <= 0 || stats.Bytes > f.store.MaxBytes() {
+				t.Error(stats)
+			}
+		}}
+		f.h.ServeHTTP(writer, r)
+		want := 202
+		if drift {
+			want = 409
+		}
+		if !inspected || writer.Code != want || writer.Header().Get("ETag") != "" || writer.Header().Get("Cache-Control") != "no-store" {
+			t.Fatal(inspected, writer.Code, writer.Header())
+		}
+		if stats := f.store.Stats(); stats.Deliveries != 0 || stats.DeliveryBytes != 0 {
+			t.Fatal(stats)
+		}
+	}
+}
+
+func TestBulkMetadataPreparationHTTPRetryHandlesCancelIndependently(t *testing.T) {
+	f := newBulkPreviewHTTPFixture(t)
+	other, err := f.d.Identity.Issue("owner", "profile", "local", "owner", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	releaseWorker := blockBulkPreviewWorker(t, f.store)
+	defer releaseWorker()
+	id := editorItemPublic(t, f.d.DB, "Alpha")
+	request := catalog.BulkMetadataPreviewRequest{Targets: []catalog.BulkMetadataTarget{{Kind: "item", ContentKind: "movie", ID: id, LibraryID: "private-library"}}}
+	raw, _ := json.Marshal(request)
+	paths := []string{}
+	for i := 0; i < 2; i++ {
+		w := editorRequest(t, f.h, "POST", "/v1/metadata/bulk/preview", f.owner, "application/json", raw)
+		if w.Code != 202 {
+			t.Fatal(w.Code, w.Body.String())
+		}
+		paths = append(paths, w.Header().Get("Location"))
+	}
+	// One unrelated blocker plus one content entry, with two private interests.
+	if paths[0] == paths[1] || f.store.Stats().Entries != 2 {
+		t.Fatal(paths, f.store.Stats())
+	}
+	// Even another administrative session for the same profile cannot read or
+	// cancel this session's handle. DELETE remains privately idempotent.
+	if w := editorRequest(t, f.h, "GET", paths[1], other.AccessToken, "", nil); w.Code != 409 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if w := editorRequest(t, f.h, "DELETE", paths[1], other.AccessToken, "", nil); w.Code != 204 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if w := editorRequest(t, f.h, "DELETE", paths[0], f.owner, "", nil); w.Code != 204 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if w := editorRequest(t, f.h, "GET", paths[0], f.owner, "", nil); w.Code != 409 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	w := editorRequest(t, f.h, "GET", paths[1], f.owner, "", nil)
+	if w.Code != 202 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	releaseWorker()
+	w = bulkPreviewHTTPReady(t, f.h, f.owner, w)
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if stats := f.store.Stats(); stats.Deliveries != 0 || stats.DeliveryBytes != 0 {
+		t.Fatal(stats)
+	}
+}
+
 func blockBulkPreviewWorker(t *testing.T, store *readprep.Store) func() {
 	t.Helper()
 	gate, started := make(chan struct{}), make(chan struct{})

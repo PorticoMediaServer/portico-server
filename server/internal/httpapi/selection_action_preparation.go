@@ -64,15 +64,18 @@ type selectionActionIntent struct {
 // It is used once by readprep and once after explicit confirmation; both owners
 // reserve its full bounded retained/transient memory before each quantum.
 type selectionActionSource struct {
-	d        Dependencies
-	p        identity.Principal
-	input    selectionActionInput
-	viewer   catalog.Viewer
-	access   catalog.SelectionPreparationAccess
-	walk     *catalog.SelectionActionWalk
-	target   *selectionactions.Target
-	deletion *administration.SelectionDeleteCursor
-	download *downloads.SelectionDownloadCapture
+	d            Dependencies
+	p            identity.Principal
+	input        selectionActionInput
+	viewer       catalog.Viewer
+	access       catalog.SelectionPreparationAccess
+	walk         *catalog.SelectionActionWalk
+	target       *selectionactions.Target
+	deletion     *administration.SelectionDeleteCursor
+	download     *downloads.SelectionDownloadCapture
+	reserve      func(int64) error
+	captureLease *readprep.Result
+	cold         bool
 }
 
 func (s *selectionActionSource) Bytes() int64 {
@@ -105,6 +108,25 @@ func (s *selectionActionSource) checkFresh(ctx context.Context) error {
 }
 func (s *selectionActionSource) Step(ctx context.Context) (selectionactions.Batch, error) {
 	out := selectionactions.Batch{Records: []selectionactions.Record{}}
+	if s.captureLease != nil {
+		s.reserve = func(peak int64) error {
+			return s.captureLease.ResizeDelivery((8 << 20) + peak + int64(8*len(s.captureLease.Payload)) + 65536)
+		}
+		defer func() { s.reserve = nil }()
+		if s.cold {
+			if dbwork.ColdReadShouldYield() {
+				return out, nil
+			}
+			release, acquired, err := s.d.Catalog.ReadPreparations().TryColdQuantum(*s.captureLease)
+			if err != nil {
+				return out, err
+			}
+			if !acquired {
+				return out, nil
+			}
+			defer release()
+		}
+	}
 	if s.Bytes() > selectionactions.MaxSourceBytes {
 		return out, readprep.ErrCapacity
 	}
@@ -112,7 +134,7 @@ func (s *selectionActionSource) Step(ctx context.Context) (selectionactions.Batc
 		return out, err
 	}
 	if s.target == nil {
-		next, target, done, err := s.d.Catalog.StepSelectionActionWalk(ctx, s.walk, s.check)
+		next, target, done, err := s.d.Catalog.StepSelectionActionWalk(ctx, s.walk, s.check, s.reserve)
 		if err != nil {
 			return out, err
 		}
@@ -175,7 +197,11 @@ func (d Dependencies) newSelectionActionSource(ctx context.Context, p identity.P
 	if err != nil {
 		return nil, err
 	}
-	source := &selectionActionSource{d: d, p: p, input: input, viewer: viewer, access: access}
+	cold, err := catalog.SelectionActionColdSearch(*input.Selector.Query)
+	if err != nil {
+		return nil, err
+	}
+	source := &selectionActionSource{d: d, p: p, input: input, viewer: viewer, access: access, cold: cold}
 	err = dbwork.WithReadSnapshot(dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia), d.DB, func(inner context.Context) error {
 		cat := d.Catalog.WithContext(inner)
 		if err := source.check(cat); err != nil {
@@ -212,7 +238,10 @@ func (c *selectionActionComputation) Step(ctx context.Context, b *readprep.Budge
 	if err := b.Resize(c.AccountedBytes() + 2*selectionactions.MaxSourceBytes + 65536); err != nil {
 		return readprep.StepResult{}, err
 	}
-	batch, err := c.source.Step(ctx)
+	source := c.source.(*selectionActionSource)
+	source.reserve = func(peak int64) error { return b.Resize(c.AccountedBytes() + int64(c.source.Bytes()) + peak + 65536) }
+	batch, err := source.Step(ctx)
+	source.reserve = nil
 	if err != nil {
 		return readprep.StepResult{}, actionPreparationError(err)
 	}
@@ -314,7 +343,11 @@ func (d Dependencies) submitSelectionActionPreparation(ctx context.Context, p id
 		return selectionactions.Pending{}, readprep.ErrCapacity
 	}
 	key := readprep.Key{Namespace: "selection-action-v1", Basis: input.Selector.Query.SelectionBasis, Canonical: string(spec)}
-	plan := readprep.Plan{InitialBytes: fixed, New: func(inner context.Context, b *readprep.Budget) (readprep.Computation, error) {
+	cold, err := catalog.SelectionActionColdSearch(*input.Selector.Query)
+	if err != nil {
+		return selectionactions.Pending{}, err
+	}
+	plan := readprep.Plan{InitialBytes: fixed, ColdSearch: cold, ShouldYield: func() bool { return cold && dbwork.ColdReadShouldYield() }, New: func(inner context.Context, b *readprep.Budget) (readprep.Computation, error) {
 		if err := b.Resize(fixed + 2*selectionactions.MaxSourceBytes + 65536); err != nil {
 			return nil, err
 		}
@@ -356,7 +389,7 @@ func (d Dependencies) selectionActionAuthorize(ctx context.Context, tx *sql.Tx, 
 			return err
 		}
 		if !allowed {
-			return administration.ErrDenied
+			return errors.Join(identity.ErrForbidden, administration.ErrDenied)
 		}
 	case "download":
 		if d.Downloads == nil {
@@ -367,7 +400,7 @@ func (d Dependencies) selectionActionAuthorize(ctx context.Context, tx *sql.Tx, 
 			return err
 		}
 		if !allowed {
-			return downloads.ErrPolicy
+			return errors.Join(identity.ErrForbidden, downloads.ErrPolicy)
 		}
 		if device != "" {
 			if _, _, err = d.downloadRequestAccess(ctx, tx, p, device, "i.id"); err != nil {
@@ -384,12 +417,12 @@ func (d Dependencies) selectionActionAuthorize(ctx context.Context, tx *sql.Tx, 
 				return err
 			}
 			var state string
-			err := tx.QueryRowContext(ctx, `SELECT state FROM selection_action_groups WHERE binding=? AND operation_id=?`, actionBinding(p, family.ID), target.OperationID).Scan(&state)
+			err = tx.QueryRowContext(ctx, `SELECT state FROM selection_action_groups WHERE binding=? AND operation_id=?`, actionBinding(p, family.ID), target.OperationID).Scan(&state)
 			if err != nil {
 				return err
 			}
 			if state == "cancelling" {
-				return context.Canceled
+				return selectionactions.ErrCancelled
 			}
 		}
 		var visible bool

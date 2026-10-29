@@ -71,6 +71,7 @@ export function SelectionActionSurface({model, onClose, onOptionsChange}: Readon
       <Button disabled={transfers.phase === 'handing-off'} onClick={() => model.skipNext()}>{t('web.dvr.skipThis')}</Button>
     </div>}
     {!deleting && !firstTransfer && transfers.nextCursor && <Button disabled={transfers.phase === 'loading'} onClick={() => {void model.nextPage();}}>{t('web.pager.next')}</Button>}
+    {!deleting && transfers.phase === 'waiting' && <p role="status">{t('web.downloads.requestPreparing')}</p>}
     {!deleting && transfers.errorCode && <p role="alert">{t('error.unavailable')} <Button onClick={() => {void model.retryInventory();}}>{t('next.states.tryAgain')}</Button></p>}
   </Dialog>;
 }

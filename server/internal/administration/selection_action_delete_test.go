@@ -586,3 +586,68 @@ func TestSelectionDeleteKeepsDiskWhenDeleteFilesFalse(t *testing.T) {
 		t.Fatalf("profile state not retained: %v %v %v", favorite, rating, err)
 	}
 }
+
+func TestSelectionDeleteFinalCheckpointAuthorizesExistingTarget(t *testing.T) {
+	s, db, _, item, _ := deletionFixture(t)
+	target := selectionDeleteTestTarget(t, db, item)
+	files := selectionDeleteTestCapture(t, s, target)
+	authorize := func(ctx context.Context, tx *sql.Tx, p identity.Principal, action, library string, target *selectionactions.Target) error {
+		var visible bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_entities WHERE id=? AND public_id=pid_blob(?))`, target.EntityID, target.ItemID).Scan(&visible); err != nil {
+			return err
+		}
+		if !visible {
+			return ErrDenied
+		}
+		return nil
+	}
+	var effects []selectionactions.Effect
+	record := selectionDeleteTestCheckpoint(t, &effects)
+	checkpoint := func(tx *sql.Tx, effect selectionactions.Effect) error {
+		// Match the real journal checkpoint's live-target authorization, which must
+		// see the target before the atomic final catalogue removal.
+		if err := authorize(context.Background(), tx, identity.Principal{}, "delete", target.LibraryID, &target); err != nil {
+			return err
+		}
+		return record(tx, effect)
+	}
+	for i := range files {
+		if err := s.ApplySelectionDelete(context.Background(), identity.Principal{}, "delete", selectionDeleteTestOptions(false), target, &files[i], authorize, checkpoint); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.ApplySelectionDelete(context.Background(), identity.Principal{}, "delete", selectionDeleteTestOptions(false), target, nil, authorize, checkpoint); err != nil {
+		t.Fatal(err)
+	}
+	var remaining int
+	if err := db.QueryRow(`SELECT count(*) FROM catalog_entities WHERE id=?`, target.EntityID).Scan(&remaining); err != nil || remaining != 0 || len(effects) != 3 {
+		t.Fatalf("final checkpoint/removal not committed together: target=%d effects=%+v err=%v", remaining, effects, err)
+	}
+}
+
+func TestSelectionDeleteFinalCheckpointRollbackKeepsTarget(t *testing.T) {
+	s, db, _, item, _ := deletionFixture(t)
+	target := selectionDeleteTestTarget(t, db, item)
+	files := selectionDeleteTestCapture(t, s, target)
+	var effects []selectionactions.Effect
+	checkpoint := selectionDeleteTestCheckpoint(t, &effects)
+	for i := range files {
+		if err := s.ApplySelectionDelete(context.Background(), identity.Principal{}, "delete", selectionDeleteTestOptions(false), target, &files[i], selectionDeleteTestAllow, checkpoint); err != nil {
+			t.Fatal(err)
+		}
+	}
+	failure := errors.New("final journal checkpoint unavailable")
+	err := s.ApplySelectionDelete(context.Background(), identity.Principal{}, "delete", selectionDeleteTestOptions(false), target, nil, selectionDeleteTestAllow, func(tx *sql.Tx, _ selectionactions.Effect) error {
+		if _, err := tx.Exec(`INSERT INTO admin_documents(scope,revision,body,updated_ms) VALUES('selection-final-rollback',1,'{}',0)`); err != nil {
+			return err
+		}
+		return failure
+	})
+	if !errors.Is(err, failure) {
+		t.Fatalf("final checkpoint error: %v", err)
+	}
+	var remaining, receipts int
+	if err = db.QueryRow(`SELECT (SELECT count(*) FROM catalog_entities WHERE id=?),(SELECT count(*) FROM admin_documents WHERE scope='selection-final-rollback')`, target.EntityID).Scan(&remaining, &receipts); err != nil || remaining != 1 || receipts != 0 {
+		t.Fatalf("failed checkpoint changed target/receipt: %d/%d %v", remaining, receipts, err)
+	}
+}

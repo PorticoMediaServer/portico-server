@@ -11588,7 +11588,15 @@ CREATE TRIGGER selection_predicate_progress_delete AFTER DELETE ON progress
  BEGIN UPDATE catalog_selection_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
 
 CREATE TRIGGER selection_predicate_progress_update AFTER UPDATE OF completed,item_id,playback_id,position,profile_id,unit ON progress
- WHEN OLD.completed IS NOT NEW.completed OR OLD.item_id IS NOT NEW.item_id OR OLD.playback_id IS NOT NEW.playback_id OR OLD.position IS NOT NEW.position OR OLD.profile_id IS NOT NEW.profile_id OR OLD.unit IS NOT NEW.unit
+ WHEN OLD.item_id IS NOT NEW.item_id OR OLD.profile_id IS NOT NEW.profile_id
+ OR ((OLD.position>0) IS NOT (NEW.position>0) AND COALESCE((SELECT (WITH defaults AS MATERIALIZED (SELECT watched,watermark,cleared_through,0 AS priority FROM container_personal_state WHERE profile_id=wp.profile AND kind='season' AND container_id=cep.season_id UNION ALL SELECT watched,watermark,cleared_through,1 AS priority FROM container_personal_state WHERE profile_id=wp.profile AND kind='show' AND container_id=cep.show_id UNION ALL SELECT watched,watermark,cleared_through,1 AS priority FROM container_personal_state WHERE profile_id=wp.profile AND kind='album' AND container_id=cso.album_id UNION ALL SELECT watched,watermark,cleared_through,1 AS priority FROM container_personal_state WHERE profile_id=wp.profile AND kind='book' AND container_id=cbf.book_id) SELECT COALESCE(
+ (SELECT wi.watched FROM personal_watched_intents wi WHERE wi.profile_id=wp.profile AND wi.item_id=it.id AND wi.authored_at>COALESCE((SELECT max(cleared_through) FROM defaults),'')),
+ (SELECT watched FROM defaults WHERE it.added_ms IS NOT NULL AND julianday(it.added_ms/1000.0,'unixepoch')<=julianday(watermark) ORDER BY watermark DESC,priority LIMIT 1),0))
+ FROM catalog_entities it
+ LEFT JOIN catalog_episodes cep ON cep.entity_id=it.id
+ LEFT JOIN catalog_songs cso ON cso.entity_id=it.id
+ LEFT JOIN catalog_book_files cbf ON cbf.entity_id=it.id
+ CROSS JOIN (SELECT NEW.profile_id AS profile) wp WHERE it.id=NEW.item_id),0)<>1)
  BEGIN UPDATE catalog_selection_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
 
 CREATE TRIGGER selection_predicate_personal_watched_intents_insert AFTER INSERT ON personal_watched_intents
@@ -11800,3 +11808,92 @@ CREATE TRIGGER selection_predicate_rec_data_revision_delete AFTER DELETE ON rec_
 CREATE TRIGGER selection_predicate_rec_data_revision_update AFTER UPDATE OF id,revision ON rec_data_revision
  WHEN OLD.id IS NOT NEW.id OR OLD.revision IS NOT NEW.revision
  BEGIN UPDATE catalog_selection_predicate_epoch SET revision=revision+1 WHERE singleton=1; END;
+
+-- Approved A1 command-journal and actual-preparation linkage fragment. Lead composes baseline.
+-- Confirmed executable commands only. No query, traversal cursor or preview storage.
+CREATE TABLE selection_action_groups (
+ id INTEGER PRIMARY KEY CHECK(id>0),
+ binding TEXT NOT NULL, operation_id TEXT NOT NULL, request_hash TEXT NOT NULL,
+ account_id TEXT NOT NULL, library_id TEXT NOT NULL, action TEXT NOT NULL CHECK(action IN ('delete','download')),
+ profile_id TEXT NOT NULL, server_id TEXT NOT NULL, authority TEXT NOT NULL, role TEXT NOT NULL,
+ session_hash TEXT NOT NULL, session_epoch INTEGER NOT NULL CHECK(session_epoch>=0), expires_at TEXT NOT NULL,
+ principal_device_id TEXT NOT NULL, grant_kind TEXT NOT NULL,
+ delete_files INTEGER CHECK(delete_files IN(0,1)), device_id TEXT NOT NULL, quality TEXT NOT NULL,
+ state TEXT NOT NULL CHECK(state IN ('capturing','sealed','running','cancelling')),
+ total INTEGER NOT NULL CHECK(total BETWEEN 1 AND 9007199254740991), admitted INTEGER NOT NULL DEFAULT 0 CHECK(admitted BETWEEN 0 AND total),
+ expected_digest TEXT NOT NULL CHECK(length(expected_digest)=64 AND expected_digest NOT GLOB '*[^0-9a-f]*'), seal_count INTEGER, seal_digest TEXT,
+ done INTEGER NOT NULL DEFAULT 0 CHECK(done>=0), failed INTEGER NOT NULL DEFAULT 0 CHECK(failed>=0),
+ bytes_deleted INTEGER NOT NULL DEFAULT 0 CHECK(bytes_deleted>=0), files_deleted INTEGER NOT NULL DEFAULT 0 CHECK(files_deleted>=0),
+ error_code TEXT NOT NULL DEFAULT '' CHECK(length(error_code)<=160), terminal_state TEXT NOT NULL DEFAULT '' CHECK(terminal_state IN('','complete','partial','failed','cancelled')),
+ created_ms INTEGER NOT NULL CHECK(created_ms>0),
+ UNIQUE(binding,operation_id),
+ CHECK(done+failed<=admitted),
+ CHECK((action='delete' AND delete_files IS NOT NULL AND device_id='' AND quality='') OR (action='download' AND delete_files IS NULL AND length(device_id) BETWEEN 1 AND 160 AND quality<>'')),
+ CHECK((seal_count IS NULL AND seal_digest IS NULL AND state IN('capturing','cancelling')) OR (seal_count IS NOT NULL AND seal_digest IS NOT NULL AND seal_count=total AND seal_digest=expected_digest AND state IN('sealed','running','cancelling')))
+) STRICT;
+CREATE INDEX selection_action_groups_account ON selection_action_groups(account_id,id);
+CREATE TABLE selection_action_targets (
+ group_id INTEGER NOT NULL REFERENCES selection_action_groups(id), entity_id INTEGER NOT NULL CHECK(entity_id>0),
+ seq INTEGER NOT NULL CHECK(seq>0), item_id TEXT NOT NULL CHECK(length(item_id) BETWEEN 1 AND 160), library_id TEXT NOT NULL, kind TEXT NOT NULL CHECK(kind IN('movie','episode','song','audiobook_file')),
+ title TEXT NOT NULL, identity TEXT NOT NULL, version_id TEXT NOT NULL,
+ download_identity TEXT NOT NULL, lifetime TEXT NOT NULL,
+ ready INTEGER NOT NULL DEFAULT 0 CHECK(ready IN(0,1)), error_code TEXT NOT NULL DEFAULT '' CHECK(length(error_code)<=160),
+ PRIMARY KEY(group_id,entity_id), UNIQUE(group_id,seq)
+) STRICT;
+CREATE TABLE selection_action_files (
+ group_id INTEGER NOT NULL, seq INTEGER NOT NULL CHECK(seq>0), target_id INTEGER NOT NULL CHECK(target_id>0),
+ asset_id INTEGER NOT NULL CHECK(asset_id>0), token TEXT NOT NULL, path TEXT NOT NULL, root TEXT NOT NULL,
+ root_identity TEXT NOT NULL, size INTEGER NOT NULL CHECK(size>=0), modified_ns INTEGER NOT NULL,
+ shared INTEGER NOT NULL CHECK(shared IN(0,1)), present INTEGER NOT NULL CHECK(present IN(0,1)), part INTEGER NOT NULL,
+ start REAL NOT NULL CHECK(abs(start)<=1e308), end REAL CHECK(end IS NULL OR abs(end)<=1e308), edition TEXT NOT NULL,
+ source_id TEXT NOT NULL, source_incarnation TEXT NOT NULL, source_generation INTEGER NOT NULL CHECK(source_generation>=0),
+ started INTEGER NOT NULL DEFAULT 0 CHECK(started IN(0,1)),
+ PRIMARY KEY(group_id,seq),
+ FOREIGN KEY(group_id,target_id) REFERENCES selection_action_targets(group_id,entity_id)
+) STRICT;
+CREATE INDEX selection_action_files_target ON selection_action_files(group_id,target_id,seq);
+CREATE TABLE selection_action_history (
+ id INTEGER PRIMARY KEY CHECK(id>0),
+ binding TEXT NOT NULL, operation_id TEXT NOT NULL, request_hash TEXT NOT NULL,
+ account_id TEXT NOT NULL, library_id TEXT NOT NULL, action TEXT NOT NULL CHECK(action IN('delete','download')),
+ profile_id TEXT NOT NULL, server_id TEXT NOT NULL, authority TEXT NOT NULL, role TEXT NOT NULL,
+ session_hash TEXT NOT NULL, session_epoch INTEGER NOT NULL CHECK(session_epoch>=0), expires_at TEXT NOT NULL,
+ principal_device_id TEXT NOT NULL, grant_kind TEXT NOT NULL,
+ state TEXT NOT NULL CHECK(state IN('complete','partial','failed','cancelled')), total INTEGER NOT NULL CHECK(total BETWEEN 1 AND 9007199254740991), admitted INTEGER NOT NULL CHECK(admitted BETWEEN 0 AND total),
+ done INTEGER NOT NULL CHECK(done>=0), failed INTEGER NOT NULL CHECK(failed>=0), bytes_deleted INTEGER NOT NULL CHECK(bytes_deleted>=0),
+ files_deleted INTEGER NOT NULL CHECK(files_deleted>=0), error_code TEXT NOT NULL CHECK(length(error_code)<=160), expires_ms INTEGER NOT NULL CHECK(expires_ms>0),
+ UNIQUE(binding,operation_id),
+ CHECK(done+failed<=admitted)
+) STRICT;
+CREATE INDEX selection_action_history_expiry ON selection_action_history(expires_ms,id);
+CREATE INDEX selection_action_history_account ON selection_action_history(account_id,id);
+
+-- Actual admitted download preparations, including reused preparations.
+-- This is domain transfer ownership, never query membership or query scratch.
+CREATE TABLE download_action_claims(
+ profile_key TEXT NOT NULL,
+ device_id TEXT NOT NULL,
+ operation_id TEXT NOT NULL,
+ preparation_id TEXT NOT NULL REFERENCES download_preparations(id) ON DELETE CASCADE,
+ PRIMARY KEY(profile_key,device_id,operation_id,preparation_id),
+ FOREIGN KEY(profile_key,device_id,operation_id) REFERENCES download_action_transfers(profile_key,device_id,operation_id)
+) WITHOUT ROWID, STRICT;
+CREATE INDEX download_action_claims_preparation ON download_action_claims(preparation_id);
+-- Exact pinned-source/profile selection, excluding invalid transfer digests.
+CREATE INDEX prepared_media_download_pinned ON prepared_media_versions(
+ item_id,asset_id,profile_id,source_revision,created_ms,id)
+ WHERE state='published' AND length(digest)=64 AND digest NOT GLOB '*[^0-9a-f]*';
+
+
+-- Actual confirmed device-transfer ownership, no query membership or result cache.
+CREATE TABLE download_action_transfers(
+ id INTEGER PRIMARY KEY,
+ profile_key TEXT NOT NULL CHECK(length(profile_key)>0),
+ device_id TEXT NOT NULL CHECK(length(device_id) BETWEEN 1 AND 160),
+ operation_id TEXT NOT NULL CHECK(length(operation_id) BETWEEN 1 AND 160),
+ closed INTEGER NOT NULL DEFAULT 0 CHECK(closed IN(0,1)),
+ created_ms INTEGER NOT NULL CHECK(created_ms>0),
+ closed_ms INTEGER NOT NULL DEFAULT 0 CHECK(closed_ms>=0),
+ UNIQUE(profile_key,device_id,operation_id),
+ CHECK((closed=0 AND closed_ms=0) OR (closed=1 AND closed_ms>0))
+) STRICT;

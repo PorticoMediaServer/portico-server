@@ -393,12 +393,9 @@ func (s *Service) FinishBrowseSelectionBatch(state *BrowseSelectionBatchState, w
 		if !LocalSearchQueueSupported(bound.Query, bound.Sorts) {
 			unavailable.Play = "unsupported-sort"
 			unavailable.Queue = "unsupported-sort"
-			unavailable.Delete = "unsupported-sort"
 		}
-		for _, sort := range bound.Sorts {
-			if sort.Field == "groupOrder" {
-				unavailable.Playlist = "unsupported-sort"
-			}
+		if !localSearchConversionOrderSupported(bound.Query, bound.Sorts) {
+			unavailable.Delete = "unsupported-sort"
 		}
 		if out.Total > BrowseSelectionConversionLimit {
 			unavailable.MetadataPreview = "preview-limit"

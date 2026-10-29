@@ -78,15 +78,27 @@ func (s *Service) InspectSource(ctx context.Context, source Source) (SourceInspe
 				Version int    `json:"version"`
 			}
 			header := bytes.SplitN(raw, []byte("\n"), 2)[0]
-			if json.Unmarshal(header, &identity) != nil {
+			knownStream := false
+			if json.Unmarshal(header, &identity) == nil && identity.Format == Format && identity.Version == StreamVersion {
+				knownStream = true
+			}
+			if !knownStream {
+				for _, line := range bytes.Split(raw, []byte("\n")) {
+					var record streamRecord
+					if json.Unmarshal(line, &record) == nil && (record.File != nil || record.End != nil) {
+						knownStream = true
+						break
+					}
+				}
+			}
+			if !knownStream {
 				raw, err = s.inspectRootFile(ctx, root, ManifestName, maxManifestBytes, true)
 				if err != nil {
 					return out, err
 				}
-				header = raw
-			}
-			if json.Unmarshal(header, &identity) != nil || identity.Format != Format || identity.Version != Version && identity.Version != HashedVersion && identity.Version != LegacyVersion {
-				return out, ErrSourceInvalid
+				if json.Unmarshal(raw, &identity) != nil || identity.Format != Format || (identity.Version != HashedVersion && identity.Version != LegacyVersion) {
+					return out, ErrSourceInvalid
+				}
 			}
 			prefix, err := s.inspectRootFile(ctx, root, DatabaseName, 100, false)
 			if err != nil || !inspectionSQLiteHeader(prefix) {

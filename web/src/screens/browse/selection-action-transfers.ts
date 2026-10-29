@@ -5,11 +5,11 @@ import {routePath} from '../../../../packages/contracts/src/route-paths.ts';
 
 export type BrowserSelectionActionApi = SelectionActionsApi & Readonly<{mediaUrl: (path: string) => string}>;
 export type SelectionActionTransfers = Readonly<{
-  phase: 'idle' | 'loading' | 'ready' | 'handing-off' | 'complete' | 'error';
+  phase: 'idle' | 'loading' | 'waiting' | 'ready' | 'handing-off' | 'complete' | 'error';
   /** One bounded inventory page, consumed in order. No full-selection member set. */
-  items: readonly DownloadPreparation[]; nextCursor: string; handedOff: number; errorCode: string | null;
+  items: readonly DownloadPreparation[]; nextCursor: string; closed: boolean; handedOff: number; errorCode: string | null;
 }>;
-const emptyTransfers = (): SelectionActionTransfers => Object.freeze({phase: 'idle', items: Object.freeze([]), nextCursor: '', handedOff: 0, errorCode: null});
+const emptyTransfers = (): SelectionActionTransfers => Object.freeze({phase: 'idle', items: Object.freeze([]), nextCursor: '', closed: false, handedOff: 0, errorCode: null});
 export type BrowserSelectionActionOptions = Readonly<{
   api: BrowserSelectionActionApi; requestId: () => Promise<string>;
   /** The browser acknowledges delivery of an attachment capability, never successful file storage. */
@@ -62,10 +62,25 @@ export class SelectionActionTransferQueue {
     this.publish({phase: 'loading', errorCode: null});
     try {
       if (!this.current() || this.lifetime !== lifetime) return;
-      const page = await listSelectionActionPreparations(this.options.api, operationId, deviceId, {cursor, limit: 20, signal: lifetime.signal});
+      let page = await listSelectionActionPreparations(this.options.api, operationId, deviceId, {cursor, limit: 20, signal: lifetime.signal});
       if (!this.current() || this.lifetime !== lifetime) return;
+      const started = Date.now();
+      while (!page.closed) {
+        if (cursor || this.transfers.closed) throw new Error('download-inventory-reopened');
+        // No fixed snapshot until closure: discard active items/cursor and poll the same exact header.
+        this.publish({items: Object.freeze([]), nextCursor: '', closed: false, phase: 'waiting', errorCode: null});
+        await new Promise<void>((resolve, reject) => {
+          const abort = () => {clearTimeout(timer); lifetime.signal.removeEventListener('abort', abort); reject(new Error('cancelled'));};
+          const timer = setTimeout(() => {lifetime.signal.removeEventListener('abort', abort); resolve();}, 1500);
+          lifetime.signal.addEventListener('abort', abort, {once: true}); if (lifetime.signal.aborted) abort();
+        });
+        if (!this.current() || this.lifetime !== lifetime) return;
+        if (Date.now() - started >= 30 * 60_000) throw new Error('download-inventory-still-active');
+        page = await listSelectionActionPreparations(this.options.api, operationId, deviceId, {limit: 20, signal: lifetime.signal});
+        if (!this.current() || this.lifetime !== lifetime) return;
+      }
       if (page.nextCursor && page.nextCursor === cursor) throw new Error('download-inventory-cursor-repeated');
-      this.publish({items: page.items, nextCursor: page.nextCursor, phase: page.items.length ? 'ready' : page.nextCursor ? 'ready' : 'complete'});
+      this.publish({closed: true, items: page.items, nextCursor: page.nextCursor, phase: page.items.length ? 'ready' : page.nextCursor ? 'ready' : 'complete'});
     } catch (error) {if (this.current() && this.lifetime === lifetime) this.publish({phase: 'error', errorCode: String((error as {code?: unknown})?.code ?? 'download_inventory_failed')});}
   }
   async nextPage(): Promise<void> {
@@ -78,7 +93,7 @@ export class SelectionActionTransferQueue {
   /** One visible user action hands off one real grant. Browsers may still require download permission. */
   async transferNext(): Promise<void> {
     let preparation = this.transfers.items[0]; const lifetime = this.lifetime;
-    if (!this.current() || !lifetime || !preparation || !['ready', 'error'].includes(this.transfers.phase)) return;
+    if (!this.current() || !lifetime || !this.transfers.closed || !preparation || !['ready', 'error'].includes(this.transfers.phase)) return;
     this.publish({phase: 'handing-off', errorCode: null});
     try {
       if (!this.current() || this.lifetime !== lifetime) return;

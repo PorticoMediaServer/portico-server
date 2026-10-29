@@ -757,13 +757,7 @@ func (x *recSession) recRescore(scored []*recScored, maxSimilar float64) error {
 		return err
 	}
 	taste, idf := x.taste, x.idf
-	norm := 0.0
-	for f, v := range taste.values {
-		if w := recFacetWeight(f) * idf[f] * v; w != 0 {
-			norm += w * w
-		}
-	}
-	norm = math.Sqrt(norm)
+	norm := recTasteNorm(taste.values, idf)
 	for _, c := range scored {
 		num, mass := 0.0, 0.0
 		for _, f := range c.facets {

@@ -66,6 +66,7 @@ type Service struct {
 	advanceMu             sync.Mutex
 	tidied                time.Time
 	pruned                time.Time
+	transferSweep         int64 // raw process-local actual transfer ownership cleanup cursor
 	db                    *sql.DB
 	now                   func() time.Time
 	openOriginal          SourceOpener

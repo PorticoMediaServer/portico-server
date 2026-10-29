@@ -221,14 +221,17 @@ func scanStream(ctx context.Context, m Manifest, visit func(FileEntry, streamPos
 			continue
 		}
 		e := *rec.File
-		if rec.SHA256 != entryDigest(rec.Previous, e) {
+		computed := entryDigest(rec.Previous, e)
+		if rec.SHA256 != computed {
+			// A damaged chain checksum does not erase a readable file record.
+			// Recovery still has to verify its payload against e.SHA256; strict
+			// validation reports the damage and refuses ordinary publication.
 			report(pos, "entry_hash_mismatch")
-			continue
 		}
 		if rec.Previous != previous {
 			report(pos, "entry_chain_gap")
 		}
-		previous = rec.SHA256
+		previous = computed
 		if entries == math.MaxInt64 || e.Bytes > math.MaxInt64-total {
 			return ErrSourceInvalid
 		}
@@ -440,10 +443,17 @@ func isStreamManifest(dir string) bool {
 			return false
 		}
 	}
-	// An unreadable v3 header does not discard every later readable file record.
-	raw, _, large, _ = nextManifestLine(r)
-	var rec streamRecord
-	return !large && json.Unmarshal(raw, &rec) == nil && (rec.File != nil || rec.End != nil)
+	// A damaged header and first entry do not discard later readable records.
+	for {
+		raw, size, large, readErr := nextManifestLine(r)
+		var rec streamRecord
+		if !large && json.Unmarshal(raw, &rec) == nil && (rec.File != nil || rec.End != nil) {
+			return true
+		}
+		if size == 0 || errors.Is(readErr, io.EOF) || readErr != nil {
+			return false
+		}
+	}
 }
 
 func streamHeader(m Manifest) Manifest { m.Files = nil; m.streamPath = ""; m.streamHash = ""; return m }

@@ -71,6 +71,18 @@ test('small proof-bearing query ready rejects leaked CAS targets, converted revi
   }
 });
 
+test('large proof-bearing query ready retains its exact total and lower bound without a target census', async () => {
+  const response = {...smallQueryReady(smallMany), total: 201};
+  const api = rawPort(async (target, method, options) => {
+    assert.equal(target, path); assert.equal(method, 'POST'); assert.deepEqual(options?.body, smallQuery);
+    return ready(response);
+  });
+  const parsed = await fetchBulkMetadataPreview(api, smallQuery, 'server');
+  assert.equal(parsed.total, 201); assert.equal(parsed.selectionRevision, smallQuery.expected.catalogRevision);
+  assert.deepEqual(parsed.targets, []); assert.equal(parsed.fields.year!.state, 'many');
+  assert.equal(parsed.fields.year!.atLeast, 65); assert.equal(Object.hasOwn(parsed.fields.year!, 'distinctCount'), false);
+});
+
 test('metadata preparation validates its exact domain, retry floor and safe handle', () => {
   assert.deepEqual(parseMetadataPreviewPreparing(pending().body), {queryId: 'private-1', retryAfterMs: 1000});
   for (const extras of [{kind: 'reading-browse-preparing'}, {state: 'ready'}, {retryAfterMs: 0}, {retryAfterMs: '1000'}, {queryId: '../bad'}, {queryId: 'x'.repeat(129)}, {queryId: '..'}]) {

@@ -19,17 +19,20 @@ const historyLimit = 64
 // Service owns one bounded supervisor. The caller validates the ready descriptor
 // and exact confirmation before Accept. No query or source cursor is durable.
 type Service struct {
-	db        *sql.DB
-	cfg       Config
-	authorize Authorize
-	apply     Apply
-	mu        sync.Mutex // serializes admission, capture quanta and execution (not Cancel)
-	captures  map[int64]*capture
-	ctx       context.Context
-	stop      context.CancelFunc
-	running   bool
-	closed    bool
-	last      int64
+	// Set before Run/Accept; domain ownership transitions are atomic with journal state.
+	OnAccepted Lifecycle
+	OnTerminal Lifecycle
+	db         *sql.DB
+	cfg        Config
+	authorize  Authorize
+	apply      Apply
+	mu         sync.Mutex // serializes admission, capture quanta and execution (not Cancel)
+	captures   map[int64]*capture
+	ctx        context.Context
+	stop       context.CancelFunc
+	running    bool
+	closed     bool
+	last       int64
 }
 type capture struct {
 	source  Source
@@ -101,6 +104,9 @@ func (s *Service) Accept(ctx context.Context, a Acceptance) (Job, error) {
 		return Job{}, err
 	}
 	if replay != nil {
+		if a.Release != nil {
+			a.Release()
+		}
 		return replay.job, nil
 	}
 	if a.Factory == nil || a.Check == nil || a.Reserve == nil || a.Release == nil || a.Total <= 0 || a.Total > 1<<53-1 || len(a.Digest) != 64 || a.Account == "" || a.Account != a.Principal.AccountID || a.Library == "" || (a.Action != "delete" && a.Action != "download") {
@@ -173,7 +179,13 @@ func (s *Service) Accept(ctx context.Context, a Acceptance) (Job, error) {
 			return e
 		}
 		c.id, e = r.LastInsertId()
-		return e
+		if e != nil {
+			return e
+		}
+		if s.OnAccepted != nil {
+			return s.OnAccepted(ctx, tx, c.principal, c.job, c.options)
+		}
+		return nil
 	})
 	if err != nil {
 		return Job{}, err
@@ -257,6 +269,11 @@ func (s *Service) Cancel(ctx context.Context, binding, operationID string) (Job,
 			}
 			c.job.State = "cancelling"
 			c.job.ErrorCode = "cancelled"
+			if s.OnTerminal != nil {
+				if e = s.OnTerminal(ctx, tx, c.principal, c.job, c.options); e != nil {
+					return e
+				}
+			}
 		}
 		out = c.job
 		return nil
@@ -426,7 +443,13 @@ func (s *Service) step(ctx context.Context) (bool, error) {
 func (s *Service) abort(ctx context.Context, c command, code, state string) error {
 	err := s.write(ctx, func(tx *sql.Tx) error {
 		_, e := tx.ExecContext(ctx, `UPDATE selection_action_groups SET state='cancelling',error_code=?,terminal_state=? WHERE id=? AND state!='cancelling'`, code, state, c.id)
-		return e
+		if e != nil {
+			return e
+		}
+		if s.OnTerminal != nil {
+			return s.OnTerminal(ctx, tx, c.principal, c.job, c.options)
+		}
+		return nil
 	})
 	if err == nil {
 		s.release(c.id)
@@ -584,7 +607,7 @@ func (s *Service) captureFailure(ctx context.Context, c command, err error) erro
 	return s.abort(ctx, c, code, "failed")
 }
 
-var errCancelled = errors.New("selection action cancelled")
+var errCancelled = ErrCancelled
 
 func (s *Service) live(ctx context.Context, tx *sql.Tx, c command, state string) error {
 	var actual string
@@ -624,7 +647,11 @@ func (s *Service) execute(ctx context.Context, c command) error {
 			}
 			// Refresh authority, but no fresh domain effect is granted here.
 			// A post-unlink refusal must still drain/count its failed command.
-			_ = s.auth(ctx, tx, c, &t)
+			if e := s.auth(ctx, tx, c, &t); e != nil {
+				if _, _, refused := identity.Refusal(e); !refused && !errors.Is(e, errCancelled) {
+					return e
+				}
+			}
 			r, e := tx.ExecContext(ctx, `DELETE FROM selection_action_files WHERE group_id=? AND seq IN (SELECT seq FROM selection_action_files WHERE group_id=? AND target_id=? ORDER BY seq LIMIT 20)`, c.id, c.id, t.EntityID)
 			if e != nil {
 				return e
@@ -703,8 +730,13 @@ func (s *Service) execute(ctx context.Context, c command) error {
 			if liveErr != nil && !errors.Is(liveErr, errCancelled) {
 				return liveErr
 			}
-			if authErr != nil && effect.Code == "" {
-				effect.Code = "authority_revoked"
+			if authErr != nil {
+				if _, _, refused := identity.Refusal(authErr); !refused && !errors.Is(authErr, errCancelled) {
+					return authErr
+				}
+				if effect.Code == "" {
+					effect.Code = "authority_revoked"
+				}
 			}
 			r, e := tx.ExecContext(ctx, `DELETE FROM selection_action_files WHERE group_id=? AND seq=? AND started=1`, c.id, seq)
 			if e != nil {
@@ -847,7 +879,13 @@ func (s *Service) finish(ctx context.Context, c command) error {
 			}
 		}
 		_, e := tx.ExecContext(ctx, `UPDATE selection_action_groups SET state='cancelling',terminal_state=? WHERE id=?`, state, c.id)
-		return e
+		if e != nil {
+			return e
+		}
+		if s.OnTerminal != nil {
+			return s.OnTerminal(ctx, tx, c.principal, c.job, c.options)
+		}
+		return nil
 	})
 }
 

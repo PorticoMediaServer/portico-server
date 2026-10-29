@@ -58,6 +58,7 @@ func (s *Service) stageStream(ctx context.Context, dir string, original Source, 
 		return out, err
 	}
 	_ = os.RemoveAll(complete)
+	s.restoreProgress(work, "copy", 0, 0)
 	// Freeze the selected manifest before any payload copy or SQLite repair.
 	e, err := copyOneFileContext(ctx, filepath.Join(dir, ManifestName), filepath.Join(incoming, ManifestName), ManifestName, nil)
 	if err != nil {
@@ -75,6 +76,7 @@ func (s *Service) stageStream(ctx context.Context, dir string, original Source, 
 	if err != nil {
 		return out, err
 	}
+	var copiedBytes int64
 	database := false
 	wal := false
 	eof := streamPosition{Line: 1}
@@ -113,6 +115,8 @@ func (s *Service) stageStream(ctx context.Context, dir string, original Source, 
 		if err != nil {
 			return err
 		}
+		copiedBytes += copied.Bytes
+		s.restoreProgress(work, "copy", copiedBytes, 0)
 		if copied.SHA256 != sourceBytes.SHA256 || copied.Bytes != sourceBytes.Bytes {
 			return ErrIntegrity
 		}
@@ -169,6 +173,7 @@ func (s *Service) stageStream(ctx context.Context, dir string, original Source, 
 			return out, statErr
 		}
 	}
+	s.restoreProgress(work, "integrity", copiedBytes, copiedBytes)
 	inspected, err := persistence.InspectCandidate(ctx, incoming, DatabaseName)
 	if err != nil {
 		return out, err
@@ -182,6 +187,8 @@ func (s *Service) stageStream(ctx context.Context, dir string, original Source, 
 	}
 	// Database recovery may rewrite it. Only accepted/copied payloads become the
 	// staged registry; rejected Keys/config bytes never get a new trusted hash.
+	frozen.SchemaVersion = inspected.SchemaVersion
+	frozen.BaselineDigest = persistence.BaselineDigest()
 	frozen.Files = nil
 	frozen.BackupID = ""
 	frozen.CreatedAt = time.Now().UTC().Format(time.RFC3339)

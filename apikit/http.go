@@ -24,6 +24,14 @@ func RegisterHTTP[Request, Response any](r *Registry, metadata Metadata) error {
 // MountHTTP binds a declared HTTP contract to its existing handler. Undeclared
 // or duplicate bindings fail at construction, before the server accepts traffic.
 func (r *Registry) MountHTTP(mux *http.ServeMux, pattern string, handler http.Handler) error {
+	return r.MountHTTPAt(mux, pattern, pattern, handler)
+}
+
+// MountHTTPAt retains the declared contract and its scope/rewrite wrapper while
+// using an adapter-owned mux pattern. The adapter must reject paths outside the
+// contract. This permits dispatch around crossing ServeMux wildcard patterns
+// without changing a public route or skipping the registry's access checks.
+func (r *Registry) MountHTTPAt(mux *http.ServeMux, pattern, mountPattern string, handler http.Handler) error {
 	if handler == nil {
 		return fmt.Errorf("missing HTTP handler for %s", pattern)
 	}
@@ -60,7 +68,7 @@ func (r *Registry) MountHTTP(mux *http.ServeMux, pattern string, handler http.Ha
 			handler.ServeHTTP(w, q)
 		}
 		r.handlers[i] = serve
-		mux.Handle(pattern, http.HandlerFunc(serve))
+		mux.Handle(mountPattern, http.HandlerFunc(serve))
 		return nil
 	}
 	return fmt.Errorf("HTTP handler has no typed contract: %s", pattern)

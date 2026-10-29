@@ -84,6 +84,9 @@ func (s *Service) advance(ctx context.Context, tidyNow bool) error {
 	}
 	if clock := time.Now(); tidyNow || clock.Sub(s.tidied) >= tidyEvery {
 		s.tidied = clock
+		if e := s.cleanupSelectionActionTransfers(ctx); e != nil {
+			return e
+		}
 		if e := s.tidy(ctx); e != nil {
 			return e
 		}

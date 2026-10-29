@@ -30,8 +30,6 @@ var allowed = map[string]bool{
 	// The programme spool writes its own private single-connection temporary
 	// database file, never the server's; no gate applies to it.
 	"internal/livechannels/programme_spool.go": true,
-	// Exact bulk-preview counts use their own private disposable database too.
-	"internal/metadata/bulk_preview_spool.go": true,
 	// OperationScope.Begin is a goroutine lease, not a transaction.
 	"internal/storage/observed_playback.go":         true,
 	"internal/storage/inventory_page_stream.go":     true,

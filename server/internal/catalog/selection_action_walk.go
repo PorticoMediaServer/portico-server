@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"strconv"
-	"time"
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/selectionactions"
@@ -16,9 +15,11 @@ import (
 // A selected identity is emitted in its qualifying snapshot, never recovered
 // from a page or from a second independently compiled selection query.
 type SelectionActionWalk struct {
-	state  *BrowseSelectionBatchState
-	viewer Viewer
-	query  JobQuery
+	state                 *BrowseSelectionBatchState
+	viewer                Viewer
+	query                 JobQuery
+	matches               [128]int64
+	matchCount, nextMatch int
 }
 
 func (w *SelectionActionWalk) Bytes() int64 {
@@ -83,78 +84,93 @@ func (s *Service) NewSelectionActionWalk(query JobQuery, expected JobExpected, v
 	return &SelectionActionWalk{state: state, viewer: viewer, query: query}, nil
 }
 
-// StepSelectionActionWalk charges every ordinary raw/nested predicate unit and
-// stops immediately after one accepted identity. It does not fork predicates.
-func (s *Service) StepSelectionActionWalk(ctx context.Context, w *SelectionActionWalk, check func(*Service) error) (*SelectionActionWalk, *selectionactions.Target, bool, error) {
+// SelectionActionColdSearch uses the exact shared predicate classifier; action
+// preparations share its single cold-build admission lane.
+func SelectionActionColdSearch(query JobQuery) (bool, error) {
+	var node *BrowseNode
+	var err error
+	if len(query.Filter) > 0 {
+		node, err = ParseBrowseQuery(query.Filter, "selector.query.filter")
+		if err != nil {
+			return false, err
+		}
+	}
+	return selectionBatchHasLocalSearch(node), nil
+}
+
+// StepSelectionActionWalk consumes the shared raw-first walker, including its
+// exact SQLite tokenizer, scalar reservation and complete witness. At most128
+// qualifying IDs are retained transiently while individual facts are read.
+func (s *Service) StepSelectionActionWalk(ctx context.Context, w *SelectionActionWalk, check func(*Service) error, reserve func(int64) error) (*SelectionActionWalk, *selectionactions.Target, bool, error) {
 	if w == nil || w.state == nil || check == nil {
 		return nil, nil, false, selectionactions.ErrInput
 	}
 	next := *w
-	next.state = w.state.Clone()
-	var target *selectionactions.Target
+	witness := func(read *Service) (string, error) {
+		if err := check(read); err != nil {
+			return "", err
+		}
+		return read.browseSelectionWitness(w.query.LibraryID, w.viewer.Profile, w.viewer.EffectiveRestrictions())
+	}
+	if next.nextMatch >= next.matchCount {
+		if next.state.Complete() {
+			return &next, nil, true, nil
+		}
+		state, work, err := s.StepBrowseSelectionBatch(ctx, next.state, witness, SelectionBatchLimits{ReserveTransient: reserve})
+		if err != nil {
+			return nil, nil, false, err
+		}
+		next.state = state
+		next.matches = work.Matches
+		next.matchCount = work.MatchCount
+		next.nextMatch = 0
+		if next.matchCount == 0 {
+			return &next, nil, next.state.Complete(), nil
+		}
+	}
+	id := next.matches[next.nextMatch]
+	value := selectionactions.Target{EntityID: id, LibraryID: w.query.LibraryID}
 	err := dbwork.WithReadSnapshot(dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia), s.db, func(inner context.Context) error {
 		read := s.WithContext(inner)
-		if err := check(read); err != nil {
+		current, err := witness(read)
+		if err != nil {
 			return err
 		}
-		if err := read.checkBrowseSelectionBasis(w.viewer, w.query.LibraryID, w.query.SelectionBasis); err != nil {
+		if current != w.query.SelectionBasis {
+			return ErrSelectionBatchStale
+		}
+		var parent, added sql.NullInt64
+		var titleBytes int
+		err = read.read().QueryRow(`SELECT pid(e.public_id),CASE WHEN length(CAST(e.title AS BLOB))<=? THEN e.title ELSE '' END,k.name,e.parent_id,e.added_ms,length(CAST(e.title AS BLOB)) FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id=? AND l.library_id=? AND e.retired=0`, SelectionBatchMaximumBytes, id, w.query.LibraryID).Scan(&value.ItemID, &value.Title, &value.Kind, &parent, &added, &titleBytes)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrSelectionBatchStale
+		}
+		if err != nil {
 			return err
 		}
-		deadline := time.Now().Add(selectionBatchTime)
-		bytes := 0
-		for units := 0; units < SelectionBatchMaximumRows && !next.state.done && time.Now().Before(deadline); units++ {
-			if err := inner.Err(); err != nil {
-				return err
-			}
-			// Stage8 is reached only after the exact existing predicate/restriction
-			// evaluator accepted this leaf. Capture before that unit clears candidate.
-			id := int64(0)
-			if next.state.candidate.stage == 8 {
-				id = next.state.candidate.id
-			}
-			next.state.scalarBytes = 0
-			if err := read.selectionBatchUnit(next.state); err != nil {
-				return err
-			}
-			bytes += selectionBatchProbeBytes + next.state.scalarBytes
-			if id != 0 {
-				value := selectionactions.Target{EntityID: id, LibraryID: w.query.LibraryID}
-				var parent, added sql.NullInt64
-				var titleBytes int
-				err := read.read().QueryRow(`SELECT pid(e.public_id),CASE WHEN length(CAST(e.title AS BLOB))<=? THEN e.title ELSE '' END,k.name,e.parent_id,e.added_ms,length(CAST(e.title AS BLOB)) FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id=? AND l.library_id=? AND e.retired=0`, SelectionBatchMaximumBytes, id, w.query.LibraryID).Scan(&value.ItemID, &value.Title, &value.Kind, &parent, &added, &titleBytes)
-				if errors.Is(err, sql.ErrNoRows) {
-					return ErrSelectionBatchStale
-				}
-				if err != nil {
-					return err
-				}
-				var parentValue any
-				if parent.Valid {
-					parentValue = parent.Int64
-				}
-				value.Identity = selectionactions.TargetIdentity(value.ItemID, value.LibraryID, value.Kind, parentValue)
-				if added.Valid {
-					value.Lifetime = strconv.FormatInt(added.Int64, 10)
-				}
-				// Scalar materialization is bounded by the source/store lease, not an
-				// uncharged sample/result cache. A single exceptional title is not truncated.
-				if titleBytes > SelectionBatchMaximumBytes || len(value.Title)+len(value.ItemID)+next.state.Bytes() > SelectionBatchMaximumBytes {
-					return ErrSelectionBatchCapacity
-				}
-				target = &value
-				break
-			}
-			if bytes >= SelectionBatchMaximumBytes {
-				break
-			}
+		if titleBytes > SelectionBatchMaximumBytes || len(value.Title)+len(value.ItemID)+next.state.Bytes() > SelectionBatchMaximumBytes {
+			return ErrSelectionBatchCapacity
 		}
-		if err := check(read); err != nil {
+		var p any
+		if parent.Valid {
+			p = parent.Int64
+		}
+		value.Identity = selectionactions.TargetIdentity(value.ItemID, value.LibraryID, value.Kind, p)
+		if added.Valid {
+			value.Lifetime = strconv.FormatInt(added.Int64, 10)
+		}
+		current, err = witness(read)
+		if err != nil {
 			return err
 		}
-		return read.checkBrowseSelectionBasis(w.viewer, w.query.LibraryID, w.query.SelectionBasis)
+		if current != w.query.SelectionBasis {
+			return ErrSelectionBatchStale
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, nil, false, err
 	}
-	return &next, target, next.state.done, nil
+	next.nextMatch++
+	return &next, &value, next.state.Complete() && next.nextMatch == next.matchCount, nil
 }

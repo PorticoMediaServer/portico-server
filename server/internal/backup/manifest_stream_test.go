@@ -232,3 +232,132 @@ func TestStreamManifestDamageSummaryBoundAndEOFConvention(t *testing.T) {
 		t.Fatalf("wrong bounded summary: %+v", report)
 	}
 }
+
+func TestStreamRestoreKeepsReadableKeyWhenOnlyItsChainChecksumIsDamaged(t *testing.T) {
+	s, state, _ := testService(t)
+	name := "Keys/chain-damage.key"
+	if err := writeTestFile(filepath.Join(state, name), []byte("intact key bytes"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	id, err := s.Create(t.Context(), KindManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	folder := storagepaths.Path(state, BackupsDir, id)
+	raw, err := os.ReadFile(filepath.Join(folder, ManifestName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := bytes.SplitAfter(raw, []byte("\n"))
+	changed := false
+	for n, line := range lines {
+		var record streamRecord
+		if json.Unmarshal(line, &record) != nil || record.File == nil || record.File.Name != name {
+			continue
+		}
+		if record.SHA256[0] == '0' {
+			record.SHA256 = "1" + record.SHA256[1:]
+		} else {
+			record.SHA256 = "0" + record.SHA256[1:]
+		}
+		encoded, err := json.Marshal(record)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lines[n] = append(encoded, '\n')
+		changed = true
+		break
+	}
+	if !changed {
+		t.Fatal("fixture key entry missing")
+	}
+	if err = os.WriteFile(filepath.Join(folder, ManifestName), bytes.Join(lines, nil), 0600); err != nil {
+		t.Fatal(err)
+	}
+	out, err := s.Stage(t.Context(), Source{BackupID: id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(storagepaths.Path(state, RestoreStagedDir, name))
+	if err != nil || string(got) != "intact key bytes" {
+		t.Fatal("readable verified key was lost", err)
+	}
+	report := out.Validation.Recovery.ManifestDamage
+	found := false
+	for _, region := range report.Regions {
+		found = found || region.Reason == "entry_hash_mismatch"
+	}
+	if !found || report.MissingFiles != 0 {
+		t.Fatalf("chain damage not reported honestly: %+v", report)
+	}
+}
+
+func TestStreamRestoreFindsReadableRecordsAfterDamagedHeaderAndFirstEntry(t *testing.T) {
+	s, state, _ := testService(t)
+	name := "Keys/after-damaged-header.key"
+	if err := writeTestFile(filepath.Join(state, name), []byte("verified later key"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	id, err := s.Create(t.Context(), KindManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	folder := storagepaths.Path(state, BackupsDir, id)
+	raw, err := os.ReadFile(filepath.Join(folder, ManifestName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := bytes.SplitAfter(raw, []byte("\n"))
+	if len(lines) < 4 {
+		t.Fatal("fixture manifest too short")
+	}
+	for n := 0; n < 2; n++ {
+		lines[n] = append(bytes.Repeat([]byte{'!'}, len(lines[n])-1), '\n')
+	}
+	if err = os.WriteFile(filepath.Join(folder, ManifestName), bytes.Join(lines, nil), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := s.InspectSource(t.Context(), Source{BackupID: id}); err != nil || info.Encrypted {
+		t.Fatal("readable damaged plaintext source was not inspectable", err)
+	}
+	out, err := s.Stage(t.Context(), Source{BackupID: id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(storagepaths.Path(state, RestoreStagedDir, name)); err != nil || string(got) != "verified later key" {
+		t.Fatal("later intact record was discarded", err)
+	}
+	if out.Validation.Recovery == nil || !out.Validation.Recovery.ManifestDamage.UnverifiedDatabase {
+		t.Fatal("missing database expectation was not disclosed")
+	}
+}
+
+func TestStreamManifestMissingEndReportsNextLineAndExactEOFByte(t *testing.T) {
+	folder := t.TempDir()
+	writer, err := newStreamManifestWriter(filepath.Join(folder, ManifestName), Manifest{Format: Format, Version: StreamVersion})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = writer.finish(); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(folder, ManifestName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw = raw[:bytes.IndexByte(raw, '\n')+1]
+	if err = os.WriteFile(filepath.Join(folder, ManifestName), raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := readManifest(folder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var regions []ManifestDamage
+	if err = scanStream(t.Context(), manifest, func(FileEntry, streamPosition) error { return nil }, func(region ManifestDamage) { regions = append(regions, region) }); err != nil {
+		t.Fatal(err)
+	}
+	if len(regions) != 1 || regions[0].Reason != "missing_end_record" || regions[0].FirstLine != 2 || regions[0].LastLine != 2 || regions[0].StartByte != int64(len(raw)) || regions[0].EndByte != int64(len(raw)) {
+		t.Fatalf("incorrect EOF convention: %+v", regions)
+	}
+}

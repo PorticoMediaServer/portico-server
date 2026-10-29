@@ -20,11 +20,11 @@ func LocalSearchQueueSupported(node *BrowseNode, sorts []BrowseSortSelection) bo
 	if !browseQueryReplayable(node, sorts) || len(sorts) != 1 {
 		return false
 	}
- if sorts[0].Field=="groupOrder"{
-  target:=groupOrderTarget(node)
-  return target!=nil&&target.Field!="homeRow"
- }
- _, ok := localQueueFactIndex(sorts[0].Field)
+	if sorts[0].Field == "groupOrder" {
+		target := groupOrderTarget(node)
+		return target != nil && target.Field != "homeRow"
+	}
+	_, ok := localQueueFactIndex(sorts[0].Field)
 	d, found := browseSortByID(sorts[0].Field)
 	return found && sorts[0].Seed == 0 && (ok || d.Profile && (d.ID == "personalRating" || d.ID == "lastPlayed" || d.ID == "playCount"))
 }
@@ -123,7 +123,7 @@ type localQueuePosition struct {
 type localQueueCursor struct {
 	Phase             int
 	Current, Previous localQueuePosition
- Group *GroupOrderWindowCursor
+	Group             *GroupOrderWindowCursor
 }
 type localQueueOutput struct {
 	IDs    []string
@@ -213,7 +213,7 @@ func (it *QueueLocalOrderedIterator) Next(ctx context.Context) (QueueLocalOrdere
 			return QueueLocalOrderedBatch{}, err
 		}
 		input.Cursor = it.cursor
-		first := input.Cursor.Phase == 0 && !input.Cursor.Current.Set && !input.Cursor.Previous.Set && input.Cursor.Group==nil
+		first := input.Cursor.Phase == 0 && !input.Cursor.Current.Set && !input.Cursor.Previous.Set && input.Cursor.Group == nil
 		input.Limit = 128
 		if first {
 			input.Limit = 1
@@ -249,11 +249,13 @@ func (it *QueueLocalOrderedIterator) Next(ctx context.Context) (QueueLocalOrdere
 			if err != nil {
 				return nil, selectionPreparationError(err)
 			}
-   if in.Query.Sort[0].Field=="groupOrder"{
-    c.group,err=NewGroupOrderWindow(c.template,groupOrderTarget(in.Query.Query),in.Query.Sort[0].Direction,in.Limit,in.Cursor.Group)
-    if err!=nil{return nil,selectionPreparationError(err)}
-   }
-   return c,nil
+			if in.Query.Sort[0].Field == "groupOrder" {
+				c.group, err = NewGroupOrderWindow(c.template, groupOrderTarget(in.Query.Query), in.Query.Sort[0].Direction, in.Limit, in.Cursor.Group)
+				if err != nil {
+					return nil, selectionPreparationError(err)
+				}
+			}
+			return c, nil
 		}}
 		h, err := store.SubmitUntil(ctx, it.caller, readprep.Key{Namespace: "queue-local-ordered-" + sqlite.SearchMatchVersion, Basis: input.Basis, Canonical: string(spec)}, plan, it.expiry)
 		if err != nil {
@@ -316,8 +318,8 @@ type localQueueComputation struct {
 	count               int
 	eof                 bool
 	factory             int64
-	payload []byte
- group *GroupOrderWindow
+	payload             []byte
+	group               *GroupOrderWindow
 }
 
 func (c *localQueueComputation) AccountedBytes() int64 {
@@ -339,7 +341,9 @@ func (c *localQueueComputation) Step(ctx context.Context, b *readprep.Budget) (r
 		return readprep.StepResult{}, err
 	}
 	ctx = dbwork.WithClass(ctx, dbwork.ClassMaintenance)
- if c.group!=nil{return c.stepLocalGroup(ctx,b)}
+	if c.group != nil {
+		return c.stepLocalGroup(ctx, b)
+	}
 	if c.candidate != nil {
 		next, work, err := c.service.StepBrowseSelectionBatch(ctx, c.candidate, c.witness, SelectionBatchLimits{ReserveTransient: func(n int64) error { return c.reserve(b, n) }})
 		if err != nil {

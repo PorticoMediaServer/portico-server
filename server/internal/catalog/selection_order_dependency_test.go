@@ -1,6 +1,10 @@
 package catalog
 
-import "testing"
+import (
+	"fmt"
+	"math"
+	"testing"
+)
 
 // A complete small selection does not make ForYou's taste input candidate
 // sized. An unshared taste facet changes the full-vector norm, which changes
@@ -34,5 +38,24 @@ func TestSelectionForYouDependsOnUnsharedTasteNorm(t *testing.T) {
 	matched, quality = score(10)
 	if matched >= quality {
 		t.Fatalf("outside taste must reverse selected order: %g >= %g", matched, quality)
+	}
+}
+
+func TestSelectionForYouNormStableAcrossDetachedMaps(t *testing.T) {
+	var expected uint64
+	for turn := 0; turn < 31; turn++ {
+		values, idf := map[string]float64{}, map[string]float64{}
+		for i := 0; i < 200; i++ {
+			index := (i + turn) % 200
+			facet := fmt.Sprintf("g:%03d", index)
+			values[facet] = float64(index+1) / 7
+			idf[facet] = float64(index+3) / 11
+		}
+		got := math.Float64bits(recTasteNorm(values, idf))
+		if turn == 0 {
+			expected = got
+		} else if got != expected {
+			t.Fatal("identical detached taste changed exact norm bits")
+		}
 	}
 }

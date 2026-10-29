@@ -150,7 +150,15 @@ func (s *Service) bulkCaptureStep(ctx context.Context, id string, access BulkAcc
 		}
 		if command == "playlist-add" {
 			if replay {
-				sortKeys[key], e = s.bulkSortKeyReserved(ctx, snap.Tx(), v, selector, key, page.lease.Reserve)
+				if len(page.SortKeys) > 0 {
+					var ok bool
+					sortKeys[key], ok = page.SortKeys[key]
+					if !ok || sortKeys[key] == "" {
+						return out, ErrSelectionBatchStale
+					}
+				} else {
+					sortKeys[key], e = s.bulkSortKeyReserved(ctx, snap.Tx(), v, selector, key, page.lease.Reserve)
+				}
 			} else {
 				sortKeys[key], e = s.bulkSortKey(ctx, snap.Tx(), v, selector, key)
 			}

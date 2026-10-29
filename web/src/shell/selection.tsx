@@ -1,4 +1,6 @@
 import type {ReactNode} from 'react';
+import {subscribeFacts} from './fact-source';
+import {createBrowserQueryActions} from '../screens/browse/selection-action-host';
 import {defaultI18n} from '@i18n';
 import {HomeSelectionController, homeSelectionContext, type HomeSelectionPlaybackPort} from '@core/home-selection/index.ts';
 import {homeChannelSelection, homeCollectionSelection, homeEntryCapabilities, homeEntrySelection, type HomeActionPlatform} from '@core/home-selection.ts';
@@ -39,8 +41,17 @@ export function createShellSelection(context: ShellAssemblyContext, playback: Ho
     context: currentContext(), environment: environment(), isCurrent, requestId: async () => crypto.randomUUID(), playback,
     routes: {openEntry: entry => {const destination = entryDestination(entry);return navigateArtworkEntry(entry, destination, artworkScope, () => isCurrent(controller.getSnapshot().context), () => !retired && context.isCurrent(), manual => router.navigate({...destination, ...(manual ? {viewTransition: false} : {})}));}, openCollection: collection => router.navigate(seeAllDestination({type: 'collection', resourceId: collection.collection.id, libraryId: collection.collection.libraryId})),
       openDestination: destination => router.navigate({to: '/saved', search: {resourceId: destination.id}})}, reportError});
+  const queryLife = new AbortController();
+  const queryActions = createBrowserQueryActions({subscribe: controller.selection.subscribe, captureOperation: () => controller.selection.captureOperation(),
+    isOperationCurrent: operation => controller.selection.isOperationCurrent(operation)}, {api: context.api, requestId: async () => crypto.randomUUID(),
+    deviceId: originalSession.deviceId ?? '', sourceIdentity: () => context.home.getSnapshot().document,
+    owner: viewer.role === 'owner' && viewer.authority === 'local', signal: queryLife.signal,
+    scopeKey: () => {const session = context.session(), actor = session.viewer; return JSON.stringify([router.state.location.href,
+      session.sessionFamilyId, session.deviceId, actor.serverId, actor.authority, actor.accountId, actor.profileId, actor.role, context.viewerFence]);},
+    isCurrent: () => !retired && context.isCurrent() && router.state.location.pathname === '/',
+    subscribe: listener => {const a = context.home.subscribe(listener), b = subscribeFacts(context, listener), c = router.subscribe('onResolved', listener); return () => {a();b();c();};}});
   const anchor: {current: HTMLElement | null} = {current: null};
-  const source: SelectionRendererSource = {controller,
+  const source: SelectionRendererSource = {controller, queryActions,
     metadata: {api: {request: context.api.request.bind(context.api), requestMetadataUpload: context.api.requestMetadataUpload.bind(context.api)}, scope: {serverId: viewer.serverId, viewerId: JSON.stringify([viewer.authority, viewer.accountId, viewer.profileId])},
       current: snapshot => viewer.role === 'owner' && isCurrent(snapshot.context) && snapshot.editor?.preview?.viewerFence === context.viewerFence}, anchor, artwork: context.artwork, reportError, owner: viewer.role === 'owner', editorAudience: selectionEditorAudience(viewer.role), dockVisible};
   let acceptedContext = JSON.stringify(currentContext()), acceptedEnvironment = JSON.stringify(environment());
@@ -149,6 +160,6 @@ export function createShellSelection(context: ShellAssemblyContext, playback: Ho
     }),
     phoneSelection: (): ReactNode => controller.getSnapshot().selection.active ? <SelectionPhoneBar source={source} /> : undefined,
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
-    dispose: () => { retired = true; interactions.dispose();controller.dispose(); for (const cleanup of off) cleanup(); window.removeEventListener('resize', sync); window.removeEventListener('keyup', releasePreview);window.removeEventListener('blur', clearPreview);preview = undefined;anchor.current = null; listeners.clear(); },
+    dispose: () => { retired = true;queryLife.abort();queryActions.dispose(); interactions.dispose();controller.dispose(); for (const cleanup of off) cleanup(); window.removeEventListener('resize', sync); window.removeEventListener('keyup', releasePreview);window.removeEventListener('blur', clearPreview);preview = undefined;anchor.current = null; listeners.clear(); },
   };
 }

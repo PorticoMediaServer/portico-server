@@ -667,7 +667,7 @@ func validate(m Metadata) error {
 	}
 	for _, integer := range m.QueryIntegers {
 		if !slices.Contains(m.Query, integer.Name) || integer.Minimum > integer.Maximum || !integer.Required && !integer.NoDefault && (integer.Minimum > integer.Default || integer.Default > integer.Maximum) {
-			return fmt.Errorf("query integer %q must be a declared query parameter with minimum <= default <= maximum", integer.Name)
+			return fmt.Errorf("route %q: query integer %q must be a declared query parameter with minimum <= default <= maximum", m.ID, integer.Name)
 		}
 		if integer.Clamped && integer.DefaultAboveMaximum || integer.Required && (integer.DefaultBelowMinimum || integer.DefaultAboveMaximum || integer.DefaultOnInvalid || integer.EmptyIsDefault) {
 			return fmt.Errorf("query integer %q has conflicting fallback policies", integer.Name)

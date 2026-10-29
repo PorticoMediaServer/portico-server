@@ -135,7 +135,11 @@ func acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item stri
 		}
 	}
 	positionMs := positionMillis(position)
+	newPersonalPlay := false
 	if position >= threshold || completed {
+		if e = tx.QueryRow(`SELECT NOT EXISTS(SELECT 1 FROM personal_history WHERE profile_id=? AND id=?)`, profile, playbackID).Scan(&newPersonalPlay); e != nil {
+			return e
+		}
 		_, e = tx.Exec(`INSERT INTO personal_history(id,profile_id,item_id,started_at,updated_at,sequence,position,unit,completed) VALUES(?,?,?,?,?,?,?,0,?) ON CONFLICT(profile_id,id) DO UPDATE SET updated_at=excluded.updated_at,sequence=excluded.sequence,position=excluded.position,completed=max(personal_history.completed,excluded.completed) WHERE excluded.sequence>personal_history.sequence`, playbackID, profile, entityID, now, now, sequence, positionMs, completed)
 		if e != nil {
 			return e
@@ -150,7 +154,11 @@ func acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item stri
 	previousLastPlayed := out.LastPlayedAt
 	meaningful := personalCounted || counted || completed && (!out.Watched || kind == int64(compactcatalog.Part) && positionMillis(position) != positionMillis(previousPosition)) || !completed && position >= threshold && (positionMillis(position) != positionMillis(previousPosition) || out.LastPlayedAt == "")
 	previousPlayedAt, previousErr := time.Parse(time.RFC3339Nano, previousLastPlayed)
-	if meaningful && (previousErr != nil || clock.After(previousPlayedAt)) {
+	// Resume/played-time observations remain live, but Recently played is a
+	// semantic event clock. A routine checkpoint must not author a new personal
+	// timestamp (and thus invalidate every held selection) every 15 seconds.
+	activityBoundary := newPersonalPlay || personalCounted || counted || meaningful && previous.LastPlayedAt == "" || completed && !previous.Watched || terminal
+	if activityBoundary && (previousErr != nil || clock.After(previousPlayedAt)) {
 		out.LastPlayedAt = now
 	}
 	var blocked int
@@ -233,7 +241,7 @@ func acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item stri
 			out.ProgressSeconds = 0 // a brief replay must not clear prior completion
 		}
 		if completed || position >= threshold {
-			if meaningful {
+			if meaningful && (newPersonalPlay || personalCounted || counted || out.Watched != previous.Watched) {
 				if e = personalstate.WriteAt(tx, profile, entityID, out.Watched, clock); e != nil {
 					return e
 				}
@@ -263,15 +271,17 @@ func acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item stri
 	}
 	// Observations retain current resume/recency without changing the command
 	// revision or adding snapshots. New plays and completion remain semantic.
-	changed := out.Watched != previous.Watched || previous.LastPlayedAt == "" || personalCounted || counted
+	changed := out.Watched != previous.Watched || previous.LastPlayedAt == "" || newPersonalPlay || personalCounted || counted
 	if changed {
 		if e = snapshotPersonalByID(tx, profile, entityID, previous); e != nil {
 			return e
 		}
 		out.Revision++
 	}
-	if e = storePersonalByID(tx, profile, entityID, out); e != nil {
-		return e
+	if changed || out.LastPlayedAt != previous.LastPlayedAt {
+		if e = storePersonalByID(tx, profile, entityID, out); e != nil {
+			return e
+		}
 	}
 	if changed {
 		return snapshotPersonalByID(tx, profile, entityID, out)

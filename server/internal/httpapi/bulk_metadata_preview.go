@@ -177,24 +177,47 @@ func (d Dependencies) bulkMetadataPreviewScope(r *http.Request) (identity.Princi
 func (d Dependencies) bulkMetadataPreviewAccess(p identity.Principal, in bulkMetadataPreviewInput, descriptorBytes int) metadata.BulkPreviewPreparationAccess {
 	expected := strings.Clone(in.Fence)
 	authorize := func(ctx context.Context, tx *sql.Tx) error { return d.manualMetadataAuthorize(ctx, tx, p) }
-	source := func(ctx context.Context, tx *sql.Tx, after int64) (catalog.BulkMetadataSelectionPage, error) {
+	local := false
+	if in.Request.Selector != nil && in.Request.Selector.Query != nil {
+		var node *catalog.BrowseNode
+		if json.Unmarshal(in.Request.Selector.Query.Filter, &node) == nil {
+			local = catalog.BrowseNeedsLocalSearch(node)
+		}
+	}
+	scope := func(ctx context.Context) (catalog.Viewer, error) {
 		// Scope is reconstructed with a bare request because no HTTP headers or
 		// request cancellation are authority for retained background demand.
 		r := (&http.Request{}).WithContext(ctx)
 		libraries, fence, err := d.homeScopeFor(r, p)
 		if err != nil {
-			return catalog.BulkMetadataSelectionPage{}, err
+			return catalog.Viewer{}, err
 		}
 		if fence != expected {
-			return catalog.BulkMetadataSelectionPage{}, readprep.ErrStale
+			return catalog.Viewer{}, readprep.ErrStale
 		}
-		viewer, err := d.catalogViewer(r, p, libraries, fence)
+		return d.catalogViewer(r, p, libraries, fence)
+	}
+	source := func(ctx context.Context, tx *sql.Tx, after int64) (catalog.BulkMetadataSelectionPage, error) {
+		viewer, err := scope(ctx)
 		if err != nil {
 			return catalog.BulkMetadataSelectionPage{}, err
 		}
+		if local {
+			return d.Catalog.BulkMetadataLocalSelectionBasisTx(ctx, tx, viewer, in.Request)
+		}
 		return d.Catalog.BulkMetadataSelectionUnitTx(ctx, tx, viewer, in.Request, after)
 	}
-	return metadata.BulkPreviewPreparationAccess{Source: source, Authorize: authorize, CapturedBytes: 8*int64(descriptorBytes) + int64(unsafe.Sizeof(d)+unsafe.Sizeof(p)) + 16384}
+	access := metadata.BulkPreviewPreparationAccess{Source: source, Authorize: authorize, CapturedBytes: 8*int64(descriptorBytes) + int64(unsafe.Sizeof(d)+unsafe.Sizeof(p)) + 16384}
+	if local {
+		access.NewWalk = func(ctx context.Context, tx *sql.Tx) (*catalog.BulkMetadataSelectionWalk, error) {
+			viewer, err := scope(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return d.Catalog.NewBulkMetadataSelectionWalkTx(ctx, tx, viewer, in.Request)
+		}
+	}
+	return access
 }
 
 func (d Dependencies) bulkMetadataPreviewDeliver(ctx context.Context, r *http.Request, p identity.Principal, caller readprep.Caller, fence, queryID string, hold func(func()) bool) (out bulkMetadataPreviewResponse, err error) {

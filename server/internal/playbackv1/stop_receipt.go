@@ -198,6 +198,11 @@ func (s *Service) stopWithReceipt(ctx context.Context, c Caller, id string, posi
 			if err != nil {
 				return err
 			}
+			if disposition != "policy_rejected" {
+				if err = s.recordStoppedActivityTx(ctx, tx, c, r, s.now()); err != nil {
+					return err
+				}
+			}
 			if r, err = loadRow(ctx, tx, id); err != nil {
 				return err
 			}

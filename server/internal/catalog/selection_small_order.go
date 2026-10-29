@@ -136,9 +136,13 @@ func (s *Service) StepSmallSelectionOrder(ctx context.Context, previous *SmallSe
 			// requests disclose actual source scalar bytes, including rejects.
 			// Transient source work must not consume the retained-state budget.
 			allocation := n < 0
-			if allocation { n = -n }
+			if allocation {
+				n = -n
+			}
 			peak := int64(previous.Bytes()+next.Bytes()) + 4*n + 65536
-			if n < 0 || peak > 32<<20 { return ErrSelectionBatchCapacity }
+			if n < 0 || peak > 32<<20 {
+				return ErrSelectionBatchCapacity
+			}
 			if !allocation {
 				work.DecodedBytes += int(n)
 				work.ExaminedBytes += int(n)
@@ -148,6 +152,35 @@ func (s *Service) StepSmallSelectionOrder(ctx context.Context, previous *SmallSe
 				return limits.ReserveTransient(peak)
 			}
 			return nil
+		}
+		if next.forYou != nil {
+			if rows < 2 && next.forYou.profile != "" {
+				return ErrSelectionBatchCapacity
+			}
+			fence, validation, err := read.smallForYouActivityFence(next.forYou.profile, next.forYou.now, max(1, rows-1), bytes, func(n int64) error {
+				peak := int64(previous.Bytes()+next.Bytes()) + n
+				if peak > 32<<20 {
+					return ErrSelectionBatchCapacity
+				}
+				if limits.ReserveTransient != nil {
+					return limits.ReserveTransient(peak)
+				}
+				return nil
+			})
+			work.Rows += validation.Rows
+			work.ExaminedBytes += validation.ExaminedBytes
+			work.DecodedBytes += validation.DecodedBytes
+			work.TransientScalarBytes = max(work.TransientScalarBytes, validation.TransientScalarBytes)
+			if err != nil {
+				return err
+			}
+			if next.forYou.activityFence != "" && next.forYou.activityFence != fence {
+				return ErrSelectionBatchStale
+			}
+			next.forYou.activityFence = fence
+			if work.Rows >= rows || work.ExaminedBytes+selectionBatchProbeBytes > bytes {
+				return ErrSelectionBatchCapacity
+			}
 		}
 		for !next.done && work.Rows < rows && work.ExaminedBytes < bytes {
 			if err := inner.Err(); err != nil {

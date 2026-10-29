@@ -1,5 +1,5 @@
 import {SelectionActionController, type SelectionActionSource} from '@core/selection-actions-controller.ts';
-import {isSelectionActionTerminal, selectionActionTargetInput, type SelectionActionOptions} from '@core/selection-actions.ts';
+import {selectionActionTargetInput, type SelectionActionOptions} from '@core/selection-actions.ts';
 import type {QuerySelectionTarget} from '@core/selection-model/types.ts';
 import {SelectionActionTransferQueue, type BrowserSelectionActionOptions} from './selection-action-transfers.ts';
 export type {BrowserSelectionActionOptions, BrowserSelectionActionApi, SelectionActionTransfers} from './selection-action-transfers.ts';
@@ -17,8 +17,8 @@ export class BrowserSelectionActionModel {
     this.unsubscribe = this.controller.subscribe(() => {
       const state = this.controller.getSnapshot(), job = state.job;
       if (state.phase === 'idle' || state.phase === 'retired') {this.source = undefined; this.deviceId = undefined; this.followed = undefined; this.transfers.close();}
-      // One exact pass after terminal command admission avoids unbounded dedupe while claims grow.
-      if (job?.action === 'download' && isSelectionActionTerminal(job.state) && this.followed !== job.operationId && this.source && this.deviceId) {
+      // The durable header, not the short-lived job summary, proves closure for the fixed cursor drain.
+      if (job?.action === 'download' && this.followed !== job.operationId && this.source && this.deviceId) {
         this.followed = job.operationId; void this.transfers.open(job.operationId, this.deviceId, this.source);
       }
     });

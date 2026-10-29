@@ -307,7 +307,7 @@ func TestSmallForYouChargesFullTasteBeforeDecode(t *testing.T) {
 	saw := false
 	for !p.Complete() {
 		before := p.clone()
-		next, work, err := w.s.StepSmallSelectionOrder(context.Background(), p, witness, SmallSelectionOrderLimits{Rows: 1, Bytes: 64, ReserveTransient: func(n int64) error {
+		next, work, err := w.s.StepSmallSelectionOrder(context.Background(), p, witness, SmallSelectionOrderLimits{Rows: 4, Bytes: 256, ReserveTransient: func(n int64) error {
 			if n < 0 {
 				t.Fatal("negative reservation")
 			}
@@ -318,11 +318,11 @@ func TestSmallForYouChargesFullTasteBeforeDecode(t *testing.T) {
 		}
 		if work.TransientScalarBytes >= len(outside) {
 			saw = true
-			if work.Rows != 1 || work.DecodedBytes < len(outside) || next.Bytes() <= before.Bytes() {
+			if work.Rows > 4 || work.DecodedBytes < len(outside) || next.Bytes() <= before.Bytes() {
 				t.Fatalf("unshared source bytes omitted: %+v", work)
 			}
 			sentinel := errors.New("reservation refused")
-			_, _, err = w.s.StepSmallSelectionOrder(context.Background(), p, witness, SmallSelectionOrderLimits{Rows: 1, Bytes: 64, ReserveTransient: func(n int64) error {
+			_, _, err = w.s.StepSmallSelectionOrder(context.Background(), p, witness, SmallSelectionOrderLimits{Rows: 4, Bytes: 256, ReserveTransient: func(n int64) error {
 				if n > int64(2*p.Bytes()+65536) {
 					return sentinel
 				}

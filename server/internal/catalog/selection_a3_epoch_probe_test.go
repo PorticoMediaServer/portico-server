@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func TestP259A3ObservationEpochProbe(t *testing.T) {
+func TestA3ForYouActivityChangesProductionTasteOutsideBaseWitness(t *testing.T) {
 	w := newRecWorld(t)
 	now := time.Now()
 	w.s.Clock = func() time.Time { return now }
@@ -33,11 +33,14 @@ func TestP259A3ObservationEpochProbe(t *testing.T) {
 	if err = w.c.DB.QueryRow(`SELECT observation_revision FROM viewer_revisions WHERE profile_id='p' AND library_id='m'`).Scan(&observationAfter); err != nil {
 		t.Fatal(err)
 	}
+	if before != after {
+		t.Fatal("activity-only update unexpectedly authored a shared selection epoch")
+	}
 	if reflect.DeepEqual(tasteBefore.values, tasteAfter.values) {
-		t.Fatal("probe failed to change actual production taste")
+		t.Fatal("activity-only update failed to change actual production taste")
 	}
 	if observationAfter <= observationBefore {
-		t.Fatal("probe failed to change observation revision")
+		t.Fatal("activity-only update failed to change observation revision")
 	}
 	t.Logf("same exact selection basis=%v; production taste changed=true; observation revision=%d->%d; taste facets=%d->%d", before == after, observationBefore, observationAfter, len(tasteBefore.values), len(tasteAfter.values))
 }

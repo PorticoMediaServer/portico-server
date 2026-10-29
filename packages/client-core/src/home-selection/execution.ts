@@ -80,41 +80,41 @@ export async function runSelectionJobs(api: HomeApi, tasks: HomeJobTask[], signa
   let resyncDebt = 0;
   const offResync = events?.onResync?.(() => {resyncDebt++;});
   try {
-  for (const task of tasks) {
-    current();
-    if (!task.job) {
-      if (!task.attempted) {await beforeSubmit?.(task); current(); task.attempted = true;}
-      try {task.job = await createJob(api, task.request, signal);}
-      catch (error) {
-        task.rejected = ['revision_mismatch', 'invalid_request', 'unauthorized', 'not_permitted', 'not_found', 'rate_limited', 'idempotency_key_reused', 'operation_expired'].includes(String((error as {code?: unknown})?.code));
-        throw error;
+    for (const task of tasks) {
+      current();
+      if (!task.job) {
+        if (!task.attempted) {await beforeSubmit?.(task); current(); task.attempted = true;}
+        try {task.job = await createJob(api, task.request, signal);}
+        catch (error) {
+          task.rejected = ['revision_mismatch', 'invalid_request', 'unauthorized', 'not_permitted', 'not_found', 'rate_limited', 'idempotency_key_reused', 'operation_expired'].includes(String((error as {code?: unknown})?.code));
+          throw error;
+        }
+        current();
       }
-      current();
-    }
-    report();
-    const started = Date.now();
-    while (!isJobTerminal(task.job.state)) {
-      current();
-      if (Date.now() - started > 300000) throw selectionExecutionError('job_poll_timeout', true);
-      const answering = resyncDebt;
-      task.job = await read(() => getJob(api, task.job!.jobId, signal)); current();
       report();
-      if (!isJobTerminal(task.job.state) && answering === resyncDebt) await pause(signal, task.job.jobId, events);
-    }
-    if (!task.observed) {
-      const failures: JobFailure[] = [], cursors = new Set<string>();
-      let cursor: string | undefined;
-      if (readFailures && task.job.failed > 0) for (let page = 0; page < 50; page++) {
-        current(); const result = await read(() => getJobFailures(api, task.job!.jobId, cursor, signal)); current();
-        failures.push(...result.items);
-        if (!result.nextCursor) break;
-        if (cursors.has(result.nextCursor) || page === 49) throw selectionExecutionError('job-failures-incomplete');
-        cursors.add(result.nextCursor); cursor = result.nextCursor;
+      const started = Date.now();
+      while (!isJobTerminal(task.job.state)) {
+        current();
+        if (Date.now() - started > 300000) throw selectionExecutionError('job_poll_timeout', true);
+        const answering = resyncDebt;
+        task.job = await read(() => getJob(api, task.job!.jobId, signal)); current();
+        report();
+        if (!isJobTerminal(task.job.state) && answering === resyncDebt) await pause(signal, task.job.jobId, events);
       }
-      if (readFailures && failures.length !== task.job.failed) throw selectionExecutionError('job-failures-incomplete');
-      task.failures = failures; task.observed = true;
+      if (!task.observed) {
+        const failures: JobFailure[] = [], cursors = new Set<string>();
+        let cursor: string | undefined;
+        if (readFailures && task.job.failed > 0) for (let page = 0; page < 50; page++) {
+          current(); const result = await read(() => getJobFailures(api, task.job!.jobId, cursor, signal)); current();
+          failures.push(...result.items);
+          if (!result.nextCursor) break;
+          if (cursors.has(result.nextCursor) || page === 49) throw selectionExecutionError('job-failures-incomplete');
+          cursors.add(result.nextCursor); cursor = result.nextCursor;
+        }
+        if (readFailures && failures.length !== task.job.failed) throw selectionExecutionError('job-failures-incomplete');
+        task.failures = failures; task.observed = true;
+      }
+      if (task.job.state === 'failed' && (task.job.errorCode || task.job.failed === 0)) throw selectionExecutionError(task.job.errorCode ?? 'job_failed');
     }
-    if (task.job.state === 'failed' && (task.job.errorCode || task.job.failed === 0)) throw selectionExecutionError(task.job.errorCode ?? 'job_failed');
-  }
   } finally {offResync?.();}
 }

@@ -56,6 +56,7 @@ type smallForYouOrder struct {
 	keys                  []string
 	total                 float64
 	memoRow, memoPolicy   string
+	activityFence         string
 }
 
 // NewSmallForYouOrder reproduces the <=2000 exact branch of recForYouValued
@@ -71,13 +72,14 @@ func NewSmallForYouOrder(ids []int64, profile, library, basis string, now time.T
 		return nil, ErrSelectionBatchUnsupported
 	}
 	p.forYou = &smallForYouOrder{profile: profile, library: library, now: now, taste: recTaste{values: map[string]float64{}, engaged: map[int64]bool{}, hidden: map[int64]bool{}, loaded: map[int64]bool{}}, idf: map[string]float64{}, candidates: make([]smallForYouCandidate, len(ids))}
+	p.done = len(ids) == 0
 	if p.Bytes() > SelectionBatchMaximumBytes {
 		return nil, ErrSelectionBatchCapacity
 	}
 	return p, nil
 }
 func (f *smallForYouOrder) bytes() int {
-	n := int(unsafe.Sizeof(*f)) + len(f.profile) + len(f.library) + len(f.afterFacet) + len(f.activityAt) + len(f.activityAfter) + len(f.afterPostingFacet) + len(f.memoRow) + len(f.memoPolicy) + cap(f.jobs)*8 + cap(f.keys)*16 + cap(f.candidates)*int(unsafe.Sizeof(smallForYouCandidate{})) + f.signal.bytes()
+	n := int(unsafe.Sizeof(*f)) + len(f.profile) + len(f.library) + len(f.afterFacet) + len(f.activityAt) + len(f.activityAfter) + len(f.afterPostingFacet) + len(f.memoRow) + len(f.memoPolicy) + len(f.activityFence) + cap(f.jobs)*8 + cap(f.keys)*16 + cap(f.candidates)*int(unsafe.Sizeof(smallForYouCandidate{})) + f.signal.bytes()
 	for k := range f.taste.values {
 		n += 128 + len(k)
 	}
@@ -544,12 +546,17 @@ func (s *Service) smallForYouRarity(f *smallForYouOrder, facet string, reserve f
 // SQL compiler is substituted. An ordinary day-scoped cached rank must retain
 // that same order even when a later preparation has a different wall instant.
 type SmallForYouMemoScope struct {
- digest [12]byte
- policy, library, profile string
+	digest                   [12]byte
+	policy, library, profile string
 }
-func (m SmallForYouMemoScope) Bytes() int { return 64+len(m.policy)+len(m.library)+len(m.profile) }
-func NewSmallForYouMemoScope(bound BoundBrowseQuery, viewer Viewer) (SmallForYouMemoScope,error) {
- if bound.Where=="" { return SmallForYouMemoScope{},ErrSelectionBatchUnsupported }
+
+func (m SmallForYouMemoScope) Bytes() int {
+	return 64 + len(m.policy) + len(m.library) + len(m.profile)
+}
+func NewSmallForYouMemoScope(bound BoundBrowseQuery, viewer Viewer) (SmallForYouMemoScope, error) {
+	if bound.Where == "" {
+		return SmallForYouMemoScope{}, ErrSelectionBatchUnsupported
+	}
 	// JSON's worst-case escaping is bounded BEFORE its temporary buffers are
 	// allocated. Bound args are compiler scalars, never arbitrary object graphs.
 	encodedBound := int64(32 + 6*len(bound.Where))
@@ -576,19 +583,25 @@ func NewSmallForYouMemoScope(bound BoundBrowseQuery, viewer Viewer) (SmallForYou
 		return SmallForYouMemoScope{}, ErrSelectionBatchCapacity
 	}
 
- digest:=sha256.Sum256(raw)
- m:=SmallForYouMemoScope{policy:RestrictionFence(viewer.EffectiveRestrictions()),library:bound.Library,profile:viewer.Profile}
- copy(m.digest[:],digest[:12])
- return m,nil
+	digest := sha256.Sum256(raw)
+	m := SmallForYouMemoScope{policy: RestrictionFence(viewer.EffectiveRestrictions()), library: bound.Library, profile: viewer.Profile}
+	copy(m.digest[:], digest[:12])
+	return m, nil
 }
 func (p *SmallSelectionOrder) BindForYouMemoScope(bound BoundBrowseQuery, viewer Viewer) error {
- scope,err:=NewSmallForYouMemoScope(bound,viewer); if err!=nil{return err}; return p.bindForYouMemoScope(scope)
+	scope, err := NewSmallForYouMemoScope(bound, viewer)
+	if err != nil {
+		return err
+	}
+	return p.bindForYouMemoScope(scope)
 }
-func(p *SmallSelectionOrder)bindForYouMemoScope(scope SmallForYouMemoScope)error{
- if p==nil||p.forYou==nil||scope.library!=p.forYou.library||scope.profile!=p.forYou.profile{return ErrSelectionBatchUnsupported}
- p.forYou.memoRow="forYou:"+hex.EncodeToString(scope.digest[:])+":"+strconv.Itoa(len(p.ids))
- p.forYou.memoPolicy=scope.policy
- return nil
+func (p *SmallSelectionOrder) bindForYouMemoScope(scope SmallForYouMemoScope) error {
+	if p == nil || p.forYou == nil || scope.library != p.forYou.library || scope.profile != p.forYou.profile {
+		return ErrSelectionBatchUnsupported
+	}
+	p.forYou.memoRow = "forYou:" + hex.EncodeToString(scope.digest[:]) + ":" + strconv.Itoa(len(p.ids))
+	p.forYou.memoPolicy = scope.policy
+	return nil
 }
 
 func (s *Service) smallForYouReuseMemo(p *SmallSelectionOrder, reserve func(int64) error) (bool, error) {
@@ -667,7 +680,7 @@ func (s *Service) smallForYouReuseMemo(p *SmallSelectionOrder, reserve func(int6
 
 func finishSmallForYou(p *SmallSelectionOrder, reserve func(int64) error) error {
 	f := p.forYou
-	if err := reserve(-(int64(len(p.ids))*512 + 65536)); err != nil {
+	if err := reserve(-(int64(len(p.ids))*512 + int64(16*len(f.taste.values)) + 65536)); err != nil {
 		return err
 	}
 	x := recSession{taste: f.taste, idf: f.idf, now: f.now, hydration: &recHydration{works: map[int64]*recWorkMetadata{}}}

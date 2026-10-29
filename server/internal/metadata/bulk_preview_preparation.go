@@ -22,6 +22,9 @@ type BulkPreviewPreparationAccess struct {
 	Source        BulkPreviewSource
 	Authorize     func(context.Context, *sql.Tx) error
 	CapturedBytes int64
+	// NewWalk selects the bounded shared predicate walker. Source then remains
+	// a stateless, repeatable basis check and never recompiles membership SQL.
+	NewWalk func(context.Context, *sql.Tx) (*catalog.BulkMetadataSelectionWalk, error)
 }
 
 type bulkPreviewReduction struct {
@@ -152,6 +155,22 @@ func (r *bulkPreviewReduction) step(ctx context.Context) error {
 	if dbwork.AuthorityGeneration() != r.authority {
 		return catalog.ErrStaleContinuation
 	}
+	if err = r.addPage(ctx, page); err != nil {
+		return err
+	}
+	if next.Done {
+		r.exhausted = true
+	} else {
+		if next.After <= r.after {
+			return ErrRepairInput
+		}
+		r.after = next.After
+	}
+	return nil
+}
+
+func (r *bulkPreviewReduction) addPage(ctx context.Context, page bulkPreviewPage) error {
+	var err error
 	if page.preview.Total > 0 {
 		if r.out.Total == 0 {
 			r.out = page.preview
@@ -183,14 +202,6 @@ func (r *bulkPreviewReduction) step(ctx context.Context) error {
 			r.out.Targets = append(r.out.Targets, page.preview.Targets...)
 		}
 	}
-	if next.Done {
-		r.exhausted = true
-	} else {
-		if next.After <= r.after {
-			return ErrRepairInput
-		}
-		r.after = next.After
-	}
 	return nil
 }
 
@@ -214,25 +225,48 @@ func (s *Service) PlanBulkPreview(ctx context.Context, canonical string, access 
 	key := readprep.Key{Namespace: BulkPreviewPreparationNamespace, Basis: basis, Canonical: canonical}
 	base := access.CapturedBytes + int64(len(canonical)+len(basis)) + 64<<10
 	db := s.db
-	plan := readprep.Plan{InitialBytes: base, New: func(ctx context.Context, b *readprep.Budget) (readprep.Computation, error) {
+	plan := readprep.Plan{InitialBytes: base, ColdSearch: access.NewWalk != nil, ShouldYield: func() bool { return access.NewWalk != nil && dbwork.ColdReadShouldYield() }, New: func(ctx context.Context, b *readprep.Budget) (readprep.Computation, error) {
 		w := &bulkPreviewComputation{base: base}
 		state, err := newBulkPreviewReduction(&Service{db: db}, access.Source, access.Authorize, nil, basis)
 		if err != nil {
 			return nil, err
 		}
 		w.state = state
+		if access.NewWalk != nil {
+			// Descriptor decoding, immutable plan, old/clone state and bounded
+			// proof-delivery overlap are admitted before constructing the walker.
+			if err = b.Resize(base + 2*catalog.SelectionBatchMaximumBytes); err != nil {
+				return nil, err
+			}
+			err = dbwork.WithReadSnapshot(dbwork.WithClass(ctx, dbwork.ClassMaintenance), db, func(inner context.Context) error {
+				if _, _, err := state.read(inner, true); err != nil {
+					return err
+				}
+				w.walk, err = access.NewWalk(inner, dbwork.Snapshot(inner))
+				return err
+			})
+			if err != nil {
+				return nil, bulkPreviewPreparationError(err)
+			}
+			if w.walk == nil {
+				return nil, readprep.ErrInvalid
+			}
+		}
 		return w, nil
 	}}
 	return key, plan, nil
 }
 
 type bulkPreviewComputation struct {
-	state *bulkPreviewReduction
-	base  int64
+	state                 *bulkPreviewReduction
+	base                  int64
+	walk                  *catalog.BulkMetadataSelectionWalk
+	matches               [128]int64
+	matchCount, matchNext int
 }
 
 func (w *bulkPreviewComputation) AccountedBytes() int64 {
-	return w.base + w.state.aggregate.used + w.state.transient
+	return w.base + w.state.aggregate.used + w.state.transient + w.walk.Bytes()
 }
 
 func (w *bulkPreviewComputation) Step(ctx context.Context, b *readprep.Budget) (readprep.StepResult, error) {
@@ -243,8 +277,13 @@ func (w *bulkPreviewComputation) Step(ctx context.Context, b *readprep.Budget) (
 	if err := b.Resize(w.AccountedBytes()); err != nil {
 		return readprep.StepResult{}, err
 	}
-	w.state.aggregate.reserve = func(n int64) error { return b.Resize(w.base + n + w.state.transient) }
-	err := w.state.step(dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia))
+	w.state.aggregate.reserve = func(n int64) error { return b.Resize(w.base + n + w.state.transient + w.walk.Bytes()) }
+	var err error
+	if w.walk != nil {
+		err = w.stepWalk(ctx, b)
+	} else {
+		err = w.state.step(dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia))
+	}
 	w.state.aggregate.reserve = nil
 	if err != nil {
 		return readprep.StepResult{}, bulkPreviewPreparationError(err)
@@ -271,8 +310,10 @@ func (w *bulkPreviewComputation) Step(ctx context.Context, b *readprep.Budget) (
 // invalid input and stale authority/source semantics at the poll boundary.
 func bulkPreviewPreparationError(err error) error {
 	switch {
-	case errors.Is(err, ErrRepairInput):
+	case errors.Is(err, ErrRepairInput), errors.Is(err, catalog.ErrSelectionBatchUnsupported):
 		return readprep.ErrInvalid
+	case errors.Is(err, catalog.ErrSelectionBatchCapacity):
+		return readprep.ErrCapacity
 	case errors.Is(err, catalog.ErrStaleContinuation), errors.Is(err, catalog.ErrReadingProjectionChanged), errors.Is(err, catalog.ErrSelectionBatchStale), errors.Is(err, sql.ErrNoRows), errors.Is(err, identity.ErrForbidden), errors.Is(err, identity.ErrUnauthorized):
 		return readprep.ErrStale
 	default:

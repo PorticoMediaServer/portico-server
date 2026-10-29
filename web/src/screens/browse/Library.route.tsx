@@ -1,3 +1,7 @@
+import {createBrowserQueryActions, type BrowserQueryActionHost} from './selection-action-host';
+import {createSelectionActionHostBridge} from './selection-action-lifetime';
+import type {BrowseSelectionContext} from '@core/selection-model/types.ts';
+import {subscribeFacts} from '../../shell/fact-source';
 import {useGuardedLibraryContext, useLibraryRouteGuard} from './library-route-guard';
 import {useRouteLibrary} from './route-library';
 import {useShellFacts} from '../../shell/fact-hooks';
@@ -293,6 +297,25 @@ function CommittedLibrary({captured, library, search, readingMarkAll, frame, res
   }, [playbackSnapshot, context]);
   type SelectionLease = Readonly<{resources: BrowseLease; runtime: typeof runtime; queryRevision: number; current: () => boolean; playSelection: ReturnType<typeof createLibraryPlaySelection>; selection: ReturnType<typeof createLibrarySelection>}>;
   const [selectionLease, publishSelection] = useState<SelectionLease>();
+  const [queryBridge] = useState(() => createSelectionActionHostBridge<BrowseSelectionContext>());
+  const [queryOwner, publishQueryOwner] = useState<Readonly<{resources: BrowseLease; actions: BrowserQueryActionHost<BrowseSelectionContext>}>>();
+  useLayoutEffect(() => {
+    const life = new AbortController(), signal = resources.life.signal(life.signal);
+    const session = captured.context.session(), actor = session.viewer;
+    const scopeKey = () => {
+      const current = captured.context.session(), viewer = current.viewer, query = resources.controller.getSnapshot();
+      return JSON.stringify([resources.routeKey, resources.sourceKey, current.sessionFamilyId, current.deviceId,
+        viewer.serverId, viewer.authority, viewer.accountId, viewer.profileId, viewer.role, captured.context.viewerFence,
+        query.predicates, query.sort]);
+    };
+    const actions = createBrowserQueryActions(queryBridge, {api: {...resources.life.api, mediaUrl: context.api.mediaUrl.bind(context.api)},
+      requestId: async () => randomId(), deviceId: session.deviceId ?? '', owner: actor.role === 'owner' && actor.authority === 'local',
+      signal, scopeKey, isCurrent: () => resources.life.current() && context.isCurrent() && router.state.location.href === href,
+      subscribe: listener => {const a = resources.controller.subscribe(listener), b = subscribeFacts(captured.context, listener), c = router.subscribe('onResolved', listener); return () => {a();b();c();};}});
+    publishQueryOwner({resources, actions});
+    return () => {life.abort();actions.dispose();queryBridge.dispose();};
+  }, [resources, context, captured.context, queryBridge, href]);
+  const queryActions = queryOwner?.resources === resources ? queryOwner.actions : undefined;
   useLayoutEffect(() => {
     const command = new AbortController(), signal = resources.life.signal(command.signal), queryRevision = state.queryRevision;
     const current = () => !signal.aborted && resources.life.current() && resources.controller.getSnapshot().queryRevision === queryRevision;
@@ -316,7 +339,7 @@ function CommittedLibrary({captured, library, search, readingMarkAll, frame, res
       queue: runtime?.catalogueQueue(),
       playback: runtime?.cataloguePlayback()});
     const selection = createLibrarySelection({
-      playSelection,
+      playSelection, queryActions,
       pickers: {api, serverId: context.scope.serverId, viewerId: context.scope.viewerId, requestId: async () => randomId(),
         signal, isCurrent: current,
         canCreateCollection: context.identity?.viewer.role === 'owner',
@@ -334,10 +357,11 @@ function CommittedLibrary({captured, library, search, readingMarkAll, frame, res
         signal, isCurrent: current, reportError: context.effects.reportError},
       reportError: context.effects.reportError,
     });
+    queryBridge.attach(playSelection);
     publishSelection({resources, runtime, queryRevision, current, playSelection, selection});
     playSelection.start();
-    return () => {command.abort();playSelection.dispose();};
-  }, [captured.context, context, resources, runtime, state.queryRevision]);
+    return () => {command.abort();queryBridge.attach();selection.dispose?.();playSelection.dispose();};
+  }, [captured.context, context, resources, runtime, state.queryRevision, queryActions, queryBridge]);
   const selectedLease = selectionLease?.resources === resources && selectionLease.runtime === runtime
     && selectionLease.queryRevision === state.queryRevision && selectionLease.current() ? selectionLease : undefined;
   const playSelection = selectedLease?.playSelection, selection = selectedLease?.selection;
@@ -472,7 +496,7 @@ function CommittedLibrary({captured, library, search, readingMarkAll, frame, res
   };
   if (library.kind === 'audiobook' && (view === 'book' || view === 'author' || view === 'book_series') && search.entityId)
     return <AudiobookEntry context={context} target={{libraryId: library.id, view, entityId: search.entityId}}/>;
-  return <>{unmatched ? <><LibraryIdentity {...header}/><NeedsAttention artwork={context.artwork} libraryId={library.id} libraryName={library.name} api={resources.life.api} onOpen={openAttention} onEdit={context.effects.editMetadata ? editAttention : undefined}/></>
+  return <>{queryActions?.surface}{unmatched ? <><LibraryIdentity {...header}/><NeedsAttention artwork={context.artwork} libraryId={library.id} libraryName={library.name} api={resources.life.api} onOpen={openAttention} onEdit={context.effects.editMetadata ? editAttention : undefined}/></>
     : view === 'show' || view === 'season' ? <LibraryShow captured={captured} libraryId={library.id} search={search}/>
     : view === 'artist' && search.entityId ? <ArtistScreen context={context} libraryId={library.id} artistId={search.entityId}
       onBack={() => {const back = context.effects.back; if (back) {back(); return;} void router.navigate({to: '/library/$libraryId', params: {libraryId: library.id}, search: {}}).catch(context.effects.reportError);}} />

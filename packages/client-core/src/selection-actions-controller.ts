@@ -164,11 +164,13 @@ export class SelectionActionController {
       if (!ticket.body) throw cancelled();
       if (!ticket.job) {
         this.publish({phase: 'submitting', errorCode: null});
+        this.check(ticket, io);
         const job = await createSelectionAction(this.options.api, ticket.input.selector.query.libraryId, ticket.body, io.signal);
         this.check(ticket, io); this.accept(ticket, job);
       }
       if (ticket.cancelRequested && !isSelectionActionTerminal(ticket.job!.state)) {
         this.publish({phase: 'cancelling', errorCode: null});
+        this.check(ticket, io);
         const job = await cancelSelectionAction(this.options.api, ticket.body.operationId, io.signal);
         this.check(ticket, io); this.accept(ticket, job);
       }

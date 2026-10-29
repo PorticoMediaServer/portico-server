@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"portico.local/server/internal/catalog"
@@ -20,16 +21,24 @@ const bulkMetadataConversionBytes int64 = 8 << 20
 // not a new foreground census. Keep its exact proof and lease; both its field
 // response and general preparation now use the same capped aggregate semantics.
 func (d Dependencies) smallBulkMetadataPreview(ctx context.Context, r *http.Request, in catalog.BulkMetadataPreviewRequest, p identity.Principal, expectedFence string, hold func(func()) bool) (out bulkMetadataPreviewResponse, handled bool, err error) {
-	if in.Selector == nil || in.Selector.Query == nil || in.Selector.Query.SelectionBasis == "" {
+	if in.Selector == nil || in.Selector.Query == nil {
 		return out, false, nil
 	}
 	query := *in.Selector.Query
 	var node *catalog.BrowseNode
-	if err = json.Unmarshal(query.Filter, &node); err != nil {
-		return out, true, err
+	if len(query.Filter) > 0 {
+		if err = json.Unmarshal(query.Filter, &node); err != nil {
+			return out, true, err
+		}
 	}
 	if !catalog.BrowseNeedsLocalSearch(node) {
 		return out, false, nil
+	}
+	// The general legacy compiler cannot bound its local-search MATCH branch.
+	// Only the existing complete, proof-bearing <=200 conversion is qualified;
+	// an omitted proof must never fall through to foreground query replay.
+	if query.SelectionBasis == "" {
+		return out, true, catalog.ErrSelectionBatchUnsupported
 	}
 	handled = true
 	revision := in.Expected.CatalogRevision
@@ -47,7 +56,7 @@ func (d Dependencies) smallBulkMetadataPreview(ctx context.Context, r *http.Requ
 		if e != nil {
 			return e
 		}
-		value, e := d.Catalog.WithContext(snapshot).ResolvePreparedBrowseSelection(viewer, query, revision)
+		value, e := d.Catalog.WithContext(snapshot).ResolvePreparedBulkMetadataSelection(viewer, query, revision)
 		if e != nil {
 			return e
 		}
@@ -92,6 +101,9 @@ func (d Dependencies) smallBulkMetadataPreview(ctx context.Context, r *http.Requ
 		in = catalog.BulkMetadataPreviewRequest{Targets: targets}
 		return nil
 	})
+	if errors.Is(err, catalog.ErrBulkMetadataLargeSelection) {
+		return out, false, nil
+	}
 	if err != nil {
 		return out, true, err
 	}

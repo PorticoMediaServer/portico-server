@@ -35,6 +35,12 @@ func TestBulkMetadataPreviewHTTPMatchesOwnerGateAndRealValues(t *testing.T) {
 	if preview.Total != 2 || len(preview.Targets) != 2 || preview.Fields["year"].DistinctCount != 2 || preview.Fields["year"].State != "mixed" {
 		t.Fatal(preview)
 	}
+	// Both crossing public paths must coexist in the real mux: the older
+	// single-target preview still reaches its declared, scope-checked handler.
+	single := editorRequest(t, handler, "GET", "/v1/metadata/item/"+a+"/preview", owner, "", nil)
+	if single.Code != http.StatusOK {
+		t.Fatal(single.Code, single.Body.String())
+	}
 	tl6AssertSpecResponse(t, "POST", "/v1/metadata/bulk/preview", response)
 }
 

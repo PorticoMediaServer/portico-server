@@ -155,6 +155,9 @@ func (m *bulkPreviewAggregate) add(ctx context.Context, observations []bulkPrevi
 		// deduplicates even a long genre list in O(E log K) without an O(E)
 		// side map or quadratic comparisons of the whole source list.
 		for _, entry := range o.entries {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			index := sort.Search(len(f.entries), func(i int) bool { return f.entries[i].value >= entry })
 			if index < len(f.entries) && f.entries[index].value == entry {
 				if f.entries[index].seen == m.observation {

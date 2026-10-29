@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"sort"
+	"time"
 
 	"portico.local/server/internal/dbwork"
 )
@@ -28,7 +29,8 @@ type BoundBrowseQuery struct {
 	// snapshot is the read transaction the page was composed in. The aggregate
 	// refuses to answer from any other state, so a carried Bound cannot publish
 	// stale counts under an old revision.
-	snapshot *sql.Tx
+	snapshot     *sql.Tx
+	orderInstant time.Time
 }
 
 // SelectionCapabilityCounts is the number of displayed titles of one kind for

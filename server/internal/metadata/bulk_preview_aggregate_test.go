@@ -3,6 +3,7 @@ package metadata
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -130,5 +131,22 @@ func TestBulkPreviewAggregateSharedEmptyAndCapacity(t *testing.T) {
 	m = bulkPreviewAggregate{reserve: func(int64) error { return readprep.ErrCapacity }}
 	if err = m.add(context.Background(), []bulkPreviewObservation{{field: "year", value: "2020", count: 1}}); err != readprep.ErrCapacity || m.fields != nil {
 		t.Fatal(err, m.fields)
+	}
+}
+
+func TestBulkPreviewAggregateCancellationWithinOneSourceList(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	calls := 0
+	m := bulkPreviewAggregate{reserve: func(int64) error {
+		calls++
+		if calls == 4 { // fixed field, scalar, then first retained entry
+			cancel()
+		}
+		return nil
+	}}
+	err := m.add(ctx, []bulkPreviewObservation{{field: "genres", value: "list", entries: []string{"A", "B", "C"}, count: 1}})
+	if !errors.Is(err, context.Canceled) || len(m.fields["genres"].entries) != 1 {
+		t.Fatal(err, m.fields["genres"].entries)
 	}
 }

@@ -25,6 +25,13 @@ func selectionDownloadHarness(t *testing.T, n int) *harness {
 	if _, e := h.db.Exec(selectionDownloadTestDDL); e != nil {
 		t.Fatal(e)
 	}
+	// These domain fixtures model already-confirmed download commands. Real HTTP
+	// creates each transfer header atomically through the journal accepting hook.
+	for _, operation := range []string{"operation", "another-operation", "reuse-converted"} {
+		if _, e := h.db.Exec(`INSERT INTO download_action_transfers(profile_key,device_id,operation_id,created_ms) VALUES(?,?,?,?)`, operations.ViewerKey(h.viewer), "device", operation, h.now.UnixMilli()); e != nil {
+			t.Fatal(e)
+		}
+	}
 	return h
 }
 func selectionDownloadTarget(t *testing.T, h *harness, item string, entity int64) selectionactions.Target {
@@ -267,8 +274,8 @@ func TestSelectionDownloadInventoryRawPagesAndIsolation(t *testing.T) {
 		op string
 	}{{h.viewer, "foreign-op"}, {other, "operation"}} {
 		page, e := h.service.ListSelectionAction(ctx, c.p, c.op, "device", "", 2)
-		if e != nil || len(page.Items) != 0 {
-			t.Fatal(page, e)
+		if !errors.Is(e, ErrNotFound) || len(page.Items) != 0 {
+			t.Fatal("unknown scoped intent must not claim a successful empty inventory", page, e)
 		}
 	}
 	if _, e := h.service.ListSelectionAction(ctx, h.viewer, "operation", "foreign-device", "", 2); !errors.Is(e, identity.ErrUnauthorized) {
@@ -281,8 +288,8 @@ func TestSelectionDownloadInventoryRawPagesAndIsolation(t *testing.T) {
 		return requestTestAccess(ctx, tx, p, device, item)
 	})
 	pageOther, e := h.service.ListSelectionAction(ctx, h.viewer, "operation", "second-device", "", 2)
-	if e != nil || len(pageOther.Items) != 0 {
-		t.Fatal("other authorized device leaked claims", pageOther, e)
+	if !errors.Is(e, ErrNotFound) || len(pageOther.Items) != 0 {
+		t.Fatal("other authorized device leaked claims or closure", pageOther, e)
 	}
 	h.service.SetLibraryAccess(func(context.Context, *sql.Tx, identity.Principal, string) error { return identity.ErrForbidden })
 	page, e := h.service.ListSelectionAction(ctx, h.viewer, "operation", "device", "", 2)
@@ -390,6 +397,10 @@ func TestSelectionDownloadLifetimeRefusesReplacement(t *testing.T) {
 	e := h.service.ApplySelectionDownload(ctx, h.viewer, "download", selectionDownloadOptions(), target, nil, selectionDownloadAuthorize, func(*sql.Tx, selectionactions.Effect) error { called = true; return nil })
 	if !errors.Is(e, ErrConflict) || called {
 		t.Fatal("replacement inherited command", e, called)
+	}
+	var refusal *selectionactions.TargetFailure
+	if !errors.As(e, &refusal) || refusal.Code != ReasonSourceChanged {
+		t.Fatal("changed target must finish as a proved refusal", e)
 	}
 	selectionDownloadCounts(t, h, 0, 0)
 }

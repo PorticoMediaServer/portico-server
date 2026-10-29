@@ -12,11 +12,12 @@ import (
 )
 
 var (
-	ErrInput    = errors.New("selection action input invalid")
-	ErrStale    = errors.New("selection action preparation stale")
-	ErrCapacity = errors.New("selection action capacity exhausted")
-	ErrConflict = errors.New("selection action operation id reused")
-	ErrNotFound = errors.New("selection action not found")
+	ErrCancelled = errors.New("selection action cancelled")
+	ErrInput     = errors.New("selection action input invalid")
+	ErrStale     = errors.New("selection action preparation stale")
+	ErrCapacity  = errors.New("selection action capacity exhausted")
+	ErrConflict  = errors.New("selection action operation id reused")
+	ErrNotFound  = errors.New("selection action not found")
 )
 
 const MaxRecords = 20
@@ -156,3 +157,7 @@ func Terminal(state string) bool {
 	}
 	return false
 }
+
+// Lifecycle records only actual domain ownership in the SAME accepting/terminal
+// transaction. It cannot perform I/O or retain query/capture state.
+type Lifecycle func(context.Context, *sql.Tx, identity.Principal, Job, Options) error

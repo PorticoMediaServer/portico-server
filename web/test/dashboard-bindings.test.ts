@@ -112,3 +112,18 @@ test('a valid controls document for another session cannot redirect a Move write
   await assert.rejects(b.effects.seek!('original', 25000, new AbortController().signal), /dashboard_controls_session_mismatch/);
   assert.equal(calls.length, 1); assert.match(calls[0], /^GET /); b.dispose();
 });
+
+test('Dashboard actual session/history GETs share resync admission and queued reads retain their original lifetime', async () => {
+  const {EventsClient} = await import('../../packages/client-core/src/playback-v1/events.ts');
+  let release!: () => void; const held = new Promise<void>(resolve => {release = resolve;});
+  const events = new EventsClient({http: {send: async () => {throw new Error('No event reads');}}});
+  const occupied = Array.from({length: 4}, () => events.resyncReads.run(new AbortController().signal, () => held));
+  let requests = 0;
+  const b = createDashboardBindings(options({events, api: {...options().api, requestRaw: async () => {requests++; return {status: 200, headers: {}, body: page()};}}}));
+  try {
+    const pending = b.read.sessions();
+    for (let i = 0; i < 30; i++) await Promise.resolve();
+    assert.equal(requests, 0);
+    release(); await Promise.all(occupied); await pending; assert.equal(requests, 1);
+  } finally {release(); b.dispose(); events.resyncReads.dispose();}
+});

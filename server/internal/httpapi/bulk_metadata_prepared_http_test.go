@@ -337,14 +337,109 @@ func TestBulkMetadataPreparedHTTPLegacyGroupedMemory(t *testing.T) {
 
 }
 
-func TestBulkMetadataPreparedHTTPRefuses201(t *testing.T) {
+func TestBulkMetadataPreparedHTTPGeneral201StreamsWithoutForegroundCensus(t *testing.T) {
 	f, _, root := preparedMetadataFixture(t, 201)
+	f.c.Exec(`UPDATE catalog_entities SET year=1900+(id%70) WHERE library_id=(SELECT id FROM catalog_libraries WHERE library_id='movies')`)
+	f.c.Drain()
 	in, _, _, _ := prepareMetadataHTTP(t, f)
 	blockMetadataSpool(t, root)
-	w := f.request("POST", preparedMetadataPath, nil, in)
+	releaseWorker := blockBulkPreviewWorker(t, f.store)
+	defer releaseWorker()
+	raw, err := json.Marshal(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, trace := dbwork.TraceQueryPlans(context.Background())
+	r := httptest.NewRequest("POST", preparedMetadataPath, bytes.NewReader(raw)).WithContext(ctx)
+	r.Header.Set("Authorization", "Bearer "+f.token)
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	f.h.ServeHTTP(w, r)
+	if w.Code != 202 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	path := w.Header().Get("Location")
+	for _, statement := range trace() {
+		lower := strings.ToLower(statement)
+		if strings.Contains(lower, " match ") || strings.Contains(lower, "catalog_search_documents") || strings.Contains(lower, "catalog_entities indexed by catalog_entities_library_id") {
+			t.Fatalf("large metadata foreground census: %s", statement)
+		}
+	}
+	var pending bulkMetadataPreviewPreparing
+	if err := json.Unmarshal(w.Body.Bytes(), &pending); err != nil {
+		t.Fatal(err)
+	}
+	if polled := editorRequest(t, f.h, "GET", path, f.token, "", nil); polled.Code != 202 {
+		t.Fatal(polled.Code, polled.Body.String())
+	}
+	_, caller, _, err := f.d.bulkMetadataPreviewScope(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	releaseWorker()
+	// Do not manufacture continuous foreground demand by violating the one-
+	// second HTTP retry floor. As with the count-preparation helper above, wait
+	// on the memory store, then verify the real ready HTTP response separately.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		probe, err := f.store.Poll(context.Background(), caller, readprep.Handle(pending.QueryID))
+		state := probe.State
+		probe.Release()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if state == readprep.Ready {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("metadata preview failed to finish without foreground demand")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	w = editorRequest(t, f.h, "GET", path, f.token, "", nil)
+	var got metadata.BulkMetadataPreview
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &got) != nil {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	year := got.Fields["year"]
+	if got.Total != 201 || len(got.Targets) != 0 || got.SelectionRevision != in.Expected.CatalogRevision || year.State != "many" || year.AtLeast != 65 || year.DistinctCount != 0 || year.Value != nil || len(year.Values) != 0 || !year.Truncated {
+		t.Fatal(got.Total, got.Targets, got.SelectionRevision, year)
+	}
+	if stats := f.store.Stats(); stats.Deliveries != 0 || stats.Bytes > f.store.MaxBytes() {
+		t.Fatal(stats)
+	}
+	f.c.Exec(`UPDATE catalog_entities SET year=2001 WHERE id=(SELECT min(e.id) FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE l.library_id='movies')`)
+	stale := editorRequest(t, f.h, "GET", path, f.token, "", nil)
+	preparedMetadataError(t, stale, 409, "stale_continuation")
+	if stats := f.store.Stats(); stats.Deliveries != 0 {
+		t.Fatal(stats)
+	}
+}
+
+func TestBulkMetadataPreparedHTTPUnprovedLocalSearchCannotFallThrough(t *testing.T) {
+	f, _, _ := preparedMetadataFixture(t, 1)
+	in := catalog.BulkMetadataPreviewRequest{Selector: &catalog.JobSelector{Query: &catalog.JobQuery{
+		LibraryID: "movies", Pivot: "movies", Filter: json.RawMessage(`{"field":"search","operator":"contains","value":"f"}`),
+	}}, Expected: &catalog.JobExpected{CatalogRevision: "unproved-original-revision"}}
+	raw, err := json.Marshal(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, trace := dbwork.TraceQueryPlans(context.Background())
+	r := httptest.NewRequest("POST", preparedMetadataPath, bytes.NewReader(raw)).WithContext(ctx)
+	r.Header.Set("Authorization", "Bearer "+f.token)
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	f.h.ServeHTTP(w, r)
 	preparedMetadataError(t, w, 400, "invalid_request")
-	if f.store.Stats().Deliveries != 0 {
-		t.Fatal("oversized conversion leaked delivery")
+	for _, statement := range trace() {
+		lower := strings.ToLower(statement)
+		if strings.Contains(lower, " match ") || strings.Contains(lower, "catalog_search_documents") || strings.Contains(lower, "catalog_entities indexed by catalog_entities_library_id") {
+			t.Fatalf("unproved local search reached query traversal: %s", statement)
+		}
+	}
+	if stats := f.store.Stats(); stats.Entries != 0 || stats.Deliveries != 0 {
+		t.Fatal(stats)
 	}
 }
 

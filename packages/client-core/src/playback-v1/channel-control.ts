@@ -251,7 +251,7 @@ export class V1ChannelControl implements ChannelPlayback {
       this.accept(a, s);
       if (this.current(a)) {
         const recover = async (signal?: AbortSignal) => {
-          try {await this.read(a, signal);}
+          try {await this.read(a, signal, true);}
           catch (error) {
             if (!this.current(a) || signal?.aborted) return;
             if (terminal(error)) {a.reporter?.stop(); this.offResync?.(); this.offResync = undefined; this.active = undefined; sink.error(message(error), true);}
@@ -274,7 +274,7 @@ export class V1ChannelControl implements ChannelPlayback {
     }
   }
 
-  private accept(a: Active, s: Session) {
+  private accept(a: Active, s: Session, observational = false) {
     if (!this.current(a)) return;
     if (s.state === 'ended' || s.end) {
       a.reporter?.stop(); this.offResync?.(); this.offResync = undefined;
@@ -283,6 +283,9 @@ export class V1ChannelControl implements ChannelPlayback {
       return;
     }
     a.session = s;
+    // Catch-up cannot create the initial join/seek. The original start and its
+    // own renderer observations retain that admission.
+    if (observational && !a.joined) return;
     // The first join is a go-live seek the server resolves to a position in the window.
     if (!a.joined && s.presentation.url && s.presentation.generation > 0) {
       a.joined = true;
@@ -298,10 +301,10 @@ export class V1ChannelControl implements ChannelPlayback {
     this.sink?.state(channelView(s, a.channel));
   }
 
-  private async read(a: Active, signal?: AbortSignal) {
+  private async read(a: Active, signal?: AbortSignal, observational = false) {
     if (!a.id || !this.current(a) || signal?.aborted) return;
     const r = await call(this.http, {method: 'GET', path: encodedRoutePath("get_playback_session", {"id": enc(a.id)}), signal});
-    if (!signal?.aborted) this.accept(a, parseChannelSession(r.body));
+    if (!signal?.aborted) this.accept(a, parseChannelSession(r.body), observational);
   }
 
   /** One sample a second carries the lease, and its ack the current channel view when it

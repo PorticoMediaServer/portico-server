@@ -149,17 +149,18 @@ export async function cancelSelectionAction(api: SelectionActionsApi, operationI
   return result;
 }
 
-/** Exact admitted preparations, including reused claims. This is never a scan of device inventory or a query result page. */
+/** Exact admitted preparations, including reused claims. Closed proves admission ended, independently of short job history. */
+export type SelectionActionPreparationPage = DownloadPage & Readonly<{closed: boolean}>;
 export async function listSelectionActionPreparations(api: SelectionActionsApi, operationId: string, deviceId: string,
-  options: Readonly<{cursor?: string; limit?: number; signal?: AbortSignal}> = {}): Promise<DownloadPage> {
+  options: Readonly<{cursor?: string; limit?: number; signal?: AbortSignal}> = {}): Promise<SelectionActionPreparationPage> {
   const limit = options.limit ?? 20;
   if (!Number.isInteger(limit) || limit < 1 || limit > 100 || options.cursor !== undefined && !text(options.cursor, 4096)) invalid();
   const query = new URLSearchParams({operationId: checkedId(operationId), deviceId: checkedId(deviceId), limit: String(limit)});
   if (options.cursor) query.set('cursor', options.cursor);
   const raw = await api.request<unknown>(routePath('list_download_preparations') + '?' + query, 'GET', undefined, options.signal);
-  if (!object(raw) || !Array.isArray(raw.items) || raw.items.length > limit) invalid();
+  if (!object(raw) || typeof raw.closed !== 'boolean' || !Array.isArray(raw.items) || raw.items.length > limit) invalid();
   const page = parseDownloadPage(raw);
   // General discovery tolerates one unreadable row. Exact confirmed transfers must never silently lose one.
   if (page.items.length !== raw.items.length) invalid();
-  return page;
+  return Object.freeze({...page, closed: raw.closed});
 }

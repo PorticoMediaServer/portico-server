@@ -106,7 +106,7 @@ func TestBulkPreviewMemoryCountSetsBinaryOrderingAndDelivery(t *testing.T) {
 		entries[i] = fmt.Sprintf("entry %02d", i)
 	}
 	observations = append(observations, bulkPreviewObservation{field: "entries-only", value: encodeList(entries), entries: entries, count: 1})
-	page := bulkPreviewPage{observations: observations}
+	page := bulkPreviewPage{preview: BulkMetadataPreview{Total: 200}, observations: observations}
 	if err := m.add(ctx, &BulkMetadataPreview{}, page); err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +141,7 @@ func TestBulkPreviewMemoryCountSetsBinaryOrderingAndDelivery(t *testing.T) {
 	// A second oracle with one shared large escapable scalar must retain it
 	// losslessly, including enough charged memory for JSON output and copies.
 	text := strings.Repeat("<&>\n", 1000)
-	if err := m.add(ctx, &BulkMetadataPreview{}, bulkPreviewPage{observations: []bulkPreviewObservation{{field: "scalar", value: text, count: 1}}}); err != nil {
+	if err := m.add(ctx, &BulkMetadataPreview{}, bulkPreviewPage{preview: BulkMetadataPreview{Total: 1}, observations: []bulkPreviewObservation{{field: "scalar", value: text, count: 1}}}); err != nil {
 		t.Fatal(err)
 	}
 	fields, err := m.fields(ctx, []RepairFieldSpec{{Field: "scalar"}})
