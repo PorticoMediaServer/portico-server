@@ -249,6 +249,9 @@ func RemoveTitleStepTx(ctx context.Context, tx *sql.Tx, ref compactcatalog.Mutat
 	}
 	// Release the restrictive live FK only with the terminal action. Rollback
 	// restores custody if any retained-state or physical write fails.
+	if err = publishRetainedTitleTombstoneTx(ctx, tx, m); err != nil {
+		return compactcatalog.MutationStep{}, err
+	}
 	step, err = compactcatalog.FinishEntityMutationTx(ctx, tx, ref, "removed")
 	if err != nil {
 		return step, err
