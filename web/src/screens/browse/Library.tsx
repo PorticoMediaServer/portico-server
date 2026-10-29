@@ -125,7 +125,8 @@ export function LibraryBrowse(bindings: LibraryBrowseBindings) {
   const setPredicates = (nodes: readonly BrowseNode[]) => {try {controller.setQuery(nodes, undefined, state);} catch (error) {bindings.reportError(error);}};
   // The retained count describes the same accepted generation still painted by
   // the collection. A pending replacement cannot use it as its new match count.
-  const resultCount = browseResultCount(snapshot, browseImporting(state), (key, count) => t(key, {count, pivot: controller.source.pivot}));
+  const importing = browseImporting(state);
+  const resultCount = browseResultCount(snapshot, importing, (key, count) => t(key, {count, pivot: controller.source.pivot}));
   const filterCount = snapshot.refreshing || snapshot.status !== 'ready' ? undefined : resultCount;
   const shape = bindings.shape ?? (bindings.pivot === 'collections' ? 'collection' : ['music', 'audiobook'].includes(library.kind) ? 'square' : 'poster');
   return <>
@@ -144,7 +145,7 @@ export function LibraryBrowse(bindings: LibraryBrowseBindings) {
       empty={state.predicates.length ? <BrowseFilteredEmpty controller={controller} model={model} labels={browseLabels} predicates={state.predicates}
         library={library.name} onDrop={setPredicates} onClear={() => setPredicates([])}/> : bindings.empty}/>
     </div>
-    <BrowseFilters controller={controller} model={model} labels={browseLabels} compact={compact} medium={width >= 600 && width < 1024} docked={docked} open={filtersOpen} resultCount={filterCount} canSaveView={bindings.canSaveView} onSaveView={bindings.onSaveView} onClose={() => setFiltersOpen(false)} reportError={bindings.reportError}/>
+    <BrowseFilters controller={controller} model={model} labels={browseLabels} compact={compact} medium={width >= 600 && width < 1024} docked={docked} open={filtersOpen} resultCount={filterCount} importing={importing} canSaveView={bindings.canSaveView} onSaveView={bindings.onSaveView} onClose={() => setFiltersOpen(false)} reportError={bindings.reportError}/>
     {cardMenu}
   </>;
 }

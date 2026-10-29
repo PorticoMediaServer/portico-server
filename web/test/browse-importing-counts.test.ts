@@ -20,9 +20,13 @@ test('P2-59: the A–Z rail draws only from anchors, and every count surface goe
   const results = readFileSync(new URL('../src/screens/browse/BrowseResults.tsx', import.meta.url), 'utf8');
   assert.match(results, /anchors\.length > 0 && !tiles && <AlphabetRail/, 'no anchors (an importing page): no rail, empty or otherwise');
   const library = readFileSync(new URL('../src/screens/browse/Library.tsx', import.meta.url), 'utf8');
-  assert.match(library, /browseResultCount\(snapshot, browseImporting\(state\)/);
+  assert.match(library, /const importing = browseImporting\(state\);\n  const resultCount = browseResultCount\(snapshot, importing,/);
+  assert.match(library, /resultCount={filterCount} importing={importing}/);
   const chips = readFileSync(new URL('../src/screens/browse/ScopeChips.tsx', import.meta.url), 'utf8');
   assert.match(chips, /importing \? undefined :/);
   const route = readFileSync(new URL('../src/screens/browse/Library.route.tsx', import.meta.url), 'utf8');
   assert.match(route, /importing \? undefined : readingHeader\.counts/);
+  const filters = readFileSync(new URL('../src/screens/browse/Filters.tsx', import.meta.url), 'utf8');
+  assert.match(filters, /disabled=\{!resultCount && !importing\}/, 'the Show button never waits for a count that will not come');
+  assert.match(filters, /importing \? t\('next\.controls\.done'\)/);
 });
