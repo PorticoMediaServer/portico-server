@@ -50,13 +50,17 @@ func TestP252bMissingStaleDoesNotReadmitSameCutoff(t *testing.T) {
 	markMissing(t, c, "m", token, time.Now().Add(-time.Hour))
 	cutoff := time.Now()
 	s := New(c.DB)
-	for i := 0; i < 8; i++ {
+	// The source edit must follow the real pin flip. The coordinator spends one
+	// admission and one complete pinned removal; the milestone is the missing
+	// pin row, not a guessed call count.
+	pumpFixture(t, "stale missing pin", pinnedRemovalTurns(1), func() bool {
 		if _, e := s.EmptyMissing(context.Background(), "m", cutoff, nil); e != nil {
 			t.Fatal(e)
 		}
-		if rows(t, c, `SELECT count(*) FROM mb_song_links WHERE item_id=?`, song) == 0 {
-			break
-		}
+		return rows(t, c, `SELECT count(*) FROM mb_song_links WHERE item_id=?`, song) == 0
+	})
+	if rows(t, c, `SELECT count(*) FROM mb_song_links WHERE item_id=?`, song) != 0 {
+		t.Fatal("stale command did not drain its pin before the source edit")
 	}
 	c.Exec(`UPDATE catalog_assets SET modified_ns=modified_ns+1 WHERE id=?`, asset)
 	for i := 0; i < 6; i++ {
@@ -94,11 +98,14 @@ func TestP252bLibraryStaleCustodyPausesInsteadOfSpinning(t *testing.T) {
 		return compactcatalog.LinkAssetTx(ctx, tx, song, asset, compactcatalog.Link{})
 	})
 	c.Exec(`UPDATE catalog_libraries SET retired=1 WHERE library_id='m'`)
-	for i := 0; i < 8; i++ {
+	// The asset edit below is only meaningful once the library walk really
+	// drained this title's pin; stop at that actual flip, not a guessed count.
+	pumpFixture(t, "stale library pin", pinnedRemovalTurns(1), func() bool {
 		c.Write(func(ctx context.Context, tx *sql.Tx) error { _, e := removeLibraryBatchTx(ctx, tx, "m"); return e })
-		if rows(t, c, `SELECT count(*) FROM mb_song_links WHERE item_id=?`, song) == 0 {
-			break
-		}
+		return rows(t, c, `SELECT count(*) FROM mb_song_links WHERE item_id=?`, song) == 0
+	})
+	if rows(t, c, `SELECT count(*) FROM mb_song_links WHERE item_id=?`, song) != 0 {
+		t.Fatal("library removal did not drain its pin before the source edit")
 	}
 	c.Exec(`UPDATE catalog_assets SET modified_ns=modified_ns+1 WHERE id=?`, asset)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)

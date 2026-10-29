@@ -99,8 +99,54 @@ func mutationTurn(t *testing.T, c *catalogtest.Catalog, ref compactcatalog.Mutat
 }
 
 // This guard follows the approved private fact ceiling and raw quantum. It
-// bounds fixture pumping, not any production writer, deadline or effect plan.
+// bounds one mutation's accounting quanta, not a writer's rows, deadline or
+// effect plan. Whole-catalogue guards separately count their mounted mutations.
 const accountingMutationTurns = 2*(20002/mbaccounting.FactsPerTurn+8) + 8
+
+// pinnedRemovalTurns is the real stage count of one mounted pinned removal at a
+// release of tracks sealed tracks, from coordinator admission to finalize:
+// RemoveTitleStepTx's admitted→drain phase, BeginTx, one raw PrepareTx window
+// per FactsPerTurn sealed tracks plus the window-exhaustion probe, the
+// old-direct/new-direct/done→ready stages, the accepted flip, its fold, the
+// separate finalize phase and the final finalize. These fixtures remove only
+// a release pin (no separate recording pin); the last reference is widest.
+// Its fold copies at most one fact per raw track, in the same fixed quantum.
+func pinnedRemovalTurns(tracks int) int {
+	windows := (tracks + mbaccounting.FactsPerTurn - 1) / mbaccounting.FactsPerTurn
+	return 1 + // coordinator admission when the mutation is not mounted yet
+		1 + // admitted -> drain
+		1 + // BeginTx
+		windows + 5 + // raw window(s), exhaustion, old-direct, new-direct, done->ready
+		1 + // FlipTx
+		max(1, windows) + // accepted fold: raw tracks bound distinct recording facts
+		1 + // finalize phase
+		1 // final finalize
+}
+
+// catalogueMutationTurns bounds the total catalogue work a fixture mounts, from
+// the fixture size and the per-mutation stage count above. It is deliberately
+// not accountingMutationTurns: each mounted mutation owns one complete
+// admission-to-finalize walk, and a library walk that removes and also keeps a
+// container is re-walked once, so one further coordinator turn per mutation is
+// structural. The fixtures have no inventory runs or additional bookkeeping
+// debt; saved-phase probes run inside those turns.
+func catalogueMutationTurns(mounted, tracks int) int {
+	return mounted * (pinnedRemovalTurns(tracks) + 1)
+}
+
+// pumpFixture runs the actual authorized coordinator or writer one short
+// quantum per turn until the caller observes its real terminal milestone. The
+// limit is derived from the fixture and source above; exhaustion fails loudly
+// instead of silently accepting a partial catalogue state.
+func pumpFixture(t *testing.T, what string, limit int, quantum func() bool) {
+	t.Helper()
+	for turn := 0; turn < limit; turn++ {
+		if quantum() {
+			return
+		}
+	}
+	t.Fatalf("%s did not reach its actual milestone in %d derived fixture turns", what, limit)
+}
 
 func nextMutationPin(t *testing.T, c *catalogtest.Catalog, ref compactcatalog.MutationRef) compactcatalog.MutationStep {
 	t.Helper()
@@ -400,24 +446,30 @@ func TestP252bLibraryAllPlayableAndSixtyFourContainers(t *testing.T) {
 		drainPin(t, c, id, "library", true)
 	}
 	c.Exec(`UPDATE catalog_libraries SET retired=1 WHERE library_id='m'`)
-	for i := 0; i < 500; i++ {
-		done := false
+	// Every playable title and every container here carries a real pin, and the
+	// unpinned artist is one more container walk. The whole removal must reach
+	// each actual flip, fold and finalize before the saved walk can commit.
+	mounted := len(songs) + 1 + len(ids) + 1
+	completed := false
+	pumpFixture(t, "library removal", catalogueMutationTurns(mounted, 1), func() bool {
 		e := dbwork.WithWriteTx(MutationWriteContext(context.Background()), c.DB, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
 			var e error
-			done, e = removeLibraryBatchTx(context.Background(), tx, "m")
+			completed, e = removeLibraryBatchTx(context.Background(), tx, "m")
 			return e
 		})
 		if e != nil {
 			t.Fatal(e)
 		}
-		if done {
-			if n := rows(t, c, `SELECT count(*) FROM catalog_entities WHERE library_id=?`, library); n != 0 {
-				t.Fatalf("skipped %d library entities", n)
-			}
-			return
-		}
+		return completed
+	})
+	if n := rows(t, c, `SELECT count(*) FROM catalog_entities WHERE library_id=?`, library); n != 0 {
+		t.Fatalf("skipped %d library entities", n)
 	}
-	t.Fatal("library never completed")
+	// The terminal row can only stand on drained pins: physical entity removal
+	// is not a substitute for the accounting flip and fold.
+	if n := rows(t, c, `SELECT count(*) FROM mb_song_links`) + rows(t, c, `SELECT count(*) FROM mb_album_links`); n != 0 {
+		t.Fatalf("library removal left %d undrained pins", n)
+	}
 }
 func TestP252bAdministrationMembersBeyondForty(t *testing.T) {
 	c, album, songs := drainFixture(t, 43)
@@ -432,26 +484,26 @@ func TestP252bAdministrationMembersBeyondForty(t *testing.T) {
 		})
 	}
 	for _, plan := range plans {
-		for i := 0; i < 8; i++ {
-			var step compactcatalog.MutationStep
+		var step compactcatalog.MutationStep
+		pumpFixture(t, "approved administration member", pinnedRemovalTurns(1), func() bool {
 			c.Write(func(ctx context.Context, tx *sql.Tx) error {
 				var e error
 				step, e = DeleteApprovedTitleStepTx(ctx, tx, plan, "approved-request-digest")
 				return e
 			})
-			if step.Complete {
-				if step.Outcome != "removed" {
-					t.Fatal(step)
-				}
-				break
-			}
-			if i == 7 {
-				t.Fatal("pending admin member skipped")
-			}
+			return step.Complete
+		})
+		if step.Outcome != "removed" {
+			t.Fatal(step)
 		}
 	}
 	if n := rows(t, c, `SELECT count(*) FROM catalog_songs WHERE album_id=?`, album); n != 0 {
 		t.Fatalf("skipped %d administration members", n)
+	}
+	// Each approval must have drained its own pin; deleting the title alone
+	// would leave the accounting owner behind.
+	if n := rows(t, c, `SELECT count(*) FROM mb_song_links`); n != 0 {
+		t.Fatalf("administration left %d undrained pins", n)
 	}
 }
 func TestP252bMissingBeyondTwentyFourAndAuthorityRevoke(t *testing.T) {
@@ -479,20 +531,27 @@ func TestP252bMissingBeyondTwentyFourAndAuthorityRevoke(t *testing.T) {
 		t.Fatal("revocation drained", n)
 	}
 	total := 0
-	for i := 0; i < 150; i++ {
+	more := true
+	pumpFixture(t, "missing removal", catalogueMutationTurns(len(songs), 1), func() bool {
 		out, e = s.EmptyMissing(context.Background(), "m", cutoff, func(*sql.Tx) error { return nil })
 		if e != nil {
 			t.Fatal(e)
 		}
 		total += out.Titles
-		if !out.More {
-			if total != 26 {
-				t.Fatalf("removed %d titles", total)
-			}
-			return
-		}
+		more = out.More
+		return !out.More
+	})
+	if more {
+		t.Fatal("missing command still reported work")
 	}
-	t.Fatal("missing never finished")
+	if total != len(songs) {
+		t.Fatalf("removed %d titles, want %d", total, len(songs))
+	}
+	// The final "no more work" turn is only honest when every pinned title
+	// actually reached its flip and fold.
+	if n := rows(t, c, `SELECT count(*) FROM mb_song_links`); n != 0 {
+		t.Fatalf("missing removal left %d undrained pins", n)
+	}
 }
 
 const drainAccountingOracleSQL = `WITH unaccepted_releases AS (
@@ -775,19 +834,16 @@ func TestP252bStaleChildCancelsRootWithoutDroppingOtherMembers(t *testing.T) {
 		root, e = compactcatalog.BeginEntityMutationTx(ctx, tx, compactcatalog.MutationIntent{Entity: album, OwnerKind: "title", OwnerID: "stale-root", OwnerGeneration: 1, Mode: "members"})
 		return e
 	})
-	drained := false
-	for i := 0; i < 8; i++ {
-		step := mutationTurn(t, c, root)
-		if step.Complete {
-			t.Fatal("root completed before its child", step)
-		}
-		if step.PinDrained {
-			drained = true
-			break
-		}
+	// The first child is a real pinned removal: the root spends its own
+	// admitted→children turn, mounts the child, then the child spends its
+	// preparation and flip. Stop on the actual pin milestone, not a guessed
+	// small turn count.
+	step := nextMutationPin(t, c, root)
+	if !step.PinDrained {
+		t.Fatal(step)
 	}
-	if !drained {
-		t.Fatal("first child not drained")
+	if n := rows(t, c, `SELECT count(*) FROM mb_song_links WHERE item_id=?`, songs[0]); n != 0 {
+		t.Fatal("first child pin was not actually drained before the source edit")
 	}
 	c.Exec(`UPDATE catalog_assets SET modified_ns=modified_ns+1 WHERE id=?`, asset)
 	for i := 0; i < 8; i++ {
