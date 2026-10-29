@@ -266,35 +266,33 @@ func (s *Service) SetLibraryNavigation(a ResourceActor, expected int64, librarie
 // LibrariesForViewer returns pinned libraries first, in the viewer's order, each
 // flagged so a client never has to re-derive the arrangement.
 func (s *Service) LibrariesForViewer(a ResourceActor) ([]Library, error) {
-	all, e := s.Libraries()
-	if e != nil {
-		return nil, e
+	if dbwork.Snapshot(s.Context()) == nil {
+		var out []Library
+		err := dbwork.WithReadSnapshot(s.Context(), s.db, func(ctx context.Context) error {
+			var err error
+			out, err = s.WithContext(ctx).LibrariesForViewer(a)
+			return err
+		})
+		return out, err
 	}
-	navigation, e := s.LibraryNavigation(a, nil)
-	if e != nil {
-		return nil, e
+	rows, err := s.read().QueryContext(s.Context(), `SELECT l.id,l.name,l.kind,n.library_id IS NOT NULL
+ FROM libraries l LEFT JOIN library_navigation n ON n.owner_key=? AND n.library_id=l.id
+ WHERE NOT EXISTS(SELECT 1 FROM catalog_libraries gone WHERE gone.library_id=l.id AND gone.retired=1)
+ ORDER BY n.library_id IS NULL,n.position,CASE WHEN n.library_id IS NOT NULL THEN l.id END,l.position,l.name,l.id`, actorKey(a))
+	if err != nil {
+		return nil, err
 	}
-	byID := map[string]Library{}
-	for _, library := range all {
-		byID[library.ID] = library
-	}
-	out := make([]Library, 0, len(all))
-	taken := map[string]bool{}
-	for _, id := range navigation.PinnedLibraryIDs {
-		library, ok := byID[id]
-		if !ok || taken[id] {
-			continue
+	defer rows.Close()
+	out := []Library{}
+	for rows.Next() {
+		var lib Library
+		if err = rows.Scan(&lib.ID, &lib.Name, &lib.Kind, &lib.Pinned); err != nil {
+			return nil, err
 		}
-		library.Pinned = true
-		taken[id] = true
-		out = append(out, library)
+		lib.DefaultView = DefaultLibraryView(lib.Kind)
+		out = append(out, lib)
 	}
-	for _, library := range all {
-		if !taken[library.ID] {
-			out = append(out, library)
-		}
-	}
-	return out, nil
+	return out, rows.Err()
 }
 
 // hintPinsChanged tells the viewer's other devices that their pins moved, so
