@@ -97,7 +97,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/checkpoint-go"
           status=0
-          (cd server && go run ./cmd/apigen && git diff --exit-code -- api/portico.openapi.json ../packages/contracts/src) > "$RUNNER_TEMP/checkpoint-go/generation.log" 2>&1 || status=$?
+          (cd server && go run ./cmd/apigen && git diff --exit-code -- api/portico.openapi.json ../packages/contracts/src ../packages/player-core/src/quality-ladder.ts internal/httpapi/route_lanes.go) > "$RUNNER_TEMP/checkpoint-go/generation.log" 2>&1 || status=$?
           echo "exit=$status"
           tail -n 20 "$RUNNER_TEMP/checkpoint-go/generation.log"
           exit "$status"
