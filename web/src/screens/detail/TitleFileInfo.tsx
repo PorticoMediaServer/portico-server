@@ -2,7 +2,7 @@ import {useEffect, useMemo, useState, useSyncExternalStore, type RefObject} from
 import type {DetailProjection, FileInfoDisc} from '@core/detail.ts';
 import {fileInfoTrackKey, type FileInfoLane, type FileInfoSession, type FileInfoTrackLane} from '@core/file-info-session.ts';
 import type {FileInfoFileRow, FileInfoGroupRow, FileInfoSurface} from '@core/file-info-pages.ts';
-import {fileInfoModel, fileInfoVersionFacts} from '@core/presentation/kit-model';
+import {fileInfoPanelModel} from '@core/presentation/file-info-versions.ts';
 import {Dialog, DiscTitles, FileInfo, type FileInfoAction, type FileInfoContinuation, type FileInfoMore} from '../../kit/overlays';
 import {StateView} from '../../kit/states';
 import type {DetailBindings} from './bindings';
@@ -72,12 +72,8 @@ function Opened({session, binding, data, surface, phone, returnFocusRef, onClose
     locationsMore: id => more(snapshot.members.get(id), () => { void session.members(id, snapshot.members.get(id)?.rows?.more ? 'next' : 'open'); }),
   }, [groups, byId, manage, session, snapshot]);
 
-  const model = useMemo(() => groups && fileInfoModel(groups.map(group => fileInfoVersionFacts(group,
-    snapshot.tracks.get(fileInfoTrackKey(group.headOccurrence, 'audio'))?.rows?.rows, snapshot.tracks.get(fileInfoTrackKey(group.headOccurrence, 'subtitles'))?.rows?.rows)),
-  manage ? {audience: 'owner', manageSurface: phone ? 'phone' : 'desktop', ownerFacts: {
-    locations: groups.flatMap(group => (snapshot.members.get(group.id)?.rows?.rows ?? []).map(file => ({id: file.occurrence, versionId: group.id, path: file.path, canDelete: manage.delete}))),
-    canSplit: manage.split && snapshot.surface!.canSplit, canMerge: phone && manage.merge,
-  }} : {audience: 'viewer'}, environment, phone ? 'phone' : 'desktop'), [groups, manage, phone, snapshot]);
+  // Web lists a version head's raw tracks; Merge is drawn in the phone sheet only (phone-detail 12).
+  const model = useMemo(() => fileInfoPanelModel(snapshot, {tracks: 'raw', context: phone ? 'phone' : 'desktop', manageSurface: phone ? 'phone' : 'desktop', split: true, merge: phone}, environment), [phone, snapshot]);
 
   // The disc block names its version by the version whose head file it was read from.
   const disc = useMemo((): FileInfoDisc | undefined => {

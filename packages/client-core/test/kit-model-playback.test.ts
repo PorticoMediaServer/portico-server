@@ -82,7 +82,7 @@ test('File info contains ordered technical rows and no page/picker or viewer own
 test('owner path/manage projection is explicit and authorized; TV has no manage actions', () => {
   const ownerFacts = {locations: [{id: 'file-real', path: '/private/movie.mkv', canDelete: true}, {id: 'unrelated', path: '/private/unrelated.mkv', canDelete: true}], canSplit: true, canMerge: true};
   const model = fileInfoModel([file], {audience: 'owner', ownerFacts, manageSurface: 'phone'}, env);
-  assert.deepEqual(model.owner, {heading: 'Location and manage', locations: [{id: 'file-real', path: '/private/movie.mkv', actions: [{id: 'delete-version', label: 'Delete this version…'}]}], actions: [{id: 'split-versions', label: 'Split versions'}, {id: 'merge-title', label: 'Merge with another title…'}]});
+  assert.deepEqual(model.owner, {heading: 'Location and manage', locations: [{id: 'file-real', versionId: 'file-real', path: '/private/movie.mkv', actions: [{id: 'delete-version', label: 'Delete this version…'}]}], actions: [{id: 'split-versions', label: 'Split versions'}, {id: 'merge-title', label: 'Merge with another title…'}]});
   const tv = fileInfoModel([file], {audience: 'owner', ownerFacts}, env);
   assert.deepEqual(tv.owner!.actions, []); assert.deepEqual(tv.owner!.locations[0]!.actions, []);
   assert.equal('owner' in fileInfoModel([file], {audience: 'owner'}, env), false);

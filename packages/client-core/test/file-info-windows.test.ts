@@ -129,3 +129,44 @@ test('paths are owner-only, and legal long text arrives whole', () => {
   assert.equal(owned.members[0]!.path, path);assert.equal(owned.members[0]!.duration, 1.5);
   assert.throws(() => parseFileInfoMembersPage(envelope('file-info-members', 'q1', {groupId: 'g1', total: 1, members: [member]}), opening, 'g1', false));
 });
+
+import {fileInfoPanelModel} from '../src/presentation/file-info-versions.ts';
+import {defaultI18n} from '../../i18n/src/index.ts';
+
+function panelSession(replies: Record<string, unknown>) {
+  const calls: string[] = [];
+  const session = new FileInfoSession({opening, isCurrent: () => true, api: {requestRaw(path, method) {
+    calls.push(`${method} ${path}`);
+    if (method === 'DELETE') return Promise.resolve(response(204));
+    const key = Object.keys(replies).find(prefix => path.startsWith(prefix));
+    assert.ok(key, `unexpected ${path}`);
+    return Promise.resolve(response(200, replies[key!]));
+  }}});
+  return {session, calls};
+}
+const owner = {...surface, groupCount: 2, canSplit: true, manage: {delete: true, split: true, merge: true}};
+
+test('the panel model numbers versions by the server, lists raw tracks on web and offered tracks on native, and splits only on the server\'s word', async () => {
+  const groupsPage = envelope('file-info-groups', 'q1', {surface: owner, groups: [groupRow(1), {...groupRow(2), audioCount: 0}]}, {returned: 2});
+  const {session} = panelSession({
+    '/v1/items/m1/file-info/groups/head-tracks': envelope('file-info-head-tracks', 'q3', {lane: 'audio', groupId: 'g1', occurrence: 'm1.a1', total: 1, tracks: [{ordinal: 1, id: 'h1', codec: 'eac3', language: 'de', commentary: true}]}),
+    '/v1/items/m1/file-info/groups/members': envelope('file-info-members', 'q4', {groupId: 'g1', total: 1, members: [{occurrence: 'm1.a1', itemId: 'm1', id: 'a1', path: '/m/one.mkv', size: 10, container: 'mkv', duration: 1, available: true, partIndex: 0, audioCount: 1, subtitleCount: 0}]}),
+    '/v1/items/m1/file-info/groups': groupsPage,
+    '/v1/items/m1/file-info/tracks': envelope('file-info-tracks', 'q2', {lane: 'audio', occurrence: 'm1.a1', total: 1, tracks: [{ordinal: 1, codec: 'aac', language: 'en'}]}),
+  });
+  await session.groups();
+  await session.tracks('m1.a1', 'audio'); await session.headTracks('g1', 'audio'); await session.members('g1');
+  const env = {t: defaultI18n.t};
+  const web = fileInfoPanelModel(session.getSnapshot(), {tracks: 'raw', context: 'desktop', manageSurface: 'desktop', split: true, merge: false}, env)!;
+  assert.deepEqual(web.files.map(file => file.display.heading.text), ['Version 1', 'Version 2']);
+  assert.match(web.files[0]!.display.audio[0]!.parts.map(part => part.text).join(' '), /English/);
+  assert.deepEqual(web.owner?.locations.map(location => [location.id, location.versionId, location.path]), [['m1.a1', 'g1', '/m/one.mkv']]);
+  assert.deepEqual(web.owner?.actions.map(action => action.id), ['split-versions']);
+  const native = fileInfoPanelModel(session.getSnapshot(), {tracks: 'offered', context: 'phone', manageSurface: 'phone', split: false, merge: true}, env)!;
+  assert.match(native.files[0]!.display.audio[0]!.parts.map(part => part.text).join(' '), /German/);
+  assert.deepEqual(native.owner?.actions.map(action => action.id), ['merge-title'], 'a kind that cannot be split offers no Split, whatever the server says');
+  const member = panelSession({'/v1/items/m1/file-info/groups': envelope('file-info-groups', 'q1', {surface, groups: [groupRow(1)]})});
+  await member.session.groups();
+  assert.equal(fileInfoPanelModel(member.session.getSnapshot(), {tracks: 'raw', context: 'desktop', manageSurface: 'desktop', split: true, merge: true}, env)!.owner, undefined);
+  session.retire(); member.session.retire();
+});

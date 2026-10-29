@@ -3,7 +3,8 @@ import {deletionAllowed, type VersionDeletePreview} from '@core/administration.t
 import type {DetailProjection} from '@core/detail.ts';
 import type {ContentEntry} from '@core/library-content.ts';
 import {canMergeTitles, mergeExplanation} from '@core/title-identity.ts';
-import {fileInfoVersionFacts, versionModels} from '@core/presentation/kit-model';
+import {versionModels} from '@core/presentation/kit-model';
+import {fileInfoVersionFacts} from '@core/presentation/file-info-versions.ts';
 import {Button, TextField, Segmented} from '../../kit/controls';
 import {Dialog} from '../../kit/overlays';
 import {TitleProse} from '../../kit/title/TitleParts';
