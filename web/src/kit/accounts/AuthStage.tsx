@@ -9,7 +9,9 @@ import styles from './accounts.module.css';
 
 const t = defaultI18n.t;
 /** The public auth surface has colour only. It never accepts library artwork. */
-export function AuthStage({children, shape = 'side', phoneShape, layout = 'column', service = false, topRight, legal = true, bare = false, className, contentClassName}: {
+/** `shape` and `phoneShape` are kept for callers but no longer change anything: every stage draws
+ * the one standard backdrop (kit/backdrop.css), which already carries the phone band. */
+export function AuthStage({children, layout = 'column', service = false, topRight, legal = true, bare = false, className, contentClassName}: {
   children: ReactNode; shape?: 'side' | 'round' | 'top'; phoneShape?: 'side' | 'round' | 'top'; layout?: 'column' | 'center'; service?: boolean; topRight?: ReactNode; legal?: boolean; bare?: boolean;
   className?: string; contentClassName?: string;
 }) {
@@ -18,9 +20,8 @@ export function AuthStage({children, shape = 'side', phoneShape, layout = 'colum
   if (bare) return <section className={[styles.stage, className].filter(Boolean).join(' ')} data-layout={layout} data-bare={true}>
     <div className={[styles.content, contentClassName].filter(Boolean).join(' ')} data-auth-content>{children}</div>
   </section>;
-  return <section className={[styles.stage, phoneShape && styles.hasPhoneBackdrop, className].filter(Boolean).join(' ')} data-layout={layout}>
-    <ColourBackdrop shape={shape} viewport className={styles.standardBackdrop} />
-    {phoneShape && <ColourBackdrop shape={phoneShape} viewport className={styles.phoneBackdrop} />}
+  return <section className={[styles.stage, className].filter(Boolean).join(' ')} data-layout={layout}>
+    <ColourBackdrop className={styles.standardBackdrop} />
     <header className={styles.brand}><img src={wordmark} alt={t('accounts.brand')} />{service && <span>{t('web.brand.player')}</span>}</header>
     {topRight && <div className={styles.topRight}>{topRight}</div>}
     <div className={[styles.content, contentClassName].filter(Boolean).join(' ')} data-auth-content>{children}</div>

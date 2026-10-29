@@ -4,7 +4,6 @@ import {Icon, type IconName} from '../Icon';
 import {Button} from '../controls';
 import {Menu} from '../overlays/Popover';
 import {ColourBackdrop} from '../artwork';
-import {useSizeClass} from '../theme';
 import styles from './server-directory-page.module.css';
 
 const t = createI18n(resolveRegion(undefined, deviceRegion())).t;
@@ -56,10 +55,9 @@ export function ServicesServerDirectory({header, servers, offline, connecting = 
     <span className={styles.text}><b>{title}</b>{body && <small>{body}</small>}</span>
     <Icon name="i-right" size={20} />
   </button>;
-  // connect 1 (round), 28 (side, every server offline) and 31 (phone, top) each draw their backdrop.
-  const compact = useSizeClass() === 'compact';
+
   return <div className={styles.page}>
-    {header}<ColourBackdrop viewport shape={compact ? 'top' : offline ? 'side' : 'round'} />
+    {header}<ColourBackdrop />
     <main className={styles.main}>
       <header className={styles.head}>
         <p className={styles.why}>{offline ? t('web.chooser.offlineWhy') : t('web.chooser.signedInAs', {name: signedInAs})}</p>

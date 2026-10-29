@@ -29,7 +29,7 @@ export function BootShell({children}: {children: ReactNode}) {
   const avatar = <span className={styles.avatar} aria-hidden="true" />;
   const home = <Link to="/" activeOptions={{exact: true}} activeProps={{'aria-current': 'page'}}><Icon name="i-home" size={22}/><span>{t('next.home.shell.home')}</span></Link>;
   return <div className={`${shell.shell} ${styles.shell}`} data-desktop={navigation === 'topbar'} data-size-class={size} data-pointer={coarse ? 'coarse' : 'fine'} data-navigation={navigation}>
-    <ColourBackdrop shape={size === 'compact' ? 'top' : 'side'} />
+    <ColourBackdrop />
     <div className={shell.navigation} data-shell-navigation>
       {navigation === 'topbar' ? <nav className={shell.topnav} aria-label={t('next.home.shell.main')}>
         {brand}<ul className={shell.destinations}><li><Link to="/" aria-current="page">{t('next.home.shell.home')}</Link></li></ul><div className={shell.tools}>{avatar}</div>
@@ -65,7 +65,7 @@ export function BootProgress({snapshot}: {snapshot?: ShellBootstrapSnapshot}) {
   const waiting = active ? {startedAt, serverName} : held;
   if (!waiting) return null;
   return <div className={styles.progressLayer} data-navigation={navigation} data-size-class={size} data-leaving={!active || undefined} aria-hidden={!active || undefined}>
-    <ColourBackdrop shape={size === 'compact' ? 'top' : 'side'}/>
+    <ColourBackdrop />
     <BootWaiting startedAt={waiting.startedAt} serverName={waiting.serverName} />
   </div>;
 }

@@ -2,7 +2,7 @@
    Browser chrome belongs to the browser and is excluded from content comparisons. */
 .stage { position: relative; isolation: isolate; min-height: 100svh; overflow: hidden; background: var(--color-ink); font-size: 16px; }
 .stage, .stage button, .stage input { font-family: var(--font); }
-.phoneBackdrop, .phoneFace, .phonePINHeading, .phonePINLabel, .phoneProfileBack { display: none; }
+.phoneFace, .phonePINHeading, .phonePINLabel, .phoneProfileBack { display: none; }
 .brand { position: absolute; z-index: 1; left: 64px; top: 30px; display: flex; align-items: center; gap: 14px; }
 .brand img { display: block; height: calc(20px * var(--spec-navigation-web-wordmark-scale)); width: auto; }
 .brand span { padding-left: calc(14px * var(--spec-navigation-web-wordmark-scale)); border-left: 1.5px solid var(--color-line-strong); color: var(--color-text-secondary); font-size: calc(16px * var(--spec-navigation-web-wordmark-scale)); font-weight: 700; line-height: calc(20px * var(--spec-navigation-web-wordmark-scale)); }
@@ -227,8 +227,6 @@
   .localInvitationStage .form [data-variant="auth"] input[type="password"] { font-size: 15px; }
   .localInvitationStage .invitationPair { gap: 10px; margin-bottom: 8px; }
   .localInvitationStage .invitationSubmit { margin-top: 4px; height: 48px; font-size: 16px; border-radius: 11px; }
-  .hasPhoneBackdrop .standardBackdrop { display: none; }
-  .phoneBackdrop { display: block; }
   .brand { left: 22px; top: 36px; }
   .brand img { height: calc(22px * var(--spec-navigation-web-wordmark-scale)); }
   .content { width: auto; min-height: 100svh; margin: 0; padding: 126px 22px 100px; justify-content: flex-start; }

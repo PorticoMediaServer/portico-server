@@ -142,7 +142,7 @@ export function MobileServerChooser({rows, initial, attempt, busy = false, notic
     const primaryLabel = state === 'waiting' ? t('web.chooser.checkNow') : state === 'unreachable' || state === 'unconfirmed' ? t('web.chooser.tryAgain') : state === 'loadFailed' ? t('web.chooser.tryAgain') : undefined;
     const onPrimary = state === 'loadFailed' ? onRefresh : onCheckNow;
     return <section className={styles.page} data-mweb-server-chooser data-state={state}>
-      <ColourBackdrop shape="top" />
+      <ColourBackdrop />
       <ChooserHeader initial={initial} />
       <div className={styles.state}>
         <div className={styles.stateIcon} data-accent={state === 'opening' || state === 'loading' || undefined} data-bad={state === 'loadFailed' || state === 'refused' || undefined}>
@@ -166,7 +166,7 @@ export function MobileServerChooser({rows, initial, attempt, busy = false, notic
   }
   const presented = notice;
   return <section className={styles.page} data-mweb-server-chooser>
-    <ColourBackdrop shape="top" />
+    <ColourBackdrop />
     <ChooserHeader initial={initial} />
     <div className={styles.content}>
       <h1>{t('portico.landing.pickTitle')}</h1>
