@@ -7202,6 +7202,7 @@ CREATE INDEX personal_conflicts_item_id_fk ON personal_conflicts(item_id);
 CREATE INDEX personal_evidence_fences_item_id_fk ON personal_evidence_fences(item_id);
 CREATE INDEX personal_explicit_events_item_id_fk ON personal_explicit_events(item_id);
 CREATE INDEX personal_history_item_id_fk ON personal_history(item_id);
+CREATE INDEX personal_history_retention_owner ON personal_history(item_id,profile_id);
 CREATE INDEX personal_items_item_id_fk ON personal_items(item_id);
 CREATE INDEX personal_receipts_item_id_fk ON personal_receipts(item_id);
 CREATE INDEX personal_snapshots_item_id_fk ON personal_snapshots(item_id);

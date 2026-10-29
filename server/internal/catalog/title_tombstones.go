@@ -22,6 +22,10 @@ type RemovedTitle struct {
 
 func removedTitlePredicate(v Viewer) (string, []any) {
 	where := `t.public_id=? AND t.expires_at>strftime('%Y-%m-%dT%H:%M:%fZ','now') AND EXISTS(SELECT 1 FROM catalog_title_tombstone_viewers pv WHERE pv.public_id=t.public_id AND pv.profile_id=?) AND (t.library_id IN(SELECT value FROM json_each(?)) OR NOT EXISTS(SELECT 1 FROM libraries WHERE id=t.library_id))`
+	// A confirmed removal builds its viewer/attribute facts in bounded turns.
+	// The exact entity's deletion publishes those facts; incomplete/cancelled
+	// builds and a recreated title never appear as an actual removed title.
+	where += ` AND NOT EXISTS(SELECT 1 FROM catalog_entities live WHERE live.public_id=pid_blob(t.public_id))`
 	args := []any{v.Profile, v.librariesJSON()}
 	r := v.EffectiveRestrictions()
 	if r.MaximumAge != nil {
@@ -76,7 +80,11 @@ func (s *Service) DismissRemovedTitle(v Viewer, id string, authorize func(*sql.T
 // PruneRemovedTitles expires private references without retaining title names.
 func (s *Service) PruneRemovedTitles(ctx context.Context) error {
 	return dbwork.WithWriteTx(ctx, s.db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `DELETE FROM catalog_title_tombstones WHERE expires_at<=strftime('%Y-%m-%dT%H:%M:%fZ','now')`)
+		// A confirmed removal may still be copying its private facts. Terminal
+		// mutations have entity_id=NULL, so this point entity/FK-prefix probe
+		// protects only real live custody, never old command history.
+		_, err := tx.ExecContext(ctx, `DELETE FROM catalog_title_tombstones AS t WHERE expires_at<=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+ AND NOT EXISTS(SELECT 1 FROM catalog_entities e CROSS JOIN catalog_entity_mutations m INDEXED BY catalog_entity_mutations_entity_fk ON m.entity_id=e.id WHERE e.public_id=pid_blob(t.public_id))`)
 		return err
 	})
 }

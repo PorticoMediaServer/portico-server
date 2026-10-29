@@ -37,7 +37,7 @@ const (
 	// Initial root (2), job (1), repeated Before root (2), exact local
 	// profile/membership binding (2), two meter reads and Save's job point (1).
 	retainedTitleOwnerReadBound = 10
-	retainedTitleWalkVersion    = "p2-59-o022-title-walk-v2"
+	retainedTitleWalkVersion    = "p2-59-o022-title-walk-v4"
 	retainedTitleOwnerDrained   = "owner_drained"
 )
 
@@ -221,7 +221,7 @@ func initializeRetainedTitleTx(ctx context.Context, tx *sql.Tx, m compactcatalog
 			return false, fmt.Errorf("retained title walk identity: %w", err)
 		}
 	}
-	return len(identities) == 0, nil
+	return false, prepareRetainedTitleTombstoneTx(ctx, tx, m.Entity)
 }
 
 // adoptRetainedTitleTx completes a bare caller-created job. It refuses any
@@ -255,7 +255,7 @@ func adoptRetainedTitleTx(ctx context.Context, tx *sql.Tx, m compactcatalog.Enti
  WHERE mutation_id=? AND generation=? AND plan_digest=''`, retainedTitleDrainPlanDigest, m.Ref.ID, m.Ref.Generation); err != nil {
 		return false, fmt.Errorf("retained title walk adopt: %w", err)
 	}
-	return len(oracle) == 0, nil
+	return false, prepareRetainedTitleTombstoneTx(ctx, tx, m.Entity)
 }
 
 func readRetainedTitleIdentitiesTx(ctx context.Context, tx *sql.Tx, mutation string) ([]string, error) {
@@ -403,13 +403,6 @@ func retainedTitleIdentitiesTx(ctx context.Context, tx *sql.Tx, entity int64) ([
 // keeps the smallest key greater than owner_after. Semantic retainability is
 // deliberately not a SQL filter here: captureRetainedOwnerStepTx owns it.
 func selectRetainedTitleOwnerTx(ctx context.Context, tx *sql.Tx, m compactcatalog.EntityMutation, job *retainedTitleJob) (bool, error) {
-	var any bool
-	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_purge_identities WHERE mutation_id=?)`, m.Ref.ID).Scan(&any); err != nil {
-		return false, fmt.Errorf("retained title walk identities: %w", err)
-	}
-	if !any {
-		return true, nil
-	}
 	var next string
 	for _, q := range retainedTitleOwnerSQL {
 		var candidate string
@@ -488,7 +481,8 @@ func retainedTitleBindingTx(ctx context.Context, tx *sql.Tx, owner string) (acco
 // owner through the shared phasedpurge executor, or advances to the next owner
 // when the durable cursor says this owner's inputs are exhausted.
 func drainRetainedTitleOwnerTx(ctx context.Context, tx *sql.Tx, m compactcatalog.EntityMutation, job *retainedTitleJob) (bool, error) {
-	plan := retainedTitleDrainPlan(job.ownerValue, m.Entity)
+	allowViewer := true
+	plan := retainedTitleDrainPlan(job.ownerValue, m.Entity, &allowViewer)
 	cursor := phasedpurge.Cursor{}
 	if job.cursor != "" {
 		decoded, err := phasedpurge.DecodeCursor(job.cursor, plan)
@@ -532,6 +526,7 @@ func drainRetainedTitleOwnerTx(ctx context.Context, tx *sql.Tx, m compactcatalog
 				// Dead is a destroyed/cleared local profile: capture already
 				// refused to copy it, and deleting its removed-title inputs is
 				// safe. A rotated lifetime is refused above, never drained.
+				allowViewer = binding.state != retainedCaptureBindingDead
 				return nil
 			default:
 				return errRetainedTitleBinding
@@ -541,11 +536,7 @@ func drainRetainedTitleOwnerTx(ctx context.Context, tx *sql.Tx, m compactcatalog
 			return guard.saveTx(sctx, stx, c)
 		},
 		Finalize: func(fctx context.Context, ftx *sql.Tx) error {
-			if err := guard.saveTx(fctx, ftx, phasedpurge.Cursor{Unit: len(plan)}); err != nil {
-				return err
-			}
-			_, err := ftx.ExecContext(fctx, `UPDATE catalog_purge_jobs SET reason=? WHERE mutation_id=? AND generation=?`, retainedTitleOwnerDrained, m.Ref.ID, m.Ref.Generation)
-			return err
+			return guard.saveTx(fctx, ftx, phasedpurge.Cursor{Unit: len(plan)}, true)
 		},
 	}
 	if _, err := phasedpurge.Turn(ctx, tx, plan, cursor, owner); err != nil {
@@ -567,15 +558,18 @@ type retainedTitleDrainGuard struct {
 	generation                             int64
 }
 
-func (g retainedTitleDrainGuard) saveTx(ctx context.Context, tx *sql.Tx, c phasedpurge.Cursor) error {
+const retainedTitleSaveCursorSQL = `UPDATE catalog_purge_jobs SET cursor=?,reason=CASE WHEN ? THEN ? ELSE reason END
+ WHERE mutation_id=? AND generation=? AND plan_digest=? AND owner_started=0
+ AND owner_after=? AND owner_value=? AND capture_arm IN(?,?)`
+
+func (g retainedTitleDrainGuard) saveTx(ctx context.Context, tx *sql.Tx, c phasedpurge.Cursor, final ...bool) error {
 	raw, err := phasedpurge.EncodeCursor(c)
 	if err != nil {
 		return fmt.Errorf("%w: %v", errRetainedTitleCursor, err)
 	}
-	res, err := tx.ExecContext(ctx, `UPDATE catalog_purge_jobs SET cursor=?
- WHERE mutation_id=? AND generation=? AND plan_digest=? AND owner_started=0
- AND owner_after=? AND owner_value=? AND capture_arm IN(?,?)`,
-		raw, g.mutation, g.generation, g.plan, g.ownerAfter, g.ownerValue,
+	complete := len(final) != 0 && final[0]
+	res, err := tx.ExecContext(ctx, retainedTitleSaveCursorSQL,
+		raw, complete, retainedTitleOwnerDrained, g.mutation, g.generation, g.plan, g.ownerAfter, g.ownerValue,
 		retainedCaptureArmPublished, retainedCaptureArmFinished)
 	if err != nil {
 		return fmt.Errorf("retained title walk cursor: %w", err)
@@ -609,6 +603,8 @@ const (
  WHERE item_id=? AND profile_id>? ORDER BY profile_id LIMIT 1`
 	retainedTitleNextPlaysSQL = `SELECT profile_id FROM personal_play_counts INDEXED BY personal_play_counts_item
  WHERE item_id=? AND profile_id>? ORDER BY profile_id LIMIT 1`
+	retainedTitleNextHistorySQL = `SELECT profile_id FROM personal_history INDEXED BY personal_history_retention_owner
+ WHERE item_id=? AND profile_id>? ORDER BY profile_id LIMIT 1`
 
 	retainedTitleNextShowDefaultSQL = `SELECT s.profile_id FROM container_personal_state s INDEXED BY container_personal_state_retention_owner
  WHERE s.container_id=(SELECT show_id FROM catalog_episodes WHERE entity_id=?) AND s.profile_id>?
@@ -633,6 +629,7 @@ const (
 	retainedTitleDeleteProgressSQL      = `DELETE FROM progress WHERE profile_id=? AND item_id=?`
 	retainedTitleDeleteWatchedSQL       = `DELETE FROM personal_watched_intents WHERE profile_id=? AND item_id=?`
 	retainedTitleDeletePlaysSQL         = `DELETE FROM personal_play_counts WHERE profile_id=? AND item_id=?`
+	retainedTitleDeleteHistorySQL       = `DELETE FROM personal_history WHERE rowid=(SELECT rowid FROM personal_history INDEXED BY personal_history_retention_owner WHERE profile_id=? AND item_id=? LIMIT 1)`
 	retainedTitlePickReadingSQL         = `SELECT asset_id FROM reading_progress INDEXED BY reading_progress_retention_owner
  WHERE item_id=? AND owner_key=?`
 	retainedTitlePickReadingKeysetSQL = `SELECT asset_id FROM reading_progress INDEXED BY reading_progress_retention_owner
@@ -643,6 +640,7 @@ const (
 	retainedTitleHasProgressSQL      = `SELECT EXISTS(SELECT 1 FROM progress WHERE profile_id=? AND item_id=?)`
 	retainedTitleHasWatchedSQL       = `SELECT EXISTS(SELECT 1 FROM personal_watched_intents WHERE profile_id=? AND item_id=?)`
 	retainedTitleHasPlaysSQL         = `SELECT EXISTS(SELECT 1 FROM personal_play_counts WHERE profile_id=? AND item_id=?)`
+	retainedTitleHasHistorySQL       = `SELECT EXISTS(SELECT 1 FROM personal_history INDEXED BY personal_history_retention_owner WHERE profile_id=? AND item_id=?)`
 	retainedTitleHasReadingSQL       = `SELECT EXISTS(SELECT 1 FROM reading_progress WHERE owner_key=? AND item_id=?)`
 )
 
@@ -652,6 +650,7 @@ var retainedTitleOwnerSQL = [...]string{
 	retainedTitleNextReadingSQL,
 	retainedTitleNextWatchedSQL,
 	retainedTitleNextPlaysSQL,
+	retainedTitleNextHistorySQL,
 	retainedTitleNextShowDefaultSQL,
 	retainedTitleNextSeasonDefaultSQL,
 	retainedTitleNextAlbumDefaultSQL,
@@ -659,17 +658,31 @@ var retainedTitleOwnerSQL = [...]string{
 }
 
 var retainedTitleDrainUnits = [...]retainedTitleDrainUnit{
-	{phase: 0, name: "personal-items", readBound: 2,
+	{phase: 0, name: "tombstone-progress", readBound: 5,
+		delete: retainedTitleTombstoneProgressSQL, probe: retainedTitleTombstoneProgressMissingSQL},
+	{phase: 0, name: "tombstone-history", readBound: 4,
+		delete: retainedTitleTombstoneHistorySQL, probe: retainedTitleTombstoneHistoryMissingSQL},
+	{phase: 0, name: "tombstone-favourite", readBound: 4,
+		delete: retainedTitleTombstoneFavouriteSQL, probe: retainedTitleTombstoneFavouriteMissingSQL},
+	// The point-delete closure includes recommendation work/epoch, bounded
+	// viewer/history revision counters and API hints. Progress additionally
+	// cascades to at most one composite-PK activity row, whose own partial row
+	// and viewer hint are point writes. The current widest literal closure has
+	// fewer than24 point probes; reserve24 for every source delete. The pinned
+	// trigger/FK census test requires re-derivation when that closure changes.
+	{phase: 0, name: "personal-items", readBound: 24,
 		delete: retainedTitleDeletePersonalItemsSQL, probe: retainedTitleHasPersonalItemsSQL},
-	{phase: 1, name: "progress", readBound: 2,
+	{phase: 1, name: "progress", readBound: 24,
 		delete: retainedTitleDeleteProgressSQL, probe: retainedTitleHasProgressSQL},
-	{phase: 2, name: "watched-intents", readBound: 2,
+	{phase: 2, name: "watched-intents", readBound: 24,
 		delete: retainedTitleDeleteWatchedSQL, probe: retainedTitleHasWatchedSQL},
-	{phase: 3, name: "play-counts", readBound: 2,
+	{phase: 3, name: "play-counts", readBound: 24,
 		delete: retainedTitleDeletePlaysSQL, probe: retainedTitleHasPlaysSQL},
-	{phase: 4, name: "reading-progress", readBound: 2,
+	{phase: 4, name: "reading-progress", readBound: 24,
 		keyKinds: []phasedpurge.Kind{phasedpurge.Integer},
 		pick:     retainedTitlePickReadingSQL, delete: retainedTitleDeleteReadingSQL, probe: retainedTitleHasReadingSQL},
+	{phase: 5, name: "personal-history", readBound: 24,
+		delete: retainedTitleDeleteHistorySQL, probe: retainedTitleHasHistorySQL},
 }
 
 // retainedTitleDrainPlanDigest is the deterministic identity of the complete
@@ -702,6 +715,7 @@ var retainedTitleDrainPlanDigest = func() string {
 	}
 	write("identity-provider", retainedTitleProviderSQL)
 	write("identity-local", retainedTitleLocalSQL)
+	write("owner-save", retainedTitleSaveCursorSQL)
 	write("owner-bound", strconv.Itoa(retainedTitleOwnerReadBound))
 	write("engine", strconv.Itoa(phasedpurge.EffectLimit), strconv.Itoa(phasedpurge.ReadLimit))
 	write("version", retainedTitleWalkVersion)
@@ -712,7 +726,8 @@ var retainedTitleDrainPlanDigest = func() string {
 // that owns job admission and visible blocking.
 func RetainedTitleWalkPlanDigest() string { return retainedTitleDrainPlanDigest }
 
-func retainedTitleDrainPlan(owner string, item int64) []phasedpurge.Unit {
+func retainedTitleDrainPlan(owner string, item int64, viewerPermit ...*bool) []phasedpurge.Unit {
+	allowed := func() bool { return len(viewerPermit) == 0 || *viewerPermit[0] }
 	plan := make([]phasedpurge.Unit, len(retainedTitleDrainUnits))
 	for i := range retainedTitleDrainUnits {
 		u := &retainedTitleDrainUnits[i]
@@ -722,6 +737,9 @@ func retainedTitleDrainPlan(owner string, item int64) []phasedpurge.Unit {
 			KeyKinds:  u.keyKinds,
 			ReadBound: u.readBound,
 			Run: func(ctx context.Context, tx *sql.Tx, key []phasedpurge.Key) (phasedpurge.Outcome, error) {
+				if strings.HasPrefix(u.name, "tombstone-") && !allowed() {
+					return phasedpurge.Outcome{Drained: true}, nil
+				}
 				if u.name != "reading-progress" {
 					res, err := tx.ExecContext(ctx, u.delete, owner, item)
 					if err != nil {
@@ -729,6 +747,9 @@ func retainedTitleDrainPlan(owner string, item int64) []phasedpurge.Unit {
 					}
 					if n, _ := res.RowsAffected(); n == 0 {
 						return phasedpurge.Outcome{Drained: true}, nil
+					}
+					if u.name == "personal-history" {
+						return phasedpurge.Outcome{Changed: true}, nil
 					}
 					return phasedpurge.Outcome{Drained: true, Changed: true}, nil
 				}
@@ -764,6 +785,9 @@ func retainedTitleDrainPlan(owner string, item int64) []phasedpurge.Unit {
 				return phasedpurge.Outcome{Changed: true, Next: next}, nil
 			},
 			Empty: func(ctx context.Context, tx *sql.Tx) (bool, error) {
+				if strings.HasPrefix(u.name, "tombstone-") && !allowed() {
+					return true, nil
+				}
 				var found bool
 				if err := tx.QueryRowContext(ctx, u.probe, owner, item).Scan(&found); err != nil {
 					return false, fmt.Errorf("retained title probe %s: %w", u.name, err)

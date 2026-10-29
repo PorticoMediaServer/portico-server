@@ -652,6 +652,7 @@ index personal_favorites
 index personal_history_item_id_fk
 index personal_history_page
 index personal_history_recent
+index personal_history_retention_owner
 index personal_home_watched
 index personal_items_item_id_fk
 index personal_items_retention_owner
