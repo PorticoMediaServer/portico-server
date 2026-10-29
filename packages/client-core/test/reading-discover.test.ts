@@ -93,3 +93,19 @@ test('Discover refuses mixed series scope, impossible counts and forged member i
  for(const options of [{seriesLimit:1},{libraryId:'library',seriesLimit:0},{libraryId:'library',seriesLimit:21}])await assert.rejects(client.discover(options),coded('invalid_request'));
  assert.equal(calls,0);client.dispose();
 });
+
+// R-09 (O-159): a 1.0 client reads a "1.1" Reading page. A book of a format this client
+// does not know is left out alone; the rest of the row and page still show.
+test('R-09: Discover and items leave out a book of an unknown format and keep the rest', async () => {
+  const future = {...item, id: 'future', format: 'djvu'};
+  const api = new HttpLocalApi('https://server.example', 'token', async input =>
+    new URL(String(input)).pathname === routePath('get_reading_discover')
+      ? response({rows: [{key: 'recent', items: [future, item]}]})
+      : response({items: [item, future], nextCursor: ''}));
+  const client = api.reading({viewer, isCurrent: () => true});
+  const out = await client.discover({libraryId: 'library'});
+  assert.deepEqual(out.rows[0].items.map(row => row.id), ['book']);
+  const page = await client.list({libraryId: 'library'});
+  assert.deepEqual(page.items.map(row => row.id), ['book']);
+  client.dispose();
+});

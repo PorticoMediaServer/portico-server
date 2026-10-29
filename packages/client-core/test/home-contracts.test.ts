@@ -39,6 +39,10 @@ test('Home episodes retain authorized parent facts without substituting child me
   assert.equal(validateHomeEntry(entry('movie','movie',{homeTitleContext:parent})).homeTitleContext,undefined);
 });
 
+test('R-10: a Home without a spotlight array is read as no spotlight',()=>{
+  const {spotlight:_omitted,...rest}=doc([]);
+  assert.deepEqual(validateHomeDocument(rest).spotlight,[]);
+});
 test('spotlight preserves server reasons and order, real show resume identity and normalized runtime',()=>{
   const spotlight=[
     {entry:entry('show','show',{year:2022,genres:['Drama'],seasonCount:3,overview:'Actual short overview',backdropUrl:'/art'}),reason:{kind:'because_you_watched',source:{id:'source-title',name:'Actual viewed title'},text:{code:'next.home.becauseYouWatched',params:{title:'Actual viewed title'},fallback:'Because you watched Actual viewed title'}},resumeTarget:entry('episode','episode',{show:{id:'show',name:'show'},seasonNumber:2,episodeNumber:3,durationMs:3000000,progressMs:600000,playback:{itemId:'episode',startMs:600000}})},
@@ -59,7 +63,12 @@ test('spotlight preserves server reasons and order, real show resume identity an
   assert.equal(JSON.stringify(parsed).includes('"hero"'),false);
   const unicode=validateHomeDocument(doc([],{spotlight:[{...spotlight[1],entry:entry('unicode','movie',{overview:'🎬'.repeat(300)})}]}));
   assert.equal([...unicode.spotlight[0].entry.overview!].length,300,'synopsis limit counts Unicode characters as the server does');
-  for(const broken of [Array(6).fill(spotlight[0]),[{...spotlight[0],reason:{kind:'because_you_watched',text:spotlight[0].reason.text}}],[{...spotlight[0],resumeTarget:entry('e','episode',{show:{id:'other',name:'other'}})}],[{...spotlight[1],entry:entry('x','movie',{overview:'x'.repeat(301)})}]])assert.throws(()=>validateHomeDocument(doc([],{spotlight:broken})));
+  assert.throws(()=>validateHomeDocument(doc([],{spotlight:Array(6).fill(spotlight[0])})),'more spotlights than the bound is refused');
+  // R-10 (O-159 two-tier parsing): a spotlight this client cannot read is left out alone; Home still shows.
+  for(const broken of [{...spotlight[0],reason:{kind:'because_you_watched',text:spotlight[0].reason.text}},{...spotlight[0],resumeTarget:entry('e','episode',{show:{id:'other',name:'other'}})},{...spotlight[1],entry:entry('x','movie',{overview:'x'.repeat(301)})}]){
+    const kept=validateHomeDocument(doc([],{spotlight:[broken,spotlight[1]]}));
+    assert.deepEqual(kept.spotlight.map(v=>v.entry.id),['movie'],'an unreadable spotlight is dropped, the rest kept');
+  }
 });
 
 test('new badges, causal source, collection facts, ordered ranks and audio contributions survive parsing',()=>{

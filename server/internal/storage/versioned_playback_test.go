@@ -170,12 +170,14 @@ func TestVersionedLocalInPlaceMutationRejectsFutureBlocks(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer file.Close()
-	// Same inode and restored mtime defeat the old size/mtime pin. The filesystem
-	// ctime revision must still change after this controlled write.
+	// Same inode and size, rewritten in place: the content identity is inode,
+	// size and mtime (never ctime, DECISIONS 29 Oct), so the write's new mtime
+	// is what refuses the old version. A rewrite that restores the original
+	// mtime is the accepted residual risk of that ruling, as with Plex.
 	if err := os.WriteFile(path, []byte("abcdefghij"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chtimes(path, info.ModTime(), info.ModTime()); err != nil {
+	if err := os.Chtimes(path, info.ModTime().Add(time.Second), info.ModTime().Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	if err := c.ValidatePlaybackVersion(ctx, file, version); !errors.Is(err, mediasource.ErrSourceChanged) {
@@ -187,6 +189,46 @@ func TestVersionedLocalInPlaceMutationRejectsFutureBlocks(t *testing.T) {
 		t.Fatalf("changed block returned %d bytes / %v", n, err)
 	}
 	reader.Close()
+}
+
+// R-04: a permission, ownership or ACL write moves only ctime. It changes no
+// byte, so a playing source must keep its version and keep reading.
+func TestVersionedLocalPermissionChangeKeepsPlaying(t *testing.T) {
+	c, path := versionedLocalFixture(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	version, err := c.DiscoverPlaybackVersion(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, err := c.OpenVersionedPlayback(ctx, path, version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	file, err := c.OpenVersionedPlaybackDescriptor(ctx, path, version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	if err := os.Chmod(path, 0400); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0600) })
+	if err := c.ValidatePlaybackVersion(ctx, file, version); err != nil {
+		t.Fatalf("a permission change refused the playing version: %v", err)
+	}
+	again, err := c.DiscoverPlaybackVersion(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.ID() != version.ID() {
+		t.Fatalf("a permission change moved the version: %q -> %q", version.ID(), again.ID())
+	}
+	var b [10]byte
+	if n, err := io.ReadFull(reader, b[:]); n != 10 || err != nil || string(b[:]) != "0123456789" {
+		t.Fatalf("playing reader stopped after a permission change: %d %v", n, err)
+	}
 }
 
 func TestVersionedLocalScopesGuardsAndCancellation(t *testing.T) {

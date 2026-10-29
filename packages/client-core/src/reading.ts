@@ -8,6 +8,10 @@ import {withReadingConversion, withReadingContinueConversions, type ReadingConve
 import {withReadingDiscoverMarks, type ReadingPreviewMarks} from './reading-preview-mark.ts';
 import {readingMarkPath, parseReadingMark, validReadingMarkCommand, type ReadingReadMarkCommand} from './reading-mark.ts';
 export type {ReadingReadMark, ReadingReadMarkCommand} from './reading-mark.ts';
+import {decodeOpen} from '../../contracts/src/runtime.ts';
+/** O-159 open tier (R-09) for the Reading browse reads: a book, series or issue carrying a format,
+ * publication type or source this client does not know is left out; the rest of the page shows. */
+const openRead = <T>(name: Parameters<typeof decodeOpen>[0]) => (value: unknown): T => decodeOpen(name, value) as T;
 import {withReadingManifestFacts, type ReadingManifestFacts} from './reading-manifest-facts.ts';
 import {captureReadingAnnotationMutation, parseReadingAnnotations, parseReadingAnnotationSaved, readingAnnotationId, type ReadingAnnotationMutation, type ReadingAnnotationsPage} from './reading-annotations.ts';
 import {
@@ -570,7 +574,7 @@ export class ReadingClient {
   }
   async list(options: Readonly<{libraryId?: string; cursor?: string; limit?: number}> = {}, signal?: AbortSignal): Promise<GetReadingItemsResponse> {
     if (options.libraryId !== undefined && !id(options.libraryId) || !integer(options.limit ?? 50, 1, 100) || (options.cursor !== undefined && !/^\d{1,20}$/.test(options.cursor))) fail('invalid_request');
-    const out = await this.json(query(routePath('get_reading_items'), options), 'GET', undefined, signal, decodeGetReadingItemsResponse, 256 << 10);
+    const out = await this.json(query(routePath('get_reading_items'), options), 'GET', undefined, signal, openRead<GetReadingItemsResponse>('GetReadingItemsResponse'), 256 << 10);
     if (out.items.length > 100 || out.items.some(row => !id(row.id) || !id(row.sourceId) || !sourceFormat(row.format) || !validReadingCover(row.id, row.coverUrl))) fail('invalid_document');
     return out;
   }
@@ -580,7 +584,7 @@ export class ReadingClient {
     if (options.newIssuesLimit !== undefined && (options.libraryId === undefined || !id(options.libraryId) || !integer(options.newIssuesLimit, 1, 20))) fail('invalid_request');
     if (options.newspaperLimit !== undefined && (options.libraryId === undefined || !id(options.libraryId) || options.newspaperLimit !== 1)) fail('invalid_request');
     const decoded = await this.json(query(routePath('get_reading_discover'), options), 'GET', undefined, signal,
-      raw => withReadingDiscoverMarks(raw, decodeGetReadingDiscoverResponse), 2 << 20), out = decoded.value;
+      raw => withReadingDiscoverMarks(raw, openRead<GetReadingDiscoverResponse>('GetReadingDiscoverResponse')), 2 << 20), out = decoded.value;
     if (out.rows.length < 1 || out.rows.length > 5 || out.rows[0].key !== 'recent') fail('invalid_document');
     validateDiscoverRow(out.rows[0], options.libraryId, options.limit ?? 20);
     let newspaperCard: ReadingPeriodicalGroup | undefined;
@@ -616,7 +620,7 @@ export class ReadingClient {
     if (!discoverRows.includes(row) || options.libraryId !== undefined && !id(options.libraryId) || row !== 'recent' && options.libraryId === undefined
       || !integer(limit, 1, row === 'recent' ? 100 : 20) || options.cursor !== undefined && !discoverCursor(options.cursor)) fail('invalid_request');
     const decoded = await this.json(query(routePath('get_reading_discover'), {...options, row}), 'GET', undefined, signal,
-      raw => withReadingDiscoverMarks(raw, decodeGetReadingDiscoverResponse), 2 << 20), out = decoded.value;
+      raw => withReadingDiscoverMarks(raw, openRead<GetReadingDiscoverResponse>('GetReadingDiscoverResponse')), 2 << 20), out = decoded.value;
     if (out.rows.length !== 1 || out.rows[0].key !== row) fail('invalid_document');
     const newIssueCards = validateDiscoverRow(out.rows[0], options.libraryId, limit, true);
     return Object.freeze({row: out.rows[0], newIssueCards, previewMarks: decoded.marks});
@@ -676,7 +680,7 @@ export class ReadingClient {
     const cursor = options.cursor;
     if (!id(libraryId) || !/^[A-Za-z0-9_-]{43}$/.test(seriesId) || !integer(options.limit ?? 50, 1, 100) || (cursor !== undefined && !/^[A-Za-z0-9_-]{171}\.[A-Za-z0-9_-]{43}$/.test(cursor))) fail('invalid_request');
     const out = await this.json(query(routePath('get_reading_series_items', {libraryId, seriesId}), options), 'GET', undefined, signal, value => {
-      const page = decodeGetReadingSeriesItemsResponse(value);
+      const page = openRead<GetReadingSeriesItemsResponse>('GetReadingSeriesItemsResponse')(value);
       // Older official decoders omit unknown optional fields. Preserve only the
       // separately checked presenter projection, never an unchecked wire object.
       const overview = isReadingObject(value) && value.summary !== undefined ? readingSeriesOverview(value.summary, seriesId, page.items.length) : undefined;
@@ -694,7 +698,7 @@ export class ReadingClient {
   }
   async continue(options: Readonly<{libraryId?: string; cursor?: string; limit?: number}> = {}, signal?: AbortSignal): Promise<Omit<GetReadingContinueResponse,'items'> & {items:ReadingContinueItem[]}> {
     if (options.libraryId !== undefined && !id(options.libraryId) || !integer(options.limit ?? 50, 1, 100) || (options.cursor !== undefined && !/^[A-Za-z0-9_-]{1,128}$/.test(options.cursor))) fail('invalid_request');
-    const out = await this.json(query(routePath('get_reading_continue'), options), 'GET', undefined, signal, raw=>withReadingContinueConversions(raw,decodeGetReadingContinueResponse), 2 << 20);
+    const out = await this.json(query(routePath('get_reading_continue'), options), 'GET', undefined, signal, raw=>withReadingContinueConversions(raw,openRead<GetReadingContinueResponse>('GetReadingContinueResponse')), 2 << 20);
     if (out.items.length > (options.limit ?? 50) || (out.nextCursor !== undefined && !/^[A-Za-z0-9_-]{1,128}$/.test(out.nextCursor))) fail('invalid_document');
     const seen = new Set<string>();
     for (const {item, progress, conversion} of out.items) {
