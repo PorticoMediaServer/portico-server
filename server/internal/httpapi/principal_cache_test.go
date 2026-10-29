@@ -51,17 +51,60 @@ func TestPrincipalCacheIsFencedAgainstRevocation(t *testing.T) {
 		t.Fatalf("a restored session was answered %d %s", code, body)
 	}
 
-	// The security-fence lane never reads the cache. `/v1/me` is on it, so its
-	// cost does not fall on a repeat.
+	// An authority lane must not read the cache. `GET
+	// /v1/direct/profiles/{id}/restrictions` is registered on the security-fence
+	// lane (route_lanes.go), that lane runs as dbwork.ClassSecurityFence
+	// (admission.go), and strictPrincipal is true for that class
+	// (principal_cache.go), so `resolvePrincipal` skips the cache entirely. The
+	// `/v1/items` read above has already stored an entry for this token; live
+	// or expired, the reads below must not consult it.
+	//
+	// The lane is read back from the measured request rather than assumed from
+	// the generated table, so a route reclassified onto a cache-eligible lane
+	// fails here instead of quietly turning this back into a repeat-cost check.
+	profileRestrictions := "/v1/direct/profiles/" + f.viewers[0].Viewer.ProfileID + "/restrictions"
+	hitsBefore, missesBefore := principalCacheCounters(t, f)
 	ResetRouteCosts()
-	f.callTimed(token, "GET", "/v1/me", nil)
-	strictFirst := RouteCostFor("GET /v1/me").Statements
-	ResetRouteCosts()
-	f.callTimed(token, "GET", "/v1/me", nil)
-	strictSecond := RouteCostFor("GET /v1/me").Statements
-	if strictSecond < strictFirst {
-		t.Fatalf("an authority-lane request was served from the principal cache (%d then %d statements)", strictFirst, strictSecond)
+	if code, _, body := f.callTimed(token, "GET", profileRestrictions, nil); code != 200 {
+		t.Fatalf("first %s %d %s", profileRestrictions, code, body)
 	}
+	strictFirst := RouteCostFor("GET /v1/direct/profiles/{id}/restrictions")
+	ResetRouteCosts()
+	if code, _, body := f.callTimed(token, "GET", profileRestrictions, nil); code != 200 {
+		t.Fatalf("second %s %d %s", profileRestrictions, code, body)
+	}
+	strictSecond := RouteCostFor("GET /v1/direct/profiles/{id}/restrictions")
+	hitsAfter, missesAfter := principalCacheCounters(t, f)
+	if strictFirst.Lane != laneSecurityFence || strictSecond.Lane != laneSecurityFence {
+		t.Fatalf("the authority read ran on lane %q then %q, not the security-fence lane its live resolution depends on", strictFirst.Lane, strictSecond.Lane)
+	}
+	if strictFirst.Requests != 1 || strictSecond.Requests != 1 {
+		t.Fatalf("the authority reads were measured %d and %d times, not once each", strictFirst.Requests, strictSecond.Requests)
+	}
+	// Live authentication is positive SQL on both reads: whatever the cache
+	// holds for this token, the fenced lane paid to resolve it again.
+	if strictFirst.Statements == 0 || strictSecond.Statements == 0 {
+		t.Fatalf("an authority-lane request ran no statements (%d then %d)", strictFirst.Statements, strictSecond.Statements)
+	}
+	if strictSecond.Statements < strictFirst.Statements {
+		t.Fatalf("an authority-lane request was served from the principal cache (%d then %d statements)", strictFirst.Statements, strictSecond.Statements)
+	}
+	// Not only the cost: the cache's own entry point was never consulted, so
+	// its counters cannot have moved for either read.
+	if hitsAfter != hitsBefore || missesAfter != missesBefore {
+		t.Fatalf("an authority-lane request consulted the principal cache (hits %d -> %d, misses %d -> %d); a fenced lane must skip it", hitsBefore, hitsAfter, missesBefore, missesAfter)
+	}
+	// And the reading above is not vacuous: the same token, on the cache-
+	// eligible lane, does move those counters (a hit or, if the entry aged out,
+	// a miss), so the counters really are the cache's own.
+	if code, _, body := f.callTimed(token, "GET", "/v1/items?limit=5", nil); code != 200 {
+		t.Fatalf("control GET /v1/items %d %s", code, body)
+	}
+	controlHits, controlMisses := principalCacheCounters(t, f)
+	if controlHits+controlMisses <= hitsAfter+missesAfter {
+		t.Fatalf("a cache-eligible read left the counters at %d hits and %d misses; the fenced-lane reading above proves nothing", controlHits, controlMisses)
+	}
+	t.Logf("%s statements: %d then %d; principal cache hits %d -> %d, misses %d -> %d (control: %d hits, %d misses)", profileRestrictions, strictFirst.Statements, strictSecond.Statements, hitsBefore, hitsAfter, missesBefore, missesAfter, controlHits, controlMisses)
 
 	// An unknown token is refused every time and leaves nothing behind.
 	for i := 0; i < 2; i++ {
