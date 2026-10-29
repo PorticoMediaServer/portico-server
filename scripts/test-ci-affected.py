@@ -2359,11 +2359,13 @@ class CatalogShardCoverageTests(unittest.TestCase):
         names = [f"TestCase{i:04d}" for i in range(754)] + ["ExampleLibrary", "FuzzCursor"]
         packages = ["./internal/a", "./internal/catalog", "./internal/httpapi", "./internal/z"]
         selected = []
-        with patch.object(ci, "catalog_run_names", return_value=names):
+        with patch.object(ci, "catalog_run_names", return_value=names), \
+                patch.object(ci, "httpapi_run_names", return_value=["TestHttpA", "TestHttpB"]):
             for index in range(4):
                 plan = ci.full_go_selection("server", packages, index, 4)
                 ordinary = [p for p, pattern in plan if pattern is None]
-                self.assertEqual(ordinary, [p for p in ci.shard(packages, index, 4) if p != "./internal/catalog"])
+                self.assertEqual(ordinary, [p for p in ci.shard(packages, index, 4)
+                                            if p not in ("./internal/catalog", "./internal/httpapi")])
                 for package, pattern in plan:
                     if package == "./internal/catalog":
                         selected.extend(ci.selected_names(pattern))
@@ -2387,6 +2389,123 @@ class CatalogShardCoverageTests(unittest.TestCase):
         self.assertEqual(ci.GO_TEST_TIMEOUT, 780)
         self.assertEqual(ci.GO_PACKAGE_BACKSTOP, 900)
         self.assertEqual(vet.call_args.args[0], [(["bash", str(ci.ROOT / "scripts/vet-go.sh")], ci.ROOT / "server")])
+
+
+class HttpapiShardCoverageTests(unittest.TestCase):
+    """httpapi runs as exactly two anchored alternations on two existing workers."""
+
+    packages = ["./internal/a", "./internal/b", "./internal/catalog",
+                "./internal/httpapi", "./internal/z"]
+
+    def inventory(self):
+        return ([f"TestCase{index:04d}" for index in range(400)]
+                + ["TestNewlyAddedRoute", "ExampleLibrary", "FuzzCursor"])
+
+    def catalog_inventory(self):
+        return [f"TestCatalog{index:03d}" for index in range(30)] + ["FuzzCatalog"]
+
+    def owners(self, total):
+        owner = ci.shard_of(ci.HTTPAPI_PACKAGE, total)
+        return owner, (owner + max(1, total // 2)) % total
+
+    def test_every_httpapi_parent_runs_once_in_two_separate_shard_groups(self):
+        names = self.inventory()
+        catalog = self.catalog_inventory()
+        for total in (1, 2, 3, 4):
+            with patch.object(ci, "httpapi_run_names", return_value=names), \
+                    patch.object(ci, "catalog_run_names", return_value=catalog), \
+                    patch.object(ci, "httpapi_partitions", wraps=ci.httpapi_partitions) as partitions:
+                plans = [ci.full_go_selection("server", self.packages, index, total)
+                         for index in range(total)]
+            entries = [(index, pattern) for index, plan in enumerate(plans)
+                       for package, pattern in plan if package == ci.HTTPAPI_PACKAGE]
+            if total == 1:
+                self.assertEqual(entries, [(0, None)])
+                partitions.assert_not_called()
+                continue
+            owner, partner = self.owners(total)
+            self.assertNotEqual(owner, partner)
+            self.assertEqual([index for index, _ in entries], sorted({owner, partner}))
+            self.assertEqual(partitions.call_count, 2)
+            groups = [ci.selected_names(pattern) for _, pattern in entries]
+            for group in groups:
+                self.assertIsNotNone(group)
+            self.assertEqual(len(groups[0]), len(set(groups[0])))
+            self.assertEqual(groups[0] & groups[1], set())
+            self.assertEqual(groups[0] | groups[1], set(names))
+            # A new parent, an example and a fuzz seed are each in exactly one side.
+            for name in ("TestNewlyAddedRoute", "ExampleLibrary", "FuzzCursor"):
+                self.assertIn(name, groups[0] | groups[1])
+                self.assertEqual((name in groups[0]) + (name in groups[1]), 1)
+
+    def test_httpapi_inventory_is_listed_only_on_the_two_selected_indices(self):
+        names = self.inventory()
+        for total in (2, 3, 4):
+            owner, partner = self.owners(total)
+            for index in range(total):
+                with patch.object(ci, "httpapi_run_names", return_value=names) as inventory, \
+                        patch.object(ci, "catalog_run_names", return_value=self.catalog_inventory()):
+                    ci.full_go_selection("server", self.packages, index, total)
+                self.assertEqual(inventory.call_count, 1 if index in (owner, partner) else 0)
+
+    def test_unknown_missing_or_empty_inventory_fails_closed(self):
+        for total in (2, 3, 4):
+            owner, _ = self.owners(total)
+            with patch.object(ci, "httpapi_run_names",
+                              side_effect=RuntimeError("httpapi inventory unavailable")), \
+                    patch.object(ci, "catalog_run_names", return_value=self.catalog_inventory()):
+                with self.assertRaisesRegex(RuntimeError, "inventory unavailable"):
+                    ci.full_go_selection("server", self.packages, owner, total)
+        with patch.object(ci, "httpapi_run_names", return_value=["TestOnlyOne"]):
+            with self.assertRaisesRegex(RuntimeError, "cannot be split into two non-empty groups"):
+                ci.httpapi_partitions("server")
+        with patch.object(ci, "run_capture",
+                          return_value="ok  \tportico.local/server/internal/httpapi\n"):
+            with self.assertRaisesRegex(RuntimeError, "inventory is empty"):
+                ci.httpapi_run_names("server")
+        with patch.object(ci, "run_capture",
+                          side_effect=subprocess.CalledProcessError(1, ["go"])):
+            with self.assertRaisesRegex(RuntimeError, "failed with exit 1"):
+                ci.httpapi_run_names("server")
+
+    def test_other_package_and_catalog_ownership_is_unchanged(self):
+        names = self.inventory()
+        catalog = self.catalog_inventory()
+        for total in (2, 3, 4):
+            catalog_selected = []
+            for index in range(total):
+                with patch.object(ci, "httpapi_run_names", return_value=names), \
+                        patch.object(ci, "catalog_run_names", return_value=catalog):
+                    plan = ci.full_go_selection("server", self.packages, index, total)
+                ordinary = [package for package, pattern in plan if pattern is None]
+                self.assertEqual(ordinary, [
+                    package for package in ci.shard(self.packages, index, total)
+                    if package not in ("./internal/catalog", ci.HTTPAPI_PACKAGE)])
+                for package, pattern in plan:
+                    if package == "./internal/catalog":
+                        catalog_selected.extend(ci.selected_names(pattern))
+            self.assertEqual(sorted(catalog_selected), sorted(catalog))
+            self.assertEqual(len(catalog_selected), len(set(catalog_selected)))
+
+    def test_inventory_carries_the_official_tags_and_the_deadline_is_unchanged(self):
+        with patch.dict(ci.os.environ, {"PORTICO_GO_TAGS": "portico_rar7z,portico_cb7"}), \
+                patch.object(ci, "run_capture",
+                             return_value="TestAlpha\nExampleBeta\nFuzzGamma\nTestMain\n") as run:
+            self.assertEqual(ci.httpapi_run_names("server"),
+                             ["ExampleBeta", "FuzzGamma", "TestAlpha"])
+        self.assertEqual(run.call_args.args[0],
+                         ["go", "test", "-tags", "portico_rar7z,portico_cb7",
+                          "-list", "^(Test|Example|Fuzz)", "./internal/httpapi"])
+        self.assertEqual(ci.GO_TEST_TIMEOUT, 780)
+
+    def test_non_server_modules_and_one_shard_keep_one_whole_selection(self):
+        with patch.object(ci, "httpapi_run_names", side_effect=AssertionError("unexpected split")), \
+                patch.object(ci, "catalog_run_names", side_effect=AssertionError("unexpected split")):
+            for total in (1, 2, 4):
+                self.assertEqual(ci.full_go_selection("apikit", self.packages, 0, total),
+                                 [(package, None) for package in ci.shard(self.packages, 0, total)])
+            self.assertEqual(ci.full_go_selection("server", self.packages, 0, 1),
+                             [(package, None) for package in sorted(self.packages)])
 
 
 if __name__ == "__main__":

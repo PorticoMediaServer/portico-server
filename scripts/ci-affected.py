@@ -449,31 +449,89 @@ def shard(packages, index=0, total=1):
     return [package for position, package in enumerate(sorted(packages)) if position % total == index]
 
 
-def catalog_run_names(module):
-    """Use Go's built inventory, including examples and fuzz seeds, not source guesses."""
-    text = run_capture(["go", "test", *tag_args(), "-list", "^(Test|Example|Fuzz)",
-                        "./internal/catalog"], ROOT / module, timeout=GO_LIST_TIMEOUT)
+HTTPAPI_PACKAGE = "./internal/httpapi"
+
+
+def built_run_names(module, package):
+    """Go's built parent inventory for one package, including examples and fuzz seeds.
+
+    `go test -list` prints the same parent names the runner can select, so the
+    names it returns are the complete suite: every Test, Example and Fuzz seed,
+    with each parent name still selecting its own subtests. An empty or failed
+    inventory is an error, never permission to run nothing.
+    """
+    try:
+        text = run_capture(["go", "test", *tag_args(), "-list", "^(Test|Example|Fuzz)",
+                            package], ROOT / module, timeout=GO_LIST_TIMEOUT)
+    except CommandTimeout as error:
+        raise RuntimeError(f"{package} test inventory did not finish within "
+                           f"{error.timeout:g}s") from None
+    except subprocess.CalledProcessError as error:
+        raise RuntimeError(f"{package} test inventory failed with exit "
+                           f"{error.returncode}") from None
     names = {line.strip() for line in text.splitlines()
              if re.fullmatch(r"(?:Test[A-Z]\w*|Fuzz[A-Z]\w*|Example(?:_[A-Za-z0-9_]+|[A-Z]\w*)?)", line.strip())
              and line.strip() != "TestMain"}
     if not names:
-        raise RuntimeError("catalog test inventory is empty; refusing an incomplete CI split")
+        raise RuntimeError(f"{package} test inventory is empty; refusing an incomplete CI split")
     return sorted(names)
 
 
+def catalog_run_names(module):
+    """Use Go's built inventory, including examples and fuzz seeds, not source guesses."""
+    return built_run_names(module, "./internal/catalog")
+
+
+def httpapi_run_names(module):
+    """The built parent names of the package that no single 780 s deadline fits."""
+    return built_run_names(module, HTTPAPI_PACKAGE)
+
+
+def httpapi_partitions(module):
+    """Split httpapi's built parents into two stable anchored alternations.
+
+    Stable hashing puts every parent name in exactly one of two groups, so the
+    two runner invocations together declare the whole suite once and a newly
+    added test joins automatically. A missing inventory, or one that hashes
+    entirely to one side, fails closed instead of silently running a partial
+    or lopsided suite.
+    """
+    groups = ([], [])
+    for name in httpapi_run_names(module):
+        groups[shard_of(name, 2)].append(name)
+    if not groups[0] or not groups[1]:
+        raise RuntimeError("httpapi test inventory cannot be split into two non-empty groups")
+    return [tuple(group) for group in groups]
+
+
 def full_go_selection(module, packages, index, total):
-    """Keep package ownership stable; share catalog's complete run inventory across CI."""
+    """Keep package ownership stable; share catalog and httpapi inventories across CI."""
     selection = [(package, None) for package in shard(packages, index, total)]
-    if module != "server" or total == 1 or "./internal/catalog" not in packages:
+    if module != "server" or total == 1:
         return selection
-    selection = [(package, pattern) for package, pattern in selection
-                 if package != "./internal/catalog"]
-    # One anchored parent name selects all its subtests. Stable hashing also
-    # assigns every newly added test automatically, with no hand-maintained gaps.
-    names = [name for name in catalog_run_names(module)
-             if shard_of(name, total) == index]
-    if names:
-        selection.append(("./internal/catalog", "^(" + "|".join(names) + ")$"))
+    if "./internal/catalog" in packages:
+        selection = [(package, pattern) for package, pattern in selection
+                     if package != "./internal/catalog"]
+        # One anchored parent name selects all its subtests. Stable hashing also
+        # assigns every newly added test automatically, with no hand-maintained gaps.
+        names = [name for name in catalog_run_names(module)
+                 if shard_of(name, total) == index]
+        if names:
+            selection.append(("./internal/catalog", "^(" + "|".join(names) + ")$"))
+    if HTTPAPI_PACKAGE in packages:
+        # httpapi's declared suite exceeds one 780 s package deadline. It runs as
+        # exactly two anchored parent alternations on two existing shard workers:
+        # the owner always runs, and the partner is half the shard count away, so
+        # the pair is distinct. Its ordinary package slot is released here only;
+        # every other package keeps its own stable shard position.
+        selection = [(package, pattern) for package, pattern in selection
+                     if package != HTTPAPI_PACKAGE]
+        owner = shard_of(HTTPAPI_PACKAGE, total)
+        partner = (owner + max(1, total // 2)) % total
+        if index in (owner, partner):
+            groups = httpapi_partitions(module)
+            names = groups[0] if index == owner else groups[1]
+            selection.append((HTTPAPI_PACKAGE, "^(" + "|".join(names) + ")$"))
     return selection
 
 
