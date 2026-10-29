@@ -67,6 +67,7 @@ type Write struct {
 	changes        *changeSet
 	readOnly       bool
 	tx             *sql.Tx
+	database       *sql.DB
 	ctx            context.Context
 	// conn is set for security fences and durable user writes, which run on a
 	// connection of its own so that synchronous=FULL applies to it and to
@@ -137,7 +138,7 @@ func Begin(ctx context.Context, db *sql.DB, class Class) (*Write, error) {
 		return nil, err
 	}
 	held := &carried{tx: tx, class: class}
-	w := &Write{changes: changes, tx: tx, conn: conn, ctx: context.WithValue(ctx, writeKey{}, held), release: release, owned: held, plan: planFor(ctx, class), meter: meter, site: site}
+	w := &Write{database: db, changes: changes, tx: tx, conn: conn, ctx: context.WithValue(ctx, writeKey{}, held), release: release, owned: held, plan: planFor(ctx, class), meter: meter, site: site}
 	liveWrites.Store(tx, w)
 	w.changesAtStart = rowChanges(ctx, tx)
 	return w, nil

@@ -56,6 +56,9 @@ func (s *Service) SourceLooksUnmounted(ctx context.Context, job, source string) 
 // folder did not contain it. The file is missing from now; the titles it
 // backed are settled (a title with no file left is marked missing).
 func MarkInventoryMissingTx(ctx context.Context, tx *sql.Tx, source, job, object string, now time.Time) error {
+	if err := requireInventorySourceFreeTx(ctx, tx, source); err != nil {
+		return err
+	}
 	var asset, revision, state, since string
 	var observations int
 	var last string

@@ -30,6 +30,14 @@ func (s *Service) CommitInventoryLocalRefresh(ctx context.Context, job, object, 
 	if err != nil {
 		return err
 	}
+	if deferred, e := DeferInventorySourceTx(ctx, tx, source.ID); e != nil {
+		return e
+	} else if deferred {
+		if e = gated.Commit(); e != nil {
+			return e
+		}
+		return ErrInventoryItemOperation
+	}
 	policy, err := ScanPolicyTx(ctx, tx, source.LibraryID)
 	if err != nil {
 		return err
@@ -122,6 +130,9 @@ func (s *Service) CommitInventoryLocalRefresh(ctx context.Context, job, object, 
 		return err
 	}
 	if err = finishAudioMergeAdmissionsTx(ctx, tx, audioAdmissions); err != nil {
+		return err
+	}
+	if err = inventoryPublicationProgressTx(tx, source); err != nil {
 		return err
 	}
 	return gated.Commit()

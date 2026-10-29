@@ -171,7 +171,7 @@ func AdoptProviderIdentityStepTx(ctx context.Context, tx *sql.Tx, ref compactcat
 		return artistHandoffStepTx(ctx, tx, ref)
 	}
 	m, step, err := checkedMutationTx(ctx, tx, ref)
-	if err != nil || m.Status != "active" || step.Complete || step.Outcome == "blocked" {
+	if err != nil || m.Status != "active" || step.Complete || step.SourcePaused || step.Outcome == "blocked" {
 		return step, err
 	}
 	ctx = compactcatalog.WithMutationFamily(ctx, m.Family)

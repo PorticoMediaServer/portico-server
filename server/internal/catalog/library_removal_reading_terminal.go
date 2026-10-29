@@ -1,464 +1,405 @@
 package catalog
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"strconv"
+	"unicode/utf8"
+
+	"portico.local/server/internal/phasedpurge"
 )
 
-// Private Reading terminal cleanup for the library removal's existing phase 5.
-//
-// `removeLibraryBatchTx` finishes with `removeLibraryRowTx`, which deletes the
-// library, its folders and the catalogue handle. Reading keeps private rows
-// keyed to the catalogue handle (`reading_path_scope.library_id` and the
-// library_id columns of the inputs/work/pending tables) with no foreign key to
-// the public rows, so nothing there cascades when the public library goes. The
-// Reading dispatcher also only reclaims scopes it can claim: a settled
-// (`queued=0`) or parked scope is never selected, and domain28 work can hold a
-// runnable one back forever.
-//
-// This file hangs one bounded terminal drain on the EXISTING phase 5, before
-// and after the library row delete. It does not add phase 6; the installed
-// `catalog_removal_progress` still checks `phase BETWEEN 0 AND 5`. It adds no
-// table, trigger, cap or second deletion framework:
-//
-//  1. scope stage: ONE private scope at a time through the existing
-//     `RetireReadingScopePage` (`library_removal_reading_scope.go`). That
-//     helper selects one raw primary-key child per turn and already reclaims
-//     activated, settled and parked scopes without dispatch admission. Its
-//     compiled plan digest and `internal/phasedpurge` cursor stay the only
-//     cursor format;
-//  2. residue stage: bounded, library-keyed slices for the rows the scope page
-//     deliberately leaves to the library/source removal owner:
-//     `reading_path_availability_pending`, `reading_path_dirty_work`,
-//     `reading_path_semantic_pending` and `reading_path_inputs`, then the
-//     library's source barriers and blocks. A raw window of source ids is read
-//     BEFORE any barrier/block filter, and each turn deletes at most ONE raw
-//     barrier row or ONE raw block row: a limited parent is never used as the
-//     bound of an unbounded child;
-//  3. final stage: the unchanged `removeLibraryRowTx` runs in this same writer
-//     transaction. Its root `UPDATE` and the folder/handle `DELETE` fire the
-//     installed Reading triggers (`reading_path_catalog_libraries_update`,
-//     `reading_path_catalog_libraries_delete`,
-//     `reading_path_libraries_update`, `reading_path_library_sources_delete`;
-//     the handle delete is unconditional), which requeue inputs/work for the
-//     already deleted handle. Those final effects are drained here, bounded,
-//     and the handle's terminal emptiness is then PROVED in the same
-//     transaction: a missing row in `catalog_libraries` is never taken as a
-//     reason to report success over private rows that still exist. A remainder
-//     is a visible error, never a silent Done.
-//
-// Durability. The caller stores the only durable state in the existing
-// `catalog_removal_progress.object_cursor` column while `phase=5`:
-//
-//	{"h":<catalogue handle>,"s":"scope"|"residue","q":<scope id>,"c":<phasedpurge envelope>,"r":<source id>}
-//
-// `c` is exactly the string `RetireReadingScopePage` returned; it is not a
-// second cursor type. A stored state with another handle, an unknown stage or
-// no scope is validated and restarted from the scope stage: every unit is
-// state-driven, so restarting re-proves the current database and cannot skip a
-// row. A sub-cursor from an older compiled plan, or one carrying a row key this
-// build never persists, is likewise restarted from that scope's beginning
-// instead of blocking the removal on a cursor that cannot resume. See
-// `readingTerminalLoad` and `readingTerminalScopeStep`.
-//
-// Costs (source declarations, not a measured proof):
-//
-//   - one scope turn: the scope page's existing ledger (owner 5 reads, 7
-//     effects at most: the unit's raw row plus the caller's single Save row),
-//     plus ONE indexed `reading_path_scope_library` pick. The Save row is this
-//     turn's progress-row upsert;
-//   - one residue turn: at most one bounded delete per turn. Pending and work
-//     are limited to `readingTerminalWorkBatch` raw rows through their own
-//     library-leading index/PK; semantic/inputs are single primary-key rows;
-//     the source window reads at most `readingTerminalSourceWindow` indexed
-//     `library_sources` ids, probes each with at most one barrier and one block
-//     point statement, and deletes at most one raw barrier or block row. The
-//     turn's progress-row upsert is the only other effect;
-//   - one final turn: the existing `removeLibraryRowTx` (its own statements are
-//     unchanged and not re-claimed here), bounded residue rounds, and five
-//     EXISTS probes keyed by the handle.
-//
-// The shared `internal/phasedpurge` limits (24 effects / 128 reads) are
-// untouched. The scope page remains the only user of them; the terminal slices
-// are bounded by the constants below and add no unbounded statement.
-//
-// Not claimed: rows with no library handle (`reading_path_head`, publication
-// projections, public/derived rows) continue to follow the catalogue and
-// container phases that already own them; `reading_path_slot` is detached only
-// by the scope page and only when it names a build of that supplied scope, so
-// another library's live slot, projections and `reading_path_clock` are never
-// touched here.
-
+// Phase 5 owns private Reading lifetime cleanup, independently of dispatcher
+// admission. The captured retired handle remains alive throughout this drain.
+// The generic library/source delete is NOT an admitted physical unit: after
+// draining, return a visible blocker without invoking its savepoint suppression.
+// See P2-59-O022-READING-TERMINAL-r2.md for the literal cost and final-effect proof.
 const (
-	// readingTerminalWorkBatch bounds one pending/work slice. It matches the
-	// Reading worker's own raw batch, so a terminal turn never asks for more
-	// rows than the existing dispatcher would consume in one step.
-	readingTerminalWorkBatch = 128
-	// readingTerminalSourceWindow bounds the raw `library_sources` window read
-	// before any barrier/block filter. It is deliberately small: sources are
-	// owner-created and few, and each source's blocks are drained one row at a
-	// time rather than as an unbounded child of a limited parent.
-	readingTerminalSourceWindow = 32
-	// readingTerminalFinalRounds bounds the post-delete drain loop. The final
-	// delete can requeue at most one input row and one work row per library and
-	// per folder; any remainder after this many bounded rounds is an error.
-	readingTerminalFinalRounds = 1024
-
-	readingTerminalScopeStage   = "scope"
-	readingTerminalResidueStage = "residue"
+	readingTerminalScopeStage        = "scope"
+	readingTerminalResidueStage      = "residue"
+	// Includes caller handle/progress reads, our lifetime/scope/source points,
+	// both engine meter reads and conservative spare point probes. Save costs 1.
+	readingTerminalOwnerReads = 16
+	// FK/trigger-inclusive source envelope for the unchanged scope helper:
+	// engine runs at most four units, or eight empty proofs (at most 4 each).
+	// 16+4*12=64 and 16+8*4=48 stay below the shared 128 reads.
+	readingTerminalScopeUnitReads    = 12
+	readingTerminalLifetimeSQL       = `SELECT library_id,retired FROM catalog_libraries WHERE id=?1`
+	readingTerminalScopePickSQL      = `SELECT id FROM reading_path_scope INDEXED BY reading_path_scope_library WHERE library_id=?1 ORDER BY id LIMIT 1`
+	readingTerminalSourceFirstSQL    = `SELECT id FROM library_sources INDEXED BY library_sources_library WHERE library_id=?1 ORDER BY id LIMIT 1`
+	readingTerminalSourcePickSQL     = `SELECT id FROM library_sources INDEXED BY library_sources_library WHERE library_id=?1 AND id>?2 ORDER BY id LIMIT 1`
 )
 
-var errReadingTerminalResidue = errors.New("library removal left private Reading rows behind")
-
-const (
-	// readingTerminalScopePickSQL is the one scope pick per turn. The partial
-	// runnable index is deliberately not used: settled and parked scopes must
-	// be reclaimed too.
-	readingTerminalScopePickSQL  = `SELECT id FROM reading_path_scope INDEXED BY reading_path_scope_library WHERE library_id=?1 ORDER BY id LIMIT 1`
-	readingTerminalScopeCountSQL = `SELECT EXISTS(SELECT 1 FROM reading_path_scope INDEXED BY reading_path_scope_library WHERE library_id=?1)`
-
-	// readingTerminalPendingDeleteSQL: an availability delete fires
-	// reading_path_pending_delete, which requeues one 'pending' work row. Work
-	// is therefore drained after the pending tables in every residue turn.
-	readingTerminalPendingDeleteSQL  = `DELETE FROM reading_path_availability_pending WHERE entity_id IN(SELECT entity_id FROM reading_path_availability_pending WHERE library_id=?1 ORDER BY entity_id LIMIT ?2)`
-	readingTerminalWorkDeleteSQL     = `DELETE FROM reading_path_dirty_work WHERE (library_id,kind,work_key) IN(SELECT library_id,kind,work_key FROM reading_path_dirty_work WHERE library_id=?1 ORDER BY kind,work_key LIMIT ?2)`
-	readingTerminalSemanticDeleteSQL = `DELETE FROM reading_path_semantic_pending WHERE library_id=?1`
-	readingTerminalInputsDeleteSQL   = `DELETE FROM reading_path_inputs WHERE library_id=?1`
-
-	// readingTerminalSourceWindowSQL is the raw source window. `id>` keeps the
-	// walk forward-only without re-reading the whole library each turn.
-	readingTerminalSourceWindowSQL = `SELECT id FROM library_sources WHERE library_id=?1 AND id>?2 ORDER BY id LIMIT ?3`
-	// readingTerminalBarrierDeleteSQL is one raw barrier row: its primary key is
-	// the source id, so a source window never bounds an unbounded child.
-	readingTerminalBarrierDeleteSQL = `DELETE FROM reading_path_source_barrier WHERE source_id=?1`
-	// readingTerminalBlockDeleteSQL selects and deletes ONE block row of one
-	// source. A parent source LIMIT is never reused as a child bound.
-	readingTerminalBlockDeleteSQL = `DELETE FROM reading_path_block WHERE id=(SELECT id FROM reading_path_block WHERE source_id=?1 ORDER BY id LIMIT 1)`
+var (
+	errReadingTerminalPlan       = errors.New("Reading terminal cursor does not belong to this compiled plan")
+	errReadingTerminalCursor     = errors.New("malformed Reading terminal cursor")
+	errReadingTerminalFinalUnit  = errors.New("Reading private drain complete; library/source final physical unit is not admitted: removeLibraryRowTx has unbounded source/root and generic reference deletes and suppresses DELETE failure with SAVEPOINT library_row; keep retired handle and phase-5 cursor")
 )
 
-// readingTerminalState is the durable phase-5 cursor stored in the existing
-// `catalog_removal_progress.object_cursor`. It wraps (does not replace) the
-// scope purge's own stored envelope.
-type readingTerminalState struct {
-	Handle int64  `json:"h"`
-	Stage  string `json:"s"`
-	Scope  int64  `json:"q,omitempty"`
-	Cursor string `json:"c,omitempty"`
-	Source string `json:"r,omitempty"`
+// Each descriptor selects ONE raw child, deletes by its full PK, and probes
+// emptiness through that same leading index. effects includes trigger writes.
+// Source selection is a separate raw LIMIT 1, never a bound on its children.
+type readingTerminalUnit struct {
+	name             string
+	reads, effects   int
+	pick, del, empty string
+	source           bool
 }
 
-func readingTerminalLoad(raw string, handle int64) readingTerminalState {
-	fresh := readingTerminalState{Handle: handle, Stage: readingTerminalScopeStage}
+var readingTerminalUnits = []readingTerminalUnit{
+	{"availability", 5, 3,
+		`SELECT entity_id FROM reading_path_availability_pending INDEXED BY reading_path_availability_library WHERE library_id=?1 ORDER BY entity_id LIMIT 1`,
+		`DELETE FROM reading_path_availability_pending WHERE entity_id=?1 AND library_id=?2`,
+		`SELECT NOT EXISTS(SELECT 1 FROM reading_path_availability_pending INDEXED BY reading_path_availability_library WHERE library_id=?1)`, false},
+	{"semantic", 2, 1,
+		`SELECT library_id FROM reading_path_semantic_pending WHERE library_id=?1`,
+		`DELETE FROM reading_path_semantic_pending WHERE library_id=?1 AND library_id=?2`,
+		`SELECT NOT EXISTS(SELECT 1 FROM reading_path_semantic_pending WHERE library_id=?1)`, false},
+	{"inputs", 2, 1,
+		`SELECT library_id FROM reading_path_inputs WHERE library_id=?1`,
+		`DELETE FROM reading_path_inputs WHERE library_id=?1 AND library_id=?2`,
+		`SELECT NOT EXISTS(SELECT 1 FROM reading_path_inputs WHERE library_id=?1)`, false},
+	{"work", 2, 1,
+		`SELECT kind,work_key FROM reading_path_dirty_work WHERE library_id=?1 ORDER BY kind,work_key LIMIT 1`,
+		`DELETE FROM reading_path_dirty_work WHERE library_id=?1 AND kind=?2 AND work_key=?3`,
+		`SELECT NOT EXISTS(SELECT 1 FROM reading_path_dirty_work WHERE library_id=?1)`, false},
+	{"blocks", 2, 1,
+		`SELECT id FROM reading_path_block INDEXED BY reading_path_block_source WHERE source_id=?1 ORDER BY id LIMIT 1`,
+		`DELETE FROM reading_path_block WHERE id=?1 AND source_id=?2`,
+		`SELECT NOT EXISTS(SELECT 1 FROM reading_path_block INDEXED BY reading_path_block_source WHERE source_id=?1)`, true},
+	{"barrier", 2, 1,
+		`SELECT source_id FROM reading_path_source_barrier WHERE source_id=?1`,
+		`DELETE FROM reading_path_source_barrier WHERE source_id=?1 AND source_id=?2`,
+		`SELECT NOT EXISTS(SELECT 1 FROM reading_path_source_barrier WHERE source_id=?1)`, true},
+}
+
+// Digest binds the parent state, scope plan, residue plan, literals, declared
+// costs, ordering, control-save semantics and unchanged shared engine limits.
+var readingTerminalDigest = func() string {
+	h := sha256.New()
+	write := func(s string) {
+		fmt.Fprintf(h, "%d:%s|", len(s), s)
+	}
+	for _, s := range []string{"p2-59-reading-terminal-r2", ReadingScopePurgePlanDigest(),
+		readingTerminalLifetimeSQL, readingTerminalScopePickSQL, readingTerminalSourceFirstSQL, readingTerminalSourcePickSQL,
+		"control:empty-unit/verify/finalize-save", "source:raw-successor/verify/advance-save",
+		"canonical-parent/scope/residue-cursors;source-binding-before-scope-rewind;missing-scope-requires-terminal-unit",
+		strconv.Itoa(readingTerminalOwnerReads), strconv.Itoa(readingTerminalScopeUnitReads), "save-effects:1",
+		strconv.Itoa(phasedpurge.EffectLimit), strconv.Itoa(phasedpurge.ReadLimit)} {
+		write(s)
+	}
+	for _, u := range readingTerminalUnits {
+		for _, s := range []string{u.name, "phase:0", strconv.Itoa(u.reads), strconv.Itoa(u.effects),
+			u.pick, u.del, u.empty, strconv.FormatBool(u.source)} {
+			write(s)
+		}
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}()
+
+type readingTerminalState struct {
+	Digest      string `json:"d"`
+	Handle      int64  `json:"h"`
+	Stage       string `json:"s"`
+	Scope       int64  `json:"q,omitempty"`
+	ScopeCursor string `json:"p,omitempty"`
+	// After is advanced only after all units for the raw source were verified.
+	After  *string `json:"a,omitempty"`
+	Source *string `json:"r,omitempty"`
+	Cursor string  `json:"c,omitempty"`
+}
+
+func readingTerminalLoad(raw string, handle int64) (readingTerminalState, error) {
+	fresh := readingTerminalState{Digest: readingTerminalDigest, Handle: handle, Stage: readingTerminalScopeStage}
 	if raw == "" {
-		return fresh
+		return fresh, nil
 	}
 	var st readingTerminalState
-	if err := json.Unmarshal([]byte(raw), &st); err != nil {
-		return fresh
+	if !utf8.ValidString(raw) {
+		return st, errReadingTerminalCursor
 	}
-	if st.Handle != handle || st.Scope < 0 {
-		return fresh
+	d := json.NewDecoder(bytes.NewBufferString(raw))
+	d.DisallowUnknownFields()
+	if err := d.Decode(&st); err != nil {
+		return st, fmt.Errorf("%w: %v", errReadingTerminalCursor, err)
 	}
-	switch st.Stage {
-	case readingTerminalScopeStage:
-		if st.Scope == 0 {
-			st.Cursor = ""
+	var extra any
+	if err := d.Decode(&extra); err != io.EOF {
+		return st, errReadingTerminalCursor
+	}
+	if st.Digest != readingTerminalDigest {
+		return st, errReadingTerminalPlan
+	}
+	if st.Handle != handle || handle <= 0 || st.Scope < 0 {
+		return st, errReadingTerminalCursor
+	}
+	if st.Stage != readingTerminalScopeStage && st.Stage != readingTerminalResidueStage {
+		return st, errReadingTerminalCursor
+	}
+	if st.Stage == readingTerminalScopeStage && (st.After != nil || st.Source != nil || st.Cursor != "" || (st.Scope == 0 && st.ScopeCursor != "")) {
+		return st, errReadingTerminalCursor
+	}
+	if st.Stage == readingTerminalResidueStage && (st.Scope != 0 || st.ScopeCursor != "") {
+		return st, errReadingTerminalCursor
+	}
+	if st.Scope > 0 {
+		if st.ScopeCursor == "" {
+			return st, errReadingTerminalCursor
 		}
-		st.Source = ""
-		return st
-	case readingTerminalResidueStage:
-		st.Scope, st.Cursor = 0, ""
-		return st
-	default:
-		return fresh
+		inner, err := readingScopePurgeDecodeStored(st.ScopeCursor)
+		if err != nil {
+			return st, err
+		}
+		var envelope readingScopePurgeStoredCursor
+		if err := json.Unmarshal([]byte(st.ScopeCursor), &envelope); err != nil {
+			return st, ErrReadingScopePurgeCursor
+		}
+		canonical, err := json.Marshal(envelope)
+		if err != nil || string(canonical) != st.ScopeCursor {
+			return st, ErrReadingScopePurgeCursor
+		}
+		cursor, err := phasedpurge.DecodeCursor(inner, readingScopePurgePlan(&readingScopePurgeState{}))
+		if err != nil {
+			return st, fmt.Errorf("%w: %w", ErrReadingScopePurgeCursor, err)
+		}
+		canonicalInner, err := phasedpurge.EncodeCursor(cursor)
+		if err != nil || canonicalInner != inner {
+			return st, ErrReadingScopePurgeCursor
+		}
 	}
+	// Only our canonical persisted encoding is accepted (also rejects duplicate
+	// fields, null and omitted/extra state). Never repair or reset an invalid plan.
+	encoded, err := json.Marshal(st)
+	if err != nil || string(encoded) != raw {
+		return st, errReadingTerminalCursor
+	}
+	return st, nil
 }
 
-func readingTerminalEncode(st readingTerminalState) (string, error) {
+func readingTerminalSave(ctx context.Context, tx *sql.Tx, p *removalProgress, st readingTerminalState) error {
 	raw, err := json.Marshal(st)
 	if err != nil {
-		return "", err
-	}
-	return string(raw), nil
-}
-
-// removeLibraryReadingTerminalTx advances phase 5 by one bounded turn. It
-// returns more=false only after it has run the existing final row deletion and
-// proved that no private Reading row still names the handle. The caller saves
-// removalProgress when more is true; when more is false the row deletion has
-// already removed the progress row.
-func removeLibraryReadingTerminalTx(ctx context.Context, tx *sql.Tx, library string, handle int64, progress *removalProgress) (bool, error) {
-	st := readingTerminalLoad(progress.objectCursor, handle)
-	for {
-		switch st.Stage {
-		case readingTerminalScopeStage:
-			worked, err := readingTerminalScopeStep(ctx, tx, handle, &st)
-			if err != nil {
-				return false, err
-			}
-			if worked {
-				return true, readingTerminalStore(progress, st)
-			}
-			st.Stage = readingTerminalResidueStage
-		case readingTerminalResidueStage:
-			worked, err := readingTerminalResidueStep(ctx, tx, handle, &st)
-			if err != nil {
-				return false, err
-			}
-			if worked {
-				return true, readingTerminalStore(progress, st)
-			}
-			if err := readingTerminalFinalTx(ctx, tx, library, handle); err != nil {
-				return false, err
-			}
-			return false, nil
-		default:
-			st = readingTerminalState{Handle: handle, Stage: readingTerminalScopeStage}
-		}
-	}
-}
-
-func readingTerminalStore(progress *removalProgress, st readingTerminalState) error {
-	raw, err := readingTerminalEncode(st)
-	if err != nil {
 		return err
 	}
-	progress.objectCursor = raw
-	return nil
+	p.objectCursor = string(raw)
+	return p.saveTx(ctx, tx)
 }
 
-// readingTerminalScopeStep drains one private scope through the existing page.
-// It reports worked=true when a page ran or a scope row was proved gone; the
-// caller then persists and yields. A page that reports no progress is an error,
-// never a silent Done.
-func readingTerminalScopeStep(ctx context.Context, tx *sql.Tx, handle int64, st *readingTerminalState) (bool, error) {
-	for {
-		if st.Scope == 0 {
-			var scope int64
-			err := tx.QueryRowContext(ctx, readingTerminalScopePickSQL, handle).Scan(&scope)
-			if errors.Is(err, sql.ErrNoRows) {
-				// No scope row remains. This is not terminal on its own: the
-				// residue stage below still has to drain and prove inputs,
-				// work, pending, barriers and blocks.
-				return false, nil
-			}
-			if err != nil {
-				return false, err
-			}
-			st.Scope = scope
+// This function saves inside the engine meter. The phase-5 hook MUST yield
+// directly, without a second save or entering the generic final delete.
+func removeLibraryReadingTerminalTx(ctx context.Context, tx *sql.Tx, library string, handle int64, p *removalProgress) (bool, error) {
+	st, err := readingTerminalLoad(p.objectCursor, handle)
+	if err != nil {
+		return false, err
+	}
+	// Validate a residue cursor before considering a legitimate scope rewind.
+	if st.Stage == readingTerminalResidueStage {
+		cursor, err := phasedpurge.DecodeCursor(st.Cursor, readingTerminalPlan(handle, sql.NullString{}))
+		if err != nil {
+			return false, fmt.Errorf("%w: %w", errReadingTerminalCursor, err)
 		}
-		scope := st.Scope
+		if st.Cursor != "" {
+			canonical, err := phasedpurge.EncodeCursor(cursor)
+			if err != nil || canonical != st.Cursor {
+				return false, errReadingTerminalCursor
+			}
+		}
+	}
+	var actual string
+	var retired int
+	if err := tx.QueryRowContext(ctx, readingTerminalLifetimeSQL, handle).Scan(&actual, &retired); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, ErrReadingScopePurgeLifetime
+		}
+		return false, err
+	}
+	if actual != library || retired != 1 {
+		return false, ErrReadingScopePurgeLifetime
+	}
+
+	// One raw source; full child PKs, not this parent limit, bound each delete.
+	var source sql.NullString
+	if st.Stage == readingTerminalResidueStage {
+		if st.After == nil {
+			err = tx.QueryRowContext(ctx, readingTerminalSourceFirstSQL, library).Scan(&source)
+		} else {
+			err = tx.QueryRowContext(ctx, readingTerminalSourcePickSQL, library, *st.After).Scan(&source)
+		}
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return false, err
+		}
+		if st.Source != nil && (!source.Valid || source.String != *st.Source) {
+			return false, fmt.Errorf("%w: captured source changed during residue proof", errReadingTerminalCursor)
+		}
+		if source.Valid {
+			st.Source = &source.String
+		}
+	}
+
+	// The non-runnable index is deliberate: parked/settled/domain28 state has
+	// no authority over private lifetime reclamation.
+	if st.Scope == 0 {
+		var scope int64
+		err := tx.QueryRowContext(ctx, readingTerminalScopePickSQL, handle).Scan(&scope)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return false, err
+		}
+		if err == nil {
+			// A real reappearing scope requires a fresh residue proof afterward.
+			// This is state-driven invalidation, never recovery from a bad cursor.
+			st.Stage, st.Scope, st.After, st.Source, st.Cursor = readingTerminalScopeStage, scope, nil, nil, ""
+		}
+	}
+	if st.Scope != 0 {
 		out, err := RetireReadingScopePage(ctx, tx, ReadingScopePurgeRequest{
-			ScopeID:       scope,
-			LibraryHandle: handle,
-			StoredCursor:  st.Cursor,
-			Save: func(_ context.Context, _ *sql.Tx, stored string) error {
-				st.Cursor = stored
-				return nil
+			ScopeID: st.Scope, LibraryHandle: handle, StoredCursor: st.ScopeCursor,
+			Save: func(ctx context.Context, tx *sql.Tx, stored string) error {
+				st.ScopeCursor = stored
+				return readingTerminalSave(ctx, tx, p, st)
 			},
 		})
-		if errors.Is(err, ErrReadingScopePurgePlan) || errors.Is(err, ErrReadingScopePurgeCursor) {
-			// The durable sub-cursor was written by a different compiled plan,
-			// or carries a row key this build never persists. Both are refused
-			// before a unit runs. The unit plan is state-driven, so restarting
-			// this scope from its beginning re-proves the rows it has now and
-			// cannot skip one. A vanished lifetime is NOT restarted here.
-			st.Cursor = ""
-			out, err = RetireReadingScopePage(ctx, tx, ReadingScopePurgeRequest{
-				ScopeID:       scope,
-				LibraryHandle: handle,
-				Save: func(_ context.Context, _ *sql.Tx, stored string) error {
-					st.Cursor = stored
-					return nil
-				},
-			})
-		}
 		if err != nil {
-			return false, err
+			return false, err // including strict scope-plan/cursor refusal
 		}
-		if out.Done {
-			// The scope row is proved gone (including its slot detach,
-			// builds/captures/representatives/stages, keys and entities). Drop
-			// the sub-cursor and pick the next scope. A Done with no work is a
-			// pure proof (for example a scope already removed), so it may
-			// continue in this transaction without an effect.
-			st.Scope, st.Cursor = 0, ""
-			if out.Worked {
-				return true, nil
+		if !out.Done {
+			if !out.Worked {
+				return false, phasedpurge.ErrNoProgress
 			}
-			continue
-		}
-		if !out.Worked {
-			return false, fmt.Errorf("Reading scope %d page made no progress", scope)
-		}
-		st.Cursor = out.StoredCursor
-		return true, nil
-	}
-}
-
-// readingTerminalResidueStep drains one bounded library-keyed slice or one raw
-// source barrier/block row. It reports worked=true when the caller must save
-// and yield. When it reports false the residue is proved empty for the
-// library's handle and current sources.
-func readingTerminalResidueStep(ctx context.Context, tx *sql.Tx, handle int64, st *readingTerminalState) (bool, error) {
-	for _, q := range []struct {
-		sql  string
-		args []any
-	}{
-		{readingTerminalPendingDeleteSQL, []any{handle, readingTerminalWorkBatch}},
-		{readingTerminalWorkDeleteSQL, []any{handle, readingTerminalWorkBatch}},
-		{readingTerminalSemanticDeleteSQL, []any{handle}},
-		{readingTerminalInputsDeleteSQL, []any{handle}},
-	} {
-		n, err := readingTerminalExec(ctx, tx, q.sql, q.args...)
-		if err != nil {
-			return false, err
-		}
-		if n > 0 {
 			return true, nil
 		}
-	}
-	worked, err := readingTerminalSourceStep(ctx, tx, handle, st)
-	if err != nil {
-		return false, err
-	}
-	if worked {
-		return true, nil
-	}
-	// A scope must not reappear behind the residue pass. The scope page's own
-	// verification rewinds one scope; this is the library-level equivalent, so
-	// a reappearing scope is drained before the final delete rather than
-	// hidden by it.
-	var scopes int64
-	if err := tx.QueryRowContext(ctx, readingTerminalScopeCountSQL, handle).Scan(&scopes); err != nil {
-		return false, err
-	}
-	if scopes != 0 {
-		st.Stage = readingTerminalScopeStage
-		st.Scope, st.Cursor, st.Source = 0, "", ""
-		return true, nil
-	}
-	return false, nil
-}
-
-// readingTerminalSourceStep reads the raw source window BEFORE any filter and
-// then touches at most one barrier row or one block row of one source. A source
-// is only passed once both its barrier and all its blocks are gone.
-func readingTerminalSourceStep(ctx context.Context, tx *sql.Tx, handle int64, st *readingTerminalState) (bool, error) {
-	rows, err := tx.QueryContext(ctx, readingTerminalSourceWindowSQL, handle, st.Source, readingTerminalSourceWindow)
-	if err != nil {
-		return false, err
-	}
-	var sources []string
-	for rows.Next() {
-		var source string
-		if err = rows.Scan(&source); err != nil {
-			rows.Close()
-			return false, err
-		}
-		sources = append(sources, source)
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		return false, err
-	}
-	for _, source := range sources {
-		n, err := readingTerminalExec(ctx, tx, readingTerminalBarrierDeleteSQL, source)
+		// An absent scope is expected only after this plan's scope DELETE
+		// persisted Unit==len(plan). An arbitrary missing target is a visible
+		// mismatch, not a reason to skip to another scope.
+		inner, err := readingScopePurgeDecodeStored(st.ScopeCursor)
 		if err != nil {
 			return false, err
 		}
-		if n > 0 {
+		cursor, err := phasedpurge.DecodeCursor(inner, readingScopePurgePlan(&readingScopePurgeState{}))
+		if err != nil || cursor.Unit != len(readingScopePurgeSteps) || cursor.Verify != 0 {
+			return false, fmt.Errorf("%w: scope disappeared before its terminal cursor", errReadingTerminalCursor)
+		}
+		st.Scope, st.ScopeCursor = 0, ""
+		return readingTerminalSaveTurn(ctx, tx, p, st)
+	}
+	if st.Stage == readingTerminalScopeStage {
+		st.Stage = readingTerminalResidueStage
+		return readingTerminalSaveTurn(ctx, tx, p, st)
+	}
+
+	plan := readingTerminalPlan(handle, source)
+	cursor, err := phasedpurge.DecodeCursor(st.Cursor, plan)
+	if err != nil {
+		return false, fmt.Errorf("%w: %w", errReadingTerminalCursor, err)
+	}
+	_, err = phasedpurge.Turn(ctx, tx, plan, cursor, phasedpurge.Owner{
+		ReadBound: readingTerminalOwnerReads,
+		Save: func(ctx context.Context, tx *sql.Tx, c phasedpurge.Cursor) error {
+			var err error
+			st.Cursor, err = phasedpurge.EncodeCursor(c)
+			if err != nil {
+				return err
+			}
+			return readingTerminalSave(ctx, tx, p, st)
+		},
+		Finalize: func(ctx context.Context, tx *sql.Tx) error {
+			if !source.Valid {
+				// No generic DELETE, no hidden savepoint failure, no final drain
+				// loop. Caller rolls back this proof-only turn on the blocker.
+				return errReadingTerminalFinalUnit
+			}
+			st.After, st.Source, st.Cursor = &source.String, nil, ""
+			return readingTerminalSave(ctx, tx, p, st)
+		},
+	})
+	return err == nil, err
+}
+
+// State-only transitions still save once INSIDE the existing engine's meter.
+func readingTerminalSaveTurn(ctx context.Context, tx *sql.Tx, p *removalProgress, st readingTerminalState) (bool, error) {
+	plan := []phasedpurge.Unit{{Phase: 0, Name: "terminal_state", ReadBound: 1,
+		Run: func(context.Context, *sql.Tx, []phasedpurge.Key) (phasedpurge.Outcome, error) {
+			return phasedpurge.Outcome{Drained: true}, nil
+		},
+		Empty: func(context.Context, *sql.Tx) (bool, error) {
 			return true, nil
-		}
-		n, err = readingTerminalExec(ctx, tx, readingTerminalBlockDeleteSQL, source)
-		if err != nil {
-			return false, err
-		}
-		if n > 0 {
-			return true, nil
-		}
-		st.Source = source
-	}
-	if len(sources) == readingTerminalSourceWindow {
-		// The window was full: persist the forward position and read the next
-		// raw window on the following turn.
-		return true, nil
-	}
-	return false, nil
+		},
+	}}
+	_, err := phasedpurge.Turn(ctx, tx, plan, phasedpurge.Cursor{Unit: len(plan)}, phasedpurge.Owner{
+		ReadBound: readingTerminalOwnerReads,
+		Save: func(context.Context, *sql.Tx, phasedpurge.Cursor) error {
+			return phasedpurge.ErrPlan
+		},
+		Finalize: func(ctx context.Context, tx *sql.Tx) error {
+			return readingTerminalSave(ctx, tx, p, st)
+		},
+	})
+	return err == nil, err
 }
 
-// readingTerminalFinalTx deletes the library row with the unchanged existing
-// statement set, drains the Reading rows its own triggers requeue, and then
-// proves the handle's terminal emptiness in this same writer transaction.
-func readingTerminalFinalTx(ctx context.Context, tx *sql.Tx, library string, handle int64) error {
-	if err := removeLibraryRowTx(ctx, tx, library); err != nil {
-		return err
-	}
-	empty := false
-	for round := 0; round < readingTerminalFinalRounds && !empty; round++ {
-		n, err := readingTerminalDeleteResidue(ctx, tx, handle)
-		if err != nil {
-			return err
+func readingTerminalPlan(handle int64, source sql.NullString) []phasedpurge.Unit {
+	plan := make([]phasedpurge.Unit, 0, len(readingTerminalUnits))
+	for _, step := range readingTerminalUnits {
+		u := step
+		var owner any = handle
+		if u.source {
+			owner = source.String
 		}
-		empty = n == 0
+		plan = append(plan, phasedpurge.Unit{Phase: 0, Name: u.name, ReadBound: u.reads,
+			Run: func(ctx context.Context, tx *sql.Tx, _ []phasedpurge.Key) (phasedpurge.Outcome, error) {
+				if u.source && !source.Valid {
+					return phasedpurge.Outcome{Drained: true}, nil
+				}
+				var args []any
+				if u.name == "work" {
+					var kind, key string
+					err := tx.QueryRowContext(ctx, u.pick, owner).Scan(&kind, &key)
+					if errors.Is(err, sql.ErrNoRows) {
+						return phasedpurge.Outcome{Drained: true}, nil
+					}
+					if err != nil {
+						return phasedpurge.Outcome{}, err
+					}
+					args = []any{owner, kind, key}
+				} else {
+					var key any
+					err := tx.QueryRowContext(ctx, u.pick, owner).Scan(&key)
+					if errors.Is(err, sql.ErrNoRows) {
+						return phasedpurge.Outcome{Drained: true}, nil
+					}
+					if err != nil {
+						return phasedpurge.Outcome{}, err
+					}
+					args = []any{key, owner}
+				}
+				result, err := tx.ExecContext(ctx, u.del, args...)
+				if err != nil {
+					return phasedpurge.Outcome{}, err
+				}
+				n, err := result.RowsAffected()
+				if err != nil {
+					return phasedpurge.Outcome{}, err
+				}
+				if n != 1 {
+					return phasedpurge.Outcome{}, fmt.Errorf("Reading terminal %s selected one row, deleted %d", u.name, n)
+				}
+				return phasedpurge.Outcome{Changed: true}, nil
+			},
+			Empty: func(ctx context.Context, tx *sql.Tx) (bool, error) {
+				if u.source && !source.Valid {
+					return true, nil
+				}
+				var empty bool
+				err := tx.QueryRowContext(ctx, u.empty, owner).Scan(&empty)
+				return empty, err
+			},
+		})
 	}
-	if !empty {
-		return fmt.Errorf("%w: reading handle %d after %d bounded rounds", errReadingTerminalResidue, handle, readingTerminalFinalRounds)
-	}
-	// Builds, captures, representatives, stages, object keys and scope entities
-	// cannot outlive their `reading_path_scope` row: every one has a restricting
-	// foreign key to it. Proving no scope row remains therefore proves the
-	// private scope tree is gone. Barriers and blocks were proved empty in the
-	// residue turn immediately before this one, and the final row statements
-	// above cannot create either (no delete/update trigger does).
-	for _, probe := range []struct {
-		name, query string
-	}{
-		{"reading_path_scope", readingTerminalScopeCountSQL},
-		{"reading_path_inputs", `SELECT EXISTS(SELECT 1 FROM reading_path_inputs WHERE library_id=?1)`},
-		{"reading_path_dirty_work", `SELECT EXISTS(SELECT 1 FROM reading_path_dirty_work WHERE library_id=?1)`},
-		{"reading_path_semantic_pending", `SELECT EXISTS(SELECT 1 FROM reading_path_semantic_pending WHERE library_id=?1)`},
-		{"reading_path_availability_pending", `SELECT EXISTS(SELECT 1 FROM reading_path_availability_pending WHERE library_id=?1)`},
-	} {
-		var n int64
-		if err := tx.QueryRowContext(ctx, probe.query, handle).Scan(&n); err != nil {
-			return err
-		}
-		if n != 0 {
-			return fmt.Errorf("%w: %s still names Reading handle %d", errReadingTerminalResidue, probe.name, handle)
-		}
-	}
-	return nil
-}
-
-func readingTerminalDeleteResidue(ctx context.Context, tx *sql.Tx, handle int64) (int64, error) {
-	var total int64
-	for _, q := range []struct {
-		sql  string
-		args []any
-	}{
-		{readingTerminalPendingDeleteSQL, []any{handle, readingTerminalWorkBatch}},
-		{readingTerminalWorkDeleteSQL, []any{handle, readingTerminalWorkBatch}},
-		{readingTerminalSemanticDeleteSQL, []any{handle}},
-		{readingTerminalInputsDeleteSQL, []any{handle}},
-	} {
-		n, err := readingTerminalExec(ctx, tx, q.sql, q.args...)
-		if err != nil {
-			return total, err
-		}
-		total += n
-	}
-	return total, nil
-}
-
-func readingTerminalExec(ctx context.Context, tx *sql.Tx, query string, args ...any) (int64, error) {
-	result, err := tx.ExecContext(ctx, query, args...)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
+	return plan
 }

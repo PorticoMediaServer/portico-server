@@ -86,11 +86,22 @@ func (s *Service) CommitInventoryPage(ctx context.Context, job, relative, cursor
 	if err != nil {
 		return err
 	}
+	if deferred, e := DeferInventorySourceTx(ctx, tx, source.ID); e != nil {
+		return e
+	} else if deferred {
+		if e = gated.Commit(); e != nil {
+			return e
+		}
+		return ErrInventoryItemOperation
+	}
 	keep, err := s.commitInventoryPageTx(ctx, tx, job, source, InventoryPageWrite{Relative: relative, Cursor: cursor, Page: page})
 	if err != nil || !keep {
 		return err
 	}
 	if err = compactcatalog.FlushReadingPathSemanticTx(ctx, tx); err != nil {
+		return err
+	}
+	if err = inventoryPublicationProgressTx(tx, source); err != nil {
 		return err
 	}
 	return gated.Commit()
@@ -133,6 +144,14 @@ func (s *Service) CommitInventoryPages(ctx context.Context, job string, pages []
 	if err != nil {
 		return err
 	}
+	if deferred, e := DeferInventorySourceTx(ctx, tx, source.ID); e != nil {
+		return e
+	} else if deferred {
+		if e = gated.Commit(); e != nil {
+			return e
+		}
+		return ErrInventoryItemOperation
+	}
 	for _, p := range pages {
 		if _, err = tx.ExecContext(ctx, `SAVEPOINT inventory_page`); err != nil {
 			return err
@@ -155,6 +174,9 @@ func (s *Service) CommitInventoryPages(ctx context.Context, job string, pages []
 		}
 	}
 	if err = compactcatalog.FlushReadingPathSemanticTx(ctx, tx); err != nil {
+		return err
+	}
+	if err = inventoryPublicationProgressTx(tx, source); err != nil {
 		return err
 	}
 	return gated.Commit()
@@ -780,7 +802,18 @@ func (s *Service) CommitInventoryDiscRoot(ctx context.Context, job, relative str
 	if err != nil {
 		return err
 	}
+	if deferred, e := DeferInventorySourceTx(ctx, tx, source.ID); e != nil {
+		return e
+	} else if deferred {
+		if e = gated.Commit(); e != nil {
+			return e
+		}
+		return ErrInventoryItemOperation
+	}
 	if err = s.commitInventoryDiscRootTx(ctx, tx, job, source, relative, v); err != nil {
+		return err
+	}
+	if err = inventoryPublicationProgressTx(tx, source); err != nil {
 		return err
 	}
 	return gated.Commit()
@@ -858,6 +891,14 @@ func (s *Service) CommitInventoryAnalysis(ctx context.Context, job, object, revi
 	source, err := InventoryFenceTx(ctx, tx, job)
 	if err != nil {
 		return err
+	}
+	if deferred, e := DeferInventorySourceTx(ctx, tx, source.ID); e != nil {
+		return e
+	} else if deferred {
+		if e = gated2.Commit(); e != nil {
+			return e
+		}
+		return ErrInventoryItemOperation
 	}
 	policy, err := ScanPolicyTx(ctx, tx, source.LibraryID)
 	if err != nil {
@@ -988,6 +1029,9 @@ func (s *Service) CommitInventoryAnalysis(ctx context.Context, job, object, revi
 	if err = finishAudioMergeAdmissionsTx(ctx, tx, audioAdmissions); err != nil {
 		return err
 	}
+	if err = inventoryPublicationProgressTx(tx, source); err != nil {
+		return err
+	}
 	return gated2.Commit()
 }
 
@@ -1085,6 +1129,14 @@ func (s *Service) CommitInventoryNaming(ctx context.Context, job, object, revisi
 	if err != nil {
 		return err
 	}
+	if deferred, e := DeferInventorySourceTx(ctx, tx, source.ID); e != nil {
+		return e
+	} else if deferred {
+		if e = gated.Commit(); e != nil {
+			return e
+		}
+		return ErrInventoryItemOperation
+	}
 	if source.Kind != "remote" {
 		return errors.New("naming-only publication is for a remote disc image")
 	}
@@ -1175,6 +1227,9 @@ func (s *Service) CommitInventoryNaming(ctx context.Context, job, object, revisi
 		return err
 	}
 	if err = inventoryEvent(ctx, tx, source.ID, job, object, asset, revision, "analysis_completed"); err != nil {
+		return err
+	}
+	if err = inventoryPublicationProgressTx(tx, source); err != nil {
 		return err
 	}
 	return gated.Commit()

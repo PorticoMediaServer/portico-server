@@ -62,6 +62,9 @@ func (s *Service) RemoveLibrary(ctx context.Context, id, name string, expected i
 		if _, err := compactcatalog.LibraryTx(ctx, tx, id); err != nil {
 			return err
 		}
+		if err := compactcatalog.RequireLibraryInventoryFreeTx(ctx, tx, id); err != nil {
+			return err
+		}
 		for _, q := range []string{
 			`UPDATE catalog_libraries SET retired=1 WHERE library_id=?`,
 			`UPDATE jobs SET status='cancelled' WHERE library_id=? AND status IN('queued','running')`,
@@ -295,16 +298,11 @@ func removeLibraryBatchTx(ctx context.Context, tx *sql.Tx, library string) (bool
 			clear, err = compactcatalog.ClearLibraryTx(ctx, tx, library, 64)
 			more = !clear
 		case removalLibrary:
-			// Phase 5 keeps its existing final row deletion, now resumable
-			// through object_cursor: the private Reading drain has to finish
-			// before the public handle disappears, and the handle's own final
-			// delete requeues Reading inputs/work that must be drained and
-			// proved gone before this phase may report done. No phase 6 was
-			// added; the installed progress check still stops at 5.
-			more, err = removeLibraryReadingTerminalTx(ctx, tx, library, handle, &progress)
-			if err == nil && !more {
-				return true, nil
-			}
+			// The Reading page saves object_cursor inside its shared engine
+			// meter and yields. Its final blocker preserves the retired handle
+			// until the root-owned library/source physical unit is admitted.
+			_, err = removeLibraryReadingTerminalTx(ctx, tx, library, handle, &progress)
+			return false, err
 		default:
 			return true, removeLibraryRowTx(ctx, tx, library)
 		}

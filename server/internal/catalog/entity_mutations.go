@@ -68,6 +68,9 @@ func mutationTerminal(m compactcatalog.EntityMutation) compactcatalog.MutationSt
 }
 func checkedMutationTx(ctx context.Context, tx *sql.Tx, ref compactcatalog.MutationRef) (compactcatalog.EntityMutation, compactcatalog.MutationStep, error) {
 	m, err := compactcatalog.CheckEntityMutationTx(ctx, tx, ref)
+	if errors.Is(err, compactcatalog.ErrMutationSourcePaused) {
+		return m, compactcatalog.MutationStep{More: true, SourcePaused: true, Outcome: "pending"}, nil
+	}
 	if errors.Is(err, compactcatalog.ErrMutationStale) || errors.Is(err, sql.ErrNoRows) {
 		step, e := staleMutationStepTx(ctx, tx, m)
 		return m, step, e
@@ -166,7 +169,7 @@ func RemoveTitleStepTx(ctx context.Context, tx *sql.Tx, ref compactcatalog.Mutat
 	if err == nil && m.OwnerKind == "empty-parent" {
 		return emptyParentStepTx(ctx, tx, ref)
 	}
-	if err != nil || m.Status != "active" || step.Complete || step.Outcome == "blocked" {
+	if err != nil || m.Status != "active" || step.Complete || step.Outcome == "blocked" || step.SourcePaused {
 		return step, err
 	}
 	ctx = compactcatalog.WithMutationFamily(ctx, m.Family)

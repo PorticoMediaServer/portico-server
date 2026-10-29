@@ -597,6 +597,10 @@ func (s *Service) processQuantum(ctx context.Context, id, library string) bool {
 	if s.db.QueryRowContext(ctx, `SELECT r.source_id,j.status,r.phase FROM inventory_runs r JOIN jobs j ON j.id=r.job_id WHERE r.job_id=?`, id).Scan(&sourceID, &status, &phase) != nil || status != "running" {
 		return false
 	}
+	if deferred, e := s.catalog.DeferInventorySource(ctx, sourceID); e != nil || deferred {
+		return false
+	}
+
 	source, err := s.catalog.LibrarySource(ctx, sourceID)
 	if err != nil {
 		return false
@@ -665,7 +669,7 @@ func (s *Service) processQuantum(ctx context.Context, id, library string) bool {
 // condition that clears without intervention. Corruption, constraints, a full
 // volume, an expired snapshot deadline and unknown failures stay fatal.
 func quantumRetryable(ctx context.Context, err error) bool {
-	if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, storage.ErrBusy) {
+	if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, storage.ErrBusy) || errors.Is(err, catalog.ErrInventoryItemOperation) {
 		return true
 	}
 	return errors.Is(err, dbwork.ErrReadPressure) || dbwork.Overloaded(err)
