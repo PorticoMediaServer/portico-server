@@ -7,6 +7,8 @@ import {SettingsPageFailure, SettingsPageHeading, SettingsPanel, SettingsRows, S
 import type {FactPart} from '@core/presentation/kit-model/index.ts';
 import {Icon} from '../../kit/Icon';
 import {Button} from '../../kit/controls';
+import {Dialog} from '../../kit/overlays';
+import {settingsChangeConfirmation} from '@core/presentation/settings-change-confirm.ts';
 import {Tabs} from '../../kit/controls/Choices';
 import {settingsIconName} from '../../kit/settings/icons';
 import {ServerHeader, type ServerAudience} from '../../kit/shell/ServerIdentity';
@@ -59,6 +61,8 @@ export function SettingsScreen({bindings, route, navigate, openDetail = false}: 
   const [quietOpen]=useState(createSettingsOpen);
   const [query, setQuery] = useState(''), [compactPage, setCompactPage] = useState(() => compact && openDetail), [advanced, setAdvanced] = useState(false);
   const [panel, setPanel] = useState<{id: string; recordId?: string; tab?: string} | undefined>();
+  // O-151: the few remote-access edits that can cut people off ask once; everything else still saves at once.
+  const [confirming, setConfirming] = useState<{row: SettingsRow; value: SettingsValue; context: SettingsContext; message: string}>();
   const shown=!compact || compactPage;
   useLayoutEffect(()=>{quietOpen.setOpen(shown);bindings.setOpen?.(shown);return()=>{quietOpen.setOpen(false);bindings.setOpen?.(false);};},[quietOpen,bindings,shown]);
   const [configurationKey, setConfigurationKey] = useState<string>();
@@ -108,7 +112,12 @@ export function SettingsScreen({bindings, route, navigate, openDetail = false}: 
     return () => cancelAnimationFrame(frame);
   }, [selected.scope, selected.section, selected.row]);
   const rows = (holder: Parameters<typeof SettingsRows>[0]['holder'], context: SettingsContext) => <SettingsRows holder={{...holder, groups: holder.groups?.map(group => ({...group, rows: group.rows.filter(row => !(bindings.panelHeader && context.panelId === 'library' && row.id === 'libraries.scanNow')).map(row => context.panelId === 'library' && row.id === 'libraries.name' ? {...row, control: {...row.control, type: 'action' as const}} : row)}))}} environment={environment} state={row => rowState(row, context)}
-    change={(row, value) => {if (rowState(row, context).present) bindings.change(row, value, context);}} reset={row => {if (rowState(row, context).present) bindings.reset(row, context);}} renderSpecial={(row, state) => rowState(row, context).present ? bindings.special(row, state, context, openPanel) : null}
+    change={(row, value) => {
+      const state = rowState(row, context);
+      if (!state.present) return;
+      const question = settingsChangeConfirmation(row.id, value, state.value);
+      if (question) setConfirming({row, value, context, message: t(question)}); else bindings.change(row, value, context);
+    }} reset={row => {if (rowState(row, context).present) bindings.reset(row, context);}} renderSpecial={(row, state) => rowState(row, context).present ? bindings.special(row, state, context, openPanel) : null}
     query={query} foundRowId={selected.row} advancedOpen={advanced} onAdvancedChange={setAdvanced} />;
   const navigation = <SettingsNav accountName={bindings.accountName} serverName={bindings.serverName} viewerRole={bindings.role === 'admin' ? 'administrator' : bindings.role}
     account={settingsSpec.filter(section => section.scope === 'account' && sectionVisible(section)).map(section => ({id: `account/${section.id}`, label: t(section.title), icon: settingsIconName(section.icon), cluster: section.navGroup}))}
@@ -137,6 +146,12 @@ export function SettingsScreen({bindings, route, navigate, openDetail = false}: 
       saveState={snapshot.saveState} tabs={panelSpec.tabs?.map(tab => ({id: tab.id, title: t(tab.title), content: rows(tab, {...panelContext, tabId: tab.id})}))} selectedTab={panel.tab} onTabChange={value => setPanel(current => current && {...current, tab: value})}>
       {rows(tab ?? panelSpec, panelContext)}
     </SettingsPanel>}
+    {confirming && <Dialog open title={t(confirming.row.label)} onOpenChange={open => {if (!open) setConfirming(undefined);}}
+      footer={<><Button onClick={() => setConfirming(undefined)}>{t('action.cancel')}</Button>
+        <Button variant="primary" onClick={() => {const pending = confirming; setConfirming(undefined);
+          if (rowState(pending.row, pending.context).present) bindings.change(pending.row, pending.value, pending.context);}}>{t('settings.confirm.change')}</Button></>}>
+      <p>{confirming.message}</p>
+    </Dialog>}
   </SettingsWorkspace></div></SettingsOpenContext.Provider>;
 }
 

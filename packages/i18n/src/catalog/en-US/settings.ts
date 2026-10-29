@@ -4,6 +4,8 @@
  * Merged into `enUS` statically.
  */
 export const settingsMessages = {
+  'settings.confirm.remoteAccess': 'Change this? Anyone connected from away from home, maybe including you, could lose the connection.',
+  'settings.confirm.change': 'Change',
  'settings.server.ffmpegPath': 'FFmpeg location',
 
   'settings.heading.account': 'Account',
