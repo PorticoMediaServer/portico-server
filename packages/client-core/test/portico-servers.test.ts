@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {ApiError,ServerListWatcher,SERVER_LIST_INTERVAL_MS,SERVER_LIST_SPREAD_MS,hostedGate,porticoSignIn,acceptPorticoInvitation,transferPorticoOwnership,acceptPorticoCustody,leavePorticoServer,removePorticoServer,isAccessRefused,isSessionMigrated,isClockSkew,routeBase64,type ServerListRecord} from '../src/index.ts';
+import {ApiError,ServerListWatcher,SERVER_LIST_INTERVAL_MS,SERVER_LIST_SPREAD_MS,hostedGate,porticoSignIn,acceptPorticoInvitation,transferPorticoOwnership,acceptPorticoCustody,leavePorticoServer,removePorticoServer,serverRemovalClaim,isAccessRefused,isSessionMigrated,isClockSkew,routeBase64,type ServerListRecord} from '../src/index.ts';
 import {parseDirectSnapshot} from '../src/profile-management.ts';
 import {webRouteCrypto,type RouteCrypto} from '../src/route-identity.ts';
 import {acceptShortPorticoInvitation} from '../src/portico-servers.ts';
@@ -149,8 +149,15 @@ test('Portico sign-in answers the server\'s challenge with an identity assertion
  assert.deepEqual(serverCalls.at(-1),['POST','/v1/direct/ownership/custody',{porticoIdentity:assertionBody}]);
  await leavePorticoServer(hosted,o,me.id);
  assert.deepEqual(hostedCalls.at(-1),['POST','/v1/servers/'+me.id+'/leave',{}]);
- await removePorticoServer(hosted,o,me.id);
- assert.deepEqual(hostedCalls.at(-1),['DELETE','/v1/servers/'+me.id,undefined]);
+ const claim=serverRemovalClaim({claimGeneration:'7',credentialGeneration:'3'})!,op='op-'+'a'.repeat(20);
+ await removePorticoServer(hosted,o,me.id,claim,op);
+ assert.deepEqual(hostedCalls.at(-1),['DELETE','/v1/servers/'+me.id,{operationId:op,claimGeneration:'7',credentialGeneration:'3'}]);
+ // P2-66 D-3: the exact claim the owner saw, never a default; a fresh, bounded operation id.
+ const before=hostedCalls.length;
+ for(const row of [{},{claimGeneration:'7'},{claimGeneration:'0',credentialGeneration:'3'},{claimGeneration:'7',credentialGeneration:'-1'},{claimGeneration:'07',credentialGeneration:'3'},{claimGeneration:7,credentialGeneration:3},{claimGeneration:'9223372036854775808',credentialGeneration:'1'}])assert.equal(serverRemovalClaim(row as never),undefined,JSON.stringify(row));
+ await assert.rejects(removePorticoServer(hosted,o,me.id,{claimGeneration:'',credentialGeneration:'3'},op),/claim/);
+ await assert.rejects(removePorticoServer(hosted,o,me.id,claim,'short'),/removal/);
+ assert.equal(hostedCalls.length,before,'nothing is sent without the exact claim and a valid operation id');
 });
 
 test('a platform without WebCrypto (Hermes on Apple) passes its own route crypto to every Portico call',async()=>{

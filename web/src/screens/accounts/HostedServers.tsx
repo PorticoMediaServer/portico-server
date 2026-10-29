@@ -9,7 +9,9 @@ import {createAccountServerAccess} from '../../platform/account-server-access';
 import {createBrowserAccountEntry, type BrowserAccountEntry} from '../../platform/account-entry';
 import {browserAppSessions} from '../../platform/server-connections';
 import {browserAppSessionActions, signOutBrowserPorticoAccount} from '../../platform/app-sessions';
-import {leavePorticoServer, removePorticoServer} from '@core/portico-servers.ts';
+import {leavePorticoServer, removePorticoServer, serverRemovalClaim, type ServerRemovalClaim} from '@core/portico-servers.ts';
+import {randomId} from '@core/random-id.ts';
+import {ApiError} from '@core/index.ts';
 import {ServicesServerDirectory} from '../../kit/accounts/ServerDirectory';
 import {ServicesDirectoryStatus} from '../../kit/accounts/DirectoryStatus';
 import {HostedError, ServicesAuthStage, ServicesNotice} from '../../kit/accounts/ServicesAuth';
@@ -33,6 +35,9 @@ import {resumeAfterProfiles} from './chooser-resume';
 const t = defaultI18n.t;
 type Session = NonNullable<ReturnType<ReturnType<typeof browserAccount>['service']['getSnapshot']>['session']>;
 type Admitted = Readonly<{entry: BrowserAccountEntry; form: AccountSignInForm; dispose: () => void}>;
+type Removal = Readonly<{server: DirectoryItem; claim?: ServerRemovalClaim; operationId: string}>;
+/** Hosted refused because the server's claim is no longer the one this row showed. */
+const changed = (error: unknown) => error instanceof ApiError && (error.status === 409 || error.status === 412);
 
 /** connect 1-31 at web.getportico.tv: the Portico Account's own servers, opened here. The
  * chosen server's sign-in, profile and PIN run in this page, and Home follows on this same
@@ -128,7 +133,7 @@ async function admitServer(server: DirectoryItem, accountId: string, access: Ret
 
 function Chooser({session, flow, saved}: {session: Session; flow: ServicesDirectoryFlow<Admitted>; saved: ReadonlyMap<string, string>}) {
   const state = useSyncExternalStore(flow.subscribe, flow.getSnapshot);
-  const [clock, setClock] = useState(Date.now), [removing, setRemoving] = useState<DirectoryItem>(), [working, setWorking] = useState(false), [failure, setFailure] = useState<unknown>();
+  const [clock, setClock] = useState(Date.now), [removing, setRemoving] = useState<Removal>(), [removeFailure, setRemoveFailure] = useState<unknown>(), [working, setWorking] = useState(false), [failure, setFailure] = useState<unknown>();
   useLayoutEffect(() => {
     const update = () => {if (document.visibilityState === 'visible') setClock(Date.now());};
     const timer = setInterval(update, 15000), grace = setTimeout(update, 40000);
@@ -180,15 +185,21 @@ function Chooser({session, flow, saved}: {session: Session; flow: ServicesDirect
       onCheck={() => {void flow.open(target, flow.getSnapshot());}} onChoose={() => flow.cancelOpening(flow.getSnapshot())} />;
   }
   const checked = clock - state.checkedAt < 45000 ? t('services.directory.justNow') : servicesRelativeTime(defaultI18n, new Date(state.checkedAt).toISOString(), clock);
-  const remove = async (server: DirectoryItem) => {
-    setWorking(true); setFailure(undefined);
+  // The exact claim this row showed and one operation id, captured when the dialog opens; a retry
+  // of this dialog sends both again, unchanged (P2-66 D-3).
+  const startRemoval = (item: DirectoryItem) => {setRemoveFailure(undefined); setRemoving(Object.freeze({server: item, claim: item.ownedByMe ? serverRemovalClaim(item) : undefined, operationId: randomId()}));};
+  const remove = async (removal: Removal) => {
+    const {server, claim, operationId} = removal;
+    if (server.ownedByMe && !claim) return;
+    setWorking(true); setRemoveFailure(undefined);
     try {
       const access = createAccountServerAccess(browserAccount(), accountIdentity(session));
       const hosted = {request: access.request};
-      await (server.ownedByMe ? removePorticoServer : leavePorticoServer)(hosted, access.origin, server.id);
+      if (server.ownedByMe) await removePorticoServer(hosted, access.origin, server.id, claim!, operationId);
+      else await leavePorticoServer(hosted, access.origin, server.id);
       await forgetSaved(server.id);
       setRemoving(undefined); flow.forget(server.id, flow.getSnapshot());
-    } catch (error) {setFailure(error);}
+    } catch (error) {setRemoveFailure(error);}
     finally {setWorking(false);}
   };
   return <>
@@ -198,12 +209,13 @@ function Chooser({session, flow, saved}: {session: Session; flow: ServicesDirect
       error={failure ? <HostedError error={failure} /> : <Notice notice={connecting && transient ? undefined : directoryNotice(state, 'list', target?.name)} />}
       onOpen={id => {const item = state.items.find(value => value.id === id); if (item) void flow.open(item, state);}} onRefresh={() => void flow.refresh(state)}
       onAccount={() => goTo('/account')} onJoin={() => goTo('/welcome#join')} onSetup={() => goTo('/welcome#setup')} onLocal={() => goTo('/welcome#local')}
-      onDifferentAccount={signOut} onRemove={id => setRemoving(state.items.find(item => item.id === id))} />
+      onDifferentAccount={signOut} onRemove={id => {const item = state.items.find(value => value.id === id); if (item) startRemoval(item);}} />
     {removing && <Dialog open onOpenChange={open => {if (!open && !working) setRemoving(undefined);}} size="sm" role="alertdialog"
-      title={t(removing.ownedByMe ? 'web.chooser.removeTitle' : 'web.chooser.leaveTitle', {server: removing.name})}
+      title={t(removing.server.ownedByMe ? 'web.chooser.removeTitle' : 'web.chooser.leaveTitle', {server: removing.server.name})}
       footer={<><Button onClick={() => setRemoving(undefined)} disabled={working}>{t('accounts.profiles.cancel')}</Button>
-        <Button variant="primary" loading={working} onClick={() => void remove(removing)}>{t(removing.ownedByMe ? 'web.chooser.removeServer' : 'web.chooser.leaveServer')}</Button></>}>
-      <p>{t(removing.ownedByMe ? 'web.chooser.removeBody' : 'web.chooser.leaveBody')}</p>
+        <Button variant="primary" loading={working} disabled={removing.server.ownedByMe && !removing.claim} onClick={() => void remove(removing)}>{t(removing.server.ownedByMe ? 'web.chooser.removeServer' : 'web.chooser.leaveServer')}</Button></>}>
+      <p>{t(removing.server.ownedByMe ? 'web.chooser.removeBody' : 'web.chooser.leaveBody')}</p>
+      {removing.server.ownedByMe && !removing.claim || changed(removeFailure) ? <ServicesNotice tone="error">{t('web.chooser.removeChanged')}</ServicesNotice> : <HostedError error={removeFailure} />}
     </Dialog>}
   </>;
 }

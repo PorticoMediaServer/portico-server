@@ -188,11 +188,24 @@ export async function leavePorticoServer(hosted:HostedRequestApi,hostedOrigin:st
  await hostedGate(hostedOrigin).run('interactive',()=>hosted.request(hostedEncodedRoutePath("server_leave", {"id": encodeURIComponent(serverId)}),'POST',hostedRouteBody("server_leave", {}),signal));
 }
 
+/** The exact claim of an owned server, as the account's own server list showed it. */
+export type ServerRemovalClaim = Readonly<{claimGeneration: string; credentialGeneration: string}>;
+const generation = (value: unknown): value is string => typeof value === 'string' && /^[1-9][0-9]{0,18}$/.test(value) && (value.length < 19 || value <= '9223372036854775807');
+/** The claim tuple of an owned list row, or undefined when it is absent or not a positive decimal.
+ * Never defaulted: a guess could retire a re-claimed successor. */
+export function serverRemovalClaim(row: object): ServerRemovalClaim | undefined {
+ const {claimGeneration, credentialGeneration} = row as {claimGeneration?: unknown; credentialGeneration?: unknown};
+ return generation(claimGeneration) && generation(credentialGeneration) ? Object.freeze({claimGeneration, credentialGeneration}) : undefined;
+}
 /** The owner retires an owned server at Hosted (`DELETE /v1/servers/{server}`): it leaves the
- * owner's list and every member's. A member uses leavePorticoServer instead. */
-export async function removePorticoServer(hosted:HostedRequestApi,hostedOrigin:string,serverId:string,signal?:AbortSignal):Promise<void>{
+ * owner's list and every member's. Hosted retires it only while it still holds exactly the claim
+ * the owner saw; a server re-claimed since is refused, never retired. `operationId` is fresh per
+ * attempt; a retry of the same attempt passes the same one. A member uses leavePorticoServer. */
+export async function removePorticoServer(hosted:HostedRequestApi,hostedOrigin:string,serverId:string,claim:ServerRemovalClaim,operationId:string,signal?:AbortSignal):Promise<void>{
  if(!text(serverId,128))throw new CodedError('not_portico_server','This server is not a Portico server.');
- await hostedGate(hostedOrigin).run('interactive',()=>hosted.request(hostedEncodedRoutePath("server_remove", {"server": encodeURIComponent(serverId)}),'DELETE',undefined,signal));
+ if(!serverRemovalClaim(claim))throw new CodedError('server_claim_unknown','This server’s claim could not be confirmed. Refresh and try again.');
+ if(typeof operationId!=='string'||operationId.length<16||operationId.length>128||/[\r\n\0]/.test(operationId))throw new CodedError('invalid_operation','The removal could not be started.');
+ await hostedGate(hostedOrigin).run('interactive',()=>hosted.request(hostedEncodedRoutePath("server_remove", {"server": encodeURIComponent(serverId)}),'DELETE',hostedRouteBody("server_remove",{operationId,claimGeneration:claim.claimGeneration,credentialGeneration:claim.credentialGeneration}),signal));
 }
 
 /** The server no longer admits this account: drop the server or go to sign-in. */

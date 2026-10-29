@@ -1170,6 +1170,7 @@ export const webMessages = {
   'web.chooser.leaveTitle': 'Leave {server}?',
   'web.chooser.removeBody': 'It disappears from your list and from everyone else’s.',
   'web.chooser.leaveBody': 'It disappears from your list. Its owner can invite you again.',
+  'web.chooser.removeChanged': 'This server changed. Refresh and try again.',
   'web.chooser.unconfirmedTitle': 'Portico couldn’t confirm this is {server}',
   'web.chooser.unconfirmedBody': 'Nothing was sent to it. Try again, or ask its owner to check the server.',
   'web.chooser.signInDirectly': 'Sign in directly to this server',
