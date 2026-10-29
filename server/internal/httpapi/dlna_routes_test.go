@@ -17,7 +17,9 @@ func setDLNA(t *testing.T, f *v1Fixture, on bool) {
 	if err := json.Unmarshal(w.Body.Bytes(), &current); err != nil || w.Code != 200 {
 		t.Fatalf("read policy: %d %s", w.Code, w.Body.String())
 	}
-	body := map[string]any{"expectedRevision": current.Revision, "operationId": "dlna-switch-" + strconv.FormatBool(on) + "-" + strconv.FormatInt(current.Revision, 10), "dlnaEnabled": on}
+	// b3ed48789 limits defaults to attached subnets. Name the fixture's home
+	// explicitly rather than relying on the test runner's real interfaces.
+	body := map[string]any{"expectedRevision": current.Revision, "operationId": "dlna-switch-" + strconv.FormatBool(on) + "-" + strconv.FormatInt(current.Revision, 10), "dlnaEnabled": on, "lanNetworks": []string{"192.168.1.0/24"}}
 	if w = f.rawFrom(homePeer, "PATCH", "/v1/admin/connectivity/policy", f.owner.AccessToken, nil, body); w.Code != 200 || !strings.Contains(w.Body.String(), `"dlnaEnabled":`+strconv.FormatBool(on)) {
 		t.Fatalf("set DLNA %v: %d %s", on, w.Code, w.Body.String())
 	}
@@ -41,13 +43,17 @@ func TestDLNASwitchIsHotAndHomeOnly(t *testing.T) {
 	if w := browse(homePeer); w.Code != 200 || !strings.Contains(w.Body.String(), "<TotalMatches>") {
 		t.Fatalf("Browse from home: %d %s", w.Code, w.Body.String())
 	}
-	for _, path := range []string{"/dlna/device.xml", "/dlna/media/anything"} {
-		if w := f.rawFrom(remotePeer, "GET", path, "", nil, nil); w.Code != 403 {
-			t.Fatalf("%s from outside while on: %d", path, w.Code)
+	// A private address outside the fixture home is remote too. Anonymous
+	// DLNA must never gain blanket RFC1918 trust from its numeric address.
+	for _, peer := range []string{remotePeer, "10.254.253.252:5000"} {
+		for _, path := range []string{"/dlna/device.xml", "/dlna/media/anything"} {
+			if w := f.rawFrom(peer, "GET", path, "", nil, nil); w.Code != 403 {
+				t.Fatalf("%s from outside %s while on: %d", path, peer, w.Code)
+			}
 		}
-	}
-	if w := browse(remotePeer); w.Code != 403 {
-		t.Fatalf("Browse from outside: %d", w.Code)
+		if w := browse(peer); w.Code != 403 {
+			t.Fatalf("Browse from outside %s: %d", peer, w.Code)
+		}
 	}
 	setDLNA(t, f, false)
 	if w := f.rawFrom(homePeer, "GET", "/dlna/device.xml", "", nil, nil); w.Code != 404 {

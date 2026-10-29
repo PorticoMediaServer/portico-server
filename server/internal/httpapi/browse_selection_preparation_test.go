@@ -471,8 +471,10 @@ func TestBrowseSelectionLocalSearchPreparesExactSelection(t *testing.T) {
 			t.Fatalf("exact proof %+v", ready)
 		}
 		if sort == "forYou" {
+			// cfb658c23 made bounded ForYou display conversion available to
+			// Delete. It remains unsupported as a general Play/Queue iterator.
 			excluded := ready.UnavailableActions
-			if excluded == nil || excluded.Play != "unsupported-sort" || excluded.Queue != "unsupported-sort" || excluded.Delete != "unsupported-sort" || excluded.Playlist != "" || excluded.MetadataPreview != "" {
+			if excluded == nil || excluded.Play != "unsupported-sort" || excluded.Queue != "unsupported-sort" || excluded.Delete != "" || excluded.Playlist != "" || excluded.MetadataPreview != "" {
 				t.Fatalf("consumer exclusions %+v", excluded)
 			}
 		} else if ready.UnavailableActions != nil {

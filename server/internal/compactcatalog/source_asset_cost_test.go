@@ -23,7 +23,10 @@ func sourceAssetCost(t *testing.T, db *sql.DB, name string, fn func(context.Cont
 	if stats.Measured != 1 {
 		t.Fatalf("write not measured: %+v", stats)
 	}
-	if stats.Largest.Rows > 10 || stats.Overruns != 0 {
+	// The required FI1 header, first-OLD capture and ledger charges now take
+	// at most 13 rows; the historical 10-row expectation predates them.
+	// The BackgroundMedia 160-row plan and its zero overruns are unchanged.
+	if stats.Largest.Rows > 13 || stats.Overruns != 0 {
 		t.Fatalf("asset acceptance exceeded constant trigger-inclusive bound: %+v", stats)
 	}
 	t.Logf("%s: statements=%d rows=%d pages=%d vmops=%d", name, measure().Statements, stats.Largest.Rows, stats.Largest.Pages, stats.Largest.VMOps)
@@ -158,14 +161,26 @@ func TestSourceAssetRetouchPreservesSameTokenAndRollsBackAtomically(t *testing.T
 		}
 		return nil
 	})
-	if cc1Scalar(t, db, `SELECT flags FROM catalog_upstream_sources WHERE domain=41 AND source_id=?`, asset) != 31 {
+	// The FI1 header and retained OLD ledger writes are required consumers too.
+	requiredFlags := sourceAvailability | sourceMissing | sourceMetadata | sourceRevision | sourceScreen | sourceInfo
+	if cc1Scalar(t, db, `SELECT flags FROM catalog_upstream_sources WHERE domain=41 AND source_id=?`, asset) != requiredFlags {
 		t.Fatal("combined update lost required consumers")
 	}
-	for cc1Scalar(t, db, `SELECT phase FROM catalog_upstream_sources WHERE domain=41 AND source_id=?`, asset) != 3 {
-		facetTestTurn(t, db, 41, 1)
+	// FI1's informational pre-fence/apply precedes the owner edges on this
+	// same-token pass. Step the real source through it until one owner edge
+	// advances the finite cursor, rather than assuming the first phase-3 turn
+	// does.
+	progressed := false
+	for turn := 0; turn < 8*(len(items)+5); turn++ {
+		if !facetTestTurn(t, db, 41, 1) {
+			break
+		}
+		if cc1Scalar(t, db, `SELECT has_after FROM catalog_upstream_sources WHERE domain=41 AND source_id=?`, asset) == 1 {
+			progressed = true
+			break
+		}
 	}
-	facetTestTurn(t, db, 41, 1)
-	if cc1Scalar(t, db, `SELECT has_after FROM catalog_upstream_sources WHERE domain=41 AND source_id=?`, asset) != 1 {
+	if !progressed {
 		t.Fatal("fixture did not partially progress")
 	}
 	before := cc1Scalar(t, db, `SELECT revision FROM catalog_upstream_sources WHERE domain=41 AND source_id=?`, asset)
@@ -179,7 +194,7 @@ func TestSourceAssetRetouchPreservesSameTokenAndRollsBackAtomically(t *testing.T
 	if cc1Scalar(t, db, `SELECT revision FROM catalog_upstream_sources WHERE domain=41 AND source_id=?`, asset) != before+1 || cc1Scalar(t, db, `SELECT revision FROM catalog_dirty WHERE domain=41 AND entity_id=?`, asset) != dirty+1 || cc1Scalar(t, db, `SELECT source_epoch FROM catalog_facet_source_state`) != epoch+2 {
 		t.Fatalf("real same-flags change: source revision %d -> %d, dirty %d -> %d, epoch %d -> %d", before, cc1Scalar(t, db, `SELECT revision FROM catalog_upstream_sources WHERE domain=41 AND source_id=?`, asset), dirty, cc1Scalar(t, db, `SELECT revision FROM catalog_dirty WHERE domain=41 AND entity_id=?`, asset), epoch, cc1Scalar(t, db, `SELECT source_epoch FROM catalog_facet_source_state`))
 	}
-	if cc1Scalar(t, db, `SELECT count(*) FROM catalog_upstream_sources WHERE domain=41 AND source_id=? AND flags=31 AND phase=3 AND has_after=1 AND pass_revision<revision`, asset) != 1 {
+	if cc1Scalar(t, db, `SELECT count(*) FROM catalog_upstream_sources WHERE domain=41 AND source_id=? AND flags=? AND phase=3 AND has_after=1 AND pass_revision<revision`, asset, requiredFlags) != 1 {
 		t.Fatal("same-token change reset progress or lost its rerun")
 	}
 	source := groupRows(t, db, `SELECT * FROM catalog_upstream_sources WHERE domain=41`)
@@ -232,8 +247,12 @@ func TestSourceAssetRetouchPreservesSameTokenAndRollsBackAtomically(t *testing.T
 		_, err := tx.ExecContext(ctx, `INSERT INTO catalog_assets(id,token,path,size,modified_ns,container,video_codec,audio_codec,width,height,duration,available) VALUES(?,'reused-lifetime','/retouch/reused.mkv',500,0,'','','',0,0,180,1)`, asset)
 		return err
 	})
-	facetTestTurn(t, db, 41, 1)
-	if cc1Scalar(t, db, `SELECT count(*) FROM catalog_upstream_sources WHERE domain=41 AND source_id=?`, asset) != 0 {
+	// The old lifetime may still owe bounded FI1 OLD/header reclamation.
+	// Drive the real worker to discharge it; it must never publish against
+	// the replacement token while finishing that cleanup.
+	cc1Drain(t, db)
+	if cc1Scalar(t, db, `SELECT count(*) FROM catalog_upstream_sources WHERE domain=41 AND source_id=?`, asset) != 0 ||
+		cc1Scalar(t, db, `SELECT duration FROM catalog_assets WHERE id=? AND token='reused-lifetime'`, asset) != 180 {
 		t.Fatal("reused integer continued old source lifetime")
 	}
 	cc1Write(t, db, func(ctx context.Context, tx *sql.Tx) error { return LinkAssetTx(ctx, tx, items[0], asset, Link{}) })

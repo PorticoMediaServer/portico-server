@@ -85,14 +85,27 @@ func TestSourceAssetFanoutAcceptsOneMarkerRollbackResetAndReopen(t *testing.T) {
 	if groupRows(t, db, `SELECT * FROM catalog_upstream_sources WHERE domain=41`) != checkpoint || cc1Scalar(t, db, `SELECT sum(source_revision) FROM metadata_publication_heads`) != before {
 		t.Fatal("fanout rollback split checkpoint/output")
 	}
-	// Evidence/frontier phases publish no owner head. Advance to the raw
-	// owner phase, then one edge must produce exactly one head change.
-	for cc1Scalar(t, db, `SELECT phase FROM catalog_upstream_sources WHERE domain=41 AND source_id=?`, asset) != 3 {
-		facetTestTurn(t, db, 41, 1)
+	// Evidence/frontier phases and FI1's informational pre-fence/apply publish
+	// no owner head. Step the real source through them; the first owner cursor
+	// step must publish exactly one head and only after clearing the FI1 bit.
+	for turn := 0; turn < 8*(len(items)+5); turn++ {
+		if !facetTestTurn(t, db, 41, 1) {
+			t.Fatal("FI1 source stopped before its owner cursor")
+		}
+		head := cc1Scalar(t, db, `SELECT sum(source_revision) FROM metadata_publication_heads`)
+		if head > before+1 {
+			t.Fatal("one raw edge exceeded its metadata output budget")
+		}
+		if head != before+1 {
+			continue
+		}
+		if flags := cc1Scalar(t, db, `SELECT flags FROM catalog_upstream_sources WHERE domain=41 AND source_id=?`, asset); flags&sourceInfo != 0 {
+			t.Fatal("FI1 informational work published an owner head")
+		}
+		break
 	}
-	facetTestTurn(t, db, 41, 1)
 	if cc1Scalar(t, db, `SELECT sum(source_revision) FROM metadata_publication_heads`) != before+1 {
-		t.Fatal("one raw edge exceeded its metadata output budget")
+		t.Fatal("FI1 source never reached its owner cursor")
 	}
 	// Re-touch preserves this finite pass and owes one rerun after its frontier.
 	cc1Exec(t, db, `UPDATE catalog_assets SET size=300 WHERE id=?`, asset)
@@ -120,7 +133,8 @@ func TestSourceAssetFanoutAcceptsOneMarkerRollbackResetAndReopen(t *testing.T) {
 			t.Fatal("resumed fanout exceeded one raw edge")
 		}
 	}
-	sourceTestFinish(t, db, 44)
+	// Missing projection waits for source41 and its informational obligation;
+	// let the real scheduler discharge both in their production order.
 	cc1Drain(t, db)
 	if cc1Scalar(t, db, `SELECT count(*) FROM catalog_asset_links WHERE asset_id=? AND available=0`, asset) != 17 {
 		t.Fatal("availability consumers lost a raw target")

@@ -54,6 +54,21 @@ func TestBulkBuildDerivesWhatIncrementalBuildDoes(t *testing.T) {
 		if err := db.QueryRow(`SELECT revision FROM catalog_selection_predicate_epoch WHERE singleton=1`).Scan(&revision); err != nil || revision <= 1 {
 			t.Fatalf("selection predicate fence did not advance: %d %v", revision, err)
 		}
+		// Informational epochs count how often a path published an item's
+		// facts, not which facts it holds: the bulk path accepts the same
+		// inputs through more intermediate publications, so its epoch numbers
+		// are legitimately higher. Readiness is the semantic claim and is
+		// required of each database on its own, not inferred by comparing two
+		// histories.
+		var unready int
+		if err := db.QueryRow(`SELECT count(*) FROM catalog_entities
+ WHERE info_desired_epoch<>info_applied_epoch OR info_source_blockers<>0
+  OR info_availability_pending<>0 OR info_blocked_children<>0`).Scan(&unready); err != nil {
+			t.Fatal(err)
+		}
+		if unready != 0 {
+			t.Errorf("%d entities are not Ready after draining: want applied=desired with zero source blockers, no pending availability and no blocked children", unready)
+		}
 	}
 	tables := derivedTables(t, incremental)
 	t.Logf("comparing %d derived tables", len(tables))
@@ -134,6 +149,15 @@ func derivedTables(t *testing.T, db *sql.DB) []string {
 // ids and what is keyed on them) or record when, not what.
 var pathColumns = map[string]bool{"public_id": true, "random_key": true, "entity_pid": true, "sequence": true, "added_ms": true, "updated_ms": true, "created_ms": true}
 
+// historyColumns count how many times a build path published an item's facts,
+// not what it published. Each path reaches a different epoch number (the bulk
+// path coalesces and re-accepts inputs), so the epochs are not comparable
+// between databases; every other column of these tables is. The readiness the
+// epochs stand for is asserted per database before the comparison.
+var historyColumns = map[string]map[string]bool{
+	"catalog_entities": {"info_desired_epoch": true, "info_applied_epoch": true},
+}
+
 func tableContent(t *testing.T, db *sql.DB, table string) string {
 	t.Helper()
 	rows, err := db.Query(`SELECT name FROM pragma_table_info(?) ORDER BY cid`, table)
@@ -146,7 +170,7 @@ func tableContent(t *testing.T, db *sql.DB, table string) string {
 		if err = rows.Scan(&name); err != nil {
 			t.Fatal(err)
 		}
-		if !pathColumns[name] {
+		if !pathColumns[name] && !historyColumns[table][name] {
 			columns = append(columns, `"`+name+`"`)
 		}
 	}
