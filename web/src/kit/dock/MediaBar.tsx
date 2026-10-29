@@ -1,7 +1,7 @@
 import {useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent} from 'react';
 import {springTiming, springs} from '@design';
 import {Menu} from '../overlays';
-import {Control, Identity, Progress, TerminalActions, Transport, useDockActions} from './parts';
+import {Control, Identity, Progress, StartingStop, TerminalActions, Transport, useDockActions} from './parts';
 import {remoteTerminal} from './model';
 import {dockText} from './text';
 import {GestureRelease, PlayerMorph} from './motion';
@@ -36,7 +36,7 @@ export function MediaBar(props: DockRendererProps) {
     return () => job.cancel();
   }, [held, holding, reduced]);
   const down = (event: PointerEvent<HTMLElement>) => {
-    if (event.button !== 0 || held || remoteTerminal(view.remote) || props.videoGesture && gesture.current) return;
+    if (event.button !== 0 || held || view.starting || remoteTerminal(view.remote) || props.videoGesture && gesture.current) return;
     const element = event.currentTarget, painted = animation.current ? {position: paintedX(element), opacity: paintedOpacity(element)} : {position: 0, opacity: 1};
     animation.current?.cancel(); animation.current = null; element.style.transform = painted.position ? `translateX(${painted.position}px)` : ''; element.style.opacity = painted.opacity === 1 ? '' : String(painted.opacity); suppressClick.current = false;
     movement.current.track(painted.position, 0, performance.now());
@@ -101,10 +101,10 @@ export function MediaBar(props: DockRendererProps) {
     <section ref={root} className={[styles.phoneBar, held && styles.held, className].filter(Boolean).join(' ')} data-mode={view.mode} data-holding={holding || undefined} aria-label={t('next.dock.nowPlaying')} style={{...style, ...(props.videoGesture ? {touchAction: 'none'} : {})}}
       onPointerDown={down} onPointerMove={move} onPointerUp={event => release(event)} onPointerCancel={event => release(event, true)} onLostPointerCapture={event => {const g = gesture.current;if (g?.id === event.pointerId) {g.vertical?.cancel();gesture.current = null;clearHold();}}}
       onClickCapture={event => { if (suppressClick.current) { event.preventDefault(); event.stopPropagation(); suppressClick.current = false; } }}
-      onContextMenu={event => { event.preventDefault(); clearHold(); setHeld(true); }}>
+      onContextMenu={event => { event.preventDefault(); clearHold(); if (!view.starting) setHeld(true); }}>
       <span className={styles.phoneIdentity} data-dock-identity inert={props.videoGestureActive || undefined}><Identity {...props} identityRef={anchor} phone /></span>
-      {remoteTerminal(view.remote) ? <TerminalActions {...props} phone /> : view.remote && view.remote.phase !== 'playing' ? <Control icon="i-stop" label={t('next.dock.stopConnecting')} onClick={() => send({kind: 'stop'})} /> : props.videoGesture ? <span style={{display: 'contents'}} inert={props.videoGestureActive || undefined}><Transport {...props} phone /></span> : <Transport {...props} phone />}
-      <Progress {...props} line />
+      {view.starting ? <StartingStop view={view} t={t} phone /> : remoteTerminal(view.remote) ? <TerminalActions {...props} phone /> : view.remote && view.remote.phase !== 'playing' ? <Control icon="i-stop" label={t('next.dock.stopConnecting')} onClick={() => send({kind: 'stop'})} /> : props.videoGesture ? <span style={{display: 'contents'}} inert={props.videoGestureActive || undefined}><Transport {...props} phone /></span> : <Transport {...props} phone />}
+      {!view.starting && <Progress {...props} line />}
     </section>
     <Menu open={held && !view.playback.expanded} onOpenChange={open => setHeld(open)} title={t('next.dock.nowPlaying')} presentation="anchored" anchorRef={menuAnchor} returnFocusRef={anchor} placement="top-start" width={250} sideOffset={8} className={styles.holdMenu} items={[
       {id: 'open', label: t('next.dock.open'), icon: 'i-up', onSelect: () => send({kind: 'expand'})},

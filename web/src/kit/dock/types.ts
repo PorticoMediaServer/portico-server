@@ -29,7 +29,11 @@ export type DockPresentation = Readonly<{
   shuffle?: boolean; repeat?: 'off' | 'all' | 'one'; rate?: number; sleepLabel?: string;
   volume?: number; muted?: boolean; deviceName?: string; remoteError?: string;
 }>;
-export type DockView = Readonly<{mode: DockMode; playback: DockPlayback; remote?: RemoteDock; presentation: DockPresentation}>;
+/** O-159: an accepted start that has no playable dock yet, drawn from the pressed card's own facts
+ * in the connecting look (phone-player f7d-7f): title and art, a pending ring, and Stop only. It
+ * never claims playing: no Pause, no progress. Stop cancels the start itself. */
+export type DockStarting = Readonly<{key: string; kind: 'music' | 'audiobook' | 'video'; identity: PlaybackIdentityModel; artwork?: ArtworkSource | null; stop: () => void}>;
+export type DockView = Readonly<{mode: DockMode; playback: DockPlayback; remote?: RemoteDock; presentation: DockPresentation; starting?: DockStarting}>;
 export type DockRendererProps = Readonly<{
   view: DockView; binding: DockBinding; t?: DockTranslate; className?: string; style?: CSSProperties;
   artSlotRef?: RefObject<HTMLSpanElement | null>; videoSurface?: boolean; artworkSurface?: boolean;
@@ -49,6 +53,8 @@ export type DockHostProps = Readonly<{
   videoGestureActive?: boolean;
   tvExpanded?: boolean; onTVExpandedChange?: (expanded: boolean) => void;
   tvReturnFocusRef?: RefObject<HTMLElement | null>;
+  /** Drawn only while no actual dock occupant exists; the real dock then replaces it in place. */
+  starting?: DockStarting;
 }>;
 export type MediaSurfaceProps = Readonly<{
   children: ReactNode; expanded: boolean; dockSlot: RefObject<HTMLElement | null>;
