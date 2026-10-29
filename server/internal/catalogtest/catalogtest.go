@@ -96,6 +96,41 @@ func (c *Catalog) Drain() {
 			return
 		}
 	}
+	// Failure-only diagnostics preserve the original finite guard and terminal
+	// requirement while identifying which bounded owner failed to advance.
+	for _, query := range []string{
+		`SELECT domain,count(*) FROM catalog_dirty GROUP BY domain ORDER BY domain`,
+		`SELECT domain,rebuilding,first_build,cleaning,active_slot FROM catalog_derivations WHERE rebuilding=1 OR first_build=1 OR cleaning=1`,
+		`SELECT domain,count(*) FROM catalog_derivation_failures GROUP BY domain ORDER BY domain`,
+	} {
+		rows, err := c.DB.Query(query)
+		if err != nil {
+			c.T.Logf("drain residue: %v", err)
+			continue
+		}
+		cols, err := rows.Columns()
+		if err != nil {
+			rows.Close()
+			c.T.Log(err)
+			continue
+		}
+		for rows.Next() {
+			values := make([]any, len(cols))
+			targets := make([]any, len(cols))
+			for i := range values {
+				targets[i] = &values[i]
+			}
+			if err = rows.Scan(targets...); err != nil {
+				c.T.Log(err)
+				break
+			}
+			c.T.Logf("drain residue %v: %v", cols, values)
+		}
+		if err = rows.Err(); err != nil {
+			c.T.Log(err)
+		}
+		rows.Close()
+	}
 	c.T.Fatal("catalogue worker did not drain")
 }
 
