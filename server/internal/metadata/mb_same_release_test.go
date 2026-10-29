@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/catalogtest"
+	"portico.local/server/internal/mbaccounting"
 	"portico.local/server/internal/metadataprovider"
 )
 
@@ -61,6 +62,35 @@ func TestMBSameReleaseAdoptionConflictRollsBackFinalAndRetryConverges(t *testing
 	assertMBAccounting(t, db)
 	if err = s.mbResult(context.Background(), *job, refused); err != nil {
 		t.Fatal(err)
+	}
+	// The production provider loop runs accounting maintenance before the
+	// next admission. This direct publisher fixture must also drain the
+	// rejected publication's durable abort-fold, rather than asking a fresh
+	// operation to publish while that owner still holds the singleton.
+	var phase, owner string
+	var published bool
+	if err = db.QueryRow(`SELECT phase,owner_operation,published_next FROM mb_accounting_state WHERE singleton=1`).Scan(&phase, &owner, &published); err != nil || phase != "fold" || owner != job.operation || published {
+		t.Fatal("refused publication did not retain its private abort-fold", phase, owner, published, err)
+	}
+	facts := readPickCount(t, db, `SELECT count(*) FROM mb_recording_accounting_next WHERE transition_id=(SELECT transition_id FROM mb_accounting_state WHERE singleton=1)`)
+	foldTurns := max(1, (facts+mbaccounting.FactsPerTurn-1)/mbaccounting.FactsPerTurn)
+	idle := false
+	for turn := int64(0); turn <= foldTurns; turn++ {
+		held, worked, maintenanceErr := s.mbAccountingMaintenance(context.Background())
+		if maintenanceErr != nil {
+			t.Fatal(maintenanceErr)
+		}
+		assertMBAccounting(t, db)
+		if !held {
+			idle = true
+			break
+		}
+		if !worked {
+			t.Fatal("private abort-fold stopped progressing")
+		}
+	}
+	if !idle {
+		t.Fatal("private abort-fold exceeded its actual fact windows")
 	}
 	_, retryProgress := metadataProgress(context.Background())
 	if delay := s.providerPassRetry(retryProgress); delay <= 0 || delay > 30*time.Second {
