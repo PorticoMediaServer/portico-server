@@ -294,6 +294,17 @@ func removeLibraryBatchTx(ctx context.Context, tx *sql.Tx, library string) (bool
 			var clear bool
 			clear, err = compactcatalog.ClearLibraryTx(ctx, tx, library, 64)
 			more = !clear
+		case removalLibrary:
+			// Phase 5 keeps its existing final row deletion, now resumable
+			// through object_cursor: the private Reading drain has to finish
+			// before the public handle disappears, and the handle's own final
+			// delete requeues Reading inputs/work that must be drained and
+			// proved gone before this phase may report done. No phase 6 was
+			// added; the installed progress check still stops at 5.
+			more, err = removeLibraryReadingTerminalTx(ctx, tx, library, handle, &progress)
+			if err == nil && !more {
+				return true, nil
+			}
 		default:
 			return true, removeLibraryRowTx(ctx, tx, library)
 		}

@@ -105,7 +105,7 @@ func captureRetainedOwnerStepTx(ctx context.Context, tx *sql.Tx, m compactcatalo
 	return false, errRetainedCaptureState
 }
 
-// capture_arm values. See the PROGRAM note for the full contract.
+// capture_arm is the durable stage of one retained owner copy.
 const (
 	retainedCaptureArmStart     = 0
 	retainedCaptureArmHeader    = 1
@@ -341,16 +341,19 @@ func startRetainedCaptureTx(ctx context.Context, tx *sql.Tx, m compactcatalog.En
 
 	// Identity facts are created by the caller with fixed ordinals 1..12. Read
 	// the raw bounded set once, before allocating anything.
-	rows, err := tx.QueryContext(ctx, `SELECT ordinal,identity FROM catalog_purge_identities
+	rows, err := tx.QueryContext(ctx, `SELECT ordinal,identity,mapping_captured,previous_state_id FROM catalog_purge_identities
  WHERE mutation_id=? ORDER BY ordinal LIMIT 13`, m.Ref.ID)
 	if err != nil {
 		return fmt.Errorf("retained capture identities: %w", err)
 	}
 	var identities []string
+	dirtyWitness := false
 	for rows.Next() {
 		var ordinal int
 		var identity string
-		if err = rows.Scan(&ordinal, &identity); err != nil {
+		var captured bool
+		var previous sql.NullInt64
+		if err = rows.Scan(&ordinal, &identity, &captured, &previous); err != nil {
 			rows.Close()
 			return err
 		}
@@ -359,11 +362,17 @@ func startRetainedCaptureTx(ctx context.Context, tx *sql.Tx, m compactcatalog.En
 			return errRetainedCaptureState
 		}
 		identities = append(identities, identity)
+		dirtyWitness = dirtyWitness || captured || previous.Valid
 	}
 	err = rows.Err()
 	rows.Close()
 	if err != nil {
 		return err
+	}
+	if dirtyWitness {
+		// Erasure and an owner switch preserve child witnesses. Clear them in
+		// separate reset turns before any fresh header or child is copied.
+		return beginRetainedCaptureResetTx(ctx, tx, m, job, sql.NullInt64{}, "capture-witnesses")
 	}
 	if len(identities) == 0 {
 		// Old semantics keep no retained state without an identity to restore it
@@ -402,13 +411,7 @@ func startRetainedCaptureTx(ctx context.Context, tx *sql.Tx, m compactcatalog.En
 	if err != nil {
 		return fmt.Errorf("retained capture header: %w", err)
 	}
-	// The <=12 witnesses belong to the private construction of one owner. Reset
-	// them before any arm uses them; this is one indexed statement, and its row
-	// effects are bounded by the gate's fixed ordinal CHECK.
-	if _, err = tx.ExecContext(ctx, `UPDATE catalog_purge_identities
- SET mapping_captured=0,previous_state_id=NULL WHERE mutation_id=?`, m.Ref.ID); err != nil {
-		return fmt.Errorf("retained capture witness reset: %w", err)
-	}
+
 	return advanceRetainedCaptureJobTx(ctx, tx, m,
 		`capture_arm=1,current_state_id=?,reading_arm='current',reading_started=0,reading_asset_after=0,reading_state_after=0,reading_source_after='',identity_after=0`,
 		header)
@@ -657,7 +660,11 @@ func beginRetainedCaptureResetTx(ctx context.Context, tx *sql.Tx, m compactcatal
 // gate count trigger omits ready=0, so no count row is touched), then clear the
 // <=12 mapping witnesses one fixed ordinal per turn and reset the job phase.
 func resetRetainedCaptureStepTx(ctx context.Context, tx *sql.Tx, m compactcatalog.EntityMutation, job retainedCaptureJob) error {
-	header, err := readRetainedCaptureHeaderTx(ctx, tx, job.CurrentState.Int64)
+	var header retainedCaptureHeader
+	err := sql.ErrNoRows
+	if job.CurrentState.Valid {
+		header, err = readRetainedCaptureHeaderTx(ctx, tx, job.CurrentState.Int64)
+	}
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
@@ -714,14 +721,12 @@ func resetRetainedCaptureStepTx(ctx context.Context, tx *sql.Tx, m compactcatalo
 	// Witnesses are cleared by fixed ordinal 1..12, one per bounded source turn.
 	if job.IdentityAfter < retainedIdentityLimit {
 		ordinal := job.IdentityAfter + 1
-		res, e := tx.ExecContext(ctx, `UPDATE catalog_purge_identities SET mapping_captured=0,previous_state_id=NULL
+		_, e := tx.ExecContext(ctx, `UPDATE catalog_purge_identities SET mapping_captured=0,previous_state_id=NULL
  WHERE mutation_id=? AND ordinal=?`, m.Ref.ID, ordinal)
 		if e != nil {
 			return fmt.Errorf("retained capture reset witness: %w", e)
 		}
-		if n, _ := res.RowsAffected(); n == 1 {
-			return advanceRetainedCaptureJobTx(ctx, tx, m, `identity_after=?`, ordinal)
-		}
+		return advanceRetainedCaptureJobTx(ctx, tx, m, `identity_after=?`, ordinal)
 	}
 
 	// Reset complete. Revalidate the exact local binding: a rotated lifetime may
