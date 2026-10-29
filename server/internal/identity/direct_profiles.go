@@ -364,7 +364,8 @@ type DirectSelectionResult struct {
 // transaction.
 type profilePINProof struct {
 	// checked: the profile has a PIN, no remembered trust covers this
-	// selection, and the PIN offered was compared with it.
+	// selection (a switch to the main profile is never covered by it), and the
+	// PIN offered was compared with it.
 	checked bool
 	correct bool
 	// pinRevision is the PIN the comparison was made against.
@@ -373,7 +374,9 @@ type profilePINProof struct {
 
 // proveProfilePIN compares the offered PIN with the profile's, reading what it
 // needs in a snapshot and hashing with no transaction open. A profile with no
-// PIN, or a selection covered by remembered trust, needs no proof. A device chain in its
+// PIN, or a selection covered by remembered trust, needs no proof, except that
+// a switch from another profile to the main profile is never covered by
+// remembered trust and always proves the main PIN freshly. A device chain in its
 // own retry delay is refused before hashing; other device chains remain unaffected.
 func (s *Service) proveProfilePIN(ctx context.Context, bearer, id string, q DirectSelection) (profilePINProof, error) {
 	var proof profilePINProof
@@ -389,12 +392,18 @@ func (s *Service) proveProfilePIN(ctx context.Context, bearer, id string, q Dire
 	}
 	var hash []byte
 	var revision int64
-	if e = tx.QueryRowContext(ctx, `SELECT pin_hash,revision,pin_revision FROM direct_profiles WHERE account_id=? AND id=? AND deleted=0`, c.account.ID, id).Scan(&hash, &revision, &proof.pinRevision); e != nil {
+	var primary int
+	if e = tx.QueryRowContext(ctx, `SELECT pin_hash,revision,pin_revision,is_primary FROM direct_profiles WHERE account_id=? AND id=? AND deleted=0`, c.account.ID, id).Scan(&hash, &revision, &proof.pinRevision, &primary); e != nil {
 		gated.Rollback()
 		return proof, ErrUnauthorized
 	}
+	// Remembered selection is a convenience for the profile it was made on and
+	// for the initial profile choice of an account-scoped sign-in (whose family
+	// is already on the main profile). It never covers a switch from another
+	// profile to the main profile: that needs the main profile's own PIN.
+	switchToPrimary := primary != 0 && c.profileID != id
 	trusted := false
-	if q.TrustToken != "" && validFamilyID(q.InstallationID) {
+	if !switchToPrimary && q.TrustToken != "" && validFamilyID(q.InstallationID) {
 		if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM direct_profile_trust WHERE token_hash=? AND account_id=? AND profile_id=? AND installation_id=? AND pin_revision=? AND membership_revision=? AND profile_revision=? AND expires_at>? AND EXISTS(SELECT 1 FROM identity_sign_in_policy WHERE pin_remember_days>0))`, Digest(q.TrustToken), c.account.ID, id, q.InstallationID, proof.pinRevision, c.account.Revision, revision, time.Now().UTC().Format(time.RFC3339)).Scan(&trusted); e != nil {
 			gated.Rollback()
 			return proof, e
@@ -467,8 +476,13 @@ func (s *Service) SelectDirectProfileFrom(ctx context.Context, bearer, id string
 	if e != nil {
 		return out, ErrUnauthorized
 	}
+	// A remembered selection covers the profile it was made on and the initial
+	// profile choice of an account-scoped sign-in, whose family is already on
+	// the main profile. It never covers a switch from another profile to the
+	// main profile: that needs the main profile's own PIN, checked afresh.
+	switchToPrimary := primary != 0 && c.profileID != id
 	trusted := false
-	if q.TrustToken != "" && validFamilyID(q.InstallationID) {
+	if !switchToPrimary && q.TrustToken != "" && validFamilyID(q.InstallationID) {
 		e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM direct_profile_trust WHERE token_hash=? AND account_id=? AND profile_id=? AND installation_id=? AND pin_revision=? AND membership_revision=? AND profile_revision=? AND expires_at>? AND EXISTS(SELECT 1 FROM identity_sign_in_policy WHERE pin_remember_days>0))`, Digest(q.TrustToken), c.account.ID, id, q.InstallationID, pinRevision, c.account.Revision, revision, time.Now().UTC().Format(time.RFC3339)).Scan(&trusted)
 		if e != nil {
 			return out, e
@@ -518,9 +532,21 @@ func (s *Service) SelectDirectProfileFrom(ctx context.Context, bearer, id string
 			return out, e
 		}
 	}
-	role := c.account.Role
-	if primary == 0 {
-		role = "member"
+	// directCallerTx narrows c.account.Role to the role of the session that
+	// asked, so a Guest or Kids session would hand "member" to the account's
+	// own main profile. The session this selection mints takes the account's
+	// current membership role, read here in the same writer; a non-primary
+	// profile is always a member. The caller's role and client input never set
+	// it. The target's PIN gate above already ran, and a switch to the main
+	// profile needed a fresh PIN rather than a remembered selection.
+	role := TierMember
+	if primary != 0 {
+		if e = tx.QueryRowContext(ctx, `SELECT role FROM direct_memberships WHERE account_id=? AND disabled=0`, c.account.ID).Scan(&role); e != nil {
+			if errors.Is(e, sql.ErrNoRows) {
+				return out, ErrUnauthorized
+			}
+			return out, e
+		}
 	}
 	// Choosing a profile continues the sign-in this device already holds; the
 	// remote sign-in policy judged that sign-in when it was made.
