@@ -1484,8 +1484,14 @@ func run() (runErr error) {
 	serverReadyHook()
 	supervise.Go("cmd.started-notice", func() { announceStarted(ctx, outboundWebhooks) })
 	supervise.Supervise(ctx, "cmd.visibility-rebuilder", cat.RunVisibilityRebuilder)
-	supervise.Supervise(ctx, "cmd.compact-catalogue", compactcatalog.NewWorker(db).Run)
-	supervise.Go("cmd.catalogue-retention", func() { compactcatalog.RunRetention(ctx, db) })
+	supervise.Supervise(ctx, "cmd.compact-catalogue", func(life context.Context) {
+		worker.LowerPriority()
+		compactcatalog.NewWorker(db).Run(life)
+	})
+	supervise.Go("cmd.catalogue-retention", func() {
+		worker.LowerPriority()
+		compactcatalog.RunRetention(ctx, db)
+	})
 	connectionLimit := connectionBudget(hostlimits.EffectiveMemoryBytes())
 	if console != nil {
 		appliedConnectionLimit := 0
