@@ -2,7 +2,6 @@ package operations
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	"fmt"
@@ -23,16 +22,32 @@ type FFmpegStatus struct {
 // FFmpegValidator checks the saved build with the same qualification and
 // sandbox as startup. It does not install it or disturb active conversions.
 func FFmpegValidator(active string) func(context.Context, string) FFmpegStatus {
-	var mu sync.Mutex
+	return ffmpegValidator(active, decoder.ProbeToolchain)
+}
+
+type ffmpegRecheckKey struct{}
+
+// WithFFmpegRecheck requests an explicit qualification instead of the cached
+// status. Authority is still decided by Settings before this is consulted.
+func WithFFmpegRecheck(ctx context.Context) context.Context {
+	return context.WithValue(ctx, ffmpegRecheckKey{}, true)
+}
+
+func ffmpegValidator(active string, probe func(context.Context, string) (decoder.ToolchainFacts, error)) func(context.Context, string) FFmpegStatus {
+	lock := make(chan struct{}, 1)
 	var previous FFmpegStatus
 	var identity string
-	var checked time.Time
+	var checked bool
 	return func(ctx context.Context, path string) FFmpegStatus {
 		if path == "" {
 			path = active
 		}
-		mu.Lock()
-		defer mu.Unlock()
+		select {
+		case lock <- struct{}{}:
+		case <-ctx.Done():
+			return FFmpegStatus{Path: path, State: "unchecked", InUse: path == active, ReasonCode: "ffmpeg.validation.timedOut", MissingFeatures: []string{}, CheckedAt: time.Now().UTC().Format(time.RFC3339)}
+		}
+		defer func() { <-lock }()
 		resolved, err := exec.LookPath(path)
 		var fileIdentity string
 		if err == nil {
@@ -42,7 +57,8 @@ func FFmpegValidator(active string) func(context.Context, string) FFmpegStatus {
 				fileIdentity = fmt.Sprintf("%s:%d:%d", resolved, info.Size(), info.ModTime().UnixNano())
 			}
 		}
-		if path == previous.Path && err == nil && fileIdentity == identity && time.Since(checked) < time.Minute {
+		force, _ := ctx.Value(ffmpegRecheckKey{}).(bool)
+		if checked && !force && path == previous.Path && fileIdentity == identity {
 			return previous
 		}
 		out := FFmpegStatus{Path: path, State: "refused", InUse: path == active, MissingFeatures: []string{}, CheckedAt: time.Now().UTC().Format(time.RFC3339)}
@@ -51,7 +67,7 @@ func FFmpegValidator(active string) func(context.Context, string) FFmpegStatus {
 		} else {
 			bounded, cancel := context.WithTimeout(ctx, 15*time.Second)
 			defer cancel()
-			facts, e := decoder.ProbeToolchain(bounded, path)
+			facts, e := probe(bounded, path)
 			if e != nil {
 				out.ReasonCode = "ffmpeg.validation.cannotRun"
 				if bounded.Err() != nil {
@@ -67,7 +83,7 @@ func FFmpegValidator(active string) func(context.Context, string) FFmpegStatus {
 				}
 			}
 		}
-		previous, identity, checked = out, fileIdentity, time.Now()
+		previous, identity, checked = out, fileIdentity, true
 		return out
 	}
 }

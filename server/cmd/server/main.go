@@ -1135,6 +1135,7 @@ func run() (runErr error) {
 	console, scheduler, e := initializeConsole(db, scanner, player, hls, cat, lyricFetch, state, configurationStore)
 	if console != nil && e == nil {
 		console.FFmpegValidation = operations.FFmpegValidator(ffmpegTool)
+		_ = console.FFmpegValidation(ctx, startupMedia.FFmpegPath)
 		console.AppliedTemporaryDirectory = &appliedConversionSetting
 		console.TranscodeDirectoryAllowed = layout.AllowsTranscodeDirectory
 		console.AppliedFFmpegPath = &startupMedia.FFmpegPath
@@ -1195,7 +1196,7 @@ func run() (runErr error) {
 		var advertisedMu sync.Mutex
 		var lastAdvertised string
 		manager.SetAdvertisedInterface(func(ctx context.Context) string {
-			document, err := console.Settings(ctx, operations.AllowServerScope)
+			document, err := console.RuntimeSettings(ctx, operations.AllowServerScope)
 			advertisedMu.Lock()
 			defer advertisedMu.Unlock()
 			if err == nil {
@@ -1229,7 +1230,7 @@ func run() (runErr error) {
 			if ctx == nil {
 				ctx = context.Background()
 			}
-			document, err := console.Settings(ctx, operations.AllowServerScope)
+			document, err := console.RuntimeSettings(ctx, operations.AllowServerScope)
 			customRead = time.Now()
 			if err == nil {
 				lastPath, lastKey, lastDomain = document.Effective.CustomCertificatePath, document.Effective.CustomCertificateKeyPath, document.Effective.CustomCertificateDomain
@@ -1292,7 +1293,7 @@ func run() (runErr error) {
 			if err := console.NotificationMaintenance(maintenanceCtx, free, total); err != nil && ctx.Err() == nil {
 				log.Printf("warn: Owner notices: %v", err)
 			}
-			if document, err := console.Settings(maintenanceCtx, operations.AllowServerScope); err == nil {
+			if document, err := console.RuntimeSettings(maintenanceCtx, operations.AllowServerScope); err == nil {
 				if err := administration.ClientLogs.Prune(maintenanceCtx, document.Effective.LogRetentionDays()["client"]); err != nil && ctx.Err() == nil {
 					log.Printf("warn: Client report retention: %v", err)
 				}
@@ -1402,6 +1403,7 @@ func run() (runErr error) {
 	supervise.Supervise(ctx, "cmd.reading-text-counts", func(life context.Context) {
 		unregister := dbwork.WakeOnTables(textCountWake, "reading_publications", "inventory_objects", "library_sources", "catalog_assets")
 		defer unregister()
+		worker.LowerPriority()
 		worker.Run(life, "cmd.reading-text-counts", textCountWake, textCounts.Step)
 	})
 	// Unopened cover coverage: the same explicit EPUB cover item or first comic
@@ -1414,6 +1416,7 @@ func run() (runErr error) {
 		wake := worker.NewSignal()
 		unregister := dbwork.WakeOnTables(wake, "reading_publications", "inventory_objects", "library_sources", "catalog_assets")
 		defer unregister()
+		worker.LowerPriority()
 		worker.Run(life, "cmd.reading-covers", wake, covers.Step)
 	})
 	previousFamilyRevoked := ident.OnFamilyRevokedTx
@@ -1483,7 +1486,7 @@ func run() (runErr error) {
 	connectionLimit := connectionBudget(hostlimits.EffectiveMemoryBytes())
 	if console != nil {
 		appliedConnectionLimit := 0
-		if document, err := console.Settings(ctx, operations.AllowServerScope); err == nil {
+		if document, err := console.RuntimeSettings(ctx, operations.AllowServerScope); err == nil {
 			appliedConnectionLimit = document.Requested.ConnectionLimit
 			if appliedConnectionLimit > 0 {
 				connectionLimit = appliedConnectionLimit
@@ -1504,6 +1507,7 @@ func run() (runErr error) {
 	// neither competes with the work of coming up.
 	supervise.Supervise(ctx, "cmd.database-watchdog", watchdog.Run)
 	supervise.Go("cmd.deferred-maintenance", func() {
+		worker.LowerPriority()
 		runDeferredMaintenance(dbwork.WithClass(ctx, dbwork.ClassMaintenance), db)
 		// A changed episode name reader reads the sources the old one left with
 		// a naming issue once more (NEW-26); a scan never re-reads them.
@@ -1512,6 +1516,7 @@ func run() (runErr error) {
 		}
 	})
 	supervise.Supervise(dbwork.WithClass(ctx, dbwork.ClassMaintenance), "cmd.database-housekeeping", func(life context.Context) {
+		worker.LowerPriority()
 		runDatabaseHousekeeping(life, db)
 	})
 	supervise.Go("hosted.storage", func() { control.ObserveStorage(ctx, state) })
@@ -1577,7 +1582,7 @@ func run() (runErr error) {
 	}
 	if env("PORTICO_DISCOVERY", "1") != "0" {
 		homeNetworks := func(ctx context.Context) []netip.Prefix {
-			document, err := console.Settings(ctx, operations.AllowServerScope)
+			document, err := console.RuntimeSettings(ctx, operations.AllowServerScope)
 			if err != nil {
 				return nil
 			}

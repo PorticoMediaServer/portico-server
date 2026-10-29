@@ -21,6 +21,7 @@ func PaceBackground(ctx context.Context, batchStarted time.Time) bool {
 	if !ForegroundWorkActive() {
 		return true
 	}
+	yields.Add(1)
 	elapsed := time.Since(batchStarted)
 	pause := 50 * time.Millisecond
 	switch BackgroundSpeed(ctx) {
@@ -33,6 +34,8 @@ func PaceBackground(ctx context.Context, batchStarted time.Time) bool {
 	if elapsed < pause/3 {
 		pause = max(2*time.Millisecond, 3*elapsed)
 	}
+	started := time.Now()
+	defer func() { yieldWaitNanos.Add(uint64(time.Since(started))) }()
 	timer := time.NewTimer(pause)
 	defer timer.Stop()
 	select {

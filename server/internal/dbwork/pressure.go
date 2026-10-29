@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 var (
@@ -15,8 +16,9 @@ var (
 	foregroundProbes = map[string]func() bool{}
 	// healthProbe reports whether the database is healthy enough for background
 	// writes. Nil means healthy.
-	healthProbe func() bool
-	yields      atomic.Uint64
+	healthProbe    func() bool
+	yields         atomic.Uint64
+	yieldWaitNanos atomic.Uint64
 )
 
 // RegisterForegroundProbe adds a memory-only signal that foreground work is in
@@ -94,7 +96,7 @@ type PressureStats struct {
 func Pressure() PressureStats {
 	return PressureStats{
 		Yields:          yields.Load(),
-		YieldWaitMillis: 0,
+		YieldWaitMillis: yieldWaitNanos.Load() / uint64(time.Millisecond),
 		ValveBlocks:     0,
 		Foreground:      ForegroundWorkActive(),
 		Healthy:         HealthAllowsBackground(),

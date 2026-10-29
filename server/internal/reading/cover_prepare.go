@@ -64,7 +64,7 @@ func coverPendingSQL(primary string) string {
  CROSS JOIN inventory_item_availability available ON available.item_id=e.id AND available.asset_id=a.token
  WHERE e.retired=0 AND cl.retired=0 AND ` + coverWorkerDomain + ` AND ` + publicationEligible + `
  AND ` + backgroundCanonicalObject + `
- AND e.id>? ORDER BY e.id LIMIT ?`
+ AND e.id>? AND e.id<=? ORDER BY e.id LIMIT ?`
 }
 
 // CoverPreparation is one worker.Run step over pending canonical EPUB/CBZ
@@ -134,7 +134,12 @@ func (p *CoverPreparation) Step(ctx context.Context) time.Duration {
 	if primary == "" {
 		return time.Minute
 	}
-	rows, err := p.DB.QueryContext(ctx, coverPendingSQL(primary), readingCoverRuleVersion, p.cursor, window)
+	after, examined, err := preparationWindow(ctx, p.DB, p.cursor, window)
+	if err != nil {
+		log.Printf("Reading covers: %v", err)
+		return time.Minute
+	}
+	rows, err := dbwork.ReadHandle(ctx, p.DB).QueryContext(ctx, coverPendingSQL(primary), readingCoverRuleVersion, p.cursor, after, window)
 	if err != nil {
 		log.Printf("Reading covers: %v", err)
 		return time.Minute
@@ -159,7 +164,7 @@ func (p *CoverPreparation) Step(ctx context.Context) time.Duration {
 		if ctx.Err() != nil {
 			return 0
 		}
-		if !dbwork.WaitBackground(ctx) {
+		if !dbwork.PaceBackground(ctx, time.Time{}) {
 			return 0
 		}
 		// The cursor advances over every examined candidate, including the ones
@@ -182,7 +187,8 @@ func (p *CoverPreparation) Step(ctx context.Context) time.Duration {
 			}
 		}
 	}
-	if len(todo) < window {
+	p.cursor = after
+	if examined < window {
 		p.passing = false
 		if p.retry {
 			// A transient failure is retried after the pass rest.

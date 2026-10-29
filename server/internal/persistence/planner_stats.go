@@ -8,6 +8,7 @@ import (
 	"math/rand/v2"
 	"strconv"
 	"strings"
+	"time"
 
 	"portico.local/server/internal/dbwork"
 )
@@ -39,6 +40,7 @@ const PlannerStatsSample = 20000
 // table whose statistics are missing or off by 10× (the rule PRAGMA optimize
 // uses), then reloads them into this process's planner. It stops at ctx.
 func RefreshPlannerStatistics(ctx context.Context, db *sql.DB) error {
+	ctx = dbwork.WithClass(ctx, dbwork.ClassMaintenance)
 	if err := ensurePlannerStatTable(ctx, db); err != nil {
 		return err
 	}
@@ -56,7 +58,7 @@ func RefreshPlannerStatistics(ctx context.Context, db *sql.DB) error {
 		}
 	}()
 	for _, table := range tables {
-		if !dbwork.Yield(ctx) {
+		if !dbwork.PaceBackground(ctx, time.Time{}) {
 			return ctx.Err()
 		}
 		rows, stale, err := plannerTableStats(ctx, read, table)

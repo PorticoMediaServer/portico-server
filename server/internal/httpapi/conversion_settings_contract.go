@@ -212,6 +212,14 @@ func registerConversionOwnerSettings(registry *apikit.Registry, d Dependencies) 
 			return ConsoleReply[operations.SettingsDocument]{}, err
 		}
 		defer done()
+		// An explicit owner revalidation asks for a fresh tool check. Ordinary
+		// settings reads serve the cached qualification; no new wire shape.
+		for _, directive := range strings.Split(r.Header.Get("Cache-Control"), ",") {
+			if strings.EqualFold(strings.TrimSpace(directive), "no-cache") {
+				ctx = operations.WithFFmpegRecheck(ctx)
+				break
+			}
+		}
 		doc, err := d.Console.Settings(ctx, auth)
 		if err != nil {
 			return ConsoleReply[operations.SettingsDocument]{}, conversionSettingsError(err)

@@ -60,7 +60,7 @@ func TestClosingPublicHandleClosesWriterPool(t *testing.T) {
 	if writer == db {
 		t.Fatal("writer not separate")
 	}
-	if background == db || background == writer || background.Stats().MaxOpenConnections != 2 || db.Stats().MaxOpenConnections != 6 {
+	if background == db || background == writer || background.Stats().MaxOpenConnections != 1 || db.Stats().MaxOpenConnections != 6 {
 		t.Fatal("foreground/background pools are not isolated")
 	}
 	if err := db.Close(); err != nil {
@@ -133,7 +133,7 @@ func TestBackgroundAndForegroundReadPoolsCannotStarveEachOther(t *testing.T) {
 	foreground = nil
 	background := ReadHandle(backgroundCtx, db)
 	backgroundConns := []*sql.Conn{}
-	for range 2 {
+	for range background.Stats().MaxOpenConnections {
 		conn, err := background.Conn(ctx)
 		if err != nil {
 			t.Fatal(err)
@@ -147,5 +147,29 @@ func TestBackgroundAndForegroundReadPoolsCannotStarveEachOther(t *testing.T) {
 	}()
 	if err := QueryRow(ctx, db, `SELECT 1`).Scan(new(int)); err != nil {
 		t.Fatal("background readers starved foreground", err)
+	}
+}
+
+func TestBackgroundReadersSerializeWithoutHoldingForegroundCapacity(t *testing.T) {
+	db := testDB(t)
+	ctx := WithClass(context.Background(), ClassBackgroundMedia)
+	bg := ReadHandle(ctx, db)
+	first, err := bg.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	wait, cancel := context.WithTimeout(ctx, 20*time.Millisecond)
+	defer cancel()
+	if second, err := bg.Conn(wait); err == nil {
+		second.Close()
+		t.Fatal("second background reader was concurrent")
+	}
+	if err := QueryRow(context.Background(), db, `SELECT 1`).Scan(new(int)); err != nil {
+		t.Fatal(err)
+	}
+	first.Close()
+	if err := QueryRow(ctx, db, `SELECT 1`).Scan(new(int)); err != nil {
+		t.Fatal("background reader did not resume", err)
 	}
 }

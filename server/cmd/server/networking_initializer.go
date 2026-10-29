@@ -180,7 +180,7 @@ func accessURLsForPublication(v operations.Settings, publicPort int) []string {
 // last good list instead of clearing the published routes.
 func accessURLsProvider(console *operations.Store, manager *networking.RemoteManager) func(context.Context) []string {
 	return func(ctx context.Context) []string {
-		document, err := console.Settings(ctx, operations.AllowServerScope)
+		document, err := console.RuntimeSettings(ctx, operations.AllowServerScope)
 		if err != nil {
 			return nil
 		}
