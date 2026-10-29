@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"portico.local/server/internal/apiwire"
 	"reflect"
@@ -161,6 +162,20 @@ func (PlaySummary) JSONSchema() map[string]any {
 }
 
 func (v *Item) UnmarshalJSON(raw []byte) error {
+	// An item read is tagged variant "item" (R-09b); a Go reader of that reply
+	// accepts its own tag and nothing else in its place.
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &object); err == nil {
+		if tag, ok := object["variant"]; ok {
+			if string(tag) != `"item"` {
+				return fmt.Errorf("item variant %s", tag)
+			}
+			delete(object, "variant")
+			if raw, err = json.Marshal(object); err != nil {
+				return err
+			}
+		}
+	}
 	return apiwire.UnmarshalDurations(raw, (*itemWire)(v), map[string]string{"duration": "durationMs", "progressSeconds": "progressMs"})
 }
 
