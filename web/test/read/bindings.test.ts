@@ -6,20 +6,21 @@ import {routePath} from '../../../packages/contracts/src/index.ts';
 import {createReadBindings} from '../../src/screens/read/bindings.ts';
 
 const preferences = parsePreferenceSnapshot(JSON.parse(readFileSync(new URL('../../../server/testdata/contracts/get-bootstrap.json', import.meta.url), 'utf8')).response.preferences);
-function fixture() {
+function fixture(options: {hold?: Promise<void>} = {}) {
+  let routeCurrent = true;
   let selected = {sessionFamilyId: 'unit-family', viewer: {serverId: 'unit-server', accountId: 'unit-account', profileId: 'unit-profile', authority: 'local', role: 'member'}};
   const calls: {path: string; method: string}[] = [];
   let sequence = 0;
   const api = new HttpLocalApi('http://127.0.0.1:39117', 'unit-captured-token', async (input, init = {}) => {
     const path = new URL(String(input)).pathname; calls.push({path, method: init.method ?? 'GET'});
-    if (path === routePath('post_reading_sessions')) return new Response(JSON.stringify({itemId: 'unit-book', sourceId: 'unit-source', sessionId: `unit-session-${++sequence}`,
-      revision: 'a'.repeat(64), format: 'pdf', size: 1024, metadata: {title: 'Stored unit title'}}), {headers: {'Content-Type': 'application/json', ETag: '"' + 'a'.repeat(64) + '"'}});
+    if (path === routePath('post_reading_sessions')) { if (options.hold) await options.hold; return new Response(JSON.stringify({itemId: 'unit-book', sourceId: 'unit-source', sessionId: `unit-session-${++sequence}`,
+      revision: 'a'.repeat(64), format: 'pdf', size: 1024, metadata: {title: 'Stored unit title'}}), {headers: {'Content-Type': 'application/json', ETag: '"' + 'a'.repeat(64) + '"'}}); }
     if (init.method === 'DELETE') return new Response(null, {status: 204});
     throw new Error('unexpected unit operation');
   });
   const source = {getSnapshot: () => preferences, subscribe: () => () => {}};
-  const bound = createReadBindings({api, session: () => selected, isCurrent: () => true, preferences: source, facts: {preferences}});
-  return {bound, calls, source, api, switchProfile() {selected = {...selected, viewer: {...selected.viewer, profileId: 'different-profile'}};}};
+  const bound = createReadBindings({api, session: () => selected, isCurrent: () => routeCurrent, preferences: source, facts: {preferences}});
+  return {bound, calls, source, api, leaveRoute() {routeCurrent = false;}, switchProfile() {selected = {...selected, viewer: {...selected.viewer, profileId: 'different-profile'}};}};
 }
 
 test('captured Read bindings are lazy and explicitly close the previous real facade session before replacement', async () => {
@@ -47,4 +48,25 @@ test('token retirement uses the captured facade lifetime and notifies the mounte
   await f.bound.open({itemId: 'unit-book', sourceId: 'unit-source'});
   f.api.setAccessToken('unit-replacement-token'); assert.equal(f.bound.authority.isCurrent(), false); assert.equal(retired, 1);
   unsubscribe(); await f.bound.dispose(); assert.equal(retired, 1); assert.deepEqual(f.calls.map(call => call.method), ['POST']);
+});
+
+test('leaving the reader releases its server session though the route has already gone (E-web-15)', async () => {
+  const f = fixture(), opened = await f.bound.open({itemId: 'unit-book', sourceId: 'unit-source'});
+  f.leaveRoute();
+  await f.bound.dispose();
+  assert.equal(opened.signal.aborted, true);
+  assert.deepEqual(f.calls.map(call => call.method), ['POST', 'DELETE'], 'the same viewer releases the session after navigation');
+});
+
+test('an open still on its way when the reader goes is released when it arrives, not leaked', async () => {
+  let arrive!: () => void;
+  const f = fixture({hold: new Promise<void>(resolve => {arrive = resolve;})});
+  const opening = f.bound.open({itemId: 'unit-book', sourceId: 'unit-source'});
+  await new Promise(resolve => setTimeout(resolve, 0));
+  f.leaveRoute();
+  const disposed = f.bound.dispose();
+  arrive();
+  await assert.rejects(opening, error => error instanceof ReadingError && error.code === 'cancelled');
+  await disposed;
+  assert.deepEqual(f.calls.map(call => call.method), ['POST', 'DELETE'], 'the late session is deleted before the binding retires');
 });

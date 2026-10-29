@@ -25,15 +25,20 @@ export function createReadBindings(context: ReadBindingContext): ReadBindings {
   let alive = true, retiring = false, client: ReadingClient | undefined;
   let pending: AbortController | undefined, session: ReadingSession | undefined;
   let closing = Promise.resolve(), disposal: Promise<void> | undefined;
-  const authorized = () => {
-    if (!alive || life.signal.aborted || !context.isCurrent() || client?.signal.aborted) return false;
+  // The same viewer, whatever the route: a session this binding opened may be released after the reader's
+  // route has gone (unmount follows navigation), but never under another viewer.
+  const viewerMatches = () => {
+    if (client?.signal.aborted) return false;
     const current = context.session();
     return current.sessionFamilyId === captured.sessionFamilyId && current.viewer.serverId === viewer.serverId
       && current.viewer.authority === viewer.authority && current.viewer.accountId === viewer.accountId
       && current.viewer.profileId === viewer.profileId && current.viewer.role === viewer.role;
   };
+  const authorized = () => alive && !life.signal.aborted && context.isCurrent() && viewerMatches();
+  // Opens on their way and releases in progress keep the client usable for this same viewer only.
+  let releasing = 0, inFlight = 0;
   const current = () => !retiring && authorized();
-  client = context.api.reading({viewer, isCurrent: authorized, signal: life.signal});
+  client = context.api.reading({viewer, isCurrent: () => authorized() || releasing + inFlight > 0 && viewerMatches(), signal: life.signal});
   const owner = client;
   const authority: ReaderMountAuthority = Object.freeze({isCurrent: current, subscribe(listener: () => void) {
     let notified = false;
@@ -41,16 +46,21 @@ export function createReadBindings(context: ReadBindingContext): ReadBindings {
     owner.signal.addEventListener('abort', retired); life.signal.addEventListener('abort', retired);
     return () => {owner.signal.removeEventListener('abort', retired); life.signal.removeEventListener('abort', retired);};
   }});
+  // Each open holds one of the profile's few server reading sessions (P2-74 E-web-15): release it on
+  // replacement and on leaving, including one that arrives after the reader has already gone.
+  const release = (opened: ReadingSession): Promise<void> => {
+    if (!viewerMatches()) return Promise.resolve();
+    releasing++;
+    const cleanup = new AbortController(), deadline = setTimeout(() => cleanup.abort(), 2000);
+    return opened.close(cleanup.signal).catch(() => {}).finally(() => {clearTimeout(deadline); releasing--;});
+  };
+  let opening: Promise<void> = Promise.resolve();
   const close = () => {
-    pending?.abort(new ReadingError('cancelled')); pending = undefined;
+    // A pending open is not aborted: its session may already exist on the server. It is released on arrival.
+    pending = undefined;
     const previous = session; session = undefined;
-    // Retirement never issues cleanup using another viewer's authority.
-    let task = Promise.resolve();
-    if (previous && authorized()) {
-      const cleanup = new AbortController(), deadline = setTimeout(() => cleanup.abort(), 2000);
-      task = previous.close(cleanup.signal).finally(() => clearTimeout(deadline));
-    }
-    closing = Promise.all([closing.catch(() => {}), task]).then(() => {});
+    const task = previous ? release(previous) : Promise.resolve();
+    closing = Promise.all([closing.catch(() => {}), task, opening]).then(() => {});
     return closing;
   };
   const open: ReadBindings['open'] = async request => {
@@ -58,11 +68,11 @@ export function createReadBindings(context: ReadBindingContext): ReadBindings {
     const before = close(), operation = new AbortController(); pending = operation;
     await before;
     if (!current() || pending !== operation) throw new ReadingError('cancelled');
-    const opened = await owner.open(request, operation.signal);
-    if (!current() || pending !== operation) {
-      if (authorized()) await opened.close();
-      throw new ReadingError('cancelled');
-    }
+    inFlight++;
+    const attempt = owner.open(request, operation.signal).finally(() => {inFlight--;});
+    opening = attempt.then(opened => {if (pending !== operation || !current()) return release(opened);}, () => {});
+    const opened = await attempt;
+    if (!current() || pending !== operation) throw new ReadingError('cancelled');
     pending = undefined; session = opened; return opened;
   };
   const dispose = () => {
