@@ -6,6 +6,10 @@ import {restoreNativeSession,forgetNativeSession,savedConnectionDamaged,type Rem
 import {browserAccount} from './account';
 import {AppSessionStore, type AppSessionRecord, type NewServerConnection} from '@core/app-sessions.ts';
 import {browserDiscoveryProvider} from './discovery-provider';
+import {currentWebEnvironment} from './environment';
+import {DEFAULT_INSECURE_CONNECTIONS,type ConnectionPolicy} from '@core/connection-policy.ts';
+import {routeJSON} from '@core/route-identity';
+import {routePath} from '../../../packages/contracts/src/routes.ts';
 export {installBrowserDiscoveryProvider} from './discovery-provider';
 
 /** Version 1 is encrypted with a non-exportable key. Version 2 is plain JSON, used where the
@@ -118,8 +122,16 @@ export function browserAppSessions():AppSessionStore {
  }});
 }
 let listening=false,active:RouteConnection|undefined,networkRevision=0;
+/** This page's connection policy (P2-69 O-156). At web.getportico.tv every plain-HTTP route is
+ * mixed content: the shared race does not send Chromium's Local Network Access target, so no
+ * private-literal exemption is claimed. A server's own page already chose its transport. */
+export function browserConnectionPolicy():ConnectionPolicy{
+ return Object.freeze({insecure:DEFAULT_INSECURE_CONNECTIONS,platform:currentWebEnvironment().hostedWeb?'web-hosted':'web-server',webPrivateLiteralHttp:false});
+}
+/** The server's own answer about this connection (home or away, its policy), read without credentials. */
+const readBrowserConnection=(origin:string,signal:AbortSignal)=>globalThis.fetch(origin+routePath('get_connection'),{method:'GET',redirect:'error',credentials:'omit',referrerPolicy:'no-referrer',signal,headers:{Accept:'application/json'}}).then(response=>routeJSON(response,signal,8192));
 export function browserConnectionEnvironment(serverId?:string,admission?:NewServerConnection):ConnectionEnvironment {
- const discover=browserDiscoveryProvider(),store=browserAppSessions(),environment:ConnectionEnvironment={storage:serverId?store.connectionStorage(serverId,admission):store.selectedStorage(),...(discover?{discover}:{})};
+ const discover=browserDiscoveryProvider(),store=browserAppSessions(),environment:ConnectionEnvironment={storage:serverId?store.connectionStorage(serverId,admission):store.selectedStorage(),policy:browserConnectionPolicy,readConnection:readBrowserConnection,...(discover?{discover}:{})};
  if(listening)return environment;listening=true;
  const changed=()=>active?.networkChanged('browser:'+ ++networkRevision);
  addEventListener('online',changed);addEventListener('offline',changed);

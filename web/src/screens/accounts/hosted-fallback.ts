@@ -1,3 +1,4 @@
+import {addressClass} from '@core/network-locality.ts';
 import type {DirectoryFallback} from '../../kit/accounts/DirectoryStatus';
 import type {DirectoryItem, DirectorySnapshot} from '../../services/directory-flow';
 
@@ -11,10 +12,11 @@ export function fallbackFor(state: Pick<DirectorySnapshot, 'status'>, target: Di
   if ((state.status === 'waiting' || state.status === 'unreachable') && local) return {kind: 'local', onPress: go(local)};
   return undefined;
 }
-/** A server's own home-network address: its LAN name under the Portico certificate, or a private IP. */
+/** A server's own home-network address: a private or loopback IP, a Portico direct name that
+ * encodes one, or a home-network name (P2-69's locality rule). */
 export function isLocalRoute(origin: string): boolean {
   try {
-    const host = new URL(origin).hostname.replace(/^\[|\]$/g, '');
-    return /^l-[a-z0-9-]+\.ptc-[a-z0-9]+\.direct\.getportico\.tv$/i.test(host) || /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host) || /^f[cd][0-9a-f]{2}:/i.test(host) || host.endsWith('.local');
+    const cls = addressClass(new URL(origin).hostname);
+    return cls === 'lan' || cls === 'loopback';
   } catch {return false;}
 }
