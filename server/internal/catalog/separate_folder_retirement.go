@@ -113,7 +113,7 @@ const (
 	separateFolderGrantHeadSQL = `SELECT hash FROM download_grants INDEXED BY download_grants_retirement
  WHERE item_id=? AND revoked=0 ORDER BY hash LIMIT 1`
 	separateFolderGrantRetireSQL = `UPDATE download_grants SET revoked=1 WHERE hash=? AND revoked=0`
-	separateFolderGrantProbeSQL = `SELECT EXISTS(SELECT 1 FROM download_grants INDEXED BY download_grants_retirement
+	separateFolderGrantProbeSQL  = `SELECT EXISTS(SELECT 1 FROM download_grants INDEXED BY download_grants_retirement
  WHERE item_id=? AND revoked=0)`
 
 	separateFolderReceiptHeadSQL = `SELECT id FROM download_receipts INDEXED BY download_receipts_retirement

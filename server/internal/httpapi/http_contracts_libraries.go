@@ -109,7 +109,7 @@ func registerLibrariesHTTPContracts(registry *apikit.Registry) error {
 		ItemID   string "json:\"itemId\""
 	}, struct {
 		ItemId string `json:"itemId"`
-	}](registry, apikit.Metadata{Audience: apikit.Clients, ID: "post_admin_libraries_id_inventory_object_action", Method: "POST", Path: "/v1/admin/libraries/{id}/inventory/{object}/{action}", SuccessStatuses: []int{200, 204}, Summary: "Run server library inventory", Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneAdminHeavy, Cost: apikit.Constant, BodyLimit: 65536, Status: 204, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{Audience: apikit.Clients, ID: "post_admin_libraries_id_inventory_object_action", Method: "POST", Path: "/v1/admin/libraries/{id}/inventory/{object}/{action}", SuccessStatuses: []int{200, 204}, Summary: "Run server library inventory", Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneAdminHeavy, Cost: apikit.Constant, BodyLimit: 65536, Status: 204, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "request_in_progress", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/mounts.go:52

@@ -454,6 +454,7 @@ index inventory_objects_path
 index inventory_objects_reading_asset_object
 index inventory_objects_reading_closure
 index inventory_objects_reading_source_object
+index inventory_objects_separate_folder
 index inventory_objects_source
 index inventory_operation_jobs_job_id_fk
 index inventory_reading_directories_due
