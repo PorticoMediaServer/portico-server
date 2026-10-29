@@ -83,6 +83,11 @@ func (d Dependencies) readingCountCaller(p identity.Principal, v catalog.Viewer,
 	return readprep.Caller(raw)
 }
 func readingBrowsePreparationFailure(w http.ResponseWriter, err error) {
+	var revision *catalog.ReadingRevisionMismatch
+	if errors.As(err, &revision) {
+		browseFailure(w, err)
+		return
+	}
 	if errors.Is(err, readprep.ErrStale) || errors.Is(err, catalog.ErrStaleContinuation) || errors.Is(err, catalog.ErrReadingProjectionChanged) {
 		policyError(w, "stale_continuation")
 		return
@@ -140,6 +145,29 @@ func (d Dependencies) readingBrowsePreparedHandler(w http.ResponseWriter, r *htt
 		return
 	}
 	request := catalog.BrowseRequest{ServerID: d.Identity.ID(), Library: library, HomeRowDisplay: body.HomeRowDisplay, Pivot: body.Pivot, Query: query, Sort: body.Sort, Limit: body.Limit, Cursor: body.Cursor, Range: body.Range, Seek: body.Seek}
+	var building catalog.BrowseResult
+	var cold bool
+	err = d.compose(r, viewer.EffectiveRestrictions(), func(cat *catalog.Service) error {
+		live, e := d.readingBrowseViewer(cat.Context(), p, library, viewer)
+		if e != nil {
+			return e
+		}
+		viewer = live
+		building, cold, e = cat.ReadingBrowseBuilding(viewer, request)
+		return e
+	})
+	if err != nil {
+		readingBrowsePreparationFailure(w, err)
+		return
+	}
+	if cold {
+		if err = d.browseAuthorityAfter(r, p, viewer); err != nil {
+			browseFailure(w, err)
+			return
+		}
+		write(w, 200, building)
+		return
+	}
 	if body.Cursor != "" {
 		var page catalog.BrowseResult
 		var carried bool

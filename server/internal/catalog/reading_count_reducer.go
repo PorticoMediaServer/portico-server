@@ -435,9 +435,10 @@ func (r *ReadingCountReduction) unit(s *Service, q *ReadingCountQuantum) error {
 	case countBrowse:
 		var library int64
 		var kind int
-		err := s.read().QueryRow(`SELECT library_id,kind FROM catalog_browse_rows WHERE entity_id=?`, r.entity).Scan(&library, &kind)
+		var published bool
+		err := s.read().QueryRow(`SELECT library_id,kind,EXISTS(SELECT 1 FROM reading_attribution_members m WHERE m.library_id=? AND m.generation=? AND m.item_id=e.entity_id) FROM catalog_browse_rows e WHERE entity_id=?`, r.scope.library, r.scope.generation.Ready, r.entity).Scan(&library, &kind, &published)
 		// Serving resolution is two PK probes at most, including absence overlays.
-		q.Raw += 2
+		q.Raw += 3 // serving overlay plus the published-membership PK
 		if errors.Is(err, sql.ErrNoRows) {
 			r.phase = countRaw
 			return nil
@@ -449,7 +450,7 @@ func (r *ReadingCountReduction) unit(s *Service, q *ReadingCountQuantum) error {
 		if r.scope.kind == "comic" {
 			wanted = 21
 		}
-		if library != r.scope.library || kind != wanted {
+		if library != r.scope.library || kind != wanted || !published {
 			r.phase = countRaw
 			return nil
 		}
