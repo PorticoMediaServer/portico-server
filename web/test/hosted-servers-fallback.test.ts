@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {fallbackFor, isLocalRoute} from '../src/screens/accounts/hosted-fallback.ts';
 import type {DirectoryItem} from '../src/services/directory-flow.ts';
 
-const server: DirectoryItem = {id: 'srv_' + 'a'.repeat(43), name: 'Cottage', baseUrl: 'https://66-94-102-39.ptc-bbbbbbbbbbbbbbbbbbbq.portico.direct:32500', publicKey: 'p'.repeat(43), policyRevision: 1, endpointVerified: true, lastSeenAt: null, presence: {lastSeenAt: null}, ownedByMe: false, role: 'member', status: 'active'};
+const server: DirectoryItem = {id: 'srv_' + 'a'.repeat(43), name: 'Cottage', baseUrl: 'https://66-94-102-39.ptc-bbbbbbbbbbbbbbbbbbbq.portico.direct:32500', publicKey: 'p'.repeat(43), policyRevision: 1, secureConnection: 'ready', endpointVerified: true, lastSeenAt: null, presence: {lastSeenAt: null}, ownedByMe: false, role: 'member', status: 'active'};
 const lan = 'https://192-168-1-20.ptc-bbbbbbbbbbbbbbbbbbbq.portico.direct:32500';
 
 test('P2-66 D-4: one fallback, worded for the case, never followed by itself', () => {

@@ -45,7 +45,7 @@ async function fixture(t: TestContext, origin = original.address) {
       approvalRequest: {purpose: 'setup', currentOwnerAccountId: '', previousOwnerRole: '', returnRegistrationId: '', operationId: expected.operationId, serverId: pin.serverId,
         publicKey: pin.publicKey, localGeneration: generation, name: original.name, expectedRevision: expected.revision}} : {}),
     installationAcknowledged: installed, approvalRequired: prepared && !installed, actions: prepared ? ['cancel', installed ? 'continue' : 'approve'] : ['prepare'],
-    ...(installed ? {setupContinuation: {transactionId, phase: cancelled ? 'cancelled' : 'installed', expiresAt: handoff!.expiresAt, returnRegistration: registration}} : {})});
+    ...(installed ? {setupContinuation: {transactionId, phase: cancelled ? 'cancelled' : 'installed', expiresAt: handoff!.expiresAt}} : {})});
   const fetcher: typeof fetch = async (input, init) => {
     const path = new URL(String(input)).pathname, body = init?.body ? JSON.parse(String(init.body)) : undefined;
     sent.push({path, method: init?.method ?? 'GET', body, authorization: new Headers(init?.headers).get('Authorization')});
@@ -76,8 +76,8 @@ async function fixture(t: TestContext, origin = original.address) {
         setupContinuation: {transactionId, phase: 'prepared', expiresAt: start.expiresAt, claim: handoff.claim, start: handoff.start}};
     } else if (path === '/v1/auth/portico-return/exchange') {
       assert.equal(saved, undefined, 'private journal is spent before exchange');
-      assert.deepEqual(Object.keys(body).sort(), ['installationId', 'purpose', 'registrationId', 'serverChallenge', 'state', 'transactionId', 'verifier']);
-      assert.equal(body.registrationId, registration.id); assert.equal(body.installationId, installation); assert.equal(body.purpose, 'setup');
+      assert.deepEqual(Object.keys(body).sort(), ['installationId', 'purpose', 'serverChallenge', 'state', 'transactionId', 'verifier']);
+      assert.equal('registrationId' in body, false); assert.equal(body.installationId, installation); assert.equal(body.purpose, 'setup');
       assert.equal(new Headers(init?.headers).get('Authorization'), 'Bearer actual-protected-setup-secret');
       if (lost) throw new Error('lost setup response');
       response = grant;

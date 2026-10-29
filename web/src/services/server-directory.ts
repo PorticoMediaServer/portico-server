@@ -7,7 +7,10 @@ export function servicesServerDirectoryCopy(server: WorkspaceServers['items'][nu
   const {t} = i18n;
   const badge = server.ownedByMe ? {label: t('web.hostedAccount.serverOwner'), tone: 'accent' as const}
     : server.role === 'admin' ? {label: t('web.access.roleAdmin'), tone: 'default' as const} : undefined;
-  const presence = server.status === 'active' ? t('web.hostedAccount.serverOnline')
+  // Never an address, never a spinner: a pending secure connection is one plain line,
+  // and when Hosted cannot reach the server, one next step.
+  const presence = server.secureConnection === 'pending' ? t(server.status === 'active' ? 'web.hostedAccount.secureConnectionPending' : 'web.hostedAccount.secureConnectionOffline')
+    : server.status === 'active' ? t('web.hostedAccount.serverOnline')
     : server.presence.lastSeenAt ? t('web.hostedAccount.serverLastSeen', {when: i18n.date(server.presence.lastSeenAt)}) : undefined;
   return {badge, presence, online: server.status === 'active'};
 }
