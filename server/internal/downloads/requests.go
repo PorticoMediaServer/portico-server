@@ -11,6 +11,7 @@ import (
 
 	"portico.local/server/internal/playback"
 
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/entityid"
 	"portico.local/server/internal/identity"
@@ -173,6 +174,16 @@ func (s *Service) SubmitContainer(ctx context.Context, p identity.Principal, r C
 		target, e := requestTargetID(ctx, tx, r.Target)
 		if e != nil {
 			return e
+		}
+		// Producer admission fence: a new capturing request must not be opened
+		// behind an actual catalog mutation that already owns the requested
+		// container or a bounded ancestor. A playlist has no entity of its
+		// own; its member claims are fenced individually when the request is
+		// expanded. The idempotent replay above returned before this point.
+		if r.Target.Kind != "playlist" {
+			if e = compactcatalog.RequireEntityAcquirableTx(ctx, tx, target); e != nil {
+				return e
+			}
 		}
 		_, e = tx.ExecContext(ctx, `INSERT INTO download_requests(id,profile_key,operation_id,request_hash,principal,device_id,target_kind,target_id,quality,music_quality,episodes,keep_next,selection_fence,created_ms,updated_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, operations.ViewerKey(p), r.OperationID, hash, string(principal), r.DeviceID, r.Target.Kind, target, r.Quality, musicQuality, r.Policy.Episodes, r.Policy.KeepNext, fence, s.millis(), s.millis())
 		return e
@@ -512,6 +523,15 @@ func (s *Service) admitRequestItem(ctx context.Context, tx *sql.Tx, room *storag
 	}
 	key := operations.ViewerKey(p)
 	now := s.millis()
+	// Request expansion is a producer admission: admitting this member's claim,
+	// restarting a failed one, or clearing strays must not happen behind an
+	// actual catalog mutation that owns the member or a bounded ancestor. The
+	// capture walk itself records membership only and stays unfenced; the
+	// request holds here and resumes after the mutation ends. The mutation's
+	// retryable error is propagated, not turned into a member rejection.
+	if e = compactcatalog.RequireEntityAcquirableTx(ctx, tx, entity); e != nil {
+		return "", "", e
+	}
 	if e = retireStrays(ctx, tx, room, key, entity, item, now); e != nil {
 		return "", "", e
 	}

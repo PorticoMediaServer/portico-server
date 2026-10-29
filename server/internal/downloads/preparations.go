@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/contentaccess"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/entityid"
@@ -193,6 +194,19 @@ func (s *Service) submit(ctx context.Context, p identity.Principal, r Request, g
 				}
 				continue
 			}
+		}
+		// Producer admission fence, in this same writer and at the lowest point
+		// that precedes every claim write: the create below, the restart of a
+		// failed claim, and retireStrays' housekeeping. A title an actual
+		// catalog mutation (SeparateFolder retirement, merge, deletion) owns,
+		// or one of its bounded ancestors, must not collect new claims behind
+		// that mutation. Authority and content access above are unchanged, and
+		// an anonymous idempotent replay returned before this loop. Not a read
+		// barrier: existing claims, grants and held playback are untouched. The
+		// mutation's own retryable error is propagated, never remapped to a
+		// deleted, unavailable or changed-source answer.
+		if err = compactcatalog.RequireEntityAcquirableTx(ctx, tx, entity); err != nil {
+			return out, err
 		}
 		if err = retireStrays(ctx, tx, room, key, entity, item, now); err != nil {
 			return out, err
@@ -438,6 +452,18 @@ func (s *Service) Act(ctx context.Context, p identity.Principal, id string, c Co
 		}
 		_, e = tx.ExecContext(ctx, `UPDATE download_preparations SET state='cancelled',reason=?,hash_state=NULL,bytes_done=0,revision=revision+1,updated_ms=? WHERE id=?`, reason, now, id)
 	case ActionRetry:
+		// A retry is a producer admission: it either requeues this claim from
+		// nothing or steps aside for a newer one. It must not be admitted
+		// behind an actual catalog mutation that owns the title or a bounded
+		// ancestor. Pause, resume and cancel are continuations of an existing
+		// claim, not new admissions, and are left unfenced.
+		retryEntity, resolveErr := entityid.Resolve(ctx, tx, current.ItemID)
+		if resolveErr != nil {
+			return out, resolveErr
+		}
+		if e = compactcatalog.RequireEntityAcquirableTx(ctx, tx, retryEntity); e != nil {
+			return out, e
+		}
 		// A claim that ended (unavailable) is outside the one-live-claim rule,
 		// so a newer claim for the same title, version and quality may exist.
 		// That newer claim is the retry: this one steps aside for it instead of

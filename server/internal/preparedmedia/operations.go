@@ -3,7 +3,9 @@ package preparedmedia
 import (
 	"context"
 	"database/sql"
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/entityid"
 	"time"
 
 	"portico.local/server/internal/operations"
@@ -55,6 +57,13 @@ func (s *Service) Adapter() operations.Adapter {
 			}
 			if e := capacity(ctx, tx, item); e != nil {
 				return "", e
+			}
+			entity, err := entityid.Resolve(ctx, tx, item)
+			if err != nil {
+				return "", err
+			}
+			if err = compactcatalog.RequireEntityAcquirableTx(ctx, tx, entity); err != nil {
+				return "", err
 			}
 			_, e := tx.ExecContext(ctx, `UPDATE prepared_media_jobs SET state='queued',phase='waiting',bytes=0,error_code='',revision=revision+1,updated_ms=? WHERE id=?`, time.Now().UnixMilli(), id)
 			return id, e

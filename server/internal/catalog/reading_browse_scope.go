@@ -77,10 +77,16 @@ func (s *Service) readingBrowseScope(library string) (*readingBrowseScope, error
 	err = s.read().QueryRow(`SELECT c.id,a.namespace,a.input_generation,a.ready_generation,a.publication_rule_version
  FROM catalog_libraries c JOIN reading_attribution_state a ON a.library_id=c.id
  WHERE c.library_id=? AND c.retired=0`, library).Scan(&out.library, &out.generation.Namespace, &out.generation.Input, &out.generation.Ready, &rule)
-	if errors.Is(err, sql.ErrNoRows) || err == nil && (rule != compactcatalog.ReadingProjectionRuleVersion && out.generation.Ready > 0) {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrReadingProjectionChanged
 	}
 	if err == nil {
+		// A classifier-rule change genuinely invalidates the old image. Expose
+		// building, rather than serving that image or refusing an unconditional
+		// read as though it carried a stale precondition.
+		if rule != compactcatalog.ReadingProjectionRuleVersion {
+			out.generation.Ready = 0
+		}
 		out.importing = out.generation.Ready == 0 || out.generation.Input != out.generation.Ready
 	}
 	return out, err

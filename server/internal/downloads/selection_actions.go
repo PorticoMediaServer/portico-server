@@ -367,6 +367,10 @@ func hydrateSelectionSource(ctx context.Context, tx *sql.Tx, s source, start flo
 }
 
 func (s *Service) admitSelectionDownload(ctx context.Context, tx *sql.Tx, p identity.Principal, o selectionactions.Options, t selectionactions.Target, found source) (string, error) {
+	// Confirmation is not authority to admit behind a later item operation.
+	if err := compactcatalog.RequireEntityAcquirableTx(ctx, tx, t.EntityID); err != nil {
+		return "", err
+	}
 	// Re-read just this pinned link for cue boundaries; never select a new best.
 	var start float64
 	var end *float64

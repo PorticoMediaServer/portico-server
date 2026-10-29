@@ -132,7 +132,7 @@ type downloadReceiptKeys struct {
 
 func registerDownloads(r *apikit.Registry, d Dependencies) {
 	read := []string{"invalid_request", "unauthorized", "not_permitted", "feature_restricted", "not_found", "downloads_not_allowed", "downloads_unavailable", "internal"}
-	write := append([]string{"download_conflict", "storage_full", "download_not_ready", "download_unavailable", "rate_limited"}, read...)
+	write := append([]string{"download_conflict", "storage_full", "download_not_ready", "download_unavailable", "rate_limited", "request_in_progress"}, read...)
 	// What a key or token must be allowed to do to use each route. Reading what
 	// a member has claimed is reading; claiming, fetching, taking offline
 	// permission and reporting plays are that member's own playback; the

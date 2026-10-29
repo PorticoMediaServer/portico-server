@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/entityid"
 	"strconv"
@@ -358,15 +359,24 @@ func (s *Service) IssueReceipts(ctx context.Context, p identity.Principal, serve
 func (s *Service) storeReceipt(ctx context.Context, tx *sql.Tx, p identity.Principal, serverID, keyID string, secret ed25519.PrivateKey, preparation, item, library, quality, artifactDigest string, size, now int64) (string, *Receipt, error) {
 	id := identity.Digest(identity.Token())
 	expires := now + int64(ReceiptTTL/time.Millisecond)
+	entity, e := entityid.Resolve(ctx, tx, item)
+	if e != nil {
+		return "", nil, e
+	}
+	// A receipt is fresh authorization to play this title offline, so issuing
+	// one is admission. It must not be written while an actual catalog mutation
+	// owns the title or a bounded ancestor; the caller's visibility and state
+	// checks have already run, and the mutation's retryable answer is passed on
+	// rather than becoming a refusal or a missing title. Nothing has been
+	// written yet, so a refusal leaves no sequence gap.
+	if e = compactcatalog.RequireEntityAcquirableTx(ctx, tx, entity); e != nil {
+		return "", nil, e
+	}
 	var sequence int64
 	if _, e := tx.ExecContext(ctx, `UPDATE download_receipt_sequence SET value=value+1 WHERE singleton=1`); e != nil {
 		return "", nil, e
 	}
 	if e := tx.QueryRowContext(ctx, `SELECT value FROM download_receipt_sequence WHERE singleton=1`).Scan(&sequence); e != nil {
-		return "", nil, e
-	}
-	entity, e := entityid.Resolve(ctx, tx, item)
-	if e != nil {
 		return "", nil, e
 	}
 	doc, e := publicationTx(ctx, tx, preparation)
@@ -553,6 +563,25 @@ func (s *Service) Revalidate(ctx context.Context, p identity.Principal, serverID
 		if err != nil {
 			return out, err
 		}
+		// A renewal writes fresh authorization for the title, so it is admission
+		// exactly as a first issue is. It must not be written while an actual
+		// catalog mutation owns the title or a bounded ancestor. Every genuine
+		// refusal above has already run and still decides the answer: a revoked
+		// receipt, a disabled account, a profile that lost downloads, an
+		// invisible title or library, and a broken publication are all settled
+		// before this point, so nothing here revives one of them. A receipt
+		// whose title has left the server has no entity to fence and still
+		// renews, because the server tidying up never takes a device's copy
+		// away. The mutation's retryable answer is passed on unchanged.
+		var entity int64
+		if onServer {
+			if entity, err = entityid.Resolve(ctx, tx, item); err != nil {
+				return out, err
+			}
+			if err = compactcatalog.RequireEntityAcquirableTx(ctx, tx, entity); err != nil {
+				return out, err
+			}
+		}
 		expires := now + int64(ReceiptTTL/time.Millisecond)
 		if _, err = tx.ExecContext(ctx, `UPDATE download_receipts SET issued_ms=?,expires_ms=?,key_id=?,library_id=?,revision=revision+1 WHERE id=?`, now, expires, keyID, library, id); err != nil {
 			return out, err
@@ -577,10 +606,6 @@ func (s *Service) Revalidate(ctx context.Context, p identity.Principal, serverID
 		present := onServer
 		outcome := ReceiptOutcome{ReceiptID: id, PreparationID: preparation, Outcome: OutcomeRenewed, Receipt: &renewed, TitleOnServer: &present}
 		if onServer {
-			entity, err := entityid.Resolve(ctx, tx, item)
-			if err != nil {
-				return out, err
-			}
 			position, watched, err := readCurrentProgress(ctx, tx, identity.PersonalKey(p.Viewer), entity)
 			if err != nil {
 				return out, err

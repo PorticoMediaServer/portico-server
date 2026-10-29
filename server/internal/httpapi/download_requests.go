@@ -45,7 +45,7 @@ func downloadRequestError(e error) error {
 	return e
 }
 func registerDownloadRequests(r *apikit.Registry, d Dependencies) {
-	failures := []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "idempotency_key_reused", "rate_limited", "internal"}
+	failures := []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "idempotency_key_reused", "rate_limited", "request_in_progress", "internal"}
 	v1Route(r, apikit.Metadata{Audience: apikit.Clients, Admission: laneBrowsing, ID: "get_container_download_options", Method: "POST", Path: "/v1/downloads/options", Summary: "Read combined per-quality sizes for the visible members of a container", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Browsing, Cost: apikit.SelectionAsync, Status: 200, BodyLimit: 8192, Errors: append(append([]string{}, failures...), "downloads_unavailable")}, func(ctx context.Context, q *http.Request, in downloads.ContainerOptionsRequest) (downloads.ContainerOptionsView, error) {
 		p, owner, e := d.downloadViewer(q)
 		if e != nil {

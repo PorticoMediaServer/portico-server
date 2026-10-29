@@ -49,6 +49,8 @@ func TestAlbumsJoinByReleaseAndOwnerCanSeparateAFolder(t *testing.T) {
 			_, err := AdoptProviderIdentityTx(ctx, tx, album, p)
 			return err
 		})
+		drainListeningIdentityOperations(t, c)
+		c.Drain()
 	}
 	join(mp3.ID)
 	join(flac.ID)
@@ -106,4 +108,36 @@ func TestBooksJoinByIdentifier(t *testing.T) {
 	if n := rows(t, c, `SELECT count(*) FROM catalog_derivation_failures`); n != 0 {
 		t.Fatalf("catalogue work failed after joining: %d", n)
 	}
+}
+
+// Adoption became an actual asynchronous command in 33146dea9. Exercise its
+// production adapter to terminal before submitting another identity event;
+// c.Drain advances derivation, not the operations scheduler.
+func drainListeningIdentityOperations(t *testing.T, c *catalogtest.Catalog) {
+	t.Helper()
+	adapter := New(c.DB).MutationAdapter()
+	mounted := rows(t, c, `SELECT count(*) FROM catalog_entities`)
+	// Each fixture entity may contribute one mutation. Use the existing
+	// per-mutation writer ceiling, rather than a timing sleep or a larger plan.
+	for turn := 0; turn < (mounted+1)*accountingMutationTurns; turn++ {
+		var resource string
+		err := c.DB.QueryRow(`SELECT resource FROM console_operations WHERE kind='catalog-mutation' AND state IN('queued','running','reconciling') ORDER BY sequence LIMIT 1`).Scan(&resource)
+		if err == sql.ErrNoRows {
+			if live := rows(t, c, `SELECT count(*) FROM catalog_entity_mutations WHERE status<>'terminal'`); live != 0 {
+				t.Fatalf("identity command stranded %d live roots", live)
+			}
+			return
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := adapter.Step(context.Background(), resource)
+		if err != nil {
+			t.Fatal(resource, err)
+		}
+		if out.State == "failed" || out.State == "cancelled" || out.State == "paused" {
+			t.Fatalf("identity command %s ended %s: %s", resource, out.State, out.Phase)
+		}
+	}
+	t.Fatal("actual identity commands did not reach terminal within the fixture writer guard")
 }
