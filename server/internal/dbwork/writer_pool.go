@@ -63,7 +63,7 @@ func writerHandle(db *sql.DB) *sql.DB {
 	return db // Handles supplied by embedders still use their own policy.
 }
 
-// ReadHandle selects the two-connection background read pool for classified
+// ReadHandle selects the single-connection background read pool for classified
 // background work. The public handle remains the six-connection foreground
 // pool; neither can borrow the other's read capacity.
 func ReadHandle(ctx context.Context, db *sql.DB) *sql.DB {

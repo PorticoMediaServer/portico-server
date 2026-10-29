@@ -476,10 +476,20 @@ func (s *Store) SettingsTx(ctx context.Context, tx *sql.Tx, auth Authorize) (Set
 	return document, ctx.Err()
 }
 
-func (s *Store) Settings(ctx context.Context, auth Authorize) (out SettingsDocument, e error) {
+// RuntimeSettings reads the current stored/runtime policy without console-only
+// tool qualification. TLS handshakes and route observation must never launch
+// FFmpeg validation merely to obtain an interface or a certificate path.
+func (s *Store) RuntimeSettings(ctx context.Context, auth Authorize) (out SettingsDocument, e error) {
 	e = s.snapshot(ctx, auth, "", func(tx *sql.Tx) error { var err error; out, err = readSettings(tx); return err })
 	if e == nil {
 		s.projectAppliedSettings(&out)
+	}
+	return
+}
+
+func (s *Store) Settings(ctx context.Context, auth Authorize) (out SettingsDocument, e error) {
+	out, e = s.RuntimeSettings(ctx, auth)
+	if e == nil {
 		if s.FFmpegValidation != nil {
 			v := s.FFmpegValidation(ctx, out.Requested.FFmpegPath)
 			out.FFmpegValidation = &v

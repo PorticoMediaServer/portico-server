@@ -67,7 +67,7 @@ func textCountPendingSQL(primary string) string {
  LEFT JOIN reading_text_counts c ON c.item_id=p.item_id AND c.asset_id=p.asset_id AND c.inventory_object_id=o.id AND c.source_revision=o.revision AND c.rule_version=? AND c.opening_rule_version=1 AND (p.format<>'pdf' OR (c.page_rule_version=1 AND c.page_count BETWEEN 1 AND 4096))
  WHERE e.retired=0 AND cl.retired=0 AND ` + textCountWorkerDomain + ` AND ` + publicationEligible + `
  AND ` + backgroundCanonicalObject + `
- AND c.item_id IS NULL AND e.id>? ORDER BY e.id LIMIT ?`
+ AND c.item_id IS NULL AND e.id>? AND e.id<=? ORDER BY e.id LIMIT ?`
 }
 
 // The text-index worker's domain is EPUB-first: only a local book EPUB has this
@@ -96,7 +96,7 @@ func textIndexPendingSQL(primary string) string {
  CROSS JOIN inventory_item_availability available ON available.item_id=e.id AND available.asset_id=a.token
  WHERE e.retired=0 AND cl.retired=0 AND ` + textIndexWorkerDomain + ` AND ` + publicationEligible + `
  AND ` + backgroundCanonicalObject + `
- AND e.id>? ORDER BY e.id LIMIT ?`
+ AND e.id>? AND e.id<=? ORDER BY e.id LIMIT ?`
 }
 
 // TextCountPreparation is one worker.Run step over the pending canonical EPUBs.
@@ -199,7 +199,12 @@ func (p *TextCountPreparation) stepCounts(ctx context.Context, window int, rest 
 	if primary == "" {
 		return time.Minute
 	}
-	rows, err := p.DB.QueryContext(ctx, textCountPendingSQL(primary), readingTextRuleVersion, p.cursor, window)
+	after, examined, err := preparationWindow(ctx, p.DB, p.cursor, window)
+	if err != nil {
+		log.Printf("Reading text counts: %v", err)
+		return time.Minute
+	}
+	rows, err := dbwork.ReadHandle(ctx, p.DB).QueryContext(ctx, textCountPendingSQL(primary), readingTextRuleVersion, p.cursor, after, window)
 	if err != nil {
 		log.Printf("Reading text counts: %v", err)
 		return time.Minute
@@ -224,7 +229,7 @@ func (p *TextCountPreparation) stepCounts(ctx context.Context, window int, rest 
 		if ctx.Err() != nil {
 			return 0
 		}
-		if !dbwork.WaitBackground(ctx) {
+		if !dbwork.PaceBackground(ctx, time.Time{}) {
 			return 0
 		}
 		p.cursor = candidate.id
@@ -241,7 +246,8 @@ func (p *TextCountPreparation) stepCounts(ctx context.Context, window int, rest 
 			}
 		}
 	}
-	if len(todo) < window {
+	p.cursor = after
+	if examined < window {
 		p.passing, p.finished = false, time.Now()
 		return 0
 	}
@@ -262,7 +268,12 @@ func (p *TextCountPreparation) stepIndex(ctx context.Context, window int, rest t
 		}
 		p.indexPassing, p.indexCursor, p.indexLogged, p.indexRetry = true, 0, 0, false
 	}
-	rows, err := p.DB.QueryContext(ctx, textIndexPendingSQL(primary), readingIndexRuleVersion, p.indexCursor, window)
+	after, examined, err := preparationWindow(ctx, p.DB, p.indexCursor, window)
+	if err != nil {
+		log.Printf("Reading text index: %v", err)
+		return time.Minute
+	}
+	rows, err := dbwork.ReadHandle(ctx, p.DB).QueryContext(ctx, textIndexPendingSQL(primary), readingIndexRuleVersion, p.indexCursor, after, window)
 	if err != nil {
 		log.Printf("Reading text index: %v", err)
 		return time.Minute
@@ -287,7 +298,7 @@ func (p *TextCountPreparation) stepIndex(ctx context.Context, window int, rest t
 		if ctx.Err() != nil {
 			return 0
 		}
-		if !dbwork.WaitBackground(ctx) {
+		if !dbwork.PaceBackground(ctx, time.Time{}) {
 			return 0
 		}
 		// The cursor advances over every examined candidate, including the ones
@@ -310,7 +321,8 @@ func (p *TextCountPreparation) stepIndex(ctx context.Context, window int, rest t
 			}
 		}
 	}
-	if len(todo) < window {
+	p.indexCursor = after
+	if examined < window {
 		p.indexPassing = false
 		if p.indexRetry {
 			// A transient failure is retried after the pass rest.
