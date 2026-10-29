@@ -159,6 +159,21 @@ func (s *Service) computeLibrarySummaryCore(ctx context.Context, viewer Viewer, 
 }
 
 func (s *Service) computeLibrarySummaryCoreWithReading(ctx context.Context, viewer Viewer, library Library, reading *readingBrowseScope) (librarySummaryCore, error) {
+	if isReadingLibrary(library.Kind) {
+		if reading == nil {
+			var err error
+			reading, err = s.readingBrowseScope(library.ID)
+			if err != nil {
+				return librarySummaryCore{}, err
+			}
+		}
+		// Browse can serve the published image during import. The summary's
+		// existing lower-bound path remains unclassified and uncached until
+		// the maintained image has caught up; a cold image is never exact zero.
+		if reading == nil || reading.generation.Ready == 0 || reading.generation.Input != reading.generation.Ready {
+			return librarySummaryCore{}, ErrReadingProjectionChanged
+		}
+	}
 	return s.computeLibrarySummaryCandidates(ctx, viewer, library, reading, false)
 }
 

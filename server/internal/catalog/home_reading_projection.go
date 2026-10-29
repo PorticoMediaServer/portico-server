@@ -44,7 +44,9 @@ func (s *Service) homeReadingPage(viewer Viewer, ids []string, authorize func(*s
 		if e != nil {
 			return nil, e
 		}
-		if scope == nil {
+		// Saved/Home destinations require an actual published Reading image.
+		// The browse-only cold building response cannot supply exact members.
+		if scope == nil || scope.generation.Ready == 0 {
 			return nil, ErrReadingProjectionChanged
 		}
 		selected := groups[library]
