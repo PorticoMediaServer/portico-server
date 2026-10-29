@@ -89,6 +89,12 @@ func (s *Service) homeViewSource(r HomeRequest, spec homeRowSpec) (homeSource, e
 	if err != nil {
 		return homeSource{}, err
 	}
+	// A saved Home row has exact membership/count semantics, unlike an
+	// importing browse page. Refuse a cold image before an empty candidate
+	// window could turn missing publication into an exact empty Home row.
+	if compiler.reading != nil && compiler.reading.generation.Ready == 0 {
+		return homeSource{}, ErrReadingProjectionChanged
+	}
 	where += " AND " + readingEligible
 	clause, err := compiler.compile(d.Query)
 	if err != nil {
