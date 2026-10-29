@@ -89,6 +89,8 @@ export type HomePageOutcome = Readonly<{rowId: string; requestedCursor: string |
 
 const none: ReadonlySet<string> = Object.freeze(new Set<string>());
 const sameJson = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.stringify(b);
+/** Backoff before a shelf that failed to hydrate is asked for again; after the last, the row is dropped. */
+export const homeRowRetryDelaysMs: readonly number[] = [1_500, 5_000, 15_000];
 const permissionDenied=(error:unknown):boolean=>typeof error==='object'&&error!==null&&('status' in error&&[401,403,404].includes(Number(error.status))||'code' in error&&['unauthorized','forbidden','not_found'].includes(String(error.code)));
 
 /** `fresh` merged into `shown`: only reanchorable rows may keep a bounded tail. Returns `shown` when nothing changed. */
@@ -144,6 +146,7 @@ export class HomeService {
   private demand?: ReadonlySet<string>;
   /** Deferred rows of the current document that wait for demand, each fetched at most once. */
   private waiting = new Map<string, () => void>();
+  private readonly rowRetries = new Set<ReturnType<typeof setTimeout>>();
   private readonly api: () => HomeApi;
   private readonly timeoutMs: number;
   private readonly initialLimit: number | undefined;
@@ -206,6 +209,8 @@ export class HomeService {
       this.manifest?.controller.abort();
       for (const controller of this.hydrations) controller.abort();
       this.waiting.clear();
+      for (const timer of this.rowRetries) clearTimeout(timer);
+      this.rowRetries.clear();
       for (const controller of this.pages.values()) controller.abort();
       this.observation?.retire();
     }
@@ -417,9 +422,12 @@ export class HomeService {
     for (const controller of this.hydrations) controller.abort();
     this.hydrations.clear();
     this.waiting.clear();
+    for (const timer of this.rowRetries) clearTimeout(timer);
+    this.rowRetries.clear();
     const queue: HomeDocument['rows'][number][] = [];
     const mine = this.generation;
     let running = 0;
+    const attempts = new Map<string, number>();
     const consume = async () => {
       running++;
       try { while (queue.length && this.ownerCurrent() && epoch === this.hydrationGeneration && (quiet === undefined || quiet === this.quiet)) {
@@ -447,8 +455,21 @@ export class HomeService {
           this.publish({document: mergeHomeDocument(shown, Object.freeze({...shown, rows: Object.freeze(rows)})), error: undefined});
         } catch (error) {
           if(permissionDenied(error)&&this.ownerCurrent()&&mine===this.generation&&(quiet===undefined||quiet===this.quiet)&&epoch===this.hydrationGeneration&&!controller.signal.aborted)this.removeRow(descriptor.id);
-          // A failed shelf keeps its previous cards. Other shelves continue;
-          // the next quiet Home refresh retries the deferred endpoint.
+          // A failed or timed-out shelf stays a skeleton, which nothing else would ever retry on this document.
+          // Retry it a few times with backoff while this hydration is current, then drop it; a later refresh
+          // brings the descriptor back. Other shelves continue meanwhile.
+          else if (mine === this.generation && epoch === this.hydrationGeneration && this.ownerCurrent() && (quiet === undefined || quiet === this.quiet) && !(error instanceof HomeAuthorityRetired)) {
+            const attempt = (attempts.get(descriptor.id) ?? 0) + 1;
+            attempts.set(descriptor.id, attempt);
+            if (attempt > homeRowRetryDelaysMs.length) this.removeRow(descriptor.id);
+            else {
+              const retry = setTimeout(() => {
+                this.rowRetries.delete(retry);
+                if (this.ownerCurrent() && epoch === this.hydrationGeneration) { queue.push(descriptor); pump(); }
+              }, homeRowRetryDelaysMs[attempt - 1]);
+              this.rowRetries.add(retry);
+            }
+          }
         } finally { if (timer) clearTimeout(timer); controller.signal.removeEventListener('abort', abort); this.hydrations.delete(controller); }
       } } finally { running--; }
     };
@@ -767,6 +788,8 @@ export class HomeService {
     this.hydrationGeneration++;
     for (const controller of this.hydrations) controller.abort();
     this.hydrations.clear();
+    for (const timer of this.rowRetries) clearTimeout(timer);
+    this.rowRetries.clear();
     this.waiting.clear();
     this.generation++;
     this.reading?.controller.abort();
