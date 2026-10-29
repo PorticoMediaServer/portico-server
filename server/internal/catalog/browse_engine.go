@@ -60,6 +60,7 @@ type BrowseApplied struct {
 	Seek  *BrowseSeek           `json:"seek,omitempty"`
 }
 type BrowseResult struct {
+	Importing        bool `json:"importing,omitempty"`
 	selectionRelease func()
 	Pivot            string                 `json:"pivot"`
 	Applied          BrowseApplied          `json:"applied"`
@@ -86,6 +87,7 @@ type BrowseRequest struct {
 	// same snapshot. It is never decoded from a public request.
 	preparedTotal       *ReadingCountResult
 	readingValidateOnly bool
+	readingLowerBound   bool
 	// The HTTP boundary sets this only after admitting the original ordinary
 	// selected viewer in the same Reading snapshot. Browse alone grants no
 	// personal state to internal or narrowed-session callers.
@@ -396,6 +398,20 @@ func compactBrowseKindSQL(column string) string {
 }
 
 func (s *Service) browseRevision(request BrowseRequest, pivot browsePivot, sorts []BrowseSortSelection) (string, error) {
+	if request.readingLowerBound {
+		r, err := s.readingBrowseScope(request.Library)
+		if err != nil {
+			return "", err
+		}
+		if r == nil || r.generation.Ready == 0 {
+			return "", ErrReadingProjectionChanged
+		}
+		// This is a page stream, never an exact count witness. Import-only input
+		// bumps do not change its immutable published membership. Every page
+		// still applies current source eligibility and live privacy.
+		sum := sha256.Sum256([]byte(request.Library + "\x00" + request.Profile + "\x00" + request.ViewerFence + "\x00" + pivot.ID + "\x00" + canonicalSort(sorts) + "\x00" + r.fence()))
+		return readingImportingCursorPrefix + hex.EncodeToString(sum[:]), nil
+	}
 	revision, err := s.browseContentRevision(request.Library, request.Profile)
 	if err != nil {
 		return "", err
@@ -480,6 +496,13 @@ func (s *Service) BrowseEntities(viewer Viewer, request BrowseRequest) (BrowseRe
 	out, rows, err := s.browseSelect(request)
 	if errors.Is(err, ErrVisibilityBuilding) || errors.Is(err, ErrStaleContinuation) {
 		if lib, lookupErr := s.library(request.Library); lookupErr == nil && isReadingLibrary(lib.Kind) {
+			if errors.Is(err, ErrVisibilityBuilding) && request.Cursor == "" && request.Range == nil && request.SelectionBasis == "" {
+				out.Importing, out.PageInfo.TotalIsLowerBound = true, true
+				return out, nil
+			}
+			if out.PageInfo.Revision != "" {
+				return out, &ReadingRevisionMismatch{Revision: out.PageInfo.Revision}
+			}
 			return out, ErrReadingProjectionChanged
 		}
 	}
@@ -564,11 +587,19 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	if err != nil {
 		return out, nil, err
 	}
-	if err := s.browseReady(request.Library); err != nil {
-		if readingReady != nil {
-			return out, nil, ErrStaleContinuation
+	if readingReady == nil {
+		if err := s.browseReady(request.Library); err != nil {
+			return out, nil, err
 		}
-		return out, nil, err
+	} else {
+		out.Importing = readingReady.importing
+		request.readingLowerBound, err = s.readingImportingPage(readingReady, request)
+		if err != nil {
+			return out, nil, err
+		}
+		if request.readingLowerBound {
+			out.Importing = true
+		}
 	}
 	if !pivot.Browsable {
 		if pivot.Aggregate == "" {
@@ -582,6 +613,7 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 		return out, nil, err
 	}
 	out.Applied = BrowseApplied{Query: request.Query, Sort: sorts, Seek: request.Seek}
+
 	if len(sorts) == 1 && sorts[0].Field == "forYou" {
 		fixed := *s
 		fixed.browseInstant = s.recommendationNow(s.browseInstant)
@@ -623,6 +655,15 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	}
 	where += " AND " + clause
 	args = append(args, compiler.args...)
+	if readingReady != nil && readingReady.generation.Ready == 0 {
+		if request.Cursor != "" || request.Range != nil || request.SelectionBasis != "" {
+			return out, nil, ErrReadingProjectionChanged
+		}
+		// No published image yet: this is a building lower bound, never an exact
+		// empty library or a whole-selection witness.
+		out.PageInfo.TotalIsLowerBound = true
+		return out, nil, nil
+	}
 	unrestricted, unrestrictedArgs := where, append([]any{}, args...)
 	// The viewer's content restriction is the last clause, after the authorized
 	// library scope and the client's own query, so neither can widen it.
@@ -685,7 +726,7 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	// over the query's matches, the price of an ad hoc filter) and carried in
 	// the signed cursor, so later pages don't count again.
 	var total int
-	counted := false
+	counted := request.readingLowerBound
 	if request.preparedTotal != nil {
 		if compiler.reading == nil {
 			return out, nil, ErrReadingProjectionChanged
@@ -789,7 +830,7 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 			}
 		}
 	}
-	lowerBound := request.Query != nil && !summary.exact && total > browseTotalThreshold
+	lowerBound := request.readingLowerBound || request.Query != nil && !summary.exact && total > browseTotalThreshold
 	out.PageInfo.Total, out.PageInfo.TotalIsLowerBound = total, lowerBound
 	if lowerBound {
 		out.PageInfo.Total = browseTotalThreshold
@@ -830,7 +871,7 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	}
 	// The letter index is only meaningful under an ascending title sort; it is
 	// computed once per range so a scrub rail and the grid share one ranking.
-	if request.Query == nil && seekable && (request.Cursor == "" || request.Seek != nil) {
+	if !request.readingLowerBound && request.Query == nil && seekable && (request.Cursor == "" || request.Seek != nil) {
 		if summary.exact {
 			if summary.letter != nil {
 				out.PositionIndex = summary.letter
@@ -919,20 +960,29 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	}
 	out.PageInfo.Start = start
 	shape.start = start
-	if request.Query != nil {
+	if request.Query != nil || request.readingLowerBound {
 		shape.limit++ // One extra match answers hasMore even after the count reaches its cap.
 	}
 	selected, err := s.browsePage(shape)
 	if err != nil {
 		return out, nil, err
 	}
-	if request.Query != nil {
+	if request.Query != nil || request.readingLowerBound {
 		out.PageInfo.HasMore = len(selected) > request.Limit
 		if out.PageInfo.HasMore {
 			selected = selected[:request.Limit]
 		}
 	} else {
 		out.PageInfo.HasMore = start+len(selected) < total
+	}
+	if request.readingLowerBound {
+		// Prior pages can become ineligible. Only rows proved in this snapshot
+		// contribute to the lower bound; never label the carried offset a count.
+		total = len(selected)
+		if out.PageInfo.HasMore {
+			total++
+		}
+		out.PageInfo.Total = total
 	}
 	if out.PageInfo.HasMore && request.Range == nil && len(selected) > 0 {
 		last := selected[len(selected)-1]
@@ -947,7 +997,7 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 			keys = readingBrowseBoundedKeys(keys)
 		}
 		// The cursor carries the integer entity id; cursors are opaque and signed.
-		out.PageInfo.NextCursor, err = s.encodeCursor(cursorValue{EvaluationAt: s.relativeBrowseTime(request.Query), Scope: scope, Value: strconv.Itoa(start + len(selected)), ID: strconv.FormatInt(last.entity, 10), Keys: keys, Fingerprint: revision, Total: total, TotalPresent: true, Expires: expires})
+		out.PageInfo.NextCursor, err = s.encodeCursor(cursorValue{EvaluationAt: s.relativeBrowseTime(request.Query), Scope: scope, Value: strconv.Itoa(start + len(selected)), ID: strconv.FormatInt(last.entity, 10), Keys: keys, Fingerprint: revision, Total: total, TotalPresent: !request.readingLowerBound, Expires: expires})
 		if err != nil {
 			return out, nil, err
 		}
