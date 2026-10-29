@@ -1,6 +1,8 @@
 package catalog
 
 import (
+	"encoding/json"
+	"math"
 	"portico.local/server/internal/apiwire"
 	"reflect"
 )
@@ -8,10 +10,39 @@ import (
 type itemWire Item
 
 func (v Item) MarshalJSON() ([]byte, error) {
-	return apiwire.MarshalDurations(itemWire(v), map[string]string{"duration": "durationMs", "progressSeconds": "progressMs"})
+	ms := math.Round(v.Duration * 1000)
+	if !math.IsNaN(ms) && !math.IsInf(ms, 0) && ms >= 0 && ms <= 9007199254740991 {
+		return apiwire.MarshalDurations(itemWire(v), map[string]string{"duration": "durationMs", "progressSeconds": "progressMs"})
+	}
+	// The accepted physical scalar is retained in storage. JSON cannot express
+	// it in the millisecond contract; report unknown instead of zero/truncation.
+	v.Duration = 0
+	raw, e := apiwire.MarshalDurations(itemWire(v), map[string]string{"duration": "durationMs", "progressSeconds": "progressMs"})
+	if e != nil {
+		return nil, e
+	}
+	var object map[string]json.RawMessage
+	if e = json.Unmarshal(raw, &object); e != nil {
+		return nil, e
+	}
+	delete(object, "durationMs")
+	object["durationState"] = json.RawMessage(`"unrepresentable"`)
+	return json.Marshal(object)
 }
 func (Item) JSONSchema() map[string]any {
-	return apiwire.DurationSchema(reflect.TypeFor[itemWire](), map[string]string{"duration": "durationMs", "progressSeconds": "progressMs"})
+	normal := apiwire.DurationSchema(reflect.TypeFor[itemWire](), map[string]string{"duration": "durationMs", "progressSeconds": "progressMs"})
+	exceptional := apiwire.DurationSchema(reflect.TypeFor[itemWire](), map[string]string{"duration": "durationMs", "progressSeconds": "progressMs"})
+	properties := exceptional["properties"].(map[string]any)
+	delete(properties, "durationMs")
+	properties["durationState"] = map[string]any{"type": "string", "enum": []string{"unrepresentable"}}
+	required := []string{}
+	for _, key := range exceptional["required"].([]string) {
+		if key != "durationMs" {
+			required = append(required, key)
+		}
+	}
+	exceptional["required"] = append(required, "durationState")
+	return map[string]any{"anyOf": []any{normal, exceptional}}
 }
 
 type contentEntryWire ContentEntry

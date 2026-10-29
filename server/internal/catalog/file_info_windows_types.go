@@ -193,6 +193,7 @@ type FileInfoPreparing struct {
 // ordinary transient hydration is charged and one legal oversized scalar takes
 // the explicit uncached path. A preparation never carries guessed rows/counts.
 type FileInfoWindowResult struct {
+	Opening    *FileInfoOpeningReady
 	Files      *FileInfoFilesPage
 	Tracks     *FileInfoTracksPage
 	HeadTracks *FileInfoHeadTracksPage

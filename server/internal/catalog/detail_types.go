@@ -123,10 +123,11 @@ type EpisodeDetails struct {
 	Next          *EpisodeNeighbour `json:"next,omitempty"`
 }
 type Detail struct {
-	Collections    []DetailCollection `json:"collections"`
-	EpisodeDetails *EpisodeDetails    `json:"episodeDetails,omitempty"`
-	Facts          *TitleFacts        `json:"facts,omitempty"`
-	Languages      DetailLanguages    `json:"languages"`
+	FileInfoOpening string             `json:"fileInfoOpening,omitempty"`
+	Collections     []DetailCollection `json:"collections"`
+	EpisodeDetails  *EpisodeDetails    `json:"episodeDetails,omitempty"`
+	Facts           *TitleFacts        `json:"facts,omitempty"`
+	Languages       DetailLanguages    `json:"languages"`
 	// MissingSince is when the title's last file went from disk (RFC 3339).
 	// Absent while the title has a file. A missing title is shown, cannot be
 	// played, and comes back when a file that is the same title appears.

@@ -38,8 +38,8 @@ func newFileInfoLaneFixture(t *testing.T) *fileInfoLaneFixture {
 	if e != nil {
 		t.Fatal(e)
 	}
-	t.Cleanup(store.Close)
-	f := &fileInfoLaneFixture{c: c, s: New(c.DB), item: movie, viewer: Viewer{Profile: "p", Fence: "authority", Libraries: []string{lib}}, store: store, owner: true}
+	t.Cleanup(func() { _ = store.Close() })
+	f := &fileInfoLaneFixture{c: c, s: New(c.DB), item: movie, viewer: Viewer{Profile: "p", Fence: "authority", Libraries: []string{"file-windows"}}, store: store, owner: true}
 	guard := func(ctx context.Context, caller readprep.Caller, id FileInfoIdentity) (FileInfoAdmission, error) {
 		if caller != "family" {
 			return FileInfoAdmission{}, readprep.ErrStale

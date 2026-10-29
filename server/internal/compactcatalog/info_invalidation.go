@@ -51,17 +51,23 @@ func advanceInfoInvalidationTx(ctx context.Context, tx *sql.Tx, asset int64, tok
 			_, _, e = recoverInfoInputTx(ctx, tx, c)
 			return true, false, e
 		}
-		w, we := infoInputWitnessAt(ctx, tx, c.id, 0)
-		if we != nil && !errors.Is(we, sql.ErrNoRows) {
-			return false, false, we
+		var hasWitness bool
+		if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_info_input_witnesses WHERE change_id=? AND ordinal=0)`, c.id).Scan(&hasWitness); e != nil {
+			return false, false, e
 		}
-		if we == nil && w.JobID != infoInvalidationWitness {
-			h, he := infoInputHeaderByID(ctx, tx, c.id)
-			if he != nil {
-				return false, false, he
+		if hasWitness {
+			w, we := infoInputWitnessAt(ctx, tx, c.id, 0)
+			if we != nil {
+				return false, false, we
 			}
-			_, he = AbandonInfoInputTx(ctx, tx, h.ref())
-			return true, false, he
+			if w.JobID != infoInvalidationWitness {
+				h, he := infoInputHeaderByID(ctx, tx, c.id)
+				if he != nil {
+					return false, false, he
+				}
+				_, he = AbandonInfoInputTx(ctx, tx, h.ref())
+				return true, false, he
+			}
 		}
 	}
 	var epoch, size, modified int64
@@ -89,9 +95,6 @@ func advanceInfoInvalidationTx(ctx context.Context, tx *sql.Tx, asset int64, tok
 		}
 		if se == nil && sealed != 0 {
 			continue
-		}
-		if _, e = StageInfoRowsTx(ctx, tx, input.Ref, family, 0, 0); e != nil {
-			return true, false, e
 		}
 		_, e = SealInfoFamilyTx(ctx, tx, input.Ref, family, 0)
 		return true, false, e

@@ -88,7 +88,7 @@ func (f *detailRefreshFixture) streamFacts() assets.Facts {
 		Streams: []assets.Stream{
 			{Index: 0, Type: "video", Codec: "hevc", Default: true, Detail: assets.StreamDetail{
 				Width: 1920, Height: 1080, BitDepth: 10, DolbyVisionProfile: 8,
-				StreamBreadth: assets.StreamBreadth{DolbyVisionRPU: true, DolbyVisionBaseLayer: true, DolbyVisionMetadataKnown: true, DolbyVisionEnhancementType: "MEL", DolbyVisionCMVersion: "2.9"},
+				StreamBreadth: assets.StreamBreadth{DolbyVisionRPU: true, DolbyVisionBaseLayer: true, DolbyVisionMetadataKnown: true, DolbyVisionEnhancementType: "mel", DolbyVisionCMVersion: "2.9"},
 			}},
 			{Index: 1, Type: "audio", Codec: "aac", Channels: 2, Default: true, Detail: assets.StreamDetail{SampleRate: 48000}},
 		},

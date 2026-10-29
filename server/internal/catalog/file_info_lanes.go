@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 
 	"portico.local/server/internal/dbwork"
@@ -123,9 +124,19 @@ func (r *FileInfoRuntime) Read(ctx context.Context, caller readprep.Caller, req 
 	return r.windowSubmit(ctx, caller, desc, plan, r.hydrateWindow, time.Time{})
 }
 func (r *FileInfoRuntime) Poll(ctx context.Context, caller readprep.Caller, id string) (FileInfoWindowResult, error) {
+	if strings.HasPrefix(id, "open.") {
+		return r.pollOpening(ctx, caller, id)
+	}
 	return r.windowPoll(ctx, caller, id, r.hydrateWindow)
 }
 func (r *FileInfoRuntime) Cancel(ctx context.Context, caller readprep.Caller, id string) error {
+	if strings.HasPrefix(id, "open.") {
+		h, e := fileInfoOpeningHandle(id)
+		if e != nil {
+			return nil
+		}
+		return r.store.CancelNamespace(ctx, caller, h, fileInfoOpeningNamespace)
+	}
 	return r.windowCancel(ctx, caller, id)
 }
 

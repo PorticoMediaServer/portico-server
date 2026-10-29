@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"context"
+	"math/big"
 	"strconv"
 
 	"portico.local/server/internal/compactcatalog"
@@ -10,7 +11,7 @@ import (
 )
 
 func (r *FileInfoRuntime) windowBasis(caller readprep.Caller, proof fileInfoOpeningProof, ad FileInfoAdmission, d fileInfoWindowDescriptor, id string) FileInfoWindowBasis {
-	return FileInfoWindowBasis{Scope: ad.Scope, Detail: FileInfoDetailCapture{Scope: ad.DetailScope, Revision: proof.Revision}, Basis: d.Opening, Window: FileInfoWindow{QueryID: id, Limit: d.Limit}}
+	return FileInfoWindowBasis{Scope: ad.Scope, Detail: FileInfoDetailCapture{Scope: ad.DetailScope, Revision: proof.Revision}, Basis: fileInfoWindowBasis(d.Opening), Window: FileInfoWindow{QueryID: id, Limit: d.Limit}}
 }
 func (r *FileInfoRuntime) windowEdges(caller readprep.Caller, d fileInfoWindowDescriptor, id string, w *FileInfoWindow, coords []fileInfoOccurrence, rows []int64, earlier, later bool) error {
 	w.Returned = len(coords)
@@ -143,8 +144,8 @@ func (r *FileInfoRuntime) hydrateWindow(ctx context.Context, caller readprep.Cal
 					return FileInfoWindowResult{}, e
 				}
 			}
-			group.SizeBytes, group.SizeBytesExact = fileInfoInt(g.SizeBytes)
-			if g.DurationMS > fileInfoSafeInteger || g.DurationMS < -fileInfoSafeInteger {
+			group.SizeBytes, group.SizeBytesExact = fileInfoGroupInteger(g.SizeBytes, g.SizeHigh)
+			if g.DurationBad || g.DurationHigh != 0 || g.DurationMS > fileInfoSafeInteger || g.DurationMS < -fileInfoSafeInteger {
 				group.DurationState = "unrepresentable"
 			} else {
 				n := g.DurationMS
@@ -316,4 +317,18 @@ func (r *FileInfoRuntime) hydrateWindow(ctx context.Context, caller readprep.Cal
 		return FileInfoWindowResult{Tracks: &rawPage}, e
 	}
 	return FileInfoWindowResult{}, readprep.ErrInvalid
+}
+
+// Only the transient ready response formats the fixed-width exact sum. Reducer
+// and cache retain two integer words, never a decimal string or bigint graph.
+func fileInfoGroupInteger(low, high int64) (*int64, string) {
+	if high == 0 {
+		return fileInfoInt(low)
+	}
+	var n, lo big.Int
+	n.SetInt64(high)
+	n.Lsh(&n, 64)
+	lo.SetInt64(low)
+	n.Add(&n, &lo)
+	return nil, n.String()
 }

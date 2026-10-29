@@ -36,6 +36,9 @@ func TestBudgetCompositionRetainsOverheadAndStickyFailure(t *testing.T) {
 	if err = nested.Resize(800); !errors.Is(err, ErrCapacity) || !errors.Is(b.err, ErrCapacity) {
 		t.Fatal(err, b.err)
 	}
+	if _, err = child.WithOverhead(-1); !errors.Is(err, ErrCapacity) || !errors.Is(b.err, ErrCapacity) {
+		t.Fatal("nested view replaced first sticky failure", err, b.err)
+	}
 	if err = b.Resize(0); !errors.Is(err, ErrCapacity) || e.reserved != 350 {
 		t.Fatal("child failure lost", err, e.reserved)
 	}

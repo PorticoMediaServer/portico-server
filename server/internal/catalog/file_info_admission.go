@@ -21,7 +21,15 @@ func (s *Service) CaptureFileInfoAdmission(ctx context.Context, v Viewer, server
 	var public []byte
 	var nonce, library string
 	var playable bool
+	var kind string
+	if e := q.QueryRowContext(ctx, `SELECT k.name FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind WHERE e.public_id=pid_blob(?) AND e.retired=0`, item).Scan(&kind); e != nil {
+		return ad, e
+	}
 	visible, args := v.itemVisibilitySQL("e.id")
+	switch kind {
+	case "album", "show", "season", "artist", "book", "collection":
+		visible, args = v.entityVisibilitySQL("e.id", "cl.library_id")
+	}
 	values := append([]any{item}, args...)
 	e := q.QueryRowContext(ctx, `SELECT e.id,e.library_id,e.public_id,h.incarnation,cl.library_id,k.name,k.playable,COALESCE(c.revision,1),e.info_desired_epoch,e.info_applied_epoch,e.info_source_blockers,e.info_availability_pending,e.info_blocked_children
  FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id

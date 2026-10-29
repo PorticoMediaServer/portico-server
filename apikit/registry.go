@@ -546,6 +546,9 @@ func matchRoute(pattern, path string) (map[string]string, int, bool) {
 			if pattern == "/v1/home/rows/{id}" && part == "{id}" {
 				valid = homeRowPathID(id)
 			}
+			if pattern == "/v1/file-info-queries/{queryId}" && part == "{queryId}" {
+				valid = fileInfoQueryPathID(id)
+			}
 			if !valid {
 				return nil, 0, false
 			}
@@ -571,6 +574,26 @@ func opaquePathID(id string) bool {
 		}
 	}
 	return true
+}
+
+// FileInfo preparation has one bounded composite authenticated handle. Keep
+// this grammar at its private route; ordinary path IDs remain unchanged.
+func fileInfoQueryPathID(id string) bool {
+	if opaquePathID(id) {
+		return true
+	}
+	if tail, ok := strings.CutPrefix(id, "open."); ok {
+		return len(tail) == 43 && opaquePathID(tail)
+	}
+	return len(id) == 338 && id[183] == '.' && fileInfoTokenPart(id[:183]) && fileInfoTokenPart(id[184:])
+}
+func fileInfoTokenPart(id string) bool {
+	for _, c := range id {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' || c == '-') {
+			return false
+		}
+	}
+	return id != ""
 }
 
 // Home publishes saved-view and recommendation keys, not only opaque IDs.

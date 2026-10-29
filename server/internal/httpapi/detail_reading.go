@@ -1,71 +1,45 @@
 package httpapi
 
 import (
-	"database/sql"
-	"errors"
+	"context"
 	"net/http"
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 )
 
-// This fallback belongs only to the detail document. Other users of the timed
-// detail fence (offers, chapters, files and analysis) keep their original gate.
+// Only document reads use the container/Reading fallback. Byte, personal and
+// timed routes retain detailFenceFor's strict playable-kind gate.
 func (d Dependencies) detailContentFenceFor(r *http.Request, p identity.Principal) (string, string, error) {
-	library, fence, err := d.detailFenceFor(r, p)
-	if !errors.Is(err, sql.ErrNoRows) {
-		return library, fence, err
+	library, namespace, e := d.Catalog.WithContext(r.Context()).LibraryForDetail(r.PathValue("id"))
+	if e != nil {
+		return "", "", e
 	}
-	read, err := dbwork.BeginSnapshot(r.Context(), d.DB)
-	if err != nil {
-		return "", "", err
+	library, fence, e := d.detailLibraryFenceFor(r, p, library)
+	if e != nil {
+		return "", "", e
 	}
-	defer read.Rollback()
-	item := r.PathValue("id")
-	if err = d.savedReadingItemAuthorityTx(r.Context(), read.Tx(), p, item); err != nil {
-		return "", "", err
+	viewer, e := d.catalogViewer(r, p, []string{library}, fence)
+	if e != nil {
+		return "", "", e
 	}
-	if err = read.Tx().QueryRowContext(r.Context(), `SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.public_id=pid_blob(?) AND e.retired=0 AND cl.retired=0`, item).Scan(&library); err != nil {
-		return "", "", err
-	}
-	// Close this snapshot before the established viewer-fence reader opens its
-	// own; the accepting composition repeats the Reading admission afterward.
-	if err = read.Rollback(); err != nil {
-		return "", "", err
-	}
-	return d.detailLibraryFenceFor(r, p, library)
-}
-
-func (d Dependencies) detailContentAccess(r *http.Request) (identity.Principal, string, string, error) {
-	p, err := d.principal(r)
-	if err != nil {
-		return p, "", "", err
-	}
-	if err = d.restrictedItem(r, p, r.PathValue("id")); err != nil {
-		// A Reading leaf is not timed-media playable, so the catalogue's
-		// playable-kind lookup conceals it. The same request's Reading personal
-		// authority decides it instead; its refusal keeps the original
-		// concealed absence.
-		if !errors.Is(err, identity.ErrContentRestricted) {
-			return p, "", "", err
-		}
-		read, readErr := dbwork.BeginSnapshot(r.Context(), d.DB)
-		if readErr != nil {
-			return p, "", "", readErr
-		}
+	e = dbwork.WithReadSnapshot(r.Context(), d.DB, func(ctx context.Context) error {
 		var kind int
-		if kindErr := read.Tx().QueryRowContext(r.Context(), `SELECT kind FROM catalog_entities WHERE public_id=pid_blob(?)`, r.PathValue("id")).Scan(&kind); kindErr != nil || kind != 20 && kind != 21 {
-			_ = read.Rollback()
-			return p, "", "", err
+		if e := dbwork.Snapshot(ctx).QueryRowContext(ctx, `SELECT kind FROM catalog_entities WHERE public_id=pid_blob(?) AND retired=0`, r.PathValue("id")).Scan(&kind); e != nil {
+			return e
 		}
-		readingErr := d.savedReadingItemAuthorityTx(r.Context(), read.Tx(), p, r.PathValue("id"))
-		if rollbackErr := read.Rollback(); rollbackErr != nil {
-			return p, "", "", rollbackErr
+		if kind == 20 || kind == 21 {
+			return d.savedReadingItemAuthorityTx(ctx, dbwork.Snapshot(ctx), p, r.PathValue("id"))
 		}
-		if readingErr != nil {
-			return p, "", "", err
-		}
+		return d.Catalog.WithContext(ctx).VisibleEntity(ctx, viewer, namespace, r.PathValue("id"))
+	})
+	return library, fence, e
+}
+func (d Dependencies) detailContentAccess(r *http.Request) (identity.Principal, string, string, error) {
+	p, e := d.principal(r)
+	if e != nil {
+		return p, "", "", e
 	}
-	library, fence, err := d.detailContentFenceFor(r, p)
-	return p, library, fence, err
+	library, fence, e := d.detailContentFenceFor(r, p)
+	return p, library, fence, e
 }

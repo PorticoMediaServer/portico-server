@@ -369,10 +369,13 @@ func (b *Budget) WithOverhead(bytes int64) (*Budget, error) {
 	if b.parent != nil {
 		root = b.parent
 	}
+	b.s.mu.Lock()
+	defer b.s.mu.Unlock()
+	if root.err != nil {
+		return nil, root.err
+	}
 	if bytes < 0 || b.overhead > math.MaxInt64-bytes {
-		b.s.mu.Lock()
 		root.err = ErrInvalid
-		b.s.mu.Unlock()
 		return nil, ErrInvalid
 	}
 	return &Budget{s: b.s, e: b.e, parent: root, overhead: b.overhead + bytes}, nil

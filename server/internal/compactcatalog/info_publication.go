@@ -282,8 +282,8 @@ func applyInfoHolders(ctx context.Context, tx *sql.Tx, c infoChange) error {
 	if err != nil {
 		return err
 	}
-	if n > 0 && c.familyMask&((1<<5)|(1<<7)|(1<<8)) != 0 {
-		done, err := projectInfoSubtitles(ctx, tx, c, ids[0])
+	if n > 0 && c.familyMask&infoSubtitleProjectionMask != 0 {
+		done, err := projectInfoDiscSubtitles(ctx, tx, c, ids[0])
 		if err != nil || !done {
 			return err
 		}

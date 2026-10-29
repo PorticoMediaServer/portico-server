@@ -318,6 +318,13 @@ func (w *upstreamSource) asset(ctx context.Context, tx *sql.Tx, limit int) (int,
 				return 0, false, e
 			}
 			if accepted {
+				// Whole-input acceptance queues this exact source in the same
+				// writer. Adopt only that known point retouch, just as A5 does
+				// after SetAssetAvailableTx; no external revision can interleave.
+				if e = tx.QueryRowContext(ctx, `SELECT revision,flags FROM catalog_upstream_sources WHERE domain=41 AND source_id=? AND token=?`, w.id, w.token).Scan(&w.revision, &w.flags); e != nil {
+					return 0, false, e
+				}
+				w.passRevision = w.revision
 				if _, e = tx.ExecContext(ctx, `UPDATE catalog_upstream_sources SET flags=flags&~128 WHERE domain=41 AND source_id=? AND token=? AND revision=?`, w.id, w.token, w.revision); e != nil {
 					return 0, false, e
 				}

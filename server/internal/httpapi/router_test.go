@@ -120,7 +120,7 @@ func TestSetupRangePlaybackStopAndOrigin(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if e = cat.CommitMovie(context.Background(), "job", lib.ID, path, assets.Facts{Container: "mp4", VideoCodec: "h264", AudioCodec: "aac", Duration: 60}); e != nil {
+	if e = seedHTTPMovie(context.Background(), db, lib.ID, path, assets.Facts{Container: "mp4", VideoCodec: "h264", AudioCodec: "aac", Duration: 60}); e != nil {
 		t.Fatal(e)
 	}
 	settleCompactCatalogue(t, db)

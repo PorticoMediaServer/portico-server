@@ -41,22 +41,23 @@ type Library struct {
 	Pinned bool `json:"pinned"`
 }
 type Item struct {
-	AudioFacts  *MusicTechnicalFacts `json:"audioFacts,omitempty"`
-	Missing     bool                 `json:"missing"`
-	Watched     *bool                `json:"watched,omitempty"`
-	AddedAt     *string              `json:"addedAt"`
-	Song        *SongInfo            `json:"song,omitempty"`
-	BookFile    *BookFileInfo        `json:"bookFile,omitempty"`
-	Episode     *EpisodeInfo         `json:"episode,omitempty"`
-	ID          string               `json:"id"`
-	LibraryID   string               `json:"libraryId"`
-	Title       string               `json:"title"`
-	Kind        string               `json:"kind"`
-	Year        int                  `json:"year,omitempty"`
-	Duration    float64              `json:"duration"`
-	Overview    string               `json:"overview,omitempty"`
-	PosterURL   string               `json:"posterUrl,omitempty"`
-	BackdropURL string               `json:"backdropUrl,omitempty"`
+	FileInfoOpening string               `json:"fileInfoOpening,omitempty"`
+	AudioFacts      *MusicTechnicalFacts `json:"audioFacts,omitempty"`
+	Missing         bool                 `json:"missing"`
+	Watched         *bool                `json:"watched,omitempty"`
+	AddedAt         *string              `json:"addedAt"`
+	Song            *SongInfo            `json:"song,omitempty"`
+	BookFile        *BookFileInfo        `json:"bookFile,omitempty"`
+	Episode         *EpisodeInfo         `json:"episode,omitempty"`
+	ID              string               `json:"id"`
+	LibraryID       string               `json:"libraryId"`
+	Title           string               `json:"title"`
+	Kind            string               `json:"kind"`
+	Year            int                  `json:"year,omitempty"`
+	Duration        float64              `json:"duration"`
+	Overview        string               `json:"overview,omitempty"`
+	PosterURL       string               `json:"posterUrl,omitempty"`
+	BackdropURL     string               `json:"backdropUrl,omitempty"`
 	// StillURL is an episode's own still; absent when it has none (never the
 	// season's or show's art).
 	StillURL        string          `json:"stillUrl,omitempty"`

@@ -63,13 +63,21 @@ func TestDetailAssetSummaryPreservesFactsWithoutSourceAllocation(t *testing.T) {
 
 	assertParity := func(item catalogtest.Item) {
 		t.Helper()
+		c.Write(func(ctx context.Context, tx *sql.Tx) error {
+			return compactcatalog.CompleteInfoAvailabilityTx(ctx, tx, item.ID)
+		})
 		full, err := s.Get("p", item.Public)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if full.Sources == nil {
-			t.Fatal("public Get lost its full, non-null Sources shape")
+		if full.Sources != nil {
+			t.Fatal("Get retained the eager source array")
 		}
+		sources, available, duration, err := s.compactItemAssets(item.Public)
+		if err != nil || full.Available != available || math.Float64bits(full.Duration) != math.Float64bits(duration) {
+			t.Fatalf("maintained summary differs from independent raw oracle: %+v %v %v %v", full, available, duration, err)
+		}
+		_ = sources
 		scalar, err := s.getItem("p", item.Public, false)
 		if err != nil {
 			t.Fatal(err)
@@ -99,8 +107,12 @@ func TestDetailAssetSummaryPreservesFactsWithoutSourceAllocation(t *testing.T) {
 		assertParity(item)
 	}
 	full, err := s.Get("p", many.Public)
-	if err != nil || len(full.Sources) != versions || full.Duration != longest {
-		t.Fatalf("public Get lost versions or maximum duration: count=%d duration=%v err=%v", len(full.Sources), full.Duration, err)
+	if err != nil || full.Sources != nil || full.Duration != longest {
+		t.Fatalf("Get summary/source separation changed: %+v %v", full, err)
+	}
+	summary, err := compactcatalog.ReadInfoSummary(context.Background(), c.DB, many.ID)
+	if err != nil || summary.Files != versions {
+		t.Fatalf("maintained exact file count %d want%d: %v", summary.Files, versions, err)
 	}
 	// A missing link still contributes its duration. Asset availability is
 	// deliberately distinct: the original source reader uses link.available.
@@ -132,7 +144,7 @@ func TestDetailAssetSummaryPreservesFactsWithoutSourceAllocation(t *testing.T) {
 		t.Fatalf("missing item error changed: full=%v scalar=%v", fullErr, scalarErr)
 	}
 
-	ctx, queries := dbwork.TraceStatements(context.Background())
+	ctx, queries := dbwork.TraceQueryPlans(context.Background())
 	if _, err = s.WithContext(ctx).Detail(viewer, "server", many.Public, false); err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +154,7 @@ func TestDetailAssetSummaryPreservesFactsWithoutSourceAllocation(t *testing.T) {
 		if strings.Contains(shape, "SELECT a.token,a.container,a.video_codec,a.audio_codec") {
 			t.Fatal("ordinary Detail still reads every source DTO")
 		}
-		if strings.Contains(shape, "MAX(l.available)") {
+		if strings.Contains(shape, "e.info_desired_epoch") && strings.Contains(shape, "catalog_info_duration") {
 			summaries++
 		}
 	}

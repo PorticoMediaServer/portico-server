@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"encoding/json"
+	"math"
 	"testing"
 )
 
@@ -30,5 +31,30 @@ func TestFileInfoPreparingEchoesDetailOnlyAfterOpening(t *testing.T) {
 		if e = json.Unmarshal(detail, &got); e != nil || got != original {
 			t.Fatal(got, e)
 		}
+	}
+}
+
+func TestFileInfoItemDurationUnrepresentableIsExplicit(t *testing.T) {
+	for _, duration := range []float64{math.Inf(1), math.Inf(-1), math.NaN(), 1e300} {
+		raw, e := json.Marshal(Item{ID: "item", Duration: duration})
+		if e != nil {
+			t.Fatal(e)
+		}
+		var wire map[string]json.RawMessage
+		if e = json.Unmarshal(raw, &wire); e != nil {
+			t.Fatal(e)
+		}
+		if _, exists := wire["durationMs"]; exists || string(wire["durationState"]) != `"unrepresentable"` {
+			t.Fatal(string(raw))
+		}
+	}
+	raw, e := json.Marshal(Item{ID: "item", Duration: 1.2345})
+	if e != nil {
+		t.Fatal(e)
+	}
+	var wire map[string]json.RawMessage
+	json.Unmarshal(raw, &wire)
+	if string(wire["durationMs"]) != "1235" || wire["durationState"] != nil {
+		t.Fatal(string(raw))
 	}
 }

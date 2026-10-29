@@ -29,7 +29,7 @@ func (b *fileInfoHydrationBudget) row(bytes int64) (bool, error) {
 	}
 	need := 32768 + 16*bytes
 	if need > b.maximum {
-		if b.used > 0 {
+		if b.used > 32768 {
 			return false, nil
 		}
 		b.exceptional = true

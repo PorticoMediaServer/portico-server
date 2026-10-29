@@ -13410,7 +13410,7 @@ CREATE TABLE catalog_info_changes(
  copy_family INTEGER NOT NULL DEFAULT 0,
  copy_phase INTEGER NOT NULL DEFAULT 0,
  copy_id INTEGER NOT NULL DEFAULT 0,
- copy_aux INTEGER NOT NULL DEFAULT 0,
+ copy_aux INTEGER NOT NULL DEFAULT 0 CHECK(copy_aux>=-2),
  copy_key TEXT NOT NULL DEFAULT '',
  copy_key2 TEXT NOT NULL DEFAULT '',
  copy_key3 TEXT NOT NULL DEFAULT '',

@@ -123,6 +123,10 @@ type Dependencies struct {
 	Catalog           *catalog.Service
 	FacetReads        FacetReadRuntime
 	GenreReads        GenreReadRuntime
+	// FileInfoRuntime is the one process FileInfo window runtime. It shares the
+	// process readprep store; nil answers metadata_unavailable rather than
+	// serving an empty or locally built page.
+	FileInfoRuntime *catalog.FileInfoRuntime
 	// PrepareBrowseSelections is a startup composition/cohort gate. Default false
 	// retains the current foreground path until all clients support preparation.
 	PrepareBrowseSelections bool
@@ -1674,13 +1678,37 @@ func (d Dependencies) itemReadHandler(w http.ResponseWriter, r *http.Request) {
 		failure(w, e)
 		return
 	}
-	item, e := d.Catalog.WithContext(r.Context()).Get(identity.PersonalKey(p.Viewer), r.PathValue("id"))
+	r, ready, proceed := d.prepareFileInfoDocument(w, r, "item")
+	if !proceed {
+		return
+	}
+	var item catalog.Item
+	e = dbwork.WithReadSnapshot(r.Context(), d.DB, func(ctx context.Context) error {
+		var e error
+		cat := d.Catalog.WithContext(ctx)
+		item, e = cat.Get(identity.PersonalKey(p.Viewer), r.PathValue("id"))
+		if e != nil {
+			return e
+		}
+		if ready != nil {
+			revision, e := cat.ContentRevision(item.LibraryID, identity.PersonalKey(p.Viewer))
+			if e != nil {
+				return e
+			}
+			item.FileInfoOpening, e = d.FileInfoRuntime.AcceptPreparedOpening(ctx, ready.caller, *ready.ready, revision)
+			return e
+		}
+		return nil
+	})
 	if e != nil {
-		failure(w, e)
+		fileInfoFailure(w, e)
 		return
 	}
 	if e = d.castOccurrenceAllowed(r.Context(), p, r.PathValue("id"), ""); e != nil {
 		failure(w, e)
+		return
+	}
+	if item.FileInfoOpening != "" && conditional(w, r, responseTag("item", item.ID, item.FileInfoOpening)) {
 		return
 	}
 	write(w, 200, item)

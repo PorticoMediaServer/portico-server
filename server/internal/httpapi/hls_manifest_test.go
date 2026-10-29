@@ -119,7 +119,7 @@ func TestHLSManifestRepresentationRangeReloadAndGrantRevocation(t *testing.T) {
 	if _, err = db.Exec(`INSERT INTO jobs(id,library_id,status,created_at) VALUES('job',?,'running',?);INSERT INTO scan_queue(job_id,path,kind) VALUES('job',?,'file')`, lib.ID, time.Now().Format(time.RFC3339), path); err != nil {
 		t.Fatal(err)
 	}
-	if err = cat.CommitMovie(context.Background(), "job", lib.ID, path, assets.Facts{Container: "mkv", VideoCodec: "h264", AudioCodec: "aac", Duration: 30}); err != nil {
+	if err = seedHTTPMovie(context.Background(), db, lib.ID, path, assets.Facts{Container: "mkv", VideoCodec: "h264", AudioCodec: "aac", Duration: 30}); err != nil {
 		t.Fatal(err)
 	}
 	settleCompactCatalogue(t, db)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"testing"
+	"time"
 
 	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/compactcatalog"
@@ -37,10 +38,16 @@ func TestInfoInvalidationSameStatReplacementPrefencesBeforeClearingTechnicalRows
 	}
 	ctx, stats := dbwork.Measure(context.Background())
 	worker := compactcatalog.NewWorker(f.c.DB)
+	worker.PaceToHold(time.Millisecond)
+	dbwork.ResetPlans()
 	for turn := 0; turn < 1000; turn++ {
 		more, e := worker.Step(ctx, 1)
 		if e != nil {
 			t.Fatal(e)
+		}
+		plan := dbwork.Plans()
+		if plan.Overruns != 0 || plan.Largest.Rows > 160 || plan.Largest.Pages > 256 || plan.Largest.VMOps > 250000 {
+			t.Fatalf("actual producer quantum exceeded unchanged plan: %+v", plan)
 		}
 		var left int
 		f.c.DB.QueryRow(`SELECT count(*) FROM asset_streams WHERE asset_id=?`, f.token).Scan(&left)
@@ -55,6 +62,27 @@ func TestInfoInvalidationSameStatReplacementPrefencesBeforeClearingTechnicalRows
 			break
 		}
 		if turn == 999 {
+			rows, e := f.c.DB.Query(`SELECT domain,source_id,flags,revision,pass_revision,phase,after_id,after_aux FROM catalog_upstream_sources`)
+			if e == nil {
+				defer rows.Close()
+				for rows.Next() {
+					var d, id, flags, rev, pass, phase, after, rerun int64
+					rows.Scan(&d, &id, &flags, &rev, &pass, &phase, &after, &rerun)
+					t.Log("source", d, id, flags, rev, pass, phase, after, rerun)
+				}
+			} else {
+				t.Log("diagnostic", e)
+			}
+			rows, e = f.c.DB.Query(`SELECT id,slot,phase,family_mask,copy_family,copy_phase,copy_aux,input_revision FROM catalog_info_changes WHERE asset_id=?`, f.asset)
+			if e == nil {
+				defer rows.Close()
+				for rows.Next() {
+					var a, b, c, d, e, g, h, i int64
+					rows.Scan(&a, &b, &c, &d, &e, &g, &h, &i)
+					t.Log("input", a, b, c, d, e, g, h, i)
+				}
+			}
+			t.Log("remaining streams", left)
 			t.Fatal("invalidation did not finish")
 		}
 	}
