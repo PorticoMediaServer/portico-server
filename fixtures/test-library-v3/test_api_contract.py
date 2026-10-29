@@ -20,9 +20,19 @@ assert only what the current server accepts:
   ``PUT .../observation`` with epoch/seq/generation/positionMs/monotonicMs/
   playClockMs/seekSerial/rate (server ``playbackv1.ClaimObserver`` and
   ``Observe``). There is no playback ``/timeline`` route.
+* The session is rotated with ``POST /v1/auth/refresh``: no access bearer, the
+  envelope answered directly, both credentials moved, and one request ID for
+  the single replay a lost answer is allowed (server
+  ``httpapi.identityAuthRoutes`` and ``identity.RefreshSession``). A refused
+  refresh ends the run; the fixture never signs in again behind the caller.
+* A music library's saved page reads back with the loudness step the server
+  runs regardless, because every music scan outside file-list-only measures it
+  (server ``catalog.AppliesLoudness``). That one step is derived from the
+  published matrix; any other difference still fails. Online enrichment stays
+  off: one local provider, no AcoustID, file lyrics, segment detection off.
 
 Run with
-``python3 -m unittest discover -s fixtures/test-library -p test_api_contract.py``.
+``python3 -m unittest discover -s fixtures/test-library-v3 -p test_api_contract.py``.
 Set ``PORTICO_OPENAPI`` to a current ``server/api/portico.openapi.json`` to
 also check the bodies against the registered schema.
 """
@@ -33,6 +43,7 @@ import json
 import os
 import sys
 import unittest
+import urllib.error
 import urllib.parse
 from pathlib import Path
 
@@ -64,7 +75,11 @@ class FakeResponse:
 
 
 class FakeOpener:
-    """Queues responses and records the exact requests the helpers sent."""
+    """Queues responses and records the exact requests the helpers sent.
+
+    A queued exception is raised instead, which is how a lost answer (a
+    transport failure after the server committed) is simulated.
+    """
 
     def __init__(self, responses):
         self.responses = list(responses)
@@ -74,7 +89,10 @@ class FakeOpener:
         self.requests.append(request)
         if not self.responses:
             raise AssertionError("unexpected request: " + request.full_url)
-        return self.responses.pop(0)
+        response = self.responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return response
 
 
 def fixture_client(responses):
@@ -82,6 +100,22 @@ def fixture_client(responses):
                                installation="fixture-installation", token="fixture-token")
     client.opener = FakeOpener(responses)
     return client
+
+
+class FakeAdmin:
+    """The reads and the write a library settings page makes, without a server."""
+
+    def __init__(self, reads):
+        self.reads = list(reads)
+        self.writes = []
+
+    def read(self, path):
+        del path
+        return self.reads.pop(0)
+
+    def call(self, method, path, body=None, **_):
+        self.writes.append((method, path, body))
+        return {}
 
 
 def sent_query(request):
@@ -122,6 +156,58 @@ def grant(epoch=EPOCH):
 
 def ack(seq):
     return FakeResponse({"acceptedSeq": seq, "leaseUntil": LEASE})
+
+
+# The session envelope the server issues (internal/identity/service.go
+# Envelope). A sign-in nests it under "session"; POST /v1/auth/refresh answers
+# it directly (internal/httpapi/identity_routes.go:171).
+INSTALLATION = "fixture-installation"
+DEVICE = "device-1"
+FAMILY = "family-1"
+PROFILE = "profile-1"
+EXPIRES = "2026-10-29T12:15:00Z"
+ROTATED_EXPIRES = "2026-10-29T12:30:00Z"
+
+
+def session(access, refresh, *, expires=EXPIRES, family=FAMILY, device=DEVICE,
+            profile=PROFILE, installation=INSTALLATION, generation="1",
+            horizon="2026-11-29T00:00:00Z"):
+    return {"accessToken": access, "refreshToken": refresh, "deviceId": device,
+            "installationId": installation, "expiresAt": expires,
+            "viewer": {"accountId": "account-1", "profileId": profile,
+                       "serverId": "server-1", "authority": "local", "role": "owner"},
+            "sessionFamilyId": family, "tokenGeneration": generation,
+            "authorizationHorizon": horizon}
+
+
+def signed_in(profile=PROFILE):
+    return FakeResponse({"session": session("access-1", "refresh-1", profile=profile),
+                         "profiles": [{"id": profile, "primary": True}]})
+
+
+def rotation(access="access-2", refresh="refresh-2", **overrides):
+    fields = {"expires": ROTATED_EXPIRES, "generation": "2"}
+    fields.update(overrides)
+    return FakeResponse(session(access, refresh, **fields))
+
+
+def denial(code="unauthorized", status=401):
+    return FakeResponse({"error": {"code": code, "message": "refused"}}, status)
+
+
+def expiry_clock(seconds_before_expiry, expires=EXPIRES):
+    """A clock placed just inside the refresh lead time of an envelope."""
+    clock = FakeClock()
+    clock.value = seed_state._instant(expires) - seconds_before_expiry
+    return clock
+
+
+def session_client(responses, clock=None):
+    client = seed_state.Client("http://fixture.invalid", installation=INSTALLATION)
+    client.opener = FakeOpener(responses)
+    client.clock = clock or FakeClock()
+    client.pause = lambda seconds: None
+    return client
 
 
 class SavedResourcesContractTests(unittest.TestCase):
@@ -400,6 +486,326 @@ class PlaybackObserverTests(unittest.TestCase):
         self.assertEqual(set(sample), set(body_schema["required"]))
         self.assertLessEqual(set(sample), set(body_schema["properties"]))
         self.assertEqual(set(sent_body(client.opener.requests[0])), {"generation"})
+
+
+class SessionRefreshTests(unittest.TestCase):
+    """The session is rotated the ordinary way, and only the ordinary way.
+
+    ``POST /v1/auth/refresh`` takes no access bearer, answers the session
+    envelope directly, and rotates both credentials. A lost answer is retried
+    with the same request ID because the server replays that receipt; a
+    refused refresh is not answered with a new sign-in.
+    """
+
+    def test_a_sign_in_is_captured_with_its_refresh_credential(self):
+        client = session_client([signed_in()])
+
+        signed, token = seed_state.sign_in(client, "owner", "password")
+
+        self.assertEqual(token, "access-1")
+        self.assertEqual(client.token, "access-1")
+        self.assertEqual(client.refresh_token, "refresh-1")
+        self.assertEqual(client.session_family, FAMILY)
+        self.assertEqual(client.device_id, DEVICE)
+        self.assertEqual(client.profile_id, PROFILE)
+        self.assertEqual(client.expires_at, seed_state._instant(EXPIRES))
+        self.assertEqual(signed["profiles"][0]["id"], PROFILE)
+
+    def test_a_session_near_expiry_rotates_before_the_next_read(self):
+        client = session_client([signed_in(), rotation(), FakeResponse({"id": "server-1"})])
+        seed_state.sign_in(client, "owner", "password")
+        client.clock = expiry_clock(30)
+
+        client.read("/v1/system")
+
+        paths = [sent_path(request) for request in client.opener.requests]
+        self.assertEqual(paths, ["/v1/direct/sign-in", "/v1/auth/refresh", "/v1/system"])
+        refresh = client.opener.requests[1]
+        self.assertEqual(refresh.get_method(), "POST")
+        self.assertEqual(set(sent_body(refresh)),
+                         {"refreshToken", "installationId", "requestId"})
+        self.assertEqual(sent_body(refresh)["refreshToken"], "refresh-1")
+        self.assertEqual(sent_body(refresh)["installationId"], INSTALLATION)
+        self.assertRegex(sent_body(refresh)["requestId"], r"^[A-Za-z0-9_-]{8,128}$")
+        self.assertIsNone(sent_header(refresh, "Authorization"),
+                          "the refresh route takes no access bearer")
+        self.assertEqual(sent_header(client.opener.requests[2], "Authorization"),
+                         "Bearer access-2")
+        self.assertEqual(client.refresh_token, "refresh-2")
+        self.assertEqual(client.expires_at, seed_state._instant(ROTATED_EXPIRES))
+        self.assertEqual(client.generation, 2)
+        self.assertEqual((client.device_id, client.session_family, client.profile_id),
+                         (DEVICE, FAMILY, PROFILE))
+        self.assertEqual(client.refreshes, 1)
+
+    def test_a_read_401_rotates_once_and_replays_the_same_read(self):
+        client = session_client([signed_in(), denial(), rotation(),
+                                 FakeResponse({"id": "server-1"})])
+        seed_state.sign_in(client, "owner", "password")
+
+        client.read("/v1/system")
+
+        paths = [sent_path(request) for request in client.opener.requests]
+        self.assertEqual(paths, ["/v1/direct/sign-in", "/v1/system", "/v1/auth/refresh",
+                                 "/v1/system"])
+        replay = client.opener.requests[3]
+        self.assertEqual(replay.get_method(), "GET")
+        self.assertEqual(sent_header(replay, "Authorization"), "Bearer access-2")
+        self.assertEqual(client.refreshes, 1)
+
+    def test_a_write_401_is_not_replayed_with_a_rotated_token(self):
+        client = session_client([signed_in(), denial()])
+        seed_state.sign_in(client, "owner", "password")
+
+        with self.assertRaises(seed_state.Refusal) as caught:
+            client.call("POST", "/v1/libraries/library-1/scans", {})
+
+        self.assertEqual(caught.exception.status, 401)
+        self.assertEqual([sent_path(request) for request in client.opener.requests],
+                         ["/v1/direct/sign-in", "/v1/libraries/library-1/scans"])
+        self.assertEqual(client.refreshes, 0)
+        self.assertEqual(client.refresh_token, "refresh-1")
+
+    def test_a_refused_refresh_ends_the_run_instead_of_signing_in_again(self):
+        client = session_client([signed_in(), denial(), denial()])
+        seed_state.sign_in(client, "owner", "password")
+
+        with self.assertRaises(seed_state.Refusal) as caught:
+            client.read("/v1/system")
+
+        self.assertEqual(caught.exception.code, "session_refresh_refused")
+        self.assertEqual(caught.exception.status, 401)
+        self.assertEqual(caught.exception.detail, "unauthorized")
+        self.assertEqual([sent_path(request) for request in client.opener.requests],
+                         ["/v1/direct/sign-in", "/v1/system", "/v1/auth/refresh"])
+        # No second sign-in, so no account is re-authenticated and no
+        # restricted profile can be selected without its PIN.
+        self.assertEqual(client.token, "access-1")
+        self.assertEqual(client.refresh_token, "refresh-1")
+        self.assertEqual(client.refreshes, 0)
+
+    def test_a_session_that_is_not_a_usable_envelope_is_refused(self):
+        broken_sessions = (
+            (session("access-1", "refresh-1", expires="soon"), "expiresAt"),
+            ({field: value for field, value in session("access-1", "refresh-1").items()
+              if field != "sessionFamilyId"}, "sessionFamilyId"))
+        for broken, detail in broken_sessions:
+            with self.subTest(detail=detail):
+                client = session_client([FakeResponse({"session": broken})])
+
+                with self.assertRaises(seed_state.Refusal) as caught:
+                    seed_state.sign_in(client, "owner", "password")
+
+                self.assertEqual(caught.exception.code, "session_envelope_shape")
+                self.assertEqual(caught.exception.detail, detail)
+                self.assertEqual((client.token, client.refresh_token), ("", ""))
+
+    def test_a_rotation_that_changes_scope_is_refused_without_taking_effect(self):
+        for overrides, detail in (({"family": "family-2"}, "sessionFamilyId"),
+                                  ({"device": "device-2"}, "deviceId"),
+                                  ({"profile": "profile-2"}, "viewer.profileId")):
+            with self.subTest(detail=detail):
+                client = session_client([signed_in(), rotation(**overrides)])
+                seed_state.sign_in(client, "owner", "password")
+
+                with self.assertRaises(seed_state.Refusal) as caught:
+                    client.refresh()
+
+                self.assertEqual(caught.exception.code, "session_refresh_scope")
+                self.assertEqual(caught.exception.detail, detail)
+                self.assertEqual(client.token, "access-1")
+                self.assertEqual(client.refresh_token, "refresh-1")
+
+    def test_a_refresh_that_did_not_rotate_is_refused_and_not_believed(self):
+        for overrides, detail in (({"refresh": "refresh-1"}, "refreshToken"),
+                                  ({"generation": "1"}, "tokenGeneration")):
+            with self.subTest(detail=detail):
+                client = session_client([signed_in(), rotation(**overrides)])
+                seed_state.sign_in(client, "owner", "password")
+
+                with self.assertRaises(seed_state.Refusal) as caught:
+                    client.refresh()
+
+                self.assertEqual(caught.exception.code, "session_refresh_not_rotated")
+                self.assertEqual(caught.exception.detail, detail)
+                self.assertEqual(client.refresh_token, "refresh-1")
+
+    def test_a_lost_refresh_answer_is_replayed_with_the_same_request_id(self):
+        client = session_client([signed_in(), urllib.error.URLError("answer lost"),
+                                 rotation()])
+        seed_state.sign_in(client, "owner", "password")
+
+        client.refresh()
+
+        refresh_requests = client.opener.requests[1:]
+        self.assertEqual([sent_path(request) for request in refresh_requests],
+                         ["/v1/auth/refresh", "/v1/auth/refresh"])
+        self.assertEqual(sent_body(refresh_requests[0]), sent_body(refresh_requests[1]))
+        self.assertEqual(client.refresh_token, "refresh-2")
+        self.assertEqual(client.refreshes, 1)
+
+    def test_a_profile_selection_replaces_the_account_session_it_was_given(self):
+        selected = FakeResponse({"session": session("access-selected", "refresh-selected")})
+        client = session_client([signed_in(profile=""), selected, rotation(),
+                                 FakeResponse({"id": "server-1"})])
+
+        seed_state.sign_in(client, "owner", "password")
+        token = seed_state.select_profile(client, PROFILE)
+        self.assertEqual(token, "access-selected")
+        self.assertEqual(client.refresh_token, "refresh-selected")
+        self.assertEqual(client.profile_id, PROFILE)
+        client.clock = expiry_clock(30)
+
+        client.read("/v1/system")
+
+        refresh = client.opener.requests[2]
+        self.assertEqual(sent_path(refresh), "/v1/auth/refresh")
+        # The rotated session belongs to the profile just selected, not to the
+        # account-only session that signed in.
+        self.assertEqual(sent_body(refresh)["refreshToken"], "refresh-selected")
+        self.assertEqual(sent_header(client.opener.requests[3], "Authorization"),
+                         "Bearer access-2")
+        self.assertEqual(client.profile_id, PROFILE)
+
+    def test_an_expiring_session_without_a_refresh_credential_is_not_invented(self):
+        client = session_client([FakeResponse({"session": session("access-1", "")}),
+                                 FakeResponse({"id": "server-1"})])
+        seed_state.sign_in(client, "owner", "password")
+        client.clock = expiry_clock(30)
+
+        client.read("/v1/system")
+
+        self.assertEqual([sent_path(request) for request in client.opener.requests],
+                         ["/v1/direct/sign-in", "/v1/system"])
+        self.assertEqual(client.refreshes, 0)
+
+    def test_a_reply_that_merely_mentions_an_access_token_is_not_a_session(self):
+        client = session_client([signed_in(), FakeResponse({"accessToken": "other-1"})])
+        seed_state.sign_in(client, "owner", "password")
+
+        client.read("/v1/me/access-tokens")
+
+        self.assertEqual(client.token, "access-1")
+        self.assertEqual(client.refresh_token, "refresh-1")
+
+
+class LibrarySettingsReadbackTests(unittest.TestCase):
+    """A music library reads back the loudness step the server must run.
+
+    ``internal/catalog/library_sources.go`` AppliesLoudness/musicLoudnessPolicy
+    measures source loudness for every music library outside a file-list-only
+    scan, so the served analysis is the stored policy's, not the saved page's.
+    The read-back comparison derives that one step from the matrix and still
+    fails on any other difference, and the online-enrichment guard stays exact.
+    """
+
+    # The published matrix shape: exactly the operations
+    # administration.AnalysisOperations publishes, which are the static list
+    # filtered by analysisRuntime. artwork_extraction, chapter_read,
+    # deep_stream_analysis, subtitle_extraction, video_preview,
+    # subtitle_download and lyrics are not runtime-backed, so a client never
+    # sees them and this fixture must not choose them either.
+    EVERY = ["movie", "show", "episode", "music", "book"]
+    VIDEO = ["movie", "show", "episode"]
+    MATRIX = {"costClasses": [{"id": "metadata-only", "order": 1},
+                              {"id": "single-pass-read", "order": 2},
+                              {"id": "decode", "order": 3},
+                              {"id": "network", "order": 4}],
+              "operations": [
+                  {"id": "probe", "costClass": "metadata-only", "network": False,
+                   "mediaKinds": EVERY, "requires": []},
+                  {"id": "local_metadata", "costClass": "metadata-only", "network": False,
+                   "mediaKinds": EVERY, "requires": ["probe"]},
+                  {"id": "subtitle_discovery", "costClass": "metadata-only", "network": False,
+                   "mediaKinds": VIDEO, "requires": ["probe"]},
+                  {"id": "loudness", "costClass": "single-pass-read", "network": False,
+                   "mediaKinds": EVERY, "requires": ["probe"]},
+                  {"id": "audio_fingerprint", "costClass": "single-pass-read", "network": False,
+                   "mediaKinds": ["music"], "requires": ["probe"]},
+                  {"id": "trickplay", "costClass": "decode", "network": False,
+                   "mediaKinds": VIDEO, "requires": ["probe"]},
+                  {"id": "chapter_images", "costClass": "decode", "network": False,
+                   "mediaKinds": VIDEO, "requires": ["probe"]},
+                  {"id": "checksum", "costClass": "single-pass-read", "network": False,
+                   "mediaKinds": EVERY, "requires": []},
+                  {"id": "waveform", "costClass": "decode", "network": False,
+                   "mediaKinds": EVERY, "requires": ["probe"]}]}
+    ASKED = ["probe", "local_metadata"]
+    MUSIC_READBACK = ["local_metadata", "loudness", "probe"]
+
+    def document(self, kind="music", depth="basic"):
+        return {"libraryKind": kind, "revision": 4, "analysisMatrix": self.MATRIX,
+                "defaults": {},
+                "settings": {"scanDepth": depth, "providers": [{"provider": "local",
+                                                                "mediaKind": kind}],
+                             "analysis": ["local_metadata", "probe"],
+                             "acoustidEnabled": False, "segmentDetection": "server"}}
+
+    def readback(self, analysis, *, providers=None, kind="music", depth="basic", **extra):
+        settings = {"analysis": analysis,
+                    "providers": providers or [{"provider": "local", "mediaKind": kind}],
+                    "acoustidEnabled": False, "segmentDetection": "off"}
+        settings.update(extra)
+        owner = FakeAdmin([self.document(kind, depth), {"settings": settings}])
+        report = {"libraries": {}}
+        seed_state.quiet_library(owner, "Synthetic Music", "library-1", report)
+        return owner, report
+
+    def test_the_mandatory_music_step_is_derived_from_the_published_matrix(self):
+        self.assertEqual(
+            seed_state.mandatory_analysis(self.document("music", "basic"), "basic"),
+            {"loudness"})
+        self.assertEqual(
+            seed_state.mandatory_analysis(self.document("music", "file_list_only"),
+                                         "file_list_only"), set())
+        self.assertEqual(
+            seed_state.mandatory_analysis(self.document("book", "basic"), "basic"), set())
+
+    def test_only_published_local_metadata_steps_are_asked_for(self):
+        self.assertEqual(seed_state.metadata_only_analysis(self.document("music")),
+                         self.ASKED)
+        self.assertEqual(seed_state.metadata_only_analysis(self.document("tv")),
+                         self.ASKED + ["subtitle_discovery"])
+        self.assertEqual(seed_state.metadata_only_analysis(self.document("book")),
+                         self.ASKED)
+
+    def test_a_music_library_reads_back_without_a_false_failure(self):
+        owner, report = self.readback(self.MUSIC_READBACK)
+
+        self.assertNotIn("failures", report)
+        written = owner.writes[0][2]["settings"]
+        # The fixture itself still asks for metadata only: loudness is the
+        # server's step, not one this page turns on.
+        self.assertEqual(written["analysis"], self.ASKED)
+        self.assertEqual([provider["provider"] for provider in written["providers"]],
+                         ["local"])
+        self.assertFalse(written["acoustidEnabled"])
+        self.assertEqual(written["segmentDetection"], "off")
+
+    def test_another_step_in_the_readback_is_still_a_failure(self):
+        _, report = self.readback(self.MUSIC_READBACK + ["waveform"])
+
+        failure = report["failures"][0]
+        self.assertEqual(failure["step"], "library-settings-readback")
+        self.assertEqual(failure["mismatched"], ["analysis"])
+        self.assertEqual(failure["expectedAnalysis"], self.MUSIC_READBACK)
+
+    def test_a_missing_mandatory_step_is_still_a_failure(self):
+        _, report = self.readback(self.ASKED)
+
+        self.assertEqual(report["failures"][0]["mismatched"], ["analysis"])
+
+    def test_an_online_provider_or_online_audio_setting_is_still_a_failure(self):
+        _, providers = self.readback(
+            self.MUSIC_READBACK,
+            providers=[{"provider": "local"}, {"provider": "musicbrainz"}])
+        self.assertEqual(providers["failures"][0]["mismatched"], ["providers"])
+
+        _, acoustid = self.readback(self.MUSIC_READBACK, acoustidEnabled=True)
+        self.assertEqual(acoustid["failures"][0]["mismatched"], ["acoustidEnabled"])
+
+        _, segments = self.readback(self.MUSIC_READBACK, segmentDetection="server")
+        self.assertEqual(segments["failures"][0]["mismatched"], ["segmentDetection"])
 
 
 if __name__ == "__main__":

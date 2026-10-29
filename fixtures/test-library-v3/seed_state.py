@@ -44,11 +44,17 @@ fresh server is bootstrapped through ``/v1/setup/browser`` -> ``/v1/setup`` ->
 ``/v1/setup/finish`` exactly as the app does, then the same credentials sign in.
 New accounts, profile PINs, API-key secrets and webhook secrets are written
 back to that 0600 file; nothing secret is printed.
+
+A supplied access token lasts at most 15 minutes, so every session this module
+holds is rotated through the ordinary ``POST /v1/auth/refresh`` before it
+expires and never by signing in again.  Session tokens are not written to the
+credentials file: a later run signs in again.
 """
 from __future__ import annotations
 
 import argparse
 import base64
+import datetime
 import hashlib
 import json
 import os
@@ -97,6 +103,39 @@ PLAYBACK_EPOCH = re.compile(r"[A-Za-z0-9_-]{22}")
 PLAYBACK_STATES = frozenset({"playing", "paused", "buffering", "ended", "error"})
 PLAYBACK_TIMESTAMP = re.compile(
     r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})")
+
+# The ordinary session. A sign-in, a profile selection and a setup reply carry
+# a session envelope (internal/identity/service.go Envelope; nested under
+# "session" by DirectSignIn and DirectSelectionResult). ``POST /v1/auth/refresh``
+# takes no access bearer and answers the same envelope directly
+# (internal/httpapi/identity_routes.go post_auth_refresh).
+REFRESH_PATH = "/v1/auth/refresh"
+SESSION_FIELDS = ("accessToken", "deviceId", "installationId", "expiresAt", "viewer",
+                  "sessionFamilyId", "tokenGeneration", "authorizationHorizon")
+# Rotate this long before the published expiry rather than racing it.
+REFRESH_LEAD_SECONDS = 120.0
+# identity.validFamilyID accepts exactly this alphabet for a refresh request ID.
+REFRESH_REQUEST = re.compile(r"[A-Za-z0-9_-]{8,128}")
+
+
+def _instant(text):
+    """The epoch second an RFC3339 instant names, or None when it is not one."""
+    if not isinstance(text, str) or not text:
+        return None
+    try:
+        parsed = datetime.datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=datetime.timezone.utc)
+    return parsed.timestamp()
+
+
+def _generation(raw):
+    try:
+        return int(str(raw))
+    except (TypeError, ValueError):
+        return 0
 
 
 def redact(text):
@@ -157,14 +196,162 @@ def write_private(path, document):
 
 
 class Client:
+    """One device-bound session, refreshed the way the app refreshes it.
+
+    The server issues a session envelope at sign-in, at profile selection and
+    at setup, and rotates it from ``POST /v1/auth/refresh``. Access lasts at
+    most 15 minutes, so a long run rotates instead of holding one static token,
+    and no session token is written to the credentials file.
+    """
+
     def __init__(self, base, installation=None, token=""):
         self.base = base.rstrip("/")
         self.installation = installation or str(uuid.uuid4())
         self.token = token
+        self.refresh_token = ""
+        self.expires_at = None
+        self.device_id = ""
+        self.session_family = ""
+        self.profile_id = ""
+        self.generation = 0
+        self.refreshes = 0
+        self.clock = time.time
+        self.pause = time.sleep
         self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+    def envelope(self, document):
+        """The session envelope a reply carries, or None when it carries none.
+
+        A reply carries one when it nests it under ``session`` (sign-in, profile
+        selection) or when it is the envelope itself (refresh, setup). A body
+        that merely mentions an access token, such as a credential listing, is
+        not a session and is left alone.
+        """
+        if not isinstance(document, dict):
+            return None
+        nested = document.get("session")
+        if isinstance(nested, dict) and "accessToken" in nested:
+            return nested
+        if "accessToken" in document and any(
+                field in document for field in SESSION_FIELDS if field != "accessToken"):
+            return document
+        return None
+
+    def absorb(self, document, source="", predecessor=None, rotated=False):
+        """Capture a returned session once it is a session this device may hold.
+
+        A rotated envelope must keep this device, family and profile and must
+        really have rotated; anything else is refused before the client's own
+        credentials change, so the fixture never reports a session it is not
+        actually holding.
+        """
+        session = self.envelope(document)
+        if session is None:
+            return None
+        missing = [field for field in SESSION_FIELDS if field not in session]
+        if missing:
+            raise Refusal("session_envelope_shape", detail=",".join(missing))
+        if session["installationId"] != self.installation:
+            raise Refusal("session_installation_mismatch", detail=source)
+        viewer = session.get("viewer")
+        if not isinstance(viewer, dict) or not isinstance(viewer.get("profileId"), str):
+            raise Refusal("session_envelope_shape", detail="viewer")
+        generation = _generation(session["tokenGeneration"])
+        if rotated:
+            if not session.get("refreshToken"):
+                raise Refusal("session_refresh_shape", detail="refreshToken")
+            if predecessor is not None and session["refreshToken"] == predecessor:
+                raise Refusal("session_refresh_not_rotated", detail="refreshToken")
+            for field, held in (("sessionFamilyId", self.session_family),
+                                ("deviceId", self.device_id)):
+                if held and session[field] != held:
+                    raise Refusal("session_refresh_scope", detail=field)
+            if self.profile_id and viewer["profileId"] != self.profile_id:
+                raise Refusal("session_refresh_scope", detail="viewer.profileId")
+            if generation <= 0 or (self.generation and generation <= self.generation):
+                raise Refusal("session_refresh_not_rotated", detail="tokenGeneration")
+        expires = _instant(session["expiresAt"])
+        if expires is None:
+            # Rotation before expiry is bounded by this instant. A session that
+            # does not publish one could only be renewed after a 401, which a
+            # write cannot survive, so it is not accepted as a session.
+            raise Refusal("session_envelope_shape", detail="expiresAt")
+        self.token = session["accessToken"]
+        self.refresh_token = session.get("refreshToken") or ""
+        self.expires_at = expires
+        self.device_id = session["deviceId"]
+        self.session_family = session["sessionFamilyId"]
+        self.profile_id = viewer["profileId"]
+        self.generation = generation
+        return session
+
+    def refresh(self):
+        """Rotate the session; the only way this client obtains a new token."""
+        if not self.refresh_token:
+            raise Refusal("session_refresh_missing")
+        predecessor = self.refresh_token
+        request_id = "seed-v3-refresh-" + uuid.uuid4().hex
+        assert REFRESH_REQUEST.fullmatch(request_id), request_id
+        body = {"refreshToken": predecessor, "installationId": self.installation,
+                "requestId": request_id}
+        rotated = None
+        for attempt in (0, 1):
+            try:
+                # No access bearer: the refresh credential is the only proof.
+                rotated = self.exchange("POST", REFRESH_PATH, body=body, ok=(200,),
+                                        bearer=False)
+                break
+            except Refusal as refusal:
+                lost = refusal.code.startswith("transport_") or refusal.status in (429, 503, 504)
+                if attempt or not lost:
+                    if refusal.status in (401, 403):
+                        # A revoked or expired refresh credential ends the run.
+                        # Signing in again would silently re-authenticate an
+                        # account the server just refused this session.
+                        raise Refusal("session_refresh_refused", refusal.status,
+                                      refusal.code) from None
+                    raise
+                # The same request ID is the receipt the server replays, so an
+                # answer lost in transport is recovered without reuse.
+                self.pause(min(2.0, 0.5 * (attempt + 1)))
+        session = self.absorb(rotated, source=REFRESH_PATH, predecessor=predecessor,
+                              rotated=True)
+        if session is None:
+            raise Refusal("session_refresh_shape", detail="envelope")
+        self.refreshes += 1
+        return self.token
+
+    def rotate_before_expiry(self):
+        """Refresh once when the held session is inside its lead time."""
+        if not self.refresh_token or self.expires_at is None:
+            return False
+        if self.clock() + REFRESH_LEAD_SECONDS < self.expires_at:
+            return False
+        self.refresh()
+        return True
 
     def call(self, method, path, body=None, raw=None, content_type="application/json",
              ok=(200, 201, 202, 204), timeout=60, extra_headers=None):
+        rotated = self.rotate_before_expiry()
+        try:
+            document = self.exchange(method, path, body, raw, content_type, ok, timeout,
+                                     extra_headers)
+        except Refusal as refusal:
+            # Only a read is replayed: a 401 on a write says nothing about
+            # whether the handler already ran, and one bounded refresh is all
+            # this client is allowed to spend on an answer it did not expect.
+            if (refusal.status != 401 or method.upper() != "GET" or rotated
+                    or not self.refresh_token):
+                raise
+            self.refresh()
+            document = self.exchange(method, path, body, raw, content_type, ok, timeout,
+                                     extra_headers)
+        self.absorb(document, source=path)
+        return document
+
+    def exchange(self, method, path, body=None, raw=None, content_type="application/json",
+                 ok=(200, 201, 202, 204), timeout=60, extra_headers=None, bearer=True):
+        """One HTTP exchange: no retry, no session logic of its own."""
         headers = {"Accept": "application/json", "Origin": self.base,
                    "X-Portico-Installation-Id": self.installation}
         data = None
@@ -174,7 +361,7 @@ class Client:
         elif body is not None:
             data = json.dumps(body, separators=(",", ":")).encode()
             headers["Content-Type"] = "application/json"
-        if self.token:
+        if bearer and self.token:
             headers["Authorization"] = "Bearer " + self.token
         headers.update(extra_headers or {})
         request = urllib.request.Request(self.base + path, data=data, headers=headers, method=method)
@@ -434,6 +621,79 @@ def ensure_library(owner, name, kind, desired, report):
     raise Refusal("library_name_exhausted", detail=name)
 
 
+def metadata_only_analysis(document):
+    """The analysis steps this fixture asks for, chosen from the library's matrix.
+
+    Only metadata-only operations that never leave the machine are named, plus
+    probe and local_metadata, which the other steps depend on. Nothing here
+    enables online enrichment. The published matrix names no network operation
+    today; the guard stays so a future one is never enabled by this page.
+    """
+    matrix = document.get("analysisMatrix") or {}
+    operations = matrix.get("operations") if isinstance(matrix, dict) else None
+    kind = document.get("libraryKind")
+    media_kinds = {"tv": {"show", "episode"}, "anime": {"show", "episode"},
+                   "movie": {"movie"}, "music": {"music"}, "book": {"book"},
+                   "comic": {"book"}, "audiobook": {"book"}}.get(kind, {kind})
+    allowed = []
+    if isinstance(operations, list):
+        for operation in operations:
+            if not isinstance(operation, dict):
+                continue
+            if operation.get("costClass") != "metadata-only" or operation.get("network"):
+                continue
+            kinds = set(operation.get("mediaKinds") or [])
+            if kinds and not (media_kinds & kinds):
+                continue
+            identifier = operation.get("id")
+            if identifier:
+                allowed.append(identifier)
+    return list(dict.fromkeys(["probe", "local_metadata"] + allowed))
+
+
+def mandatory_analysis(document, scan_depth):
+    """Steps the server runs for this library whether the page names them or not.
+
+    internal/catalog/library_sources.go AppliesLoudness and musicLoudnessPolicy:
+    every music library outside a file-list-only scan measures source loudness,
+    so playback gain does not depend on the enrichment depth the owner picked.
+    The published matrix says loudness serves the music media kind, so a
+    metadata-only save of a music library reads back with loudness added. That
+    one step is expected product behavior; the fixture derives it from this
+    library's own matrix and still calls anything else a failure.
+    """
+    if document.get("libraryKind") != "music" or scan_depth == "file_list_only":
+        return set()
+    matrix = document.get("analysisMatrix") or {}
+    for operation in (matrix.get("operations") or []) if isinstance(matrix, dict) else []:
+        if (isinstance(operation, dict) and operation.get("id") == "loudness"
+                and "music" in (operation.get("mediaKinds") or [])):
+            return {"loudness"}
+    return set()
+
+
+def readback_problem(saved, expected_analysis):
+    """What a read-back library settings document still gets wrong, if anything.
+
+    The online-enrichment guard is exact: one local provider, no AcoustID, file
+    lyrics and segment detection off. Analysis is compared against what the
+    fixture asked for plus the steps the server must run anyway.
+    """
+    saved = saved if isinstance(saved, dict) else {}
+    problem = {}
+    if set(saved.get("analysis") or []) != set(expected_analysis):
+        problem["analysis"] = saved.get("analysis")
+    providers = saved.get("providers") or []
+    if any(not isinstance(provider, dict) or provider.get("provider") != "local"
+           for provider in providers):
+        problem["providers"] = saved.get("providers")
+    if saved.get("acoustidEnabled"):
+        problem["acoustidEnabled"] = saved.get("acoustidEnabled")
+    if saved.get("segmentDetection") != "off":
+        problem["segmentDetection"] = saved.get("segmentDetection")
+    return problem
+
+
 def quiet_library(owner, name, library_id, report):
     """Disable every online/enrichment/analysis option this library permits."""
     path = "/v1/admin/libraries/" + urllib.parse.quote(library_id, safe="") + "/settings"
@@ -451,40 +711,21 @@ def quiet_library(owner, name, library_id, report):
         settings["segmentDetection"] = "off"
         settings["monitorChanges"] = False
         settings["allowMediaDeletion"] = False
-        matrix = document.get("analysisMatrix") or {}
-        operations = matrix.get("operations") if isinstance(matrix, dict) else None
-        kind = document.get("libraryKind") or report.get("libraries", {}).get(name, {}).get("kind")
-        media_kinds = {"tv": {"show", "episode"}, "anime": {"show", "episode"},
-                       "movie": {"movie"}, "music": {"music"}, "book": {"book"},
-                       "comic": {"book"}, "audiobook": {"book"}}.get(kind, {kind})
-        allowed = []
-        if isinstance(operations, list):
-            for operation in operations:
-                if not isinstance(operation, dict):
-                    continue
-                if operation.get("costClass") != "metadata-only" or operation.get("network"):
-                    continue
-                kinds = set(operation.get("mediaKinds") or [])
-                if kinds and not (media_kinds & kinds):
-                    continue
-                identifier = operation.get("id")
-                if identifier:
-                    allowed.append(identifier)
-        settings["analysis"] = list(dict.fromkeys(
-            ["probe", "local_metadata"] + allowed))
+        settings["analysis"] = metadata_only_analysis(document)
+        expected = set(settings["analysis"]) | mandatory_analysis(
+            document, settings.get("scanDepth"))
         body = {"expectedRevision": document.get("revision", 0), "operationId": op_id("lib-settings"),
                 "settings": settings}
         try:
             owner.call("PUT", path, body, ok=(200,))
             actual = owner.read(path)
             saved = actual.get("settings") or {}
-            wanted = set(settings["analysis"])
-            if (set(saved.get("analysis") or []) != wanted or
-                    any(provider.get("provider") != "local" for provider in saved.get("providers") or []) or
-                    saved.get("acoustidEnabled") or saved.get("segmentDetection") != "off"):
+            problem = readback_problem(saved, expected)
+            if problem:
                 report.setdefault("failures", []).append(
                     {"step": "library-settings-readback", "library": name,
-                     "libraryId": library_id,
+                     "libraryId": library_id, "expectedAnalysis": sorted(expected),
+                     "mismatched": sorted(problem),
                      "actual": {"analysis": saved.get("analysis"),
                                 "providers": saved.get("providers"),
                                 "acoustidEnabled": saved.get("acoustidEnabled"),
