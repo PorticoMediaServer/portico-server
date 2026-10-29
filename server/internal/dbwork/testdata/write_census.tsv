@@ -37,7 +37,6 @@ internal/catalog/bulk_jobs.go	(*Service).CleanupBulkJobs	WithWriteTx	ClassMainte
 internal/catalog/bulk_jobs.go	(*Service).CreateBulkJob	WithWriteTx	ClassInteractive	-	×2
 internal/catalog/bulk_jobs.go	(*Service).deleteBulkRows	ExecWrite	ClassMaintenance	-
 internal/catalog/bulk_jobs.go	(*Service).failBulkJob	WithWriteTx	ClassBackgroundMedia	-
-internal/catalog/catalog.go	(*Service).CommitMedia	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/catalog/catalog.go	(*Service).CreateAuthorizedThen	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/catalog/collections.go	(*Service).CreateCollection	WithWriteTx	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/catalog/collections.go	(*Service).DeleteCollection	WithWriteTx	ClassFrom(ctx, dbwork.ClassInteractive)	-
@@ -50,22 +49,21 @@ internal/catalog/container_personal.go	(*Service).SetContainerPersonal	WithWrite
 internal/catalog/container_personal.go	(*Service).SetContainerSaved	WithWriteTxContext	ClassInteractive	-
 internal/catalog/container_undo.go	(*Service).UndoContainerPersonal	WithWriteTx	ClassInteractive	-
 internal/catalog/delete_title.go	(*Service).RemoveTitle	WithWriteTx	ClassFrom(ctx, dbwork.ClassInteractive)	-
-internal/catalog/disc_publication.go	(*Service).CommitInventoryDiscProbe	Begin	ClassBackgroundMedia	-
-internal/catalog/disc_title_media.go	(*Service).CommitDiscAlternate	Begin	ClassBackgroundMedia	-
 internal/catalog/entity_adoption_mutations.go	(*Service).MutationAdapter	WithWriteTx	ClassBackgroundMedia	-
 internal/catalog/episode_repository.go	(*Service).AssignEpisodes	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/catalog/episodic_reparse.go	(*Service).ReparseEpisodicIssues	ExecWrite	ClassMaintenance	-
 internal/catalog/episodic_reparse.go	(*Service).ReparseEpisodicIssues	WithWriteTx	ClassMaintenance	-
 internal/catalog/facet_runtime.go	(*FacetRuntime).writeBase	WithWriteTxContext	ClassBackgroundMedia	-
-internal/catalog/inventory.go	(*Service).CommitInventoryAnalysis	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	audioFilePublicationPlan
+internal/catalog/file_info_separate.go	(*Service).SeparateFileInfoVersion	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/catalog/inventory.go	(*Service).CommitInventoryDiscRoot	Begin	ClassBackgroundMedia	-
 internal/catalog/inventory.go	(*Service).CommitInventoryNaming	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/catalog/inventory.go	(*Service).CommitInventoryPage	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	inventoryPagesPlan
 internal/catalog/inventory.go	(*Service).CommitInventoryPages	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	inventoryPagesPlan
+internal/catalog/inventory.go	(*Service).commitInventoryAnalysisApplied	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	audioFilePublicationPlan
 internal/catalog/inventory_admin.go	(*Service).AssociateInventoryVersion	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/catalog/inventory_admin.go	(*Service).CheckSource	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/catalog/inventory_admin.go	(*Service).SeparateInventoryVersion	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
-internal/catalog/inventory_local_refresh.go	(*Service).CommitInventoryLocalRefresh	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	audioFilePublicationPlan
+internal/catalog/inventory_local_refresh.go	(*Service).commitInventoryLocalRefreshApplied	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	audioFilePublicationPlan
 internal/catalog/inventory_text_import.go	(*Service).CompleteInventoryTextImports	Begin	ClassBackgroundMedia	-
 internal/catalog/library_pins.go	(*Service).SetLibraryNavigation	Begin	ClassFrom(context.Background(), dbwork.ClassInteractive)	-
 internal/catalog/library_pins.go	(*Service).SetPinOrder	Begin	ClassFrom(s.Context(), dbwork.ClassInteractive)	-
@@ -126,6 +124,7 @@ internal/compactcatalog/derive.go	(*Worker).Rebuild	WithWriteTx	ClassMaintenance
 internal/compactcatalog/derive.go	(*Worker).Step	WithWriteTx	ClassMaintenance	DrainPlan|derivationUnitPlan
 internal/compactcatalog/derive.go	(*Worker).prepare	WithWriteTx	ClassMaintenance	-	×2
 internal/compactcatalog/derive.go	(*Worker).setAside	WithWriteTx	ClassMaintenance	-
+internal/compactcatalog/info_source.go	PublishInfoSource	WithWriteTxContext	ClassFrom(ctx, dbwork.ClassBackgroundMedia)	-	×2
 internal/compactcatalog/local_genres.go	ProjectAudioLocalGenresBatch	Begin	ClassFrom(ctx, dbwork.ClassBackgroundMedia)	-
 internal/compactcatalog/ratings.go	ClassifyPendingRatings	WithWriteTx	ClassBackgroundMedia	-
 internal/compactcatalog/retention.go	RunRetention	WithWriteTx	ClassMaintenance	-
@@ -473,7 +472,6 @@ internal/networking/claim_keys.go	openCurrentKeys	Begin	ClassFrom(ctx, dbwork.Cl
 internal/networking/claim_sqlite.go	(*SQLiteStore).tx	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/networking/claim_web.go	(*ClaimHandler).beginWebClaim	ExecWrite	ClassInteractive	-	×2
 internal/networking/claim_web.go	(*ClaimHandler).watchWebClaim	ExecWrite	ClassInteractive	-
-internal/networking/remote_manager.go	(*RemoteManager).RouteLabel	ExecWrite	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/networking/remote_store.go	seedRemoteSettings	Begin	ClassFrom(ctx, dbwork.ClassInteractive)	-
 internal/networking/security_return.go	(*RouteIdentityHandler).CancelSecurityReturn	Begin	ClassSecurityFence	-
 internal/networking/security_return.go	(*RouteIdentityHandler).ConfirmSecurityReturn	Begin	ClassSecurityFence	-
@@ -521,7 +519,6 @@ internal/playback/channel_sessions.go	(*ChannelSessions).LinearStatus	ExecWrite	
 internal/playback/channel_sessions.go	(*ChannelSessions).refreshLinearSelection	Begin	ClassEstablishedPlayback	-
 internal/playback/channel_sessions.go	(*ChannelSessions).withLinearWork	Begin	ClassEstablishedPlayback	-
 internal/playback/conversion_history.go	(*HLS).rememberConversionFailure	Begin	ClassEstablishedPlayback	-
-internal/playback/detail_refresh.go	(*Service).refreshStreamDetail	Begin	ClassEstablishedPlayback	-
 internal/playback/disc_play_derived.go	(*DiscSubtitleTransition).Close	WithWriteTxContext	ClassMaintenance	-
 internal/playback/disc_play_derived.go	(*Service).PrepareDiscSubtitleTransition	WithWriteTxContext	ClassEstablishedPlayback	-
 internal/playback/disc_play_factory.go	(*discPlayFactory).initialize	WithWriteTxContext	ClassMaintenance	-
@@ -673,10 +670,10 @@ plan	internal/catalog/admin.go	(*Service).OrderLibraries	libraryOrderPlan
 plan	internal/catalog/entity_merge_mutations.go	MergeTitlesStepTx	entityPinDrainPlan
 plan	internal/catalog/entity_mutations.go	MutationWriteContext	titleRemovalPlan
 plan	internal/catalog/entity_mutations.go	RemoveTitleStepTx	entityPinDrainPlan
-plan	internal/catalog/inventory.go	(*Service).CommitInventoryAnalysis	audioFilePublicationPlan
 plan	internal/catalog/inventory.go	(*Service).CommitInventoryPage	inventoryPagesPlan
 plan	internal/catalog/inventory.go	(*Service).CommitInventoryPages	inventoryPagesPlan
-plan	internal/catalog/inventory_local_refresh.go	(*Service).CommitInventoryLocalRefresh	audioFilePublicationPlan
+plan	internal/catalog/inventory.go	(*Service).commitInventoryAnalysisApplied	audioFilePublicationPlan
+plan	internal/catalog/inventory_local_refresh.go	(*Service).commitInventoryLocalRefreshApplied	audioFilePublicationPlan
 plan	internal/compactcatalog/derive.go	(*Worker).Step	DrainPlan
 plan	internal/compactcatalog/derive.go	(*Worker).Step	derivationUnitPlan
 plan	internal/compactcatalog/title_grams_maintenance.go	maintainTitleGrams	titleGramsMergePlan

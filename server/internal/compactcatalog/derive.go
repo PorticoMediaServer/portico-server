@@ -207,9 +207,13 @@ type Worker struct {
 	backfillTurn map[int]bool
 	stepTurn     int
 	sourceTurn   bool
-	domainTurns  int
-	ready        bool
-	now          func() time.Time
+	// Source41 commits one raw quantum per source. Rotate its claim point so
+	// a prefenced input waiting on another asset's custody cannot starve the
+	// source that releases it. This is worker-local scheduling, not progress.
+	assetSourceAfter int64
+	domainTurns      int
+	ready            bool
+	now              func() time.Time
 	// holdTarget paces batches by time (zero: the caller's fixed limit);
 	// unitCost is each domain's recent cost per unit (key -1: step workers).
 	holdTarget time.Duration
@@ -719,6 +723,7 @@ func (w *Worker) drainDomain(ctx context.Context, tx *sql.Tx, domain, rebuilding
 		batch = 1
 	}
 	after := w.retryAfter[domain]
+	assetAfter := w.assetSourceAfter
 	// Alternate source enumeration and queued edits at bounded checkpoints.
 	queueTurn := rebuilding == 0 || !w.backfillTurn[domain]
 	if rebuilding == 1 {
@@ -745,6 +750,22 @@ func (w *Worker) drainDomain(ctx context.Context, tx *sql.Tx, domain, rebuilding
 		w.mu.Lock()
 		w.retryAfter[domain] = after
 		w.mu.Unlock()
+	case queueTurn && domain == DomainAssetSources:
+		const nextAsset = `SELECT entity_id,revision FROM catalog_dirty WHERE domain=? AND entity_id>? AND entity_id NOT IN(SELECT value FROM json_each(?)) ORDER BY entity_id LIMIT 1`
+		if keys, err = readKeys(tx.QueryContext(ctx, nextAsset, domain, assetAfter, mustJSON(skip))); err != nil {
+			return 0, 0, false, err
+		}
+		if len(keys) == 0 {
+			const firstAsset = `SELECT entity_id,revision FROM catalog_dirty WHERE domain=? AND entity_id>=-9223372036854775808 AND entity_id NOT IN(SELECT value FROM json_each(?)) ORDER BY entity_id LIMIT 1`
+			if keys, err = readKeys(tx.QueryContext(ctx, firstAsset, domain, mustJSON(skip))); err != nil {
+				return 0, 0, false, err
+			}
+		}
+		if len(keys) > 0 {
+			w.mu.Lock()
+			w.assetSourceAfter = keys[0].ID
+			w.mu.Unlock()
+		}
 	case queueTurn:
 		if keys, err = readKeys(tx.QueryContext(ctx, `SELECT entity_id,revision FROM catalog_dirty WHERE domain=? AND entity_id NOT IN(SELECT value FROM json_each(?)) ORDER BY entity_id LIMIT ?`, domain, mustJSON(skip), batch)); err != nil {
 			return 0, 0, false, err

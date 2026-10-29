@@ -1,41 +1,13 @@
 package assets
 
-import (
-	"crypto/sha256"
-	"database/sql"
-	"encoding/hex"
-	"encoding/json"
-	"errors"
-	"math"
-)
+import "database/sql"
 
 func PersistChapters(tx *sql.Tx, asset string, size, modified int64, f Facts) error {
-	if f.ChapterStatus == "" {
-		return nil
+	status, chapters, fingerprint, e := chapterInput(f)
+	if e != nil || status == "" {
+		return e
 	}
-	if f.ChapterStatus != "known" && f.ChapterStatus != "invalid" && f.ChapterStatus != "partial" {
-		return errors.New("invalid chapter status")
-	}
-	if f.ChapterStatus == "partial" {
-		f.ChapterStatus = "known"
-	}
-	chapters := f.Chapters
-	if f.ChapterStatus == "invalid" {
-		chapters = nil
-	}
-	if len(chapters) > 4096 {
-		return errors.New("chapter count exceeds capacity")
-	}
-	last := 0.0
-	for i, c := range chapters {
-		if math.IsNaN(c.Start) || math.IsNaN(c.End) || math.IsInf(c.Start, 0) || math.IsInf(c.End, 0) || c.Start < 0 || c.End <= c.Start || c.End > f.Duration || i > 0 && c.Start < last {
-			return errors.New("invalid chapter timeline")
-		}
-		last = c.End
-	}
-	raw, _ := json.Marshal([]any{f.ChapterStatus, chapters})
-	hash := sha256.Sum256(raw)
-	_, e := tx.Exec(`INSERT INTO asset_chapter_facts VALUES(?,1,?,?,?,?) ON CONFLICT(asset_id) DO UPDATE SET revision=asset_chapter_facts.revision+CASE WHEN asset_chapter_facts.fingerprint!=excluded.fingerprint OR asset_chapter_facts.size!=excluded.size OR asset_chapter_facts.modified_ns!=excluded.modified_ns THEN 1 ELSE 0 END,size=excluded.size,modified_ns=excluded.modified_ns,status=excluded.status,fingerprint=excluded.fingerprint`, asset, size, modified, f.ChapterStatus, hex.EncodeToString(hash[:]))
+	_, e = tx.Exec(`INSERT INTO asset_chapter_facts VALUES(?,1,?,?,?,?) ON CONFLICT(asset_id) DO UPDATE SET revision=asset_chapter_facts.revision+CASE WHEN asset_chapter_facts.fingerprint!=excluded.fingerprint OR asset_chapter_facts.size!=excluded.size OR asset_chapter_facts.modified_ns!=excluded.modified_ns THEN 1 ELSE 0 END,size=excluded.size,modified_ns=excluded.modified_ns,status=excluded.status,fingerprint=excluded.fingerprint`, asset, size, modified, status, fingerprint)
 	if e != nil {
 		return e
 	}

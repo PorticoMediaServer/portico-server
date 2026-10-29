@@ -102,7 +102,16 @@ func addProjection[Request, Response any](registry *apikit.Registry, mux *http.S
 		integers = projectionLimitQueries(path)
 	}
 	id := strings.ToLower(method) + "_" + strings.NewReplacer("/", "_", "{", "", "}", "", "-", "_", ":", "_").Replace(strings.TrimPrefix(path, "/v1/"))
-	return apikit.RegisterRaw(registry, apikit.RawRoute[Request, Response]{Metadata: apikit.Metadata{Audience: audience, Admission: admission, ID: id, Method: method, Path: path, Summary: "Read or update the selected projection", Access: access, Requires: scope, Lane: lane, Cost: apikit.PageSized, Status: 200, BodyLimit: bodyLimit, Query: query, QueryIntegers: integers, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}, Serve: func(w http.ResponseWriter, r *http.Request) {
+	var success, statuses []int
+	var responseHeaders []apikit.ResponseHeader
+	failures := []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}
+	if method == http.MethodGet && (path == "/v1/items/{id}" || path == "/v1/items/{id}/detail") {
+		success = []int{202}
+		statuses = []int{304}
+		responseHeaders = fileInfoWindowHeaders()
+		failures = append(failures, "stale_continuation", "metadata_unavailable")
+	}
+	return apikit.RegisterRaw(registry, apikit.RawRoute[Request, Response]{Metadata: apikit.Metadata{Audience: audience, Admission: admission, ID: id, Method: method, Path: path, Summary: "Read or update the selected projection", Access: access, Requires: scope, Lane: lane, Cost: apikit.PageSized, Status: 200, SuccessStatuses: success, ResponseStatuses: statuses, ResponseHeaders: responseHeaders, BodyLimit: bodyLimit, Query: query, QueryIntegers: integers, Errors: failures}, Serve: func(w http.ResponseWriter, r *http.Request) {
 		// A projection whose handler this server did not mount (no scheduler,
 		// no console) is an unknown route and answers like one.
 		if _, mounted := mux.Handler(r); mounted == "" {
@@ -141,10 +150,10 @@ func registerUnitProjections(registry *apikit.Registry, d Dependencies) error {
 	if err := addProjection[noBody, projectedItems](registry, mux, "GET /v1/items", apikit.Integrations, apikit.ScopeRead, laneBrowsing, []string{"libraryId", "cursor", "limit"}); err != nil {
 		return err
 	}
-	if err := addProjection[noBody, catalog.Item](registry, mux, "GET /v1/items/{id}", apikit.Integrations, apikit.ScopeRead, laneBrowsing, nil); err != nil {
+	if err := addProjection[noBody, fileInfoItemResponse](registry, mux, "GET /v1/items/{id}", apikit.Integrations, apikit.ScopeRead, laneBrowsing, nil); err != nil {
 		return err
 	}
-	if err := addProjection[noBody, catalog.Detail](registry, mux, "GET /v1/items/{id}/detail", apikit.Integrations, apikit.ScopeRead, laneBrowsing, []string{"related"}); err != nil {
+	if err := addProjection[noBody, fileInfoDetailResponse](registry, mux, "GET /v1/items/{id}/detail", apikit.Integrations, apikit.ScopeRead, laneBrowsing, []string{"related"}); err != nil {
 		return err
 	}
 	if err := addProjection[catalog.PersonalMutation, catalog.PersonalReceipt](registry, mux, "PUT /v1/items/{id}/personal-state", apikit.Clients, apikit.ScopePlayback, laneBrowsing, nil); err != nil {

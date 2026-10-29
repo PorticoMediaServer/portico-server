@@ -85,12 +85,15 @@ func newAudioRefreshFixture(t *testing.T, kind string, embeddedCue bool) *audioR
 	facts.AnalysisOperations = []string{"probe", "local_metadata", "subtitles", assets.PlaybackAnalysisRevision}
 	dbwork.ResetPlans()
 	started := time.Now()
-	if err = f.s.catalog.CommitInventoryAnalysis(context.Background(), job.ID, a.object, a.revision, a.policy, facts); err != nil {
+	if err = settleInventoryAnalysis(t, f.s.catalog, f.db, context.Background(), job.ID, a.object, a.revision, a.policy, facts); err != nil {
 		t.Fatal(err)
 	}
 	stats := dbwork.Plans()
 	t.Logf("per-file audio publication: %+v, elapsed %s", stats.Largest, time.Since(started))
-	if stats.Measured != 1 || stats.Overruns != 0 {
+	// FI1 stages and applies technical input in bounded transactions before
+	// the file's existing atomic naming/artwork acknowledgement. Every
+	// transaction must still obey its unchanged declared write plan.
+	if stats.Measured < 2 || stats.Overruns != 0 {
 		t.Fatalf("per-file audio publication exceeded its measured budget: %+v", stats)
 	}
 	f.finish(job)
@@ -292,7 +295,7 @@ func TestAudioRefreshPublicationFences(t *testing.T) {
 			case "baseline":
 				f.exec(`DELETE FROM audio_file_metadata WHERE asset_id=?`, f.asset)
 			}
-			err = f.s.catalog.CommitInventoryLocalRefresh(context.Background(), job.ID, f.object, f.revision, f.policy, *baseline)
+			err = settleInventoryLocalRefresh(t, f.s.catalog, f.db, context.Background(), job.ID, f.object, f.revision, f.policy, *baseline)
 			if !errors.Is(err, context.Canceled) && !errors.Is(err, sql.ErrNoRows) {
 				t.Fatalf("fence accepted or unexpected error: %v", err)
 			}

@@ -41,7 +41,7 @@ func expectedLimitQueries() map[string]apikit.QueryInteger {
 	strict(20, 100, false, "get_reading_discover")
 	strict(200, 500, true, "get_storage_source_folders")
 	strict(64, 128, true, "get_scan_issues")
-	strict(100, 200, true, "get_items_id_file_info")
+	strict(40, 100, true, "get_items_id_file_info", "get_item_file_info_groups", "get_item_file_info_members", "get_item_file_info_tracks", "get_item_file_info_head_tracks", "get_item_file_info_sources", "get_item_file_info_disc_titles")
 	strict(37, 200, true, "get_items_id_recommendations_row", "get_shows_id_recommendations_row")
 	strict(100, 100, true, "get_playlist_order")
 	strict(50, 200, true, "list_queue_entries", "get_admin_play_history", "get_admin_playback_history", "list_missing_titles")

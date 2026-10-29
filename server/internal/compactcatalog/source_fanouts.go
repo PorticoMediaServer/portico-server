@@ -17,6 +17,7 @@ const (
 	sourceMetadata       = 4
 	sourceRevision       = 8
 	sourceScreen         = 16
+	sourceInfo           = 32
 	sourceTVDB           = 64
 	upstreamQuantum      = 8
 )
@@ -203,7 +204,10 @@ func (w *upstreamSource) asset(ctx context.Context, tx *sql.Tx, limit int) (int,
 	var token string
 	err := tx.QueryRowContext(ctx, `SELECT token FROM catalog_assets WHERE id=?`, w.id).Scan(&token)
 	if errors.Is(err, sql.ErrNoRows) || err == nil && token != w.token {
-		return 0, true, nil
+		// Old-lifetime source bodies outlive the asset deliberately. Drain their
+		// bounded retirement before acknowledging this exact source token.
+		done, cleanupErr := AdvanceInfoPublicationTx(ctx, tx, w.id, w.token, NewInfoMaterializer())
+		return 0, done, cleanupErr
 	}
 	if err != nil {
 		return 0, false, err
@@ -264,6 +268,11 @@ func (w *upstreamSource) asset(ctx context.Context, tx *sql.Tx, limit int) (int,
 			bytes += len(id)
 			w.innerHas, w.innerKey, w.seen = true, id, true
 			w.available = w.available || available
+			// The first eligible raw ID also defines informational owner choice;
+			// do not let later rows replace it before testing for a probe.
+			if available {
+				break
+			}
 			if bytes >= facetScalarBudget {
 				break
 			}
@@ -303,6 +312,71 @@ func (w *upstreamSource) asset(ctx context.Context, tx *sql.Tx, limit int) (int,
 		w.phase = 3
 		return 0, false, nil
 	case 3:
+		if w.flags&sourceInfoInvalidated != 0 && w.passRevision == w.revision && w.key != "rerun" {
+			handled, accepted, e := advanceInfoInvalidationTx(ctx, tx, w.id, w.token)
+			if e != nil {
+				return 0, false, e
+			}
+			if accepted {
+				// Whole-input acceptance queues this exact source in the same
+				// writer. Adopt only that known point retouch, just as A5 does
+				// after SetAssetAvailableTx; no external revision can interleave.
+				if e = tx.QueryRowContext(ctx, `SELECT revision,flags FROM catalog_upstream_sources WHERE domain=41 AND source_id=? AND token=?`, w.id, w.token).Scan(&w.revision, &w.flags); e != nil {
+					return 0, false, e
+				}
+				w.passRevision = w.revision
+				if _, e = tx.ExecContext(ctx, `UPDATE catalog_upstream_sources SET flags=flags&~128 WHERE domain=41 AND source_id=? AND token=? AND revision=?`, w.id, w.token, w.revision); e != nil {
+					return 0, false, e
+				}
+				w.flags &^= sourceInfoInvalidated
+			}
+			if handled {
+				return 0, false, nil
+			}
+		}
+		canAdvanceInfo := true
+		if w.flags&sourceInfo != 0 {
+			// Finish an already fenced publication even during later churn.
+			// An unresolved owner choice needs A5's coherent captured pass;
+			// otherwise finish the old owner walk and honor its existing rerun.
+			c, e := activeInfoChange(ctx, tx, w.id, w.token)
+			unresolved := errors.Is(e, sql.ErrNoRows) || e == nil && c.phase <= 1
+			if e == nil && c.phase == 1 {
+				var pinned bool
+				if e = tx.QueryRowContext(ctx, `SELECT copy_family=1 FROM catalog_info_changes WHERE id=?`, c.id).Scan(&pinned); e != nil {
+					return 0, false, e
+				}
+				unresolved = !pinned
+			}
+			if e != nil && !errors.Is(e, sql.ErrNoRows) {
+				return 0, false, e
+			}
+			if unresolved {
+				if w.passRevision != w.revision || w.key == "rerun" {
+					canAdvanceInfo = false
+				} else {
+					ready, e := prepareInfoOwnerTargetTx(ctx, tx, w.id, w.token, w.available, w.innerKey)
+					if e != nil {
+						return 0, false, e
+					}
+					if !ready {
+						return 0, false, nil
+					}
+				}
+			}
+		}
+		if w.flags&sourceInfo != 0 && canAdvanceInfo {
+			done, err := AdvanceInfoPublicationTx(ctx, tx, w.id, w.token, NewInfoMaterializer())
+			if err != nil || !done {
+				return 0, false, err
+			}
+			// No other writer can accept between this proof and clearing the bit.
+			// Keep A5's revision, cursor and rerun interval exactly as captured.
+			if _, err = tx.ExecContext(ctx, `UPDATE catalog_upstream_sources SET flags=flags&~32 WHERE domain=41 AND source_id=? AND token=? AND revision=?`, w.id, w.token, w.revision); err != nil {
+				return 0, false, err
+			}
+			w.flags &^= sourceInfo
+		}
 		q := `SELECT entity_id FROM catalog_asset_links INDEXED BY catalog_asset_links_asset WHERE asset_id=? AND entity_id<=?`
 		args := []any{w.id, w.fenceEntity}
 		if w.has {

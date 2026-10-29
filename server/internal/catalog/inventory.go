@@ -649,16 +649,18 @@ func (s *Service) observeInventoryTx(ctx context.Context, tx *sql.Tx, job string
 	return previousSeen != job, err
 }
 func invalidateInventoryFacts(ctx context.Context, tx *sql.Tx, asset string) error {
-	for _, table := range []string{"asset_stream_facts", "asset_subtitle_facts", "asset_chapter_facts"} {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE asset_id=?`, asset); err != nil {
-			return err
-		}
-	}
+	// Keep the bounded OLD technical set until its accepted replacement. Its
+	// stat fingerprint cannot describe the new physical file; informational
+	// readers resolve it only against the accepted scalar frame. Eager parent
+	// deletes would cascade through the child sets before the FI1 pre-fence.
 	id, err := compactcatalog.AssetByTokenTx(ctx, tx, asset)
 	if err != nil || id == 0 {
 		return err
 	}
-	return compactcatalog.SetAssetTx(ctx, tx, id, map[string]any{"video_codec": "", "audio_codec": "", "width": 0, "height": 0, "duration": 0})
+	if err := compactcatalog.SetAssetTx(ctx, tx, id, map[string]any{"video_codec": "", "audio_codec": "", "width": 0, "height": 0, "duration": 0}); err != nil {
+		return err
+	}
+	return compactcatalog.InvalidateInfoTechnicalTx(ctx, tx, id)
 }
 func (s *Service) associateInventoryTx(ctx context.Context, tx *sql.Tx, source LibrarySource, asset, path string) error {
 	var kind string
@@ -847,7 +849,7 @@ func DiscStructureWitness(fingerprint string) string {
 // CommitInventoryAnalysis never stats/reads storage while holding a DB writer.
 // The caller revalidates the observed revision after all bounded reads; this
 // transaction additionally checks job cancellation, source and current policy.
-func (s *Service) CommitInventoryAnalysis(ctx context.Context, job, object, revision string, policyRevision int64, f assets.Facts) error {
+func (s *Service) commitInventoryAnalysisApplied(ctx context.Context, job, object, revision string, policyRevision int64, f assets.Facts) error {
 	ctx, audioAdmissions := withAudioMergeAdmissions(ctx)
 	gated2, err := dbwork.Begin(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive))
 	if err != nil {
@@ -890,29 +892,9 @@ func (s *Service) CommitInventoryAnalysis(ctx context.Context, job, object, revi
 	if (kind == "music" || kind == "audiobook") && f.AudioCodec == "" || kind != "music" && kind != "audiobook" && f.VideoCodec == "" {
 		return errors.New("media stream unsupported for library kind")
 	}
-	var assetID int64
-	if err = tx.QueryRowContext(ctx, `SELECT id FROM catalog_assets WHERE token=? AND size=? AND modified_ns=?`, asset, size, modified).Scan(&assetID); err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return err
-	}
-	if assetID != 0 {
-		if err = compactcatalog.SetAssetTx(ctx, tx, assetID, map[string]any{"container": f.Container, "video_codec": f.VideoCodec, "audio_codec": f.AudioCodec, "width": f.Width, "height": f.Height, "duration": f.Duration}); err != nil {
-			return err
-		}
-	}
-	if err = assets.PersistStreams(tx, asset, size, modified, f.Streams); err != nil {
-		return err
-	}
-	if err = assets.PersistChapters(tx, asset, size, modified, f); err != nil {
-		return err
-	}
-	if err = persistDiscMediaSelectionTx(ctx, tx, source, object, revision, asset, size, modified, f); err != nil {
-		return err
-	}
-	if policy.Allows("subtitles") && f.SubtitleInventory != nil {
-		if err = subtitles.Persist(tx, asset, size, modified, f.SubtitleInventory); err != nil {
-			return err
-		}
-	}
+	// Technical rows and scalars were applied by the accepted source41 frame
+	// before entering this final naming/queue transaction. Never republish them
+	// here or install a delayed dirty marker after canonical NEW.
 	var sidecarObservation *sidecarRead
 	if f.ArtworkObserved {
 		ctx, sidecarObservation = withSidecarRead(ctx, asset)

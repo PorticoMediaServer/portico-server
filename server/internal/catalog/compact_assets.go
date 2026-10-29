@@ -2,20 +2,18 @@ package catalog
 
 import (
 	"portico.local/server/internal/assets"
+	"portico.local/server/internal/compactcatalog"
 )
 
-// compactItemAssetSummary keeps compactItemAssets' exact availability and
-// maximum duration without transferring or allocating every linked source.
-// Unavailable links still contribute their duration; an empty or all-negative
-// duration set keeps the original loop's zero floor.
+// compactItemAssetSummary reads only FI1 point counters and two indexed
+// endpoints. An unready item is preparation, never a scan or a guessed summary.
 func (s *Service) compactItemAssetSummary(id string) (bool, float64, error) {
-	var available bool
-	var duration float64
-	err := s.read().QueryRow(`SELECT COALESCE(MAX(l.available),0),COALESCE(MAX(CASE WHEN a.duration>0 THEN a.duration ELSE 0 END),0)
- FROM catalog_entities e JOIN catalog_asset_links l ON l.entity_id=e.id
- JOIN catalog_assets a ON a.id=l.asset_id
- WHERE e.public_id=pid_blob(?)`, id).Scan(&available, &duration)
-	return available, duration, err
+	var item int64
+	if err := s.read().QueryRowContext(s.Context(), `SELECT id FROM catalog_entities WHERE public_id=pid_blob(?) AND retired=0`, id).Scan(&item); err != nil {
+		return false, 0, err
+	}
+	summary, err := compactcatalog.ReadInfoSummary(s.Context(), s.read(), item)
+	return summary.Available, summary.Duration, err
 }
 
 // compactItemAssets reads one item's asset-link facts and the assets'

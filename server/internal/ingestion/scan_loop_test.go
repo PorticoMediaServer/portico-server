@@ -85,7 +85,7 @@ func (f *loopFixture) queue() Job {
 func (f *loopFixture) finish(job Job) Job {
 	f.t.Helper()
 	for n := 0; n < 200; n++ {
-		f.s.process(context.Background(), job.ID, f.library)
+		scanInfoTurn(f.t, f.s, f.db, job.ID, f.library)
 		state, err := f.s.Get(job.ID)
 		if err != nil {
 			f.t.Fatal(err)
@@ -114,6 +114,7 @@ func (f *loopFixture) until(job Job, phase string) {
 			f.t.Fatal(state)
 		}
 		f.s.processQuantum(context.Background(), job.ID, f.library)
+		advanceScanInfo(f.t, f.db)
 	}
 	f.t.Fatalf("scan did not reach %s", phase)
 }
@@ -383,7 +384,7 @@ func TestScannedEmbeddedNameReachesAttachmentAndMatchingEvidence(t *testing.T) {
 		t.Fatal(err)
 	}
 	facts := assets.Facts{Container: "mkv", VideoCodec: "h264", AudioCodec: "aac", Duration: 6000, ObservedSize: size, ObservedModifiedNS: modified, AnalysisOperations: []string{"probe"}, AnalysisAlgorithm: mediaanalysis.Algorithm, VideoName: naming.Embedded{Title: "Heat", Year: 1995, Edition: "Extended", IDs: []naming.ProviderID{{Provider: "tmdb", ID: "949"}}}}
-	if err := f.s.catalog.CommitInventoryAnalysis(context.Background(), job.ID, object, revision, 1, facts); err != nil {
+	if err := settleInventoryAnalysis(t, f.s.catalog, f.db, context.Background(), job.ID, object, revision, 1, facts); err != nil {
 		t.Fatal(err)
 	}
 	if n := f.count(`SELECT count(*) FROM catalog_entities WHERE kind=1 AND title='Heat' AND year=1995`); n != 1 {

@@ -214,8 +214,18 @@ func (s *Service) Detail(viewer Viewer, server, item string, owner bool) (Detail
 }
 
 // DetailWithRelated lets callers omit the recommendation composition entirely.
+// Playable items keep the original detailOnce path unchanged; the non-playable
+// containers P2-61 opens for FileInfo compose from their own stored projection
+// in detail_container.go.
 func (s *Service) DetailWithRelated(viewer Viewer, server, item string, owner, includeRelated bool) (Detail, error) {
-	return consistentRead(true, func() (Detail, error) { return s.detailOnce(viewer, server, item, owner, includeRelated) })
+	library, namespace, e := s.LibraryForDetail(item)
+	if e != nil {
+		return Detail{}, e
+	}
+	if namespace == "item" {
+		return consistentRead(true, func() (Detail, error) { return s.detailOnce(viewer, server, item, owner, includeRelated) })
+	}
+	return consistentRead(true, func() (Detail, error) { return s.containerDetailOnce(viewer, server, library, namespace, item) })
 }
 
 // titleFacts reads the item's own facts (the editor's General fields); nil when the item has

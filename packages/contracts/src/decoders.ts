@@ -10,6 +10,7 @@ export function decodeBrowseAcrossCountsResponse(input: unknown): types.BrowseAc
 export function decodeBrowseLibraryResponse(input: unknown): types.BrowseLibraryResponse { return decode("BrowseLibraryResponse", input) as types.BrowseLibraryResponse; }
 export function decodeBrowseLibraryCountsResponse(input: unknown): types.BrowseLibraryCountsResponse { return decode("BrowseLibraryCountsResponse", input) as types.BrowseLibraryCountsResponse; }
 export function decodeCancelFacetQueryResponse(input: unknown): types.CancelFacetQueryResponse { return decode("CancelFacetQueryResponse", input) as types.CancelFacetQueryResponse; }
+export function decodeCancelFileInfoQueryResponse(input: unknown): types.CancelFileInfoQueryResponse { return decode("CancelFileInfoQueryResponse", input) as types.CancelFileInfoQueryResponse; }
 export function decodeCancelGenreQueryResponse(input: unknown): types.CancelGenreQueryResponse { return decode("CancelGenreQueryResponse", input) as types.CancelGenreQueryResponse; }
 export function decodeCancelSelectionActionResponse(input: unknown): types.CancelSelectionActionResponse { return decode("CancelSelectionActionResponse", input) as types.CancelSelectionActionResponse; }
 export function decodeChangeConnectivityPolicyResponse(input: unknown): types.ChangeConnectivityPolicyResponse { return decode("ChangeConnectivityPolicyResponse", input) as types.ChangeConnectivityPolicyResponse; }
@@ -347,6 +348,7 @@ export function decodeGetFacetQueryResponse(input: unknown): types.GetFacetQuery
 export function decodeGetFeedbackCapabilitiesResponse(input: unknown): types.GetFeedbackCapabilitiesResponse { return decode("GetFeedbackCapabilitiesResponse", input) as types.GetFeedbackCapabilitiesResponse; }
 export function decodeGetFeedbackReportsResponse(input: unknown): types.GetFeedbackReportsResponse { return decode("GetFeedbackReportsResponse", input) as types.GetFeedbackReportsResponse; }
 export function decodeGetFeedbackReportsIdResponse(input: unknown): types.GetFeedbackReportsIdResponse { return decode("GetFeedbackReportsIdResponse", input) as types.GetFeedbackReportsIdResponse; }
+export function decodeGetFileInfoQueryResponse(input: unknown): types.GetFileInfoQueryResponse { return decode("GetFileInfoQueryResponse", input) as types.GetFileInfoQueryResponse; }
 export function decodeGetGenreQueryResponse(input: unknown): types.GetGenreQueryResponse { return decode("GetGenreQueryResponse", input) as types.GetGenreQueryResponse; }
 export function decodeGetGuideResponse(input: unknown): types.GetGuideResponse { return decode("GetGuideResponse", input) as types.GetGuideResponse; }
 export function decodeGetGuideAiringsResponse(input: unknown): types.GetGuideAiringsResponse { return decode("GetGuideAiringsResponse", input) as types.GetGuideAiringsResponse; }
@@ -364,6 +366,12 @@ export function decodeGetHomeLayoutResponse(input: unknown): types.GetHomeLayout
 export function decodeGetHomeRowResponse(input: unknown): types.GetHomeRowResponse { return decode("GetHomeRowResponse", input) as types.GetHomeRowResponse; }
 export function decodeGetIntegrationCompatibilityResponse(input: unknown): types.GetIntegrationCompatibilityResponse { return decode("GetIntegrationCompatibilityResponse", input) as types.GetIntegrationCompatibilityResponse; }
 export function decodeGetInventoryChangesResponse(input: unknown): types.GetInventoryChangesResponse { return decode("GetInventoryChangesResponse", input) as types.GetInventoryChangesResponse; }
+export function decodeGetItemFileInfoDiscTitlesResponse(input: unknown): types.GetItemFileInfoDiscTitlesResponse { return decode("GetItemFileInfoDiscTitlesResponse", input) as types.GetItemFileInfoDiscTitlesResponse; }
+export function decodeGetItemFileInfoGroupsResponse(input: unknown): types.GetItemFileInfoGroupsResponse { return decode("GetItemFileInfoGroupsResponse", input) as types.GetItemFileInfoGroupsResponse; }
+export function decodeGetItemFileInfoHeadTracksResponse(input: unknown): types.GetItemFileInfoHeadTracksResponse { return decode("GetItemFileInfoHeadTracksResponse", input) as types.GetItemFileInfoHeadTracksResponse; }
+export function decodeGetItemFileInfoMembersResponse(input: unknown): types.GetItemFileInfoMembersResponse { return decode("GetItemFileInfoMembersResponse", input) as types.GetItemFileInfoMembersResponse; }
+export function decodeGetItemFileInfoSourcesResponse(input: unknown): types.GetItemFileInfoSourcesResponse { return decode("GetItemFileInfoSourcesResponse", input) as types.GetItemFileInfoSourcesResponse; }
+export function decodeGetItemFileInfoTracksResponse(input: unknown): types.GetItemFileInfoTracksResponse { return decode("GetItemFileInfoTracksResponse", input) as types.GetItemFileInfoTracksResponse; }
 export function decodeGetItemsResponse(input: unknown): types.GetItemsResponse { return decode("GetItemsResponse", input) as types.GetItemsResponse; }
 export function decodeGetItemsIdResponse(input: unknown): types.GetItemsIdResponse { return decode("GetItemsIdResponse", input) as types.GetItemsIdResponse; }
 export function decodeGetItemsIdAnalysisResponse(input: unknown): types.GetItemsIdAnalysisResponse { return decode("GetItemsIdAnalysisResponse", input) as types.GetItemsIdAnalysisResponse; }
@@ -891,6 +899,7 @@ export function decodeSaveLiveSourceResponse(input: unknown): types.SaveLiveSour
 export function decodeSaveQueueAsPlaylistResponse(input: unknown): types.SaveQueueAsPlaylistResponse { return decode("SaveQueueAsPlaylistResponse", input) as types.SaveQueueAsPlaylistResponse; }
 export function decodeSearchResponse(input: unknown): types.SearchResponse { return decode("SearchResponse", input) as types.SearchResponse; }
 export function decodeSeparateArtistResponse(input: unknown): types.SeparateArtistResponse { return decode("SeparateArtistResponse", input) as types.SeparateArtistResponse; }
+export function decodeSeparateItemFileInfoResponse(input: unknown): types.SeparateItemFileInfoResponse { return decode("SeparateItemFileInfoResponse", input) as types.SeparateItemFileInfoResponse; }
 export function decodeSetContainerPersonalStateResponse(input: unknown): types.SetContainerPersonalStateResponse { return decode("SetContainerPersonalStateResponse", input) as types.SetContainerPersonalStateResponse; }
 export function decodeSetLiveSettingsResponse(input: unknown): types.SetLiveSettingsResponse { return decode("SetLiveSettingsResponse", input) as types.SetLiveSettingsResponse; }
 export function decodeSetLiveSourceConfigurationResponse(input: unknown): types.SetLiveSourceConfigurationResponse { return decode("SetLiveSourceConfigurationResponse", input) as types.SetLiveSourceConfigurationResponse; }

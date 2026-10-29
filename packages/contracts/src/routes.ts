@@ -265,6 +265,32 @@ export const routes = [
   },
   {
     "audience": "Clients",
+    "id": "cancel_file_info_query",
+    "method": "DELETE",
+    "path": "/v1/file-info-queries/{queryId}",
+    "summary": "Release a private FileInfo preparation handle",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "noResponseBody": true,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "stale_continuation",
+      "metadata_unavailable",
+      "internal",
+      "database_busy",
+      "writer_capacity"
+    ],
+    "status": 204,
+    "admission": "browsing"
+  },
+  {
+    "audience": "Clients",
     "id": "cancel_genre_query",
     "method": "DELETE",
     "path": "/v1/genre-queries/{id}",
@@ -17750,6 +17776,8 @@ export const routes = [
       "revision_mismatch",
       "confirmation_mismatch",
       "administration_unavailable",
+      "stale_continuation",
+      "metadata_unavailable",
       "internal",
       "timeout",
       "database_busy",
@@ -21896,6 +21924,62 @@ export const routes = [
   },
   {
     "audience": "Clients",
+    "id": "get_file_info_query",
+    "method": "GET",
+    "path": "/v1/file-info-queries/{queryId}",
+    "summary": "Read a FileInfo preparation or its ready window",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "responseHeaders": [
+      {
+        "status": 202,
+        "name": "Location",
+        "description": "Same-server FileInfo preparation poll path",
+        "required": true
+      },
+      {
+        "status": 202,
+        "name": "Retry-After",
+        "description": "Minimum delay before polling",
+        "required": true
+      },
+      {
+        "status": 200,
+        "name": "ETag",
+        "description": "Exact ready lane and window validator",
+        "required": true
+      },
+      {
+        "status": 304,
+        "name": "ETag",
+        "description": "Exact ready lane and window validator",
+        "required": true
+      }
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "stale_continuation",
+      "metadata_unavailable",
+      "internal",
+      "database_busy"
+    ],
+    "status": 200,
+    "successStatuses": [
+      202
+    ],
+    "responseStatuses": [
+      304
+    ],
+    "admission": "browsing"
+  },
+  {
+    "audience": "Clients",
     "id": "get_genre_query",
     "method": "GET",
     "path": "/v1/genre-queries/{id}",
@@ -22482,6 +22566,433 @@ export const routes = [
     "admission": "admin"
   },
   {
+    "audience": "Clients",
+    "id": "get_item_file_info_disc_titles",
+    "method": "GET",
+    "path": "/v1/items/{id}/file-info/disc-titles",
+    "summary": "Read the owner's stored disc titles",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "opening",
+      "cursor",
+      "limit",
+      "occurrence"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 100,
+        "emptyIsDefault": true
+      }
+    ],
+    "responseHeaders": [
+      {
+        "status": 202,
+        "name": "Location",
+        "description": "Same-server FileInfo preparation poll path",
+        "required": true
+      },
+      {
+        "status": 202,
+        "name": "Retry-After",
+        "description": "Minimum delay before polling",
+        "required": true
+      },
+      {
+        "status": 200,
+        "name": "ETag",
+        "description": "Exact ready lane and window validator",
+        "required": true
+      },
+      {
+        "status": 304,
+        "name": "ETag",
+        "description": "Exact ready lane and window validator",
+        "required": true
+      }
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "stale_continuation",
+      "metadata_unavailable",
+      "internal",
+      "database_busy"
+    ],
+    "status": 200,
+    "successStatuses": [
+      202
+    ],
+    "responseStatuses": [
+      304
+    ],
+    "admission": "browsing"
+  },
+  {
+    "audience": "Clients",
+    "id": "get_item_file_info_groups",
+    "method": "GET",
+    "path": "/v1/items/{id}/file-info/groups",
+    "summary": "Read the item's bounded version groups",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "opening",
+      "cursor",
+      "limit",
+      "around"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 100,
+        "emptyIsDefault": true
+      }
+    ],
+    "responseHeaders": [
+      {
+        "status": 202,
+        "name": "Location",
+        "description": "Same-server FileInfo preparation poll path",
+        "required": true
+      },
+      {
+        "status": 202,
+        "name": "Retry-After",
+        "description": "Minimum delay before polling",
+        "required": true
+      },
+      {
+        "status": 200,
+        "name": "ETag",
+        "description": "Exact ready lane and window validator",
+        "required": true
+      },
+      {
+        "status": 304,
+        "name": "ETag",
+        "description": "Exact ready lane and window validator",
+        "required": true
+      }
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "stale_continuation",
+      "metadata_unavailable",
+      "internal",
+      "database_busy"
+    ],
+    "status": 200,
+    "successStatuses": [
+      202
+    ],
+    "responseStatuses": [
+      304
+    ],
+    "admission": "browsing"
+  },
+  {
+    "audience": "Clients",
+    "id": "get_item_file_info_head_tracks",
+    "method": "GET",
+    "path": "/v1/items/{id}/file-info/groups/head-tracks",
+    "summary": "Read a version group's offered head tracks",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "opening",
+      "cursor",
+      "limit",
+      "group",
+      "lane"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 100,
+        "emptyIsDefault": true
+      }
+    ],
+    "responseHeaders": [
+      {
+        "status": 202,
+        "name": "Location",
+        "description": "Same-server FileInfo preparation poll path",
+        "required": true
+      },
+      {
+        "status": 202,
+        "name": "Retry-After",
+        "description": "Minimum delay before polling",
+        "required": true
+      },
+      {
+        "status": 200,
+        "name": "ETag",
+        "description": "Exact ready lane and window validator",
+        "required": true
+      },
+      {
+        "status": 304,
+        "name": "ETag",
+        "description": "Exact ready lane and window validator",
+        "required": true
+      }
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "stale_continuation",
+      "metadata_unavailable",
+      "internal",
+      "database_busy"
+    ],
+    "status": 200,
+    "successStatuses": [
+      202
+    ],
+    "responseStatuses": [
+      304
+    ],
+    "admission": "browsing"
+  },
+  {
+    "audience": "Clients",
+    "id": "get_item_file_info_members",
+    "method": "GET",
+    "path": "/v1/items/{id}/file-info/groups/members",
+    "summary": "Read one version group's member files",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "opening",
+      "cursor",
+      "limit",
+      "group"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 100,
+        "emptyIsDefault": true
+      }
+    ],
+    "responseHeaders": [
+      {
+        "status": 202,
+        "name": "Location",
+        "description": "Same-server FileInfo preparation poll path",
+        "required": true
+      },
+      {
+        "status": 202,
+        "name": "Retry-After",
+        "description": "Minimum delay before polling",
+        "required": true
+      },
+      {
+        "status": 200,
+        "name": "ETag",
+        "description": "Exact ready lane and window validator",
+        "required": true
+      },
+      {
+        "status": 304,
+        "name": "ETag",
+        "description": "Exact ready lane and window validator",
+        "required": true
+      }
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "stale_continuation",
+      "metadata_unavailable",
+      "internal",
+      "database_busy"
+    ],
+    "status": 200,
+    "successStatuses": [
+      202
+    ],
+    "responseStatuses": [
+      304
+    ],
+    "admission": "browsing"
+  },
+  {
+    "audience": "Clients",
+    "id": "get_item_file_info_sources",
+    "method": "GET",
+    "path": "/v1/items/{id}/file-info/sources",
+    "summary": "Read the item's bounded technical sources",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "opening",
+      "cursor",
+      "limit"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 100,
+        "emptyIsDefault": true
+      }
+    ],
+    "responseHeaders": [
+      {
+        "status": 202,
+        "name": "Location",
+        "description": "Same-server FileInfo preparation poll path",
+        "required": true
+      },
+      {
+        "status": 202,
+        "name": "Retry-After",
+        "description": "Minimum delay before polling",
+        "required": true
+      },
+      {
+        "status": 200,
+        "name": "ETag",
+        "description": "Exact ready lane and window validator",
+        "required": true
+      },
+      {
+        "status": 304,
+        "name": "ETag",
+        "description": "Exact ready lane and window validator",
+        "required": true
+      }
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "stale_continuation",
+      "metadata_unavailable",
+      "internal",
+      "database_busy"
+    ],
+    "status": 200,
+    "successStatuses": [
+      202
+    ],
+    "responseStatuses": [
+      304
+    ],
+    "admission": "browsing"
+  },
+  {
+    "audience": "Clients",
+    "id": "get_item_file_info_tracks",
+    "method": "GET",
+    "path": "/v1/items/{id}/file-info/tracks",
+    "summary": "Read one file's raw audio or subtitle tracks",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "opening",
+      "cursor",
+      "limit",
+      "occurrence",
+      "lane"
+    ],
+    "queryIntegers": [
+      {
+        "name": "limit",
+        "minimum": 1,
+        "default": 40,
+        "maximum": 100,
+        "emptyIsDefault": true
+      }
+    ],
+    "responseHeaders": [
+      {
+        "status": 202,
+        "name": "Location",
+        "description": "Same-server FileInfo preparation poll path",
+        "required": true
+      },
+      {
+        "status": 202,
+        "name": "Retry-After",
+        "description": "Minimum delay before polling",
+        "required": true
+      },
+      {
+        "status": 200,
+        "name": "ETag",
+        "description": "Exact ready lane and window validator",
+        "required": true
+      },
+      {
+        "status": 304,
+        "name": "ETag",
+        "description": "Exact ready lane and window validator",
+        "required": true
+      }
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "stale_continuation",
+      "metadata_unavailable",
+      "internal",
+      "database_busy"
+    ],
+    "status": 200,
+    "successStatuses": [
+      202
+    ],
+    "responseStatuses": [
+      304
+    ],
+    "admission": "browsing"
+  },
+  {
     "audience": "Integrations",
     "id": "get_items",
     "method": "GET",
@@ -22532,15 +23043,49 @@ export const routes = [
     "lane": "browsing",
     "cost": "page_sized",
     "bodyLimit": 0,
+    "responseHeaders": [
+      {
+        "status": 202,
+        "name": "Location",
+        "description": "Same-server FileInfo preparation poll path",
+        "required": true
+      },
+      {
+        "status": 202,
+        "name": "Retry-After",
+        "description": "Minimum delay before polling",
+        "required": true
+      },
+      {
+        "status": 200,
+        "name": "ETag",
+        "description": "Exact ready lane and window validator",
+        "required": true
+      },
+      {
+        "status": 304,
+        "name": "ETag",
+        "description": "Exact ready lane and window validator",
+        "required": true
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
       "not_permitted",
       "not_found",
       "internal",
+      "stale_continuation",
+      "metadata_unavailable",
       "database_busy"
     ],
     "status": 200,
+    "successStatuses": [
+      202
+    ],
+    "responseStatuses": [
+      304
+    ],
     "admission": "browsing"
   },
   {
@@ -22692,15 +23237,49 @@ export const routes = [
     "query": [
       "related"
     ],
+    "responseHeaders": [
+      {
+        "status": 202,
+        "name": "Location",
+        "description": "Same-server FileInfo preparation poll path",
+        "required": true
+      },
+      {
+        "status": 202,
+        "name": "Retry-After",
+        "description": "Minimum delay before polling",
+        "required": true
+      },
+      {
+        "status": 200,
+        "name": "ETag",
+        "description": "Exact ready lane and window validator",
+        "required": true
+      },
+      {
+        "status": 304,
+        "name": "ETag",
+        "description": "Exact ready lane and window validator",
+        "required": true
+      }
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
       "not_permitted",
       "not_found",
       "internal",
+      "stale_continuation",
+      "metadata_unavailable",
       "database_busy"
     ],
     "status": 200,
+    "successStatuses": [
+      202
+    ],
+    "responseStatuses": [
+      304
+    ],
     "admission": "browsing"
   },
   {
@@ -22708,23 +23287,51 @@ export const routes = [
     "id": "get_items_id_file_info",
     "method": "GET",
     "path": "/v1/items/{id}/file-info",
-    "summary": "Read authorized file information lazily",
+    "summary": "Read the item's flat file window",
     "access": "device",
     "requires": "read",
     "lane": "browsing",
     "cost": "page_sized",
     "bodyLimit": 0,
     "query": [
+      "opening",
       "cursor",
-      "limit"
+      "limit",
+      "around"
     ],
     "queryIntegers": [
       {
         "name": "limit",
         "minimum": 1,
-        "default": 100,
-        "maximum": 200,
+        "default": 40,
+        "maximum": 100,
         "emptyIsDefault": true
+      }
+    ],
+    "responseHeaders": [
+      {
+        "status": 202,
+        "name": "Location",
+        "description": "Same-server FileInfo preparation poll path",
+        "required": true
+      },
+      {
+        "status": 202,
+        "name": "Retry-After",
+        "description": "Minimum delay before polling",
+        "required": true
+      },
+      {
+        "status": 200,
+        "name": "ETag",
+        "description": "Exact ready lane and window validator",
+        "required": true
+      },
+      {
+        "status": 304,
+        "name": "ETag",
+        "description": "Exact ready lane and window validator",
+        "required": true
       }
     ],
     "errors": [
@@ -22733,11 +23340,17 @@ export const routes = [
       "not_permitted",
       "not_found",
       "stale_continuation",
+      "metadata_unavailable",
       "internal",
-      "timeout",
       "database_busy"
     ],
     "status": 200,
+    "successStatuses": [
+      202
+    ],
+    "responseStatuses": [
+      304
+    ],
     "admission": "browsing"
   },
   {
@@ -29482,6 +30095,8 @@ export const routes = [
       "not_found",
       "invalid_request",
       "internal",
+      "stale_continuation",
+      "metadata_unavailable",
       "timeout",
       "database_busy",
       "writer_capacity"
@@ -35112,6 +35727,8 @@ export const routes = [
       "revision_mismatch",
       "confirmation_mismatch",
       "administration_unavailable",
+      "stale_continuation",
+      "metadata_unavailable",
       "internal",
       "timeout",
       "database_busy",
@@ -37847,6 +38464,33 @@ export const routes = [
     ],
     "status": 200,
     "admission": "admin"
+  },
+  {
+    "audience": "Clients",
+    "id": "separate_item_file_info",
+    "method": "POST",
+    "path": "/v1/admin/items/{id}/file-info/separate",
+    "summary": "Make one exact file version its own title; the file keeps its facts and the title it leaves keeps its other versions and personal state",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 4096,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "stale_continuation",
+      "metadata_unavailable",
+      "source_changed",
+      "internal",
+      "timeout",
+      "database_busy",
+      "writer_capacity"
+    ],
+    "status": 200,
+    "admission": "admin-heavy"
   },
   {
     "audience": "Clients",

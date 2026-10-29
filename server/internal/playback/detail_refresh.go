@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/assets"
-	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/compactcatalog"
 )
 
 // A library scanned before stream detail existed has codec names and nothing
@@ -13,7 +13,9 @@ import (
 // that would either refuse direct play it could have allowed or allow direct play
 // that then fails on the device. Rather than ask the owner to rescan, the first
 // play of such a title refreshes it: one bounded probe, outside any transaction,
-// stored for every later play.
+// staged as the existing normalized stream families and installed only by the
+// accepted source publication. See info_source.go for the exact observation,
+// witness and per-quantum fence.
 
 // detailRefreshTimeout bounds the probe. A title that cannot be probed in time
 // plays anyway, planned on what is known.
@@ -27,21 +29,31 @@ func (s *Service) ConfigureProbe(p assets.Probe) {
 }
 
 // refreshStreamDetail brings the selected source up to the current detail
-// version. Every failure is silent: this is an improvement to a decision, never a
-// precondition for playing.
-func (s *Service) refreshStreamDetail(ctx context.Context, selectedAsset string) {
+// version through the bounded source-input pipeline. It returns the producer's
+// explicit receipt: accepted-pending while the accepted body waits for the
+// source41 owner, applied only when the canonical stream frame really is
+// current, or an existing typed defer when the source-input slots or the 32 MiB
+// ledger refuse it. A zero receipt with a nil error means no probe was needed,
+// no probe slot was free, or no exact descriptor-bound observation was
+// available.
+//
+// Every failure is silent at the call site: this is an improvement to a
+// decision, never a precondition for playing.
+func (s *Service) refreshStreamDetail(ctx context.Context, selectedAsset string) (compactcatalog.InfoAcceptReceipt, error) {
 	if s.probe == nil {
-		return
+		return compactcatalog.InfoAcceptReceipt{}, nil
 	}
-	var asset, path, container string
-	var size, modified int64
-	var version int
-	err := dbwork.QueryRow(ctx, s.db, `SELECT a.token,a.path,a.container,a.size,a.modified_ns,COALESCE((SELECT f.detail_version FROM asset_stream_facts f WHERE f.asset_id=a.token AND f.size=a.size AND f.modified_ns=a.modified_ns),0) FROM catalog_assets a WHERE a.token=? AND a.available=1`, selectedAsset).Scan(&asset, &path, &container, &size, &modified, &version)
-	if err != nil || version >= assets.StreamDetailVersion || container == "strm" {
-		return
+	observation, ok, err := s.observeDetailRefresh(ctx, selectedAsset)
+	if err != nil || !ok {
+		return compactcatalog.InfoAcceptReceipt{}, err
 	}
-	if s.StorageGuard != nil && s.StorageGuard(path) != nil {
-		return
+	if s.StorageGuard != nil && s.StorageGuard(observation.Path) != nil {
+		return compactcatalog.InfoAcceptReceipt{}, nil
+	}
+	if err = observation.bindDescriptor(); err != nil {
+		// No acquired descriptor means no exact object to witness; the scanner
+		// owns whatever the pathname now names.
+		return compactcatalog.InfoAcceptReceipt{}, nil
 	}
 	select {
 	case s.probeSlots <- struct{}{}:
@@ -49,28 +61,20 @@ func (s *Service) refreshStreamDetail(ctx context.Context, selectedAsset string)
 	default:
 		// Two refreshes are already running. This play proceeds on known facts and
 		// a later one refreshes the title.
-		return
+		return compactcatalog.InfoAcceptReceipt{}, nil
 	}
-	probeCtx, cancel := context.WithTimeout(ctx, detailRefreshTimeout)
-	defer cancel()
-	facts, err := s.probe.InspectScan(probeCtx, path)
+	probeCtx, cancelProbe := context.WithTimeout(ctx, detailRefreshTimeout)
+	facts, err := s.probe.InspectScan(probeCtx, observation.Path)
+	cancelProbe()
 	if err != nil || facts.Streams == nil {
-		return
+		return compactcatalog.InfoAcceptReceipt{}, nil
 	}
-	gated, err := dbwork.Begin(ctx, s.db, dbwork.ClassEstablishedPlayback)
-	if err != nil {
-		return
+	if err = observation.stillAcquired(); err != nil {
+		// The pathname no longer names the descriptor the observation bound; the
+		// scanner owns a replaced file, never this refresh.
+		return compactcatalog.InfoAcceptReceipt{}, nil
 	}
-	defer gated.Rollback()
-	tx := gated.Tx()
-	// Only for the exact file that was probed: a file replaced meanwhile belongs
-	// to the scanner, not to this refresh.
-	var current int
-	if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM catalog_assets WHERE token=? AND size=? AND modified_ns=? AND available=1`, asset, size, modified).Scan(&current); err != nil || current != 1 {
-		return
-	}
-	if err = assets.PersistStreams(tx, asset, size, modified, facts.Streams); err != nil {
-		return
-	}
-	_ = gated.Commit()
+	publishCtx, cancelPublish := context.WithTimeout(ctx, detailRefreshPublishTimeout)
+	defer cancelPublish()
+	return s.publishDetailRefresh(publishCtx, observation, facts)
 }

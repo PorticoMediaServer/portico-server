@@ -562,6 +562,9 @@ func (h *availabilityHolder) finish(ctx context.Context, tx *sql.Tx) (bool, erro
 	if err := h.publish(ctx, tx); err != nil {
 		return false, err
 	}
+	if err := CompleteInfoAvailabilityTx(ctx, tx, h.entityID); err != nil {
+		return false, err
+	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM catalog_availability_work WHERE entity_id=? AND revision=?`, h.entityID, h.revision); err != nil {
 		return false, err
 	}
@@ -572,6 +575,9 @@ func (h *availabilityHolder) finish(ctx context.Context, tx *sql.Tx) (bool, erro
 // reports whether the pass finished and how many raw rows it read. The caller's
 // transaction holds the cursor and the dirty acknowledgement together.
 func deriveAvailabilityKey(ctx context.Context, tx *sql.Tx, k Key, limit int) (bool, int, error) {
+	if err := BeginInfoAvailabilityTx(ctx, tx, k.ID); err != nil {
+		return false, 0, err
+	}
 	h, err := availabilityHolderTx(ctx, tx, k)
 	if err != nil {
 		return false, 0, err

@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"testing"
 
+	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/disc"
 	"portico.local/server/internal/identity"
@@ -99,6 +100,24 @@ func discPublicationFixture(t *testing.T) (*Service, *sql.DB, LibrarySource, str
 	return s, db, source, job, object, policy.Revision, probe
 }
 
+// A sealed input waits for the real finite A5 directory pass before acceptance.
+// Drive that existing worker between retries, just as ingestion does; never
+// forge an accepted target pin or drain a still-unaccepted producer to EOF.
+func acceptDiscProbeForTest(t *testing.T, s *Service, ctx context.Context, job, object, revision string, policy int64, probe disc.Probe) (compactcatalog.InfoAcceptReceipt, error) {
+	t.Helper()
+	worker := compactcatalog.NewWorker(s.db)
+	for i := 0; i < 1000; i++ {
+		r, err := s.AcceptInventoryDiscProbe(ctx, job, object, revision, policy, probe)
+		if !errors.Is(err, compactcatalog.ErrInfoInputDeferred) && !errors.Is(err, compactcatalog.ErrInfoInputBusy) {
+			return r, err
+		}
+		if _, err = worker.Step(ctx, 8); err != nil {
+			return r, err
+		}
+	}
+	return compactcatalog.InfoAcceptReceipt{}, compactcatalog.ErrInfoInputDeferred
+}
+
 func TestDiscStructurePublicationStableIdentitiesReorderAndCurrentRead(t *testing.T) {
 	s, db, _, job, object, policy, probe := discPublicationFixture(t)
 	ctx := context.Background()
@@ -106,11 +125,17 @@ func TestDiscStructurePublicationStableIdentitiesReorderAndCurrentRead(t *testin
 	if err := db.QueryRow(`SELECT revision FROM inventory_objects WHERE id=?`, object).Scan(&revision); err != nil {
 		t.Fatal(err)
 	}
-	publish := func(p disc.Probe) {
+	publish := func(p disc.Probe) compactcatalog.InfoAcceptReceipt {
 		t.Helper()
-		if err := s.CommitInventoryDiscProbe(ctx, job, object, revision, policy, p); err != nil {
+		receipt, err := acceptDiscProbeForTest(t, s, ctx, job, object, revision, policy, p)
+		if err != nil {
 			t.Fatal(err)
 		}
+		if receipt.State != compactcatalog.InfoInputAcceptedPending && receipt.State != compactcatalog.InfoInputApplied {
+			t.Fatal("structure source receipt", receipt)
+		}
+		catalogtest.New(t, db).Drain()
+		return receipt
 	}
 	read := func() disc.Probe {
 		t.Helper()
@@ -150,7 +175,9 @@ func TestDiscStructurePublicationStableIdentitiesReorderAndCurrentRead(t *testin
 		t.Fatalf("normalized source changed: %+v", got)
 	}
 	before := tokens()
-	publish(probe)
+	if receipt := publish(probe); receipt.State != compactcatalog.InfoInputApplied || receipt.ChangeID != 0 {
+		t.Fatal("unchanged structure was not an applied no-op", receipt)
+	}
 	if !reflect.DeepEqual(before, tokens()) {
 		t.Fatal("unchanged probe replaced title identity")
 	}
@@ -181,13 +208,15 @@ func TestDiscStructureSourceFencesAndCorruptionStayClosed(t *testing.T) {
 	if err := db.QueryRow(`SELECT revision FROM inventory_objects WHERE id=?`, object).Scan(&revision); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.CommitInventoryDiscProbe(ctx, job, object, revision, policy, probe); err != nil {
-		t.Fatal(err)
+	receipt, err := acceptDiscProbeForTest(t, s, ctx, job, object, revision, policy, probe)
+	if err != nil || receipt.State != compactcatalog.InfoInputAcceptedPending {
+		t.Fatalf("structure source receipt: %+v %v", receipt, err)
 	}
-	if err := s.CommitInventoryDiscProbe(ctx, job, object, revision+"stale", policy, probe); !errors.Is(err, sql.ErrNoRows) {
+	catalogtest.New(t, db).Drain()
+	if _, err := s.AcceptInventoryDiscProbe(ctx, job, object, revision+"stale", policy, probe); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("stale object published: %v", err)
 	}
-	if err := s.CommitInventoryDiscProbe(ctx, job, object, revision, policy+1, probe); !errors.Is(err, context.Canceled) {
+	if _, err := s.AcceptInventoryDiscProbe(ctx, job, object, revision, policy+1, probe); !errors.Is(err, context.Canceled) {
 		t.Fatalf("stale policy published: %v", err)
 	}
 	// A material normalized-row mutation cannot become a plausible partial
@@ -207,7 +236,7 @@ func TestDiscStructureSourceFencesAndCorruptionStayClosed(t *testing.T) {
 	if _, err = db.Exec(`UPDATE library_sources SET generation=generation+1 WHERE id=?`, source.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err = s.CommitInventoryDiscProbe(ctx, job, object, revision, policy, probe); !errors.Is(err, context.Canceled) {
+	if _, err = s.AcceptInventoryDiscProbe(ctx, job, object, revision, policy, probe); !errors.Is(err, context.Canceled) {
 		t.Fatalf("stale source published: %v", err)
 	}
 	tx, err = db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})

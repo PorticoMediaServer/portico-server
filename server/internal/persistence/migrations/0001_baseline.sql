@@ -38,7 +38,12 @@ CREATE TABLE catalog_entities(
  asset_links INTEGER NOT NULL DEFAULT 0,
  acting_credits INTEGER NOT NULL DEFAULT 0,
  directing_credits INTEGER NOT NULL DEFAULT 0,
- writing_credits INTEGER NOT NULL DEFAULT 0) STRICT;
+ writing_credits INTEGER NOT NULL DEFAULT 0,
+ info_desired_epoch INTEGER NOT NULL DEFAULT 1 CHECK(typeof(info_desired_epoch)='integer' AND info_desired_epoch>0),
+ info_applied_epoch INTEGER NOT NULL DEFAULT 1 CHECK(typeof(info_applied_epoch)='integer' AND info_applied_epoch>=0 AND info_applied_epoch<=info_desired_epoch),
+ info_source_blockers INTEGER NOT NULL DEFAULT 0 CHECK(typeof(info_source_blockers)='integer' AND info_source_blockers>=0),
+ info_availability_pending INTEGER NOT NULL DEFAULT 0 CHECK(info_availability_pending IN(0,1)),
+ info_blocked_children INTEGER NOT NULL DEFAULT 0 CHECK(typeof(info_blocked_children)='integer' AND info_blocked_children>=0)) STRICT;
 CREATE INDEX catalog_entities_title ON catalog_entities(library_id,kind,sort_key,id);
 CREATE INDEX catalog_entities_genreless ON catalog_entities(kind,id) WHERE genre_sources=0;
 CREATE INDEX catalog_entities_fact_gaps ON catalog_entities(kind,(asset_links=0)+(acting_credits=0)*2+(directing_credits=0)*4+(writing_credits=0)*8,id);
@@ -72,7 +77,12 @@ CREATE TABLE catalog_assets(
  width INTEGER NOT NULL,
  height INTEGER NOT NULL,
  duration REAL NOT NULL,
- available INTEGER NOT NULL DEFAULT 1 CHECK(available IN(0,1))) STRICT;
+ available INTEGER NOT NULL DEFAULT 1 CHECK(available IN(0,1)),
+ info_epoch INTEGER NOT NULL DEFAULT 1 CHECK(typeof(info_epoch)='integer' AND info_epoch>0),
+ info_order_available INTEGER NOT NULL DEFAULT 1 CHECK(info_order_available IN(0,1)),
+ info_owner_object TEXT REFERENCES inventory_objects(id),
+ info_owner_revision TEXT,
+ CHECK((info_owner_object IS NULL)=(info_owner_revision IS NULL))) STRICT;
 CREATE TABLE catalog_asset_links(
  entity_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
  asset_id INTEGER NOT NULL REFERENCES catalog_assets(id) ON DELETE CASCADE,
@@ -81,6 +91,9 @@ CREATE TABLE catalog_asset_links(
  start_seconds REAL NOT NULL DEFAULT 0,
  end_seconds REAL,
  edition TEXT NOT NULL DEFAULT '',
+ info_duration REAL NOT NULL DEFAULT 0,
+ info_pending_change INTEGER REFERENCES catalog_info_changes(id),
+ info_shape_id INTEGER REFERENCES catalog_info_shapes(id),
  PRIMARY KEY(entity_id,asset_id)) WITHOUT ROWID, STRICT;
 CREATE INDEX catalog_asset_links_order ON catalog_asset_links(entity_id,part_index,asset_id);
 CREATE INDEX catalog_asset_links_asset ON catalog_asset_links(asset_id,entity_id);
@@ -5922,27 +5935,27 @@ CREATE TRIGGER catalog_library_update AFTER UPDATE OF name,kind ON libraries BEG
 END;
 CREATE TRIGGER catalog_availability_object_insert AFTER INSERT ON inventory_objects BEGIN
  UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1;
- INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) SELECT 41,id,token,3 FROM catalog_assets WHERE token=NEW.asset_id
+ INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) SELECT 41,id,token,3|CASE WHEN info_owner_object IS NOT NULL OR container IN('disc','iso','bluray','dvd') OR EXISTS(SELECT 1 FROM inventory_disc_facts WHERE asset_id=catalog_assets.token) THEN 32 ELSE 0 END FROM catalog_assets WHERE token=NEW.asset_id
  ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,source_epoch=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN source_epoch ELSE 0 END,phase=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN phase ELSE 0 END,has_after=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN has_after ELSE 0 END,after_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_id ELSE 0 END,after_aux=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_aux ELSE 0 END,after_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_key ELSE '' END,active_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_id ELSE NULL END,active_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_key ELSE '' END,active_available=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_available ELSE 0 END,seen_inventory=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN seen_inventory ELSE 0 END,inner_has=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_has ELSE 0 END,inner_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_id ELSE 0 END,inner_aux=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_aux ELSE 0 END,inner_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_key ELSE '' END,pass_revision=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN pass_revision ELSE 0 END,fence_entity=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN fence_entity ELSE NULL END;
  INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 41,source_id,1 FROM catalog_upstream_sources WHERE domain=41 AND source_id=(SELECT id FROM catalog_assets WHERE token=NEW.asset_id)
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
-CREATE TRIGGER catalog_availability_object_update AFTER UPDATE OF id,state,retired,root_incarnation,unsupported_reason,source_id,asset_id ON inventory_objects
- WHEN OLD.id IS NOT NEW.id OR OLD.state IS NOT NEW.state OR OLD.retired IS NOT NEW.retired OR OLD.root_incarnation IS NOT NEW.root_incarnation OR OLD.unsupported_reason IS NOT NEW.unsupported_reason OR OLD.source_id IS NOT NEW.source_id OR OLD.asset_id IS NOT NEW.asset_id BEGIN
+CREATE TRIGGER catalog_availability_object_update AFTER UPDATE OF id,state,retired,root_incarnation,unsupported_reason,source_id,asset_id,revision ON inventory_objects
+ WHEN OLD.id IS NOT NEW.id OR OLD.state IS NOT NEW.state OR OLD.retired IS NOT NEW.retired OR OLD.root_incarnation IS NOT NEW.root_incarnation OR OLD.unsupported_reason IS NOT NEW.unsupported_reason OR OLD.source_id IS NOT NEW.source_id OR OLD.asset_id IS NOT NEW.asset_id OR (OLD.revision IS NOT NEW.revision AND EXISTS(SELECT 1 FROM catalog_assets a WHERE a.token=NEW.asset_id AND (a.info_owner_object IS NOT NULL OR a.container IN('disc','iso','bluray','dvd') OR EXISTS(SELECT 1 FROM inventory_disc_facts WHERE asset_id=a.token)))) BEGIN
  UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1;
- INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) SELECT 41,id,token,3 FROM catalog_assets WHERE token=OLD.asset_id
+ INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) SELECT 41,id,token,3|CASE WHEN info_owner_object IS NOT NULL OR container IN('disc','iso','bluray','dvd') OR EXISTS(SELECT 1 FROM inventory_disc_facts WHERE asset_id=catalog_assets.token) THEN 32 ELSE 0 END FROM catalog_assets WHERE token=OLD.asset_id
  ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,source_epoch=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN source_epoch ELSE 0 END,phase=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN phase ELSE 0 END,has_after=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN has_after ELSE 0 END,after_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_id ELSE 0 END,after_aux=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_aux ELSE 0 END,after_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_key ELSE '' END,active_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_id ELSE NULL END,active_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_key ELSE '' END,active_available=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_available ELSE 0 END,seen_inventory=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN seen_inventory ELSE 0 END,inner_has=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_has ELSE 0 END,inner_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_id ELSE 0 END,inner_aux=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_aux ELSE 0 END,inner_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_key ELSE '' END,pass_revision=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN pass_revision ELSE 0 END,fence_entity=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN fence_entity ELSE NULL END;
  INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 41,source_id,1 FROM catalog_upstream_sources WHERE domain=41 AND source_id=(SELECT id FROM catalog_assets WHERE token=OLD.asset_id)
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
  UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1;
- INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) SELECT 41,id,token,3 FROM catalog_assets WHERE token=NEW.asset_id
+ INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) SELECT 41,id,token,3|CASE WHEN info_owner_object IS NOT NULL OR container IN('disc','iso','bluray','dvd') OR EXISTS(SELECT 1 FROM inventory_disc_facts WHERE asset_id=catalog_assets.token) THEN 32 ELSE 0 END FROM catalog_assets WHERE token=NEW.asset_id
  ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,source_epoch=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN source_epoch ELSE 0 END,phase=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN phase ELSE 0 END,has_after=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN has_after ELSE 0 END,after_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_id ELSE 0 END,after_aux=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_aux ELSE 0 END,after_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_key ELSE '' END,active_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_id ELSE NULL END,active_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_key ELSE '' END,active_available=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_available ELSE 0 END,seen_inventory=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN seen_inventory ELSE 0 END,inner_has=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_has ELSE 0 END,inner_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_id ELSE 0 END,inner_aux=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_aux ELSE 0 END,inner_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_key ELSE '' END,pass_revision=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN pass_revision ELSE 0 END,fence_entity=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN fence_entity ELSE NULL END;
  INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 41,source_id,1 FROM catalog_upstream_sources WHERE domain=41 AND source_id=(SELECT id FROM catalog_assets WHERE token=NEW.asset_id)
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
 CREATE TRIGGER catalog_availability_object_delete AFTER DELETE ON inventory_objects BEGIN
  UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1;
- INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) SELECT 41,id,token,3 FROM catalog_assets WHERE token=OLD.asset_id
+ INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) SELECT 41,id,token,3|CASE WHEN info_owner_object IS NOT NULL OR container IN('disc','iso','bluray','dvd') OR EXISTS(SELECT 1 FROM inventory_disc_facts WHERE asset_id=catalog_assets.token) THEN 32 ELSE 0 END FROM catalog_assets WHERE token=OLD.asset_id
  ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,source_epoch=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN source_epoch ELSE 0 END,phase=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN phase ELSE 0 END,has_after=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN has_after ELSE 0 END,after_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_id ELSE 0 END,after_aux=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_aux ELSE 0 END,after_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_key ELSE '' END,active_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_id ELSE NULL END,active_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_key ELSE '' END,active_available=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_available ELSE 0 END,seen_inventory=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN seen_inventory ELSE 0 END,inner_has=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_has ELSE 0 END,inner_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_id ELSE 0 END,inner_aux=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_aux ELSE 0 END,inner_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_key ELSE '' END,pass_revision=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN pass_revision ELSE 0 END,fence_entity=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN fence_entity ELSE NULL END;
  INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 41,source_id,1 FROM catalog_upstream_sources WHERE domain=41 AND source_id=(SELECT id FROM catalog_assets WHERE token=OLD.asset_id)
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
@@ -6695,7 +6708,7 @@ END;
 CREATE TRIGGER catalog_rec_dataset_tags_delete AFTER DELETE ON catalog_dataset_tags BEGIN
  INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(32,OLD.entity_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
-CREATE TRIGGER artwork_head_entities_insert AFTER INSERT ON catalog_entities WHEN NEW.kind IN(1,2,3,4,5,6,7,8,9,11,12) BEGIN
+CREATE TRIGGER artwork_head_entities_insert AFTER INSERT ON catalog_entities WHEN NEW.kind IN(1,2,3,4,5,6,7,8,9,10,11,12) BEGIN
  INSERT OR IGNORE INTO artwork_entity_heads(kind,entity_id) VALUES(CASE NEW.kind WHEN 2 THEN 'show' WHEN 3 THEN 'season' WHEN 5 THEN 'artist' WHEN 6 THEN 'album' WHEN 8 THEN 'book' ELSE 'item' END,NEW.id);
  INSERT INTO artwork_dirty(kind,entity_id) SELECT CASE NEW.kind WHEN 2 THEN 'show' WHEN 3 THEN 'season' WHEN 5 THEN 'artist' WHEN 6 THEN 'album' WHEN 8 THEN 'book' ELSE 'item' END,NEW.id WHERE NEW.kind IN(1,4,7,9,11,12) ON CONFLICT(kind,entity_id) DO NOTHING;
 END;
@@ -6974,7 +6987,7 @@ WHEN (OLD.id IS NOT NEW.id OR OLD.token IS NOT NEW.token OR OLD.path IS NOT NEW.
  INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 41,source_id,1 FROM catalog_upstream_sources WHERE domain=41 AND source_id=(OLD.id) AND OLD.id IS NOT NEW.id
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
  UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1 WHERE singleton=1;
- INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) SELECT 41,NEW.id,NEW.token,12
+ INSERT INTO catalog_upstream_sources(domain,source_id,token,flags) SELECT 41,NEW.id,NEW.token,12|32
  | CASE WHEN OLD.available IS NOT NEW.available OR OLD.path IS NOT NEW.path THEN 3 ELSE 0 END
  | CASE WHEN OLD.size IS NOT NEW.size OR OLD.modified_ns IS NOT NEW.modified_ns OR OLD.path IS NOT NEW.path THEN 16 ELSE 0 END WHERE 1
  ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|excluded.flags,revision=revision+1,source_epoch=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN source_epoch ELSE 0 END,phase=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN phase ELSE 0 END,has_after=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN has_after ELSE 0 END,after_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_id ELSE 0 END,after_aux=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_aux ELSE 0 END,after_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN after_key ELSE '' END,active_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_id ELSE NULL END,active_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_key ELSE '' END,active_available=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN active_available ELSE 0 END,seen_inventory=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN seen_inventory ELSE 0 END,inner_has=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_has ELSE 0 END,inner_id=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_id ELSE 0 END,inner_aux=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_aux ELSE 0 END,inner_key=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN inner_key ELSE '' END,pass_revision=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN pass_revision ELSE 0 END,fence_entity=CASE WHEN catalog_upstream_sources.token IS excluded.token THEN fence_entity ELSE NULL END;
@@ -7910,19 +7923,22 @@ CREATE TRIGGER catalog_personal_plays_move AFTER UPDATE OF play_count,profile_id
  INSERT INTO catalog_personal_play_totals(profile_id,entity_id,total) VALUES(NEW.profile_id,NEW.entity_id,NEW.play_count)
  ON CONFLICT(profile_id,entity_id) DO UPDATE SET total=total+excluded.total;
 END;
-CREATE TRIGGER browse_subtitle_facts_insert AFTER INSERT ON asset_subtitle_facts BEGIN
+CREATE TRIGGER browse_subtitle_facts_insert AFTER INSERT ON asset_subtitle_facts
+ WHEN NOT EXISTS(SELECT 1 FROM catalog_assets a JOIN catalog_info_changes c ON c.asset_id=a.id AND c.asset_token=a.token WHERE a.token=NEW.asset_id AND c.slot=0 AND c.phase=2) BEGIN
  UPDATE library_revisions SET revision=revision+1,order_revision=order_revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_asset_links link JOIN catalog_assets asset ON asset.id=link.asset_id JOIN catalog_entities e ON e.id=link.entity_id JOIN catalog_libraries l ON l.id=e.library_id WHERE asset.token=NEW.asset_id);
 END;
 CREATE TRIGGER browse_subtitle_resources_insert AFTER INSERT ON subtitle_resources BEGIN
  UPDATE library_revisions SET revision=revision+1,order_revision=order_revision+1 WHERE library_id=(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id=NEW.item_id);
 END;
-CREATE TRIGGER browse_subtitle_facts_update AFTER UPDATE ON asset_subtitle_facts BEGIN
+CREATE TRIGGER browse_subtitle_facts_update AFTER UPDATE ON asset_subtitle_facts
+ WHEN NOT EXISTS(SELECT 1 FROM catalog_assets a JOIN catalog_info_changes c ON c.asset_id=a.id AND c.asset_token=a.token WHERE a.token=NEW.asset_id AND c.slot=0 AND c.phase=2) BEGIN
  UPDATE library_revisions SET revision=revision+1,order_revision=order_revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_asset_links link JOIN catalog_assets asset ON asset.id=link.asset_id JOIN catalog_entities e ON e.id=link.entity_id JOIN catalog_libraries l ON l.id=e.library_id WHERE asset.token=NEW.asset_id);
 END;
 CREATE TRIGGER browse_subtitle_resources_update AFTER UPDATE ON subtitle_resources BEGIN
  UPDATE library_revisions SET revision=revision+1,order_revision=order_revision+1 WHERE library_id=(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id=NEW.item_id);
 END;
-CREATE TRIGGER browse_subtitle_facts_delete AFTER DELETE ON asset_subtitle_facts BEGIN
+CREATE TRIGGER browse_subtitle_facts_delete AFTER DELETE ON asset_subtitle_facts
+ WHEN NOT EXISTS(SELECT 1 FROM catalog_assets a JOIN catalog_info_changes c ON c.asset_id=a.id AND c.asset_token=a.token WHERE a.token=OLD.asset_id AND c.slot=0 AND c.phase=2) BEGIN
  UPDATE library_revisions SET revision=revision+1,order_revision=order_revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_asset_links link JOIN catalog_assets asset ON asset.id=link.asset_id JOIN catalog_entities e ON e.id=link.entity_id JOIN catalog_libraries l ON l.id=e.library_id WHERE asset.token=OLD.asset_id);
 END;
 CREATE TRIGGER browse_subtitle_resources_delete AFTER DELETE ON subtitle_resources BEGIN
@@ -13369,3 +13385,1170 @@ CREATE TABLE catalog_availability_work(
  matching_unhealthy INTEGER NOT NULL DEFAULT 0 CHECK(matching_unhealthy IN(0,1)),
  any_available INTEGER NOT NULL DEFAULT 0 CHECK(any_available IN(0,1))
 ) STRICT;
+-- Item-local informational source publication and bounded normalized inputs.
+CREATE INDEX catalog_info_duration ON catalog_asset_links(entity_id,info_duration DESC);
+CREATE INDEX catalog_info_pending_links ON catalog_asset_links(info_pending_change,entity_id)
+ WHERE info_pending_change IS NOT NULL;
+
+-- This is SOURCE publication state, never a query, reader generation or handle.
+-- One active immutable sealed input and one coalescible queued successor/asset.
+-- No FK to the live asset: physical deletion must not erase pending obligations.
+CREATE TABLE catalog_info_changes(
+ id INTEGER PRIMARY KEY,
+ asset_id INTEGER NOT NULL,
+ asset_token TEXT NOT NULL,
+ slot INTEGER NOT NULL CHECK(slot IN(0,1)),
+ phase INTEGER NOT NULL DEFAULT 0 CHECK(phase BETWEEN 0 AND 5),
+ -- phases: input, pre-fence, canonical-row materialization, activation, apply, GC
+ expected_epoch INTEGER NOT NULL CHECK(expected_epoch>0),
+ input_revision INTEGER NOT NULL DEFAULT 1 CHECK(typeof(input_revision)='integer' AND input_revision>0),
+ family_mask INTEGER NOT NULL DEFAULT 0 CHECK(family_mask>=0),
+ fingerprint BLOB NOT NULL CHECK(length(fingerprint)=32),
+ has_after INTEGER NOT NULL DEFAULT 0 CHECK(has_after IN(0,1)),
+ after_entity INTEGER NOT NULL DEFAULT 0,
+ upper_entity INTEGER NOT NULL DEFAULT 0,
+ copy_family INTEGER NOT NULL DEFAULT 0,
+ copy_phase INTEGER NOT NULL DEFAULT 0,
+ copy_id INTEGER NOT NULL DEFAULT 0,
+ copy_aux INTEGER NOT NULL DEFAULT 0 CHECK(copy_aux>=-2),
+ copy_key TEXT NOT NULL DEFAULT '',
+ copy_key2 TEXT NOT NULL DEFAULT '',
+ copy_key3 TEXT NOT NULL DEFAULT '',
+ target_available INTEGER CHECK(target_available IS NULL OR target_available IN(0,1)),
+ target_shape_id INTEGER REFERENCES catalog_info_shapes(id),
+ target_owner_object TEXT REFERENCES inventory_objects(id),
+ target_owner_revision TEXT,
+ created_ms INTEGER NOT NULL,
+ fault TEXT NOT NULL DEFAULT '',
+ UNIQUE(asset_id,asset_token,slot),
+ CHECK((target_owner_object IS NULL)=(target_owner_revision IS NULL))
+) STRICT;
+-- Surviving obligations live on the EXISTING link row. Its partial index above
+-- walks the pending lane. An atomic link deletion/move completes that obligation
+-- and decrements the matching item blocker before its evidence can disappear.
+-- Entity deletion releases its parent's blocked-child contribution once; link
+-- cascades cannot erase an unacknowledged separate staging graph.
+
+-- OLD scalar deltas installed atomically with accepting a real changed input.
+-- Before pre-fence EOF, informational readers resolve OLD; physical authority
+-- continues to resolve current inventory/root evidence. No health flaps here.
+CREATE TABLE catalog_info_scalar_old(
+ change_id INTEGER NOT NULL REFERENCES catalog_info_changes(id),
+ field INTEGER NOT NULL CHECK(field BETWEEN 1 AND 9),
+ -- raw availability,size,modified,container,video codec,audio codec,width,height,duration
+ kind INTEGER NOT NULL CHECK(kind IN(1,2,3)),
+ old_integer INTEGER,
+ old_real REAL,
+ old_text TEXT,
+ PRIMARY KEY(change_id,field),
+ CHECK((field=1 AND kind=1 AND old_integer IN(0,1) AND old_integer IS NOT NULL AND old_real IS NULL AND old_text IS NULL)
+    OR (field IN(2,3,7,8) AND kind=1 AND old_integer IS NOT NULL AND old_real IS NULL AND old_text IS NULL)
+    OR (field=9 AND kind=2 AND old_integer IS NULL AND old_real IS NOT NULL AND old_text IS NULL)
+    OR (field IN(4,5,6) AND kind=3 AND old_integer IS NULL AND old_real IS NULL AND old_text IS NOT NULL))
+) WITHOUT ROWID, STRICT;
+
+-- Separate path column allows the ordinary state-path registry to classify it;
+-- it is not an opaque path hidden inside a serialized frame or mixed-value key.
+CREATE TABLE catalog_info_path_old(
+ change_id INTEGER PRIMARY KEY REFERENCES catalog_info_changes(id),
+ old_path TEXT NOT NULL
+) STRICT;
+-- Per-observation live admission used to seal and activate source facts.
+-- An input may include several independent disc observations of one asset.
+CREATE TABLE catalog_info_input_witnesses(
+ change_id INTEGER NOT NULL REFERENCES catalog_info_changes(id),
+ ordinal INTEGER NOT NULL CHECK(ordinal>=0),
+ kind INTEGER NOT NULL CHECK(kind BETWEEN 0 AND 4),
+ job_id TEXT NOT NULL,
+ source_id TEXT NOT NULL,
+ source_generation INTEGER NOT NULL,
+ root_incarnation TEXT NOT NULL,
+ object_id TEXT NOT NULL,
+ object_revision TEXT NOT NULL,
+ policy_revision INTEGER NOT NULL,
+ expected_choice_revision INTEGER NOT NULL DEFAULT 0,
+ fingerprint BLOB NOT NULL CHECK(length(fingerprint)=32),
+ PRIMARY KEY(change_id,ordinal)
+) WITHOUT ROWID, STRICT;
+CREATE TABLE catalog_info_input_families(
+ change_id INTEGER NOT NULL REFERENCES catalog_info_changes(id),
+ family INTEGER NOT NULL CHECK(family BETWEEN 1 AND 18),
+ witness_ordinal INTEGER NOT NULL,
+ rows_expected INTEGER NOT NULL CHECK(typeof(rows_expected)='integer' AND rows_expected>=0),
+ rows_staged INTEGER NOT NULL DEFAULT 0 CHECK(typeof(rows_staged)='integer' AND rows_staged>=0 AND rows_staged<=rows_expected),
+ sealed INTEGER NOT NULL DEFAULT 0 CHECK(sealed IN(0,1)),
+ PRIMARY KEY(change_id,family),
+ FOREIGN KEY(change_id,witness_ordinal) REFERENCES catalog_info_input_witnesses(change_id,ordinal)
+) WITHOUT ROWID, STRICT;
+
+-- A logical payload cap, NOT reserved disk space or memory, and not a query
+-- cache. Source input/OLD text and cursor bytes must be charged before acceptance.
+-- Header/numeric-availability facts remain proportionate to current source work;
+-- raw health revocation never depends on admission to this payload budget.
+CREATE TABLE catalog_info_input_budget(
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+ used_bytes INTEGER NOT NULL DEFAULT 0 CHECK(typeof(used_bytes)='integer' AND used_bytes>=0),
+ cap_bytes INTEGER NOT NULL DEFAULT 33554432 CHECK(cap_bytes=33554432),
+ CHECK(used_bytes<=cap_bytes)
+) STRICT;
+INSERT INTO catalog_info_input_budget(singleton) VALUES(1);
+
+-- The following are normalized NEW SOURCE INPUTS, not retained query outputs.
+-- They exist only while a source input is staged/applied; GC is explicit RAW8,
+-- children before parents, never an unbounded header cascade. At rest the
+-- existing canonical fact tables remain the only child-set representation.
+
+-- source shape: asset_stream_facts
+CREATE TABLE catalog_info_new_stream_facts(
+ change_id INTEGER NOT NULL REFERENCES catalog_info_changes(id),
+ input_ordinal INTEGER NOT NULL CHECK(input_ordinal>=0),
+ asset_id TEXT NOT NULL,revision INTEGER NOT NULL,size INTEGER NOT NULL,modified_ns INTEGER NOT NULL,fingerprint TEXT NOT NULL,detail_version INTEGER NOT NULL DEFAULT 0,
+ PRIMARY KEY(change_id,asset_id),
+ UNIQUE(change_id,input_ordinal)
+) WITHOUT ROWID, STRICT;
+
+-- source shape: asset_streams
+CREATE TABLE catalog_info_new_streams(
+ change_id INTEGER NOT NULL REFERENCES catalog_info_changes(id),
+ input_ordinal INTEGER NOT NULL CHECK(input_ordinal>=0),
+ asset_id TEXT NOT NULL,stream_index INTEGER NOT NULL,type TEXT NOT NULL,codec TEXT NOT NULL,language TEXT NOT NULL,title TEXT NOT NULL,channels INTEGER NOT NULL,channel_layout TEXT NOT NULL,is_default INTEGER NOT NULL,is_forced INTEGER NOT NULL,color_transfer TEXT NOT NULL DEFAULT '',color_primaries TEXT NOT NULL DEFAULT '',detail_json TEXT NOT NULL DEFAULT '',PRIMARY KEY(change_id,asset_id,stream_index),
+ FOREIGN KEY(change_id,asset_id) REFERENCES catalog_info_new_stream_facts(change_id,asset_id),
+ UNIQUE(change_id,input_ordinal)
+) WITHOUT ROWID, STRICT;
+
+-- source shape: asset_stream_breadth
+CREATE TABLE catalog_info_new_stream_breadth(
+ change_id INTEGER NOT NULL REFERENCES catalog_info_changes(id),
+ input_ordinal INTEGER NOT NULL CHECK(input_ordinal>=0),
+ asset_id TEXT NOT NULL,
+ stream_index INTEGER NOT NULL,
+ audio_description INTEGER NOT NULL DEFAULT 0 CHECK(audio_description IN(0,1)),
+ audio_variant TEXT NOT NULL DEFAULT '',
+ chroma_subsampling TEXT NOT NULL DEFAULT '',
+ fps_numerator INTEGER NOT NULL DEFAULT 0 CHECK(fps_numerator>=0),
+ fps_denominator INTEGER NOT NULL DEFAULT 0 CHECK(fps_denominator>=0),
+ frame_rate_mode TEXT NOT NULL DEFAULT '' CHECK(frame_rate_mode IN('','constant','variable')),
+ interlace_analysis TEXT NOT NULL DEFAULT '',
+ telecine INTEGER NOT NULL DEFAULT 0 CHECK(telecine IN(0,1)),
+ dovi_rpu INTEGER NOT NULL DEFAULT 0 CHECK(dovi_rpu IN(0,1)),
+ dovi_base_layer INTEGER NOT NULL DEFAULT 0 CHECK(dovi_base_layer IN(0,1)),
+ dovi_metadata_known INTEGER NOT NULL DEFAULT 0 CHECK(dovi_metadata_known IN(0,1)),
+ dovi_enhancement_type TEXT NOT NULL DEFAULT '' CHECK(dovi_enhancement_type IN('','mel','fel')),
+ dovi_cm_version TEXT NOT NULL DEFAULT '',
+ PRIMARY KEY(change_id,asset_id,stream_index),
+ FOREIGN KEY(change_id,asset_id,stream_index) REFERENCES catalog_info_new_streams(change_id,asset_id,stream_index),
+ UNIQUE(change_id,input_ordinal)
+) WITHOUT ROWID, STRICT;
+
+-- source shape: asset_chapter_facts
+CREATE TABLE catalog_info_new_chapter_facts(
+ change_id INTEGER NOT NULL REFERENCES catalog_info_changes(id),
+ input_ordinal INTEGER NOT NULL CHECK(input_ordinal>=0),
+ asset_id TEXT NOT NULL,revision INTEGER NOT NULL,size INTEGER NOT NULL,modified_ns INTEGER NOT NULL,status TEXT NOT NULL,fingerprint TEXT NOT NULL,
+ PRIMARY KEY(change_id,asset_id),
+ UNIQUE(change_id,input_ordinal)
+) WITHOUT ROWID, STRICT;
+
+-- source shape: asset_chapters
+CREATE TABLE catalog_info_new_chapters(
+ change_id INTEGER NOT NULL REFERENCES catalog_info_changes(id),
+ input_ordinal INTEGER NOT NULL CHECK(input_ordinal>=0),
+ asset_id TEXT NOT NULL,chapter_index INTEGER NOT NULL,title TEXT NOT NULL,start_seconds REAL NOT NULL,end_seconds REAL NOT NULL,PRIMARY KEY(change_id,asset_id,chapter_index),
+ FOREIGN KEY(change_id,asset_id) REFERENCES catalog_info_new_chapter_facts(change_id,asset_id),
+ UNIQUE(change_id,input_ordinal)
+) WITHOUT ROWID, STRICT;
+
+-- source shape: asset_subtitle_facts
+CREATE TABLE catalog_info_new_subtitle_facts(
+ change_id INTEGER NOT NULL REFERENCES catalog_info_changes(id),
+ input_ordinal INTEGER NOT NULL CHECK(input_ordinal>=0),
+ asset_id TEXT NOT NULL,revision INTEGER NOT NULL,size INTEGER NOT NULL,modified_ns INTEGER NOT NULL,origin_us INTEGER NOT NULL,timing_known INTEGER NOT NULL,status TEXT NOT NULL,fingerprint TEXT NOT NULL,
+ PRIMARY KEY(change_id,asset_id),
+ UNIQUE(change_id,input_ordinal)
+) WITHOUT ROWID, STRICT;
+
+-- source shape: subtitle_sidecars
+CREATE TABLE catalog_info_new_subtitle_sidecars(
+ change_id INTEGER NOT NULL REFERENCES catalog_info_changes(id),
+ input_ordinal INTEGER NOT NULL CHECK(input_ordinal>=0),
+ id TEXT NOT NULL,path TEXT NOT NULL,size INTEGER NOT NULL,modified_ns INTEGER NOT NULL,digest TEXT NOT NULL,
+ UNIQUE(change_id,path),
+ PRIMARY KEY(change_id,id),
+ UNIQUE(change_id,input_ordinal)
+) WITHOUT ROWID, STRICT;
+
+-- source shape: asset_subtitles
+CREATE TABLE catalog_info_new_subtitles(
+ change_id INTEGER NOT NULL REFERENCES catalog_info_changes(id),
+ input_ordinal INTEGER NOT NULL CHECK(input_ordinal>=0),
+ id TEXT NOT NULL,asset_id TEXT NOT NULL,origin TEXT NOT NULL CHECK(origin IN ('embedded','sidecar')),locator TEXT NOT NULL,stream_index INTEGER NOT NULL,sidecar_id TEXT,format TEXT NOT NULL,language TEXT NOT NULL,title TEXT NOT NULL,is_default INTEGER NOT NULL,is_forced INTEGER NOT NULL,reason TEXT NOT NULL,hearing_impaired INTEGER NOT NULL DEFAULT 0,UNIQUE(change_id,asset_id,origin,locator),CHECK((origin='embedded' AND sidecar_id IS NULL AND stream_index>=0) OR (origin='sidecar' AND sidecar_id IS NOT NULL AND stream_index=-1)),
+ FOREIGN KEY(change_id,asset_id) REFERENCES catalog_info_new_subtitle_facts(change_id,asset_id),
+ FOREIGN KEY(change_id,sidecar_id) REFERENCES catalog_info_new_subtitle_sidecars(change_id,id),
+ PRIMARY KEY(change_id,id),
+ UNIQUE(change_id,input_ordinal)
+) WITHOUT ROWID, STRICT;
+
+-- source shape: subtitle_inventory_evidence
+CREATE TABLE catalog_info_new_subtitle_inventory_evidence(
+ change_id INTEGER NOT NULL REFERENCES catalog_info_changes(id),
+ input_ordinal INTEGER NOT NULL CHECK(input_ordinal>=0),
+ asset_id TEXT NOT NULL,
+ revision INTEGER NOT NULL, evidence TEXT NOT NULL,
+ PRIMARY KEY(change_id,asset_id),
+ UNIQUE(change_id,input_ordinal)
+) WITHOUT ROWID, STRICT;
+
+-- source shape: inventory_disc_facts
+CREATE TABLE catalog_info_new_disc_facts(
+ change_id INTEGER NOT NULL REFERENCES catalog_info_changes(id),
+ input_ordinal INTEGER NOT NULL CHECK(input_ordinal>=0),
+ object_id TEXT NOT NULL,
+ asset_id TEXT NOT NULL,
+ source_revision TEXT NOT NULL, source_generation INTEGER NOT NULL CHECK(source_generation>0),
+ root_incarnation TEXT NOT NULL,
+ kind TEXT NOT NULL CHECK(kind IN('bluray','dvd')),
+ packaging TEXT NOT NULL CHECK(packaging IN('iso','folder')),
+ encryption TEXT NOT NULL CHECK(encryption IN('none','aacs','bdplus','css')),
+ fingerprint TEXT NOT NULL CHECK(length(fingerprint)=64),
+ owner_title_key TEXT NOT NULL DEFAULT '',
+ choice_revision INTEGER NOT NULL DEFAULT 1 CHECK(choice_revision>0),
+ media_title_key TEXT NOT NULL DEFAULT '',
+ media_stream_revision INTEGER NOT NULL DEFAULT 0 CHECK(media_stream_revision>=0),
+ media_chapter_revision INTEGER NOT NULL DEFAULT 0 CHECK(media_chapter_revision>=0),
+ PRIMARY KEY(change_id,object_id),
+ UNIQUE(change_id,input_ordinal)
+) WITHOUT ROWID, STRICT;
+
+-- source shape: inventory_disc_titles
+CREATE TABLE catalog_info_new_disc_titles(
+ change_id INTEGER NOT NULL REFERENCES catalog_info_changes(id),
+ input_ordinal INTEGER NOT NULL CHECK(input_ordinal>=0),
+ object_id TEXT NOT NULL,
+ title_key TEXT NOT NULL, selection_token TEXT NOT NULL,
+ title_number INTEGER NOT NULL CHECK(title_number>0), disc_order INTEGER NOT NULL CHECK(disc_order>=0),
+ duration_ms INTEGER NOT NULL CHECK(duration_ms>=60000), angle_count INTEGER NOT NULL CHECK(angle_count BETWEEN 1 AND 255),
+ playlist INTEGER CHECK(playlist IS NULL OR playlist BETWEEN 0 AND 99999),
+ dvd_title INTEGER NOT NULL DEFAULT 0, vts INTEGER NOT NULL DEFAULT 0, pgc INTEGER NOT NULL DEFAULT 0,
+ PRIMARY KEY(change_id,object_id,title_key), UNIQUE(change_id,object_id,title_number),
+ FOREIGN KEY(change_id,object_id) REFERENCES catalog_info_new_disc_facts(change_id,object_id),
+ UNIQUE(change_id,selection_token),
+ UNIQUE(change_id,input_ordinal)
+) WITHOUT ROWID, STRICT;
+
+-- source shape: inventory_disc_clips
+CREATE TABLE catalog_info_new_disc_clips(
+ change_id INTEGER NOT NULL REFERENCES catalog_info_changes(id),
+ input_ordinal INTEGER NOT NULL CHECK(input_ordinal>=0),
+ object_id TEXT NOT NULL,title_key TEXT NOT NULL,sequence INTEGER NOT NULL,
+ file TEXT NOT NULL,in_time_90k INTEGER NOT NULL,out_time_90k INTEGER NOT NULL,
+ PRIMARY KEY(change_id,object_id,title_key,sequence),
+ FOREIGN KEY(change_id,object_id,title_key) REFERENCES catalog_info_new_disc_titles(change_id,object_id,title_key),
+ UNIQUE(change_id,input_ordinal)
+) WITHOUT ROWID, STRICT;
+
+-- source shape: inventory_disc_streams
+CREATE TABLE catalog_info_new_disc_streams(
+ change_id INTEGER NOT NULL REFERENCES catalog_info_changes(id),
+ input_ordinal INTEGER NOT NULL CHECK(input_ordinal>=0),
+ object_id TEXT NOT NULL,title_key TEXT NOT NULL,stream_order INTEGER NOT NULL,
+ clip_sequence INTEGER NOT NULL,pid INTEGER NOT NULL,kind TEXT NOT NULL,coding INTEGER NOT NULL,language TEXT NOT NULL,
+ dv_enhancement INTEGER NOT NULL CHECK(dv_enhancement IN(0,1)),dv_enhancement_known INTEGER NOT NULL CHECK(dv_enhancement_known IN(0,1)),
+ dv_base_pid INTEGER, video_role TEXT NOT NULL DEFAULT'',
+ PRIMARY KEY(change_id,object_id,title_key,stream_order),
+ FOREIGN KEY(change_id,object_id,title_key) REFERENCES catalog_info_new_disc_titles(change_id,object_id,title_key),
+ UNIQUE(change_id,input_ordinal)
+) WITHOUT ROWID, STRICT;
+
+-- source shape: inventory_disc_chapters
+CREATE TABLE catalog_info_new_disc_chapters(
+ change_id INTEGER NOT NULL REFERENCES catalog_info_changes(id),
+ input_ordinal INTEGER NOT NULL CHECK(input_ordinal>=0),
+ object_id TEXT NOT NULL,title_key TEXT NOT NULL,chapter_order INTEGER NOT NULL,start_ms INTEGER NOT NULL,
+ PRIMARY KEY(change_id,object_id,title_key,chapter_order),
+ FOREIGN KEY(change_id,object_id,title_key) REFERENCES catalog_info_new_disc_titles(change_id,object_id,title_key),
+ UNIQUE(change_id,input_ordinal)
+) WITHOUT ROWID, STRICT;
+
+-- source shape: inventory_disc_media_members
+CREATE TABLE catalog_info_new_disc_media_members(
+ change_id INTEGER NOT NULL REFERENCES catalog_info_changes(id),
+ input_ordinal INTEGER NOT NULL CHECK(input_ordinal>=0),
+ object_id TEXT NOT NULL,
+ path TEXT NOT NULL, object_identity TEXT NOT NULL, size INTEGER NOT NULL, modified_ns INTEGER NOT NULL,
+ required INTEGER NOT NULL CHECK(required IN(0,1)), directory INTEGER NOT NULL CHECK(directory IN(0,1)),
+ PRIMARY KEY(change_id,object_id,path),
+ FOREIGN KEY(change_id,object_id) REFERENCES catalog_info_new_disc_facts(change_id,object_id),
+ UNIQUE(change_id,input_ordinal)
+) WITHOUT ROWID, STRICT;
+
+-- source shape: inventory_disc_title_media
+CREATE TABLE catalog_info_new_disc_title_media(
+ change_id INTEGER NOT NULL REFERENCES catalog_info_changes(id),
+ input_ordinal INTEGER NOT NULL CHECK(input_ordinal>=0),
+ object_id TEXT NOT NULL, title_key TEXT NOT NULL,
+ source_revision TEXT NOT NULL, fingerprint TEXT NOT NULL, revision TEXT NOT NULL,
+ container TEXT NOT NULL, video_codec TEXT NOT NULL, audio_codec TEXT NOT NULL,
+ width INTEGER NOT NULL,height INTEGER NOT NULL,duration_ms INTEGER NOT NULL,
+ origin_us INTEGER NOT NULL DEFAULT 0,timing_known INTEGER NOT NULL DEFAULT 0 CHECK(timing_known IN(0,1)),
+ PRIMARY KEY(change_id,object_id,title_key),
+ FOREIGN KEY(change_id,object_id,title_key) REFERENCES catalog_info_new_disc_titles(change_id,object_id,title_key),
+ UNIQUE(change_id,input_ordinal)
+) WITHOUT ROWID, STRICT;
+
+-- source shape: inventory_disc_title_media_streams
+CREATE TABLE catalog_info_new_disc_title_media_streams(
+ change_id INTEGER NOT NULL REFERENCES catalog_info_changes(id),
+ input_ordinal INTEGER NOT NULL CHECK(input_ordinal>=0),
+ object_id TEXT NOT NULL,title_key TEXT NOT NULL,stream_index INTEGER NOT NULL,
+ type TEXT NOT NULL,codec TEXT NOT NULL,language TEXT NOT NULL,title TEXT NOT NULL,
+ channels INTEGER NOT NULL,channel_layout TEXT NOT NULL,is_default INTEGER NOT NULL,is_forced INTEGER NOT NULL,
+ color_transfer TEXT NOT NULL,color_primaries TEXT NOT NULL,detail_json TEXT NOT NULL,breadth_json TEXT NOT NULL,
+ PRIMARY KEY(change_id,object_id,title_key,stream_index),
+ FOREIGN KEY(change_id,object_id,title_key) REFERENCES catalog_info_new_disc_title_media(change_id,object_id,title_key),
+ UNIQUE(change_id,input_ordinal)
+) WITHOUT ROWID, STRICT;
+
+-- source shape: inventory_disc_title_media_members
+CREATE TABLE catalog_info_new_disc_title_media_members(
+ change_id INTEGER NOT NULL REFERENCES catalog_info_changes(id),
+ input_ordinal INTEGER NOT NULL CHECK(input_ordinal>=0),
+ object_id TEXT NOT NULL,title_key TEXT NOT NULL,path TEXT NOT NULL,object_identity TEXT NOT NULL,
+ size INTEGER NOT NULL,modified_ns INTEGER NOT NULL,required INTEGER NOT NULL,directory INTEGER NOT NULL,
+ PRIMARY KEY(change_id,object_id,title_key,path),
+ FOREIGN KEY(change_id,object_id,title_key) REFERENCES catalog_info_new_disc_title_media(change_id,object_id,title_key),
+ UNIQUE(change_id,input_ordinal)
+) WITHOUT ROWID, STRICT;
+
+-- Literal logical-byte ledger and source-input immutability guards.
+CREATE TRIGGER catalog_info_changes_charge_insert AFTER INSERT ON catalog_info_changes BEGIN
+ SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM catalog_info_input_budget WHERE singleton=1) THEN RAISE(ABORT,'info_source_budget_missing') END;
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes+(344+2*COALESCE(length(CAST(NEW.target_owner_object AS BLOB)),0)+COALESCE(length(CAST(NEW.target_owner_revision AS BLOB)),0)+COALESCE(length(CAST(NEW.asset_token AS BLOB)),0)+COALESCE(length(CAST(NEW.fingerprint AS BLOB)),0)+COALESCE(length(CAST(NEW.fault AS BLOB)),0)+COALESCE(length(CAST(NEW.copy_key AS BLOB)),0)+COALESCE(length(CAST(NEW.copy_key2 AS BLOB)),0)+COALESCE(length(CAST(NEW.copy_key3 AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_changes_charge_delete AFTER DELETE ON catalog_info_changes BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(344+2*COALESCE(length(CAST(OLD.target_owner_object AS BLOB)),0)+COALESCE(length(CAST(OLD.target_owner_revision AS BLOB)),0)+COALESCE(length(CAST(OLD.asset_token AS BLOB)),0)+COALESCE(length(CAST(OLD.fingerprint AS BLOB)),0)+COALESCE(length(CAST(OLD.fault AS BLOB)),0)+COALESCE(length(CAST(OLD.copy_key AS BLOB)),0)+COALESCE(length(CAST(OLD.copy_key2 AS BLOB)),0)+COALESCE(length(CAST(OLD.copy_key3 AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_changes_charge_update AFTER UPDATE ON catalog_info_changes
+ WHEN (344+2*COALESCE(length(CAST(OLD.target_owner_object AS BLOB)),0)+COALESCE(length(CAST(OLD.target_owner_revision AS BLOB)),0)+COALESCE(length(CAST(OLD.asset_token AS BLOB)),0)+COALESCE(length(CAST(OLD.fingerprint AS BLOB)),0)+COALESCE(length(CAST(OLD.fault AS BLOB)),0)+COALESCE(length(CAST(OLD.copy_key AS BLOB)),0)+COALESCE(length(CAST(OLD.copy_key2 AS BLOB)),0)+COALESCE(length(CAST(OLD.copy_key3 AS BLOB)),0)) <> (344+2*COALESCE(length(CAST(NEW.target_owner_object AS BLOB)),0)+COALESCE(length(CAST(NEW.target_owner_revision AS BLOB)),0)+COALESCE(length(CAST(NEW.asset_token AS BLOB)),0)+COALESCE(length(CAST(NEW.fingerprint AS BLOB)),0)+COALESCE(length(CAST(NEW.fault AS BLOB)),0)+COALESCE(length(CAST(NEW.copy_key AS BLOB)),0)+COALESCE(length(CAST(NEW.copy_key2 AS BLOB)),0)+COALESCE(length(CAST(NEW.copy_key3 AS BLOB)),0)) BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(344+2*COALESCE(length(CAST(OLD.target_owner_object AS BLOB)),0)+COALESCE(length(CAST(OLD.target_owner_revision AS BLOB)),0)+COALESCE(length(CAST(OLD.asset_token AS BLOB)),0)+COALESCE(length(CAST(OLD.fingerprint AS BLOB)),0)+COALESCE(length(CAST(OLD.fault AS BLOB)),0)+COALESCE(length(CAST(OLD.copy_key AS BLOB)),0)+COALESCE(length(CAST(OLD.copy_key2 AS BLOB)),0)+COALESCE(length(CAST(OLD.copy_key3 AS BLOB)),0))+(344+2*COALESCE(length(CAST(NEW.target_owner_object AS BLOB)),0)+COALESCE(length(CAST(NEW.target_owner_revision AS BLOB)),0)+COALESCE(length(CAST(NEW.asset_token AS BLOB)),0)+COALESCE(length(CAST(NEW.fingerprint AS BLOB)),0)+COALESCE(length(CAST(NEW.fault AS BLOB)),0)+COALESCE(length(CAST(NEW.copy_key AS BLOB)),0)+COALESCE(length(CAST(NEW.copy_key2 AS BLOB)),0)+COALESCE(length(CAST(NEW.copy_key3 AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_scalar_old_charge_insert AFTER INSERT ON catalog_info_scalar_old BEGIN
+ SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM catalog_info_input_budget WHERE singleton=1) THEN RAISE(ABORT,'info_source_budget_missing') END;
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes+(176+COALESCE(length(CAST(NEW.old_text AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_scalar_old_charge_delete AFTER DELETE ON catalog_info_scalar_old BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(176+COALESCE(length(CAST(OLD.old_text AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_scalar_old_charge_update AFTER UPDATE ON catalog_info_scalar_old
+ WHEN (176+COALESCE(length(CAST(OLD.old_text AS BLOB)),0)) <> (176+COALESCE(length(CAST(NEW.old_text AS BLOB)),0)) BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(176+COALESCE(length(CAST(OLD.old_text AS BLOB)),0))+(176+COALESCE(length(CAST(NEW.old_text AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_path_old_charge_insert AFTER INSERT ON catalog_info_path_old BEGIN
+ SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM catalog_info_input_budget WHERE singleton=1) THEN RAISE(ABORT,'info_source_budget_missing') END;
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes+(144+COALESCE(length(CAST(NEW.old_path AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_path_old_charge_delete AFTER DELETE ON catalog_info_path_old BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(144+COALESCE(length(CAST(OLD.old_path AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_path_old_charge_update AFTER UPDATE ON catalog_info_path_old
+ WHEN (144+COALESCE(length(CAST(OLD.old_path AS BLOB)),0)) <> (144+COALESCE(length(CAST(NEW.old_path AS BLOB)),0)) BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(144+COALESCE(length(CAST(OLD.old_path AS BLOB)),0))+(144+COALESCE(length(CAST(NEW.old_path AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_input_witnesses_charge_insert AFTER INSERT ON catalog_info_input_witnesses BEGIN
+ SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM catalog_info_input_budget WHERE singleton=1) THEN RAISE(ABORT,'info_source_budget_missing') END;
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes+(224+COALESCE(length(CAST(NEW.job_id AS BLOB)),0)+COALESCE(length(CAST(NEW.source_id AS BLOB)),0)+COALESCE(length(CAST(NEW.root_incarnation AS BLOB)),0)+COALESCE(length(CAST(NEW.object_id AS BLOB)),0)+COALESCE(length(CAST(NEW.object_revision AS BLOB)),0)+COALESCE(length(CAST(NEW.fingerprint AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_input_witnesses_charge_delete AFTER DELETE ON catalog_info_input_witnesses BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(224+COALESCE(length(CAST(OLD.job_id AS BLOB)),0)+COALESCE(length(CAST(OLD.source_id AS BLOB)),0)+COALESCE(length(CAST(OLD.root_incarnation AS BLOB)),0)+COALESCE(length(CAST(OLD.object_id AS BLOB)),0)+COALESCE(length(CAST(OLD.object_revision AS BLOB)),0)+COALESCE(length(CAST(OLD.fingerprint AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_input_witnesses_charge_update AFTER UPDATE ON catalog_info_input_witnesses
+ WHEN (224+COALESCE(length(CAST(OLD.job_id AS BLOB)),0)+COALESCE(length(CAST(OLD.source_id AS BLOB)),0)+COALESCE(length(CAST(OLD.root_incarnation AS BLOB)),0)+COALESCE(length(CAST(OLD.object_id AS BLOB)),0)+COALESCE(length(CAST(OLD.object_revision AS BLOB)),0)+COALESCE(length(CAST(OLD.fingerprint AS BLOB)),0)) <> (224+COALESCE(length(CAST(NEW.job_id AS BLOB)),0)+COALESCE(length(CAST(NEW.source_id AS BLOB)),0)+COALESCE(length(CAST(NEW.root_incarnation AS BLOB)),0)+COALESCE(length(CAST(NEW.object_id AS BLOB)),0)+COALESCE(length(CAST(NEW.object_revision AS BLOB)),0)+COALESCE(length(CAST(NEW.fingerprint AS BLOB)),0)) BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(224+COALESCE(length(CAST(OLD.job_id AS BLOB)),0)+COALESCE(length(CAST(OLD.source_id AS BLOB)),0)+COALESCE(length(CAST(OLD.root_incarnation AS BLOB)),0)+COALESCE(length(CAST(OLD.object_id AS BLOB)),0)+COALESCE(length(CAST(OLD.object_revision AS BLOB)),0)+COALESCE(length(CAST(OLD.fingerprint AS BLOB)),0))+(224+COALESCE(length(CAST(NEW.job_id AS BLOB)),0)+COALESCE(length(CAST(NEW.source_id AS BLOB)),0)+COALESCE(length(CAST(NEW.root_incarnation AS BLOB)),0)+COALESCE(length(CAST(NEW.object_id AS BLOB)),0)+COALESCE(length(CAST(NEW.object_revision AS BLOB)),0)+COALESCE(length(CAST(NEW.fingerprint AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_input_witnesses_immutable_insert BEFORE INSERT ON catalog_info_input_witnesses
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=NEW.change_id),-1)<>0
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_input_witnesses_immutable_update BEFORE UPDATE ON catalog_info_input_witnesses
+ WHEN OLD.change_id<>NEW.change_id OR COALESCE((SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id),-1)<>0
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_input_witnesses_immutable_delete BEFORE DELETE ON catalog_info_input_witnesses
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id),-1) NOT IN(0,5)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_input_families_charge_insert AFTER INSERT ON catalog_info_input_families BEGIN
+ SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM catalog_info_input_budget WHERE singleton=1) THEN RAISE(ABORT,'info_source_budget_missing') END;
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes+(176) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_input_families_charge_delete AFTER DELETE ON catalog_info_input_families BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(176) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_input_families_charge_update AFTER UPDATE ON catalog_info_input_families
+ WHEN (176) <> (176) BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(176)+(176) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_input_families_immutable_insert BEFORE INSERT ON catalog_info_input_families
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=NEW.change_id),-1)<>0
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_input_families_immutable_update BEFORE UPDATE ON catalog_info_input_families
+ WHEN OLD.change_id<>NEW.change_id OR COALESCE((SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id),-1)<>0
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_input_families_immutable_delete BEFORE DELETE ON catalog_info_input_families
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id),-1) NOT IN(0,5)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_stream_facts_charge_insert AFTER INSERT ON catalog_info_new_stream_facts BEGIN
+ SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM catalog_info_input_budget WHERE singleton=1) THEN RAISE(ABORT,'info_source_budget_missing') END;
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes+(192+COALESCE(length(CAST(NEW.asset_id AS BLOB)),0)+COALESCE(length(CAST(NEW.fingerprint AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_stream_facts_charge_delete AFTER DELETE ON catalog_info_new_stream_facts BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(192+COALESCE(length(CAST(OLD.asset_id AS BLOB)),0)+COALESCE(length(CAST(OLD.fingerprint AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_stream_facts_charge_update AFTER UPDATE ON catalog_info_new_stream_facts
+ WHEN (192+COALESCE(length(CAST(OLD.asset_id AS BLOB)),0)+COALESCE(length(CAST(OLD.fingerprint AS BLOB)),0)) <> (192+COALESCE(length(CAST(NEW.asset_id AS BLOB)),0)+COALESCE(length(CAST(NEW.fingerprint AS BLOB)),0)) BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(192+COALESCE(length(CAST(OLD.asset_id AS BLOB)),0)+COALESCE(length(CAST(OLD.fingerprint AS BLOB)),0))+(192+COALESCE(length(CAST(NEW.asset_id AS BLOB)),0)+COALESCE(length(CAST(NEW.fingerprint AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_stream_facts_immutable_insert BEFORE INSERT ON catalog_info_new_stream_facts
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=NEW.change_id),-1)<>0 OR NOT EXISTS(SELECT 1 FROM catalog_info_input_families WHERE change_id=NEW.change_id AND family=1 AND sealed=0)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_stream_facts_immutable_update BEFORE UPDATE ON catalog_info_new_stream_facts
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_stream_facts_immutable_delete BEFORE DELETE ON catalog_info_new_stream_facts
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id),-1) NOT IN(0,5)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_streams_charge_insert AFTER INSERT ON catalog_info_new_streams BEGIN
+ SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM catalog_info_input_budget WHERE singleton=1) THEN RAISE(ABORT,'info_source_budget_missing') END;
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes+(248+COALESCE(length(CAST(NEW.asset_id AS BLOB)),0)+COALESCE(length(CAST(NEW.type AS BLOB)),0)+COALESCE(length(CAST(NEW.codec AS BLOB)),0)+COALESCE(length(CAST(NEW.language AS BLOB)),0)+COALESCE(length(CAST(NEW.title AS BLOB)),0)+COALESCE(length(CAST(NEW.channel_layout AS BLOB)),0)+COALESCE(length(CAST(NEW.color_transfer AS BLOB)),0)+COALESCE(length(CAST(NEW.color_primaries AS BLOB)),0)+COALESCE(length(CAST(NEW.detail_json AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_streams_charge_delete AFTER DELETE ON catalog_info_new_streams BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(248+COALESCE(length(CAST(OLD.asset_id AS BLOB)),0)+COALESCE(length(CAST(OLD.type AS BLOB)),0)+COALESCE(length(CAST(OLD.codec AS BLOB)),0)+COALESCE(length(CAST(OLD.language AS BLOB)),0)+COALESCE(length(CAST(OLD.title AS BLOB)),0)+COALESCE(length(CAST(OLD.channel_layout AS BLOB)),0)+COALESCE(length(CAST(OLD.color_transfer AS BLOB)),0)+COALESCE(length(CAST(OLD.color_primaries AS BLOB)),0)+COALESCE(length(CAST(OLD.detail_json AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_streams_charge_update AFTER UPDATE ON catalog_info_new_streams
+ WHEN (248+COALESCE(length(CAST(OLD.asset_id AS BLOB)),0)+COALESCE(length(CAST(OLD.type AS BLOB)),0)+COALESCE(length(CAST(OLD.codec AS BLOB)),0)+COALESCE(length(CAST(OLD.language AS BLOB)),0)+COALESCE(length(CAST(OLD.title AS BLOB)),0)+COALESCE(length(CAST(OLD.channel_layout AS BLOB)),0)+COALESCE(length(CAST(OLD.color_transfer AS BLOB)),0)+COALESCE(length(CAST(OLD.color_primaries AS BLOB)),0)+COALESCE(length(CAST(OLD.detail_json AS BLOB)),0)) <> (248+COALESCE(length(CAST(NEW.asset_id AS BLOB)),0)+COALESCE(length(CAST(NEW.type AS BLOB)),0)+COALESCE(length(CAST(NEW.codec AS BLOB)),0)+COALESCE(length(CAST(NEW.language AS BLOB)),0)+COALESCE(length(CAST(NEW.title AS BLOB)),0)+COALESCE(length(CAST(NEW.channel_layout AS BLOB)),0)+COALESCE(length(CAST(NEW.color_transfer AS BLOB)),0)+COALESCE(length(CAST(NEW.color_primaries AS BLOB)),0)+COALESCE(length(CAST(NEW.detail_json AS BLOB)),0)) BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(248+COALESCE(length(CAST(OLD.asset_id AS BLOB)),0)+COALESCE(length(CAST(OLD.type AS BLOB)),0)+COALESCE(length(CAST(OLD.codec AS BLOB)),0)+COALESCE(length(CAST(OLD.language AS BLOB)),0)+COALESCE(length(CAST(OLD.title AS BLOB)),0)+COALESCE(length(CAST(OLD.channel_layout AS BLOB)),0)+COALESCE(length(CAST(OLD.color_transfer AS BLOB)),0)+COALESCE(length(CAST(OLD.color_primaries AS BLOB)),0)+COALESCE(length(CAST(OLD.detail_json AS BLOB)),0))+(248+COALESCE(length(CAST(NEW.asset_id AS BLOB)),0)+COALESCE(length(CAST(NEW.type AS BLOB)),0)+COALESCE(length(CAST(NEW.codec AS BLOB)),0)+COALESCE(length(CAST(NEW.language AS BLOB)),0)+COALESCE(length(CAST(NEW.title AS BLOB)),0)+COALESCE(length(CAST(NEW.channel_layout AS BLOB)),0)+COALESCE(length(CAST(NEW.color_transfer AS BLOB)),0)+COALESCE(length(CAST(NEW.color_primaries AS BLOB)),0)+COALESCE(length(CAST(NEW.detail_json AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_streams_immutable_insert BEFORE INSERT ON catalog_info_new_streams
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=NEW.change_id),-1)<>0 OR NOT EXISTS(SELECT 1 FROM catalog_info_input_families WHERE change_id=NEW.change_id AND family=2 AND sealed=0)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_streams_immutable_update BEFORE UPDATE ON catalog_info_new_streams
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_streams_immutable_delete BEFORE DELETE ON catalog_info_new_streams
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id),-1) NOT IN(0,5)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_stream_breadth_charge_insert AFTER INSERT ON catalog_info_new_stream_breadth BEGIN
+ SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM catalog_info_input_budget WHERE singleton=1) THEN RAISE(ABORT,'info_source_budget_missing') END;
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes+(264+COALESCE(length(CAST(NEW.asset_id AS BLOB)),0)+COALESCE(length(CAST(NEW.audio_variant AS BLOB)),0)+COALESCE(length(CAST(NEW.chroma_subsampling AS BLOB)),0)+COALESCE(length(CAST(NEW.frame_rate_mode AS BLOB)),0)+COALESCE(length(CAST(NEW.interlace_analysis AS BLOB)),0)+COALESCE(length(CAST(NEW.dovi_enhancement_type AS BLOB)),0)+COALESCE(length(CAST(NEW.dovi_cm_version AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_stream_breadth_charge_delete AFTER DELETE ON catalog_info_new_stream_breadth BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(264+COALESCE(length(CAST(OLD.asset_id AS BLOB)),0)+COALESCE(length(CAST(OLD.audio_variant AS BLOB)),0)+COALESCE(length(CAST(OLD.chroma_subsampling AS BLOB)),0)+COALESCE(length(CAST(OLD.frame_rate_mode AS BLOB)),0)+COALESCE(length(CAST(OLD.interlace_analysis AS BLOB)),0)+COALESCE(length(CAST(OLD.dovi_enhancement_type AS BLOB)),0)+COALESCE(length(CAST(OLD.dovi_cm_version AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_stream_breadth_charge_update AFTER UPDATE ON catalog_info_new_stream_breadth
+ WHEN (264+COALESCE(length(CAST(OLD.asset_id AS BLOB)),0)+COALESCE(length(CAST(OLD.audio_variant AS BLOB)),0)+COALESCE(length(CAST(OLD.chroma_subsampling AS BLOB)),0)+COALESCE(length(CAST(OLD.frame_rate_mode AS BLOB)),0)+COALESCE(length(CAST(OLD.interlace_analysis AS BLOB)),0)+COALESCE(length(CAST(OLD.dovi_enhancement_type AS BLOB)),0)+COALESCE(length(CAST(OLD.dovi_cm_version AS BLOB)),0)) <> (264+COALESCE(length(CAST(NEW.asset_id AS BLOB)),0)+COALESCE(length(CAST(NEW.audio_variant AS BLOB)),0)+COALESCE(length(CAST(NEW.chroma_subsampling AS BLOB)),0)+COALESCE(length(CAST(NEW.frame_rate_mode AS BLOB)),0)+COALESCE(length(CAST(NEW.interlace_analysis AS BLOB)),0)+COALESCE(length(CAST(NEW.dovi_enhancement_type AS BLOB)),0)+COALESCE(length(CAST(NEW.dovi_cm_version AS BLOB)),0)) BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(264+COALESCE(length(CAST(OLD.asset_id AS BLOB)),0)+COALESCE(length(CAST(OLD.audio_variant AS BLOB)),0)+COALESCE(length(CAST(OLD.chroma_subsampling AS BLOB)),0)+COALESCE(length(CAST(OLD.frame_rate_mode AS BLOB)),0)+COALESCE(length(CAST(OLD.interlace_analysis AS BLOB)),0)+COALESCE(length(CAST(OLD.dovi_enhancement_type AS BLOB)),0)+COALESCE(length(CAST(OLD.dovi_cm_version AS BLOB)),0))+(264+COALESCE(length(CAST(NEW.asset_id AS BLOB)),0)+COALESCE(length(CAST(NEW.audio_variant AS BLOB)),0)+COALESCE(length(CAST(NEW.chroma_subsampling AS BLOB)),0)+COALESCE(length(CAST(NEW.frame_rate_mode AS BLOB)),0)+COALESCE(length(CAST(NEW.interlace_analysis AS BLOB)),0)+COALESCE(length(CAST(NEW.dovi_enhancement_type AS BLOB)),0)+COALESCE(length(CAST(NEW.dovi_cm_version AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_stream_breadth_immutable_insert BEFORE INSERT ON catalog_info_new_stream_breadth
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=NEW.change_id),-1)<>0 OR NOT EXISTS(SELECT 1 FROM catalog_info_input_families WHERE change_id=NEW.change_id AND family=3 AND sealed=0)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_stream_breadth_immutable_update BEFORE UPDATE ON catalog_info_new_stream_breadth
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_stream_breadth_immutable_delete BEFORE DELETE ON catalog_info_new_stream_breadth
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id),-1) NOT IN(0,5)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_chapter_facts_charge_insert AFTER INSERT ON catalog_info_new_chapter_facts BEGIN
+ SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM catalog_info_input_budget WHERE singleton=1) THEN RAISE(ABORT,'info_source_budget_missing') END;
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes+(192+COALESCE(length(CAST(NEW.asset_id AS BLOB)),0)+COALESCE(length(CAST(NEW.status AS BLOB)),0)+COALESCE(length(CAST(NEW.fingerprint AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_chapter_facts_charge_delete AFTER DELETE ON catalog_info_new_chapter_facts BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(192+COALESCE(length(CAST(OLD.asset_id AS BLOB)),0)+COALESCE(length(CAST(OLD.status AS BLOB)),0)+COALESCE(length(CAST(OLD.fingerprint AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_chapter_facts_charge_update AFTER UPDATE ON catalog_info_new_chapter_facts
+ WHEN (192+COALESCE(length(CAST(OLD.asset_id AS BLOB)),0)+COALESCE(length(CAST(OLD.status AS BLOB)),0)+COALESCE(length(CAST(OLD.fingerprint AS BLOB)),0)) <> (192+COALESCE(length(CAST(NEW.asset_id AS BLOB)),0)+COALESCE(length(CAST(NEW.status AS BLOB)),0)+COALESCE(length(CAST(NEW.fingerprint AS BLOB)),0)) BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(192+COALESCE(length(CAST(OLD.asset_id AS BLOB)),0)+COALESCE(length(CAST(OLD.status AS BLOB)),0)+COALESCE(length(CAST(OLD.fingerprint AS BLOB)),0))+(192+COALESCE(length(CAST(NEW.asset_id AS BLOB)),0)+COALESCE(length(CAST(NEW.status AS BLOB)),0)+COALESCE(length(CAST(NEW.fingerprint AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_chapter_facts_immutable_insert BEFORE INSERT ON catalog_info_new_chapter_facts
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=NEW.change_id),-1)<>0 OR NOT EXISTS(SELECT 1 FROM catalog_info_input_families WHERE change_id=NEW.change_id AND family=4 AND sealed=0)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_chapter_facts_immutable_update BEFORE UPDATE ON catalog_info_new_chapter_facts
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_chapter_facts_immutable_delete BEFORE DELETE ON catalog_info_new_chapter_facts
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id),-1) NOT IN(0,5)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_chapters_charge_insert AFTER INSERT ON catalog_info_new_chapters BEGIN
+ SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM catalog_info_input_budget WHERE singleton=1) THEN RAISE(ABORT,'info_source_budget_missing') END;
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes+(184+COALESCE(length(CAST(NEW.asset_id AS BLOB)),0)+COALESCE(length(CAST(NEW.title AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_chapters_charge_delete AFTER DELETE ON catalog_info_new_chapters BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(184+COALESCE(length(CAST(OLD.asset_id AS BLOB)),0)+COALESCE(length(CAST(OLD.title AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_chapters_charge_update AFTER UPDATE ON catalog_info_new_chapters
+ WHEN (184+COALESCE(length(CAST(OLD.asset_id AS BLOB)),0)+COALESCE(length(CAST(OLD.title AS BLOB)),0)) <> (184+COALESCE(length(CAST(NEW.asset_id AS BLOB)),0)+COALESCE(length(CAST(NEW.title AS BLOB)),0)) BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(184+COALESCE(length(CAST(OLD.asset_id AS BLOB)),0)+COALESCE(length(CAST(OLD.title AS BLOB)),0))+(184+COALESCE(length(CAST(NEW.asset_id AS BLOB)),0)+COALESCE(length(CAST(NEW.title AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_chapters_immutable_insert BEFORE INSERT ON catalog_info_new_chapters
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=NEW.change_id),-1)<>0 OR NOT EXISTS(SELECT 1 FROM catalog_info_input_families WHERE change_id=NEW.change_id AND family=5 AND sealed=0)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_chapters_immutable_update BEFORE UPDATE ON catalog_info_new_chapters
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_chapters_immutable_delete BEFORE DELETE ON catalog_info_new_chapters
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id),-1) NOT IN(0,5)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_subtitle_facts_charge_insert AFTER INSERT ON catalog_info_new_subtitle_facts BEGIN
+ SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM catalog_info_input_budget WHERE singleton=1) THEN RAISE(ABORT,'info_source_budget_missing') END;
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes+(208+COALESCE(length(CAST(NEW.asset_id AS BLOB)),0)+COALESCE(length(CAST(NEW.status AS BLOB)),0)+COALESCE(length(CAST(NEW.fingerprint AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_subtitle_facts_charge_delete AFTER DELETE ON catalog_info_new_subtitle_facts BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(208+COALESCE(length(CAST(OLD.asset_id AS BLOB)),0)+COALESCE(length(CAST(OLD.status AS BLOB)),0)+COALESCE(length(CAST(OLD.fingerprint AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_subtitle_facts_charge_update AFTER UPDATE ON catalog_info_new_subtitle_facts
+ WHEN (208+COALESCE(length(CAST(OLD.asset_id AS BLOB)),0)+COALESCE(length(CAST(OLD.status AS BLOB)),0)+COALESCE(length(CAST(OLD.fingerprint AS BLOB)),0)) <> (208+COALESCE(length(CAST(NEW.asset_id AS BLOB)),0)+COALESCE(length(CAST(NEW.status AS BLOB)),0)+COALESCE(length(CAST(NEW.fingerprint AS BLOB)),0)) BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(208+COALESCE(length(CAST(OLD.asset_id AS BLOB)),0)+COALESCE(length(CAST(OLD.status AS BLOB)),0)+COALESCE(length(CAST(OLD.fingerprint AS BLOB)),0))+(208+COALESCE(length(CAST(NEW.asset_id AS BLOB)),0)+COALESCE(length(CAST(NEW.status AS BLOB)),0)+COALESCE(length(CAST(NEW.fingerprint AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_subtitle_facts_immutable_insert BEFORE INSERT ON catalog_info_new_subtitle_facts
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=NEW.change_id),-1)<>0 OR NOT EXISTS(SELECT 1 FROM catalog_info_input_families WHERE change_id=NEW.change_id AND family=6 AND sealed=0)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_subtitle_facts_immutable_update BEFORE UPDATE ON catalog_info_new_subtitle_facts
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_subtitle_facts_immutable_delete BEFORE DELETE ON catalog_info_new_subtitle_facts
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id),-1) NOT IN(0,5)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_subtitle_sidecars_charge_insert AFTER INSERT ON catalog_info_new_subtitle_sidecars BEGIN
+ SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM catalog_info_input_budget WHERE singleton=1) THEN RAISE(ABORT,'info_source_budget_missing') END;
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes+(184+COALESCE(length(CAST(NEW.id AS BLOB)),0)+COALESCE(length(CAST(NEW.path AS BLOB)),0)+COALESCE(length(CAST(NEW.digest AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_subtitle_sidecars_charge_delete AFTER DELETE ON catalog_info_new_subtitle_sidecars BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(184+COALESCE(length(CAST(OLD.id AS BLOB)),0)+COALESCE(length(CAST(OLD.path AS BLOB)),0)+COALESCE(length(CAST(OLD.digest AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_subtitle_sidecars_charge_update AFTER UPDATE ON catalog_info_new_subtitle_sidecars
+ WHEN (184+COALESCE(length(CAST(OLD.id AS BLOB)),0)+COALESCE(length(CAST(OLD.path AS BLOB)),0)+COALESCE(length(CAST(OLD.digest AS BLOB)),0)) <> (184+COALESCE(length(CAST(NEW.id AS BLOB)),0)+COALESCE(length(CAST(NEW.path AS BLOB)),0)+COALESCE(length(CAST(NEW.digest AS BLOB)),0)) BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(184+COALESCE(length(CAST(OLD.id AS BLOB)),0)+COALESCE(length(CAST(OLD.path AS BLOB)),0)+COALESCE(length(CAST(OLD.digest AS BLOB)),0))+(184+COALESCE(length(CAST(NEW.id AS BLOB)),0)+COALESCE(length(CAST(NEW.path AS BLOB)),0)+COALESCE(length(CAST(NEW.digest AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_subtitle_sidecars_immutable_insert BEFORE INSERT ON catalog_info_new_subtitle_sidecars
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=NEW.change_id),-1)<>0 OR NOT EXISTS(SELECT 1 FROM catalog_info_input_families WHERE change_id=NEW.change_id AND family=7 AND sealed=0)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_subtitle_sidecars_immutable_update BEFORE UPDATE ON catalog_info_new_subtitle_sidecars
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_subtitle_sidecars_immutable_delete BEFORE DELETE ON catalog_info_new_subtitle_sidecars
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id),-1) NOT IN(0,5)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_subtitles_charge_insert AFTER INSERT ON catalog_info_new_subtitles BEGIN
+ SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM catalog_info_input_budget WHERE singleton=1) THEN RAISE(ABORT,'info_source_budget_missing') END;
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes+(248+COALESCE(length(CAST(NEW.id AS BLOB)),0)+COALESCE(length(CAST(NEW.asset_id AS BLOB)),0)+COALESCE(length(CAST(NEW.origin AS BLOB)),0)+COALESCE(length(CAST(NEW.locator AS BLOB)),0)+COALESCE(length(CAST(NEW.sidecar_id AS BLOB)),0)+COALESCE(length(CAST(NEW.format AS BLOB)),0)+COALESCE(length(CAST(NEW.language AS BLOB)),0)+COALESCE(length(CAST(NEW.title AS BLOB)),0)+COALESCE(length(CAST(NEW.reason AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_subtitles_charge_delete AFTER DELETE ON catalog_info_new_subtitles BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(248+COALESCE(length(CAST(OLD.id AS BLOB)),0)+COALESCE(length(CAST(OLD.asset_id AS BLOB)),0)+COALESCE(length(CAST(OLD.origin AS BLOB)),0)+COALESCE(length(CAST(OLD.locator AS BLOB)),0)+COALESCE(length(CAST(OLD.sidecar_id AS BLOB)),0)+COALESCE(length(CAST(OLD.format AS BLOB)),0)+COALESCE(length(CAST(OLD.language AS BLOB)),0)+COALESCE(length(CAST(OLD.title AS BLOB)),0)+COALESCE(length(CAST(OLD.reason AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_subtitles_charge_update AFTER UPDATE ON catalog_info_new_subtitles
+ WHEN (248+COALESCE(length(CAST(OLD.id AS BLOB)),0)+COALESCE(length(CAST(OLD.asset_id AS BLOB)),0)+COALESCE(length(CAST(OLD.origin AS BLOB)),0)+COALESCE(length(CAST(OLD.locator AS BLOB)),0)+COALESCE(length(CAST(OLD.sidecar_id AS BLOB)),0)+COALESCE(length(CAST(OLD.format AS BLOB)),0)+COALESCE(length(CAST(OLD.language AS BLOB)),0)+COALESCE(length(CAST(OLD.title AS BLOB)),0)+COALESCE(length(CAST(OLD.reason AS BLOB)),0)) <> (248+COALESCE(length(CAST(NEW.id AS BLOB)),0)+COALESCE(length(CAST(NEW.asset_id AS BLOB)),0)+COALESCE(length(CAST(NEW.origin AS BLOB)),0)+COALESCE(length(CAST(NEW.locator AS BLOB)),0)+COALESCE(length(CAST(NEW.sidecar_id AS BLOB)),0)+COALESCE(length(CAST(NEW.format AS BLOB)),0)+COALESCE(length(CAST(NEW.language AS BLOB)),0)+COALESCE(length(CAST(NEW.title AS BLOB)),0)+COALESCE(length(CAST(NEW.reason AS BLOB)),0)) BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(248+COALESCE(length(CAST(OLD.id AS BLOB)),0)+COALESCE(length(CAST(OLD.asset_id AS BLOB)),0)+COALESCE(length(CAST(OLD.origin AS BLOB)),0)+COALESCE(length(CAST(OLD.locator AS BLOB)),0)+COALESCE(length(CAST(OLD.sidecar_id AS BLOB)),0)+COALESCE(length(CAST(OLD.format AS BLOB)),0)+COALESCE(length(CAST(OLD.language AS BLOB)),0)+COALESCE(length(CAST(OLD.title AS BLOB)),0)+COALESCE(length(CAST(OLD.reason AS BLOB)),0))+(248+COALESCE(length(CAST(NEW.id AS BLOB)),0)+COALESCE(length(CAST(NEW.asset_id AS BLOB)),0)+COALESCE(length(CAST(NEW.origin AS BLOB)),0)+COALESCE(length(CAST(NEW.locator AS BLOB)),0)+COALESCE(length(CAST(NEW.sidecar_id AS BLOB)),0)+COALESCE(length(CAST(NEW.format AS BLOB)),0)+COALESCE(length(CAST(NEW.language AS BLOB)),0)+COALESCE(length(CAST(NEW.title AS BLOB)),0)+COALESCE(length(CAST(NEW.reason AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_subtitles_immutable_insert BEFORE INSERT ON catalog_info_new_subtitles
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=NEW.change_id),-1)<>0 OR NOT EXISTS(SELECT 1 FROM catalog_info_input_families WHERE change_id=NEW.change_id AND family=8 AND sealed=0)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_subtitles_immutable_update BEFORE UPDATE ON catalog_info_new_subtitles
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_subtitles_immutable_delete BEFORE DELETE ON catalog_info_new_subtitles
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id),-1) NOT IN(0,5)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_subtitle_inventory_evidence_charge_insert AFTER INSERT ON catalog_info_new_subtitle_inventory_evidence BEGIN
+ SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM catalog_info_input_budget WHERE singleton=1) THEN RAISE(ABORT,'info_source_budget_missing') END;
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes+(168+COALESCE(length(CAST(NEW.asset_id AS BLOB)),0)+COALESCE(length(CAST(NEW.evidence AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_subtitle_inventory_evidence_charge_delete AFTER DELETE ON catalog_info_new_subtitle_inventory_evidence BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(168+COALESCE(length(CAST(OLD.asset_id AS BLOB)),0)+COALESCE(length(CAST(OLD.evidence AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_subtitle_inventory_evidence_charge_update AFTER UPDATE ON catalog_info_new_subtitle_inventory_evidence
+ WHEN (168+COALESCE(length(CAST(OLD.asset_id AS BLOB)),0)+COALESCE(length(CAST(OLD.evidence AS BLOB)),0)) <> (168+COALESCE(length(CAST(NEW.asset_id AS BLOB)),0)+COALESCE(length(CAST(NEW.evidence AS BLOB)),0)) BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(168+COALESCE(length(CAST(OLD.asset_id AS BLOB)),0)+COALESCE(length(CAST(OLD.evidence AS BLOB)),0))+(168+COALESCE(length(CAST(NEW.asset_id AS BLOB)),0)+COALESCE(length(CAST(NEW.evidence AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_subtitle_inventory_evidence_immutable_insert BEFORE INSERT ON catalog_info_new_subtitle_inventory_evidence
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=NEW.change_id),-1)<>0 OR NOT EXISTS(SELECT 1 FROM catalog_info_input_families WHERE change_id=NEW.change_id AND family=9 AND sealed=0)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_subtitle_inventory_evidence_immutable_update BEFORE UPDATE ON catalog_info_new_subtitle_inventory_evidence
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_subtitle_inventory_evidence_immutable_delete BEFORE DELETE ON catalog_info_new_subtitle_inventory_evidence
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id),-1) NOT IN(0,5)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_disc_facts_charge_insert AFTER INSERT ON catalog_info_new_disc_facts BEGIN
+ SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM catalog_info_input_budget WHERE singleton=1) THEN RAISE(ABORT,'info_source_budget_missing') END;
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes+(256+COALESCE(length(CAST(NEW.object_id AS BLOB)),0)+COALESCE(length(CAST(NEW.asset_id AS BLOB)),0)+COALESCE(length(CAST(NEW.source_revision AS BLOB)),0)+COALESCE(length(CAST(NEW.root_incarnation AS BLOB)),0)+COALESCE(length(CAST(NEW.kind AS BLOB)),0)+COALESCE(length(CAST(NEW.packaging AS BLOB)),0)+COALESCE(length(CAST(NEW.encryption AS BLOB)),0)+COALESCE(length(CAST(NEW.fingerprint AS BLOB)),0)+COALESCE(length(CAST(NEW.owner_title_key AS BLOB)),0)+COALESCE(length(CAST(NEW.media_title_key AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_disc_facts_charge_delete AFTER DELETE ON catalog_info_new_disc_facts BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(256+COALESCE(length(CAST(OLD.object_id AS BLOB)),0)+COALESCE(length(CAST(OLD.asset_id AS BLOB)),0)+COALESCE(length(CAST(OLD.source_revision AS BLOB)),0)+COALESCE(length(CAST(OLD.root_incarnation AS BLOB)),0)+COALESCE(length(CAST(OLD.kind AS BLOB)),0)+COALESCE(length(CAST(OLD.packaging AS BLOB)),0)+COALESCE(length(CAST(OLD.encryption AS BLOB)),0)+COALESCE(length(CAST(OLD.fingerprint AS BLOB)),0)+COALESCE(length(CAST(OLD.owner_title_key AS BLOB)),0)+COALESCE(length(CAST(OLD.media_title_key AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_disc_facts_charge_update AFTER UPDATE ON catalog_info_new_disc_facts
+ WHEN (256+COALESCE(length(CAST(OLD.object_id AS BLOB)),0)+COALESCE(length(CAST(OLD.asset_id AS BLOB)),0)+COALESCE(length(CAST(OLD.source_revision AS BLOB)),0)+COALESCE(length(CAST(OLD.root_incarnation AS BLOB)),0)+COALESCE(length(CAST(OLD.kind AS BLOB)),0)+COALESCE(length(CAST(OLD.packaging AS BLOB)),0)+COALESCE(length(CAST(OLD.encryption AS BLOB)),0)+COALESCE(length(CAST(OLD.fingerprint AS BLOB)),0)+COALESCE(length(CAST(OLD.owner_title_key AS BLOB)),0)+COALESCE(length(CAST(OLD.media_title_key AS BLOB)),0)) <> (256+COALESCE(length(CAST(NEW.object_id AS BLOB)),0)+COALESCE(length(CAST(NEW.asset_id AS BLOB)),0)+COALESCE(length(CAST(NEW.source_revision AS BLOB)),0)+COALESCE(length(CAST(NEW.root_incarnation AS BLOB)),0)+COALESCE(length(CAST(NEW.kind AS BLOB)),0)+COALESCE(length(CAST(NEW.packaging AS BLOB)),0)+COALESCE(length(CAST(NEW.encryption AS BLOB)),0)+COALESCE(length(CAST(NEW.fingerprint AS BLOB)),0)+COALESCE(length(CAST(NEW.owner_title_key AS BLOB)),0)+COALESCE(length(CAST(NEW.media_title_key AS BLOB)),0)) BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(256+COALESCE(length(CAST(OLD.object_id AS BLOB)),0)+COALESCE(length(CAST(OLD.asset_id AS BLOB)),0)+COALESCE(length(CAST(OLD.source_revision AS BLOB)),0)+COALESCE(length(CAST(OLD.root_incarnation AS BLOB)),0)+COALESCE(length(CAST(OLD.kind AS BLOB)),0)+COALESCE(length(CAST(OLD.packaging AS BLOB)),0)+COALESCE(length(CAST(OLD.encryption AS BLOB)),0)+COALESCE(length(CAST(OLD.fingerprint AS BLOB)),0)+COALESCE(length(CAST(OLD.owner_title_key AS BLOB)),0)+COALESCE(length(CAST(OLD.media_title_key AS BLOB)),0))+(256+COALESCE(length(CAST(NEW.object_id AS BLOB)),0)+COALESCE(length(CAST(NEW.asset_id AS BLOB)),0)+COALESCE(length(CAST(NEW.source_revision AS BLOB)),0)+COALESCE(length(CAST(NEW.root_incarnation AS BLOB)),0)+COALESCE(length(CAST(NEW.kind AS BLOB)),0)+COALESCE(length(CAST(NEW.packaging AS BLOB)),0)+COALESCE(length(CAST(NEW.encryption AS BLOB)),0)+COALESCE(length(CAST(NEW.fingerprint AS BLOB)),0)+COALESCE(length(CAST(NEW.owner_title_key AS BLOB)),0)+COALESCE(length(CAST(NEW.media_title_key AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_disc_facts_immutable_insert BEFORE INSERT ON catalog_info_new_disc_facts
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=NEW.change_id),-1)<>0 OR NOT EXISTS(SELECT 1 FROM catalog_info_input_families WHERE change_id=NEW.change_id AND family=10 AND sealed=0)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_disc_facts_immutable_update BEFORE UPDATE ON catalog_info_new_disc_facts
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_disc_facts_immutable_delete BEFORE DELETE ON catalog_info_new_disc_facts
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id),-1) NOT IN(0,5)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_disc_titles_charge_insert AFTER INSERT ON catalog_info_new_disc_titles BEGIN
+ SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM catalog_info_input_budget WHERE singleton=1) THEN RAISE(ABORT,'info_source_budget_missing') END;
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes+(232+COALESCE(length(CAST(NEW.object_id AS BLOB)),0)+COALESCE(length(CAST(NEW.title_key AS BLOB)),0)+COALESCE(length(CAST(NEW.selection_token AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_disc_titles_charge_delete AFTER DELETE ON catalog_info_new_disc_titles BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(232+COALESCE(length(CAST(OLD.object_id AS BLOB)),0)+COALESCE(length(CAST(OLD.title_key AS BLOB)),0)+COALESCE(length(CAST(OLD.selection_token AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_disc_titles_charge_update AFTER UPDATE ON catalog_info_new_disc_titles
+ WHEN (232+COALESCE(length(CAST(OLD.object_id AS BLOB)),0)+COALESCE(length(CAST(OLD.title_key AS BLOB)),0)+COALESCE(length(CAST(OLD.selection_token AS BLOB)),0)) <> (232+COALESCE(length(CAST(NEW.object_id AS BLOB)),0)+COALESCE(length(CAST(NEW.title_key AS BLOB)),0)+COALESCE(length(CAST(NEW.selection_token AS BLOB)),0)) BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(232+COALESCE(length(CAST(OLD.object_id AS BLOB)),0)+COALESCE(length(CAST(OLD.title_key AS BLOB)),0)+COALESCE(length(CAST(OLD.selection_token AS BLOB)),0))+(232+COALESCE(length(CAST(NEW.object_id AS BLOB)),0)+COALESCE(length(CAST(NEW.title_key AS BLOB)),0)+COALESCE(length(CAST(NEW.selection_token AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_disc_titles_immutable_insert BEFORE INSERT ON catalog_info_new_disc_titles
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=NEW.change_id),-1)<>0 OR NOT EXISTS(SELECT 1 FROM catalog_info_input_families WHERE change_id=NEW.change_id AND family=11 AND sealed=0)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_disc_titles_immutable_update BEFORE UPDATE ON catalog_info_new_disc_titles
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_disc_titles_immutable_delete BEFORE DELETE ON catalog_info_new_disc_titles
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id),-1) NOT IN(0,5)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_disc_clips_charge_insert AFTER INSERT ON catalog_info_new_disc_clips BEGIN
+ SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM catalog_info_input_budget WHERE singleton=1) THEN RAISE(ABORT,'info_source_budget_missing') END;
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes+(192+COALESCE(length(CAST(NEW.object_id AS BLOB)),0)+COALESCE(length(CAST(NEW.title_key AS BLOB)),0)+COALESCE(length(CAST(NEW.file AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_disc_clips_charge_delete AFTER DELETE ON catalog_info_new_disc_clips BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(192+COALESCE(length(CAST(OLD.object_id AS BLOB)),0)+COALESCE(length(CAST(OLD.title_key AS BLOB)),0)+COALESCE(length(CAST(OLD.file AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_disc_clips_charge_update AFTER UPDATE ON catalog_info_new_disc_clips
+ WHEN (192+COALESCE(length(CAST(OLD.object_id AS BLOB)),0)+COALESCE(length(CAST(OLD.title_key AS BLOB)),0)+COALESCE(length(CAST(OLD.file AS BLOB)),0)) <> (192+COALESCE(length(CAST(NEW.object_id AS BLOB)),0)+COALESCE(length(CAST(NEW.title_key AS BLOB)),0)+COALESCE(length(CAST(NEW.file AS BLOB)),0)) BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(192+COALESCE(length(CAST(OLD.object_id AS BLOB)),0)+COALESCE(length(CAST(OLD.title_key AS BLOB)),0)+COALESCE(length(CAST(OLD.file AS BLOB)),0))+(192+COALESCE(length(CAST(NEW.object_id AS BLOB)),0)+COALESCE(length(CAST(NEW.title_key AS BLOB)),0)+COALESCE(length(CAST(NEW.file AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_disc_clips_immutable_insert BEFORE INSERT ON catalog_info_new_disc_clips
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=NEW.change_id),-1)<>0 OR NOT EXISTS(SELECT 1 FROM catalog_info_input_families WHERE change_id=NEW.change_id AND family=12 AND sealed=0)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_disc_clips_immutable_update BEFORE UPDATE ON catalog_info_new_disc_clips
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_disc_clips_immutable_delete BEFORE DELETE ON catalog_info_new_disc_clips
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id),-1) NOT IN(0,5)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_disc_streams_charge_insert AFTER INSERT ON catalog_info_new_disc_streams BEGIN
+ SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM catalog_info_input_budget WHERE singleton=1) THEN RAISE(ABORT,'info_source_budget_missing') END;
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes+(240+COALESCE(length(CAST(NEW.object_id AS BLOB)),0)+COALESCE(length(CAST(NEW.title_key AS BLOB)),0)+COALESCE(length(CAST(NEW.kind AS BLOB)),0)+COALESCE(length(CAST(NEW.language AS BLOB)),0)+COALESCE(length(CAST(NEW.video_role AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_disc_streams_charge_delete AFTER DELETE ON catalog_info_new_disc_streams BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(240+COALESCE(length(CAST(OLD.object_id AS BLOB)),0)+COALESCE(length(CAST(OLD.title_key AS BLOB)),0)+COALESCE(length(CAST(OLD.kind AS BLOB)),0)+COALESCE(length(CAST(OLD.language AS BLOB)),0)+COALESCE(length(CAST(OLD.video_role AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_disc_streams_charge_update AFTER UPDATE ON catalog_info_new_disc_streams
+ WHEN (240+COALESCE(length(CAST(OLD.object_id AS BLOB)),0)+COALESCE(length(CAST(OLD.title_key AS BLOB)),0)+COALESCE(length(CAST(OLD.kind AS BLOB)),0)+COALESCE(length(CAST(OLD.language AS BLOB)),0)+COALESCE(length(CAST(OLD.video_role AS BLOB)),0)) <> (240+COALESCE(length(CAST(NEW.object_id AS BLOB)),0)+COALESCE(length(CAST(NEW.title_key AS BLOB)),0)+COALESCE(length(CAST(NEW.kind AS BLOB)),0)+COALESCE(length(CAST(NEW.language AS BLOB)),0)+COALESCE(length(CAST(NEW.video_role AS BLOB)),0)) BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(240+COALESCE(length(CAST(OLD.object_id AS BLOB)),0)+COALESCE(length(CAST(OLD.title_key AS BLOB)),0)+COALESCE(length(CAST(OLD.kind AS BLOB)),0)+COALESCE(length(CAST(OLD.language AS BLOB)),0)+COALESCE(length(CAST(OLD.video_role AS BLOB)),0))+(240+COALESCE(length(CAST(NEW.object_id AS BLOB)),0)+COALESCE(length(CAST(NEW.title_key AS BLOB)),0)+COALESCE(length(CAST(NEW.kind AS BLOB)),0)+COALESCE(length(CAST(NEW.language AS BLOB)),0)+COALESCE(length(CAST(NEW.video_role AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_disc_streams_immutable_insert BEFORE INSERT ON catalog_info_new_disc_streams
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=NEW.change_id),-1)<>0 OR NOT EXISTS(SELECT 1 FROM catalog_info_input_families WHERE change_id=NEW.change_id AND family=13 AND sealed=0)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_disc_streams_immutable_update BEFORE UPDATE ON catalog_info_new_disc_streams
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_disc_streams_immutable_delete BEFORE DELETE ON catalog_info_new_disc_streams
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id),-1) NOT IN(0,5)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_disc_chapters_charge_insert AFTER INSERT ON catalog_info_new_disc_chapters BEGIN
+ SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM catalog_info_input_budget WHERE singleton=1) THEN RAISE(ABORT,'info_source_budget_missing') END;
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes+(176+COALESCE(length(CAST(NEW.object_id AS BLOB)),0)+COALESCE(length(CAST(NEW.title_key AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_disc_chapters_charge_delete AFTER DELETE ON catalog_info_new_disc_chapters BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(176+COALESCE(length(CAST(OLD.object_id AS BLOB)),0)+COALESCE(length(CAST(OLD.title_key AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_disc_chapters_charge_update AFTER UPDATE ON catalog_info_new_disc_chapters
+ WHEN (176+COALESCE(length(CAST(OLD.object_id AS BLOB)),0)+COALESCE(length(CAST(OLD.title_key AS BLOB)),0)) <> (176+COALESCE(length(CAST(NEW.object_id AS BLOB)),0)+COALESCE(length(CAST(NEW.title_key AS BLOB)),0)) BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(176+COALESCE(length(CAST(OLD.object_id AS BLOB)),0)+COALESCE(length(CAST(OLD.title_key AS BLOB)),0))+(176+COALESCE(length(CAST(NEW.object_id AS BLOB)),0)+COALESCE(length(CAST(NEW.title_key AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_disc_chapters_immutable_insert BEFORE INSERT ON catalog_info_new_disc_chapters
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=NEW.change_id),-1)<>0 OR NOT EXISTS(SELECT 1 FROM catalog_info_input_families WHERE change_id=NEW.change_id AND family=14 AND sealed=0)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_disc_chapters_immutable_update BEFORE UPDATE ON catalog_info_new_disc_chapters
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_disc_chapters_immutable_delete BEFORE DELETE ON catalog_info_new_disc_chapters
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id),-1) NOT IN(0,5)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_disc_media_members_charge_insert AFTER INSERT ON catalog_info_new_disc_media_members BEGIN
+ SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM catalog_info_input_budget WHERE singleton=1) THEN RAISE(ABORT,'info_source_budget_missing') END;
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes+(200+COALESCE(length(CAST(NEW.object_id AS BLOB)),0)+COALESCE(length(CAST(NEW.path AS BLOB)),0)+COALESCE(length(CAST(NEW.object_identity AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_disc_media_members_charge_delete AFTER DELETE ON catalog_info_new_disc_media_members BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(200+COALESCE(length(CAST(OLD.object_id AS BLOB)),0)+COALESCE(length(CAST(OLD.path AS BLOB)),0)+COALESCE(length(CAST(OLD.object_identity AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_disc_media_members_charge_update AFTER UPDATE ON catalog_info_new_disc_media_members
+ WHEN (200+COALESCE(length(CAST(OLD.object_id AS BLOB)),0)+COALESCE(length(CAST(OLD.path AS BLOB)),0)+COALESCE(length(CAST(OLD.object_identity AS BLOB)),0)) <> (200+COALESCE(length(CAST(NEW.object_id AS BLOB)),0)+COALESCE(length(CAST(NEW.path AS BLOB)),0)+COALESCE(length(CAST(NEW.object_identity AS BLOB)),0)) BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(200+COALESCE(length(CAST(OLD.object_id AS BLOB)),0)+COALESCE(length(CAST(OLD.path AS BLOB)),0)+COALESCE(length(CAST(OLD.object_identity AS BLOB)),0))+(200+COALESCE(length(CAST(NEW.object_id AS BLOB)),0)+COALESCE(length(CAST(NEW.path AS BLOB)),0)+COALESCE(length(CAST(NEW.object_identity AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_disc_media_members_immutable_insert BEFORE INSERT ON catalog_info_new_disc_media_members
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=NEW.change_id),-1)<>0 OR NOT EXISTS(SELECT 1 FROM catalog_info_input_families WHERE change_id=NEW.change_id AND family=15 AND sealed=0)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_disc_media_members_immutable_update BEFORE UPDATE ON catalog_info_new_disc_media_members
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_disc_media_members_immutable_delete BEFORE DELETE ON catalog_info_new_disc_media_members
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id),-1) NOT IN(0,5)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_disc_title_media_charge_insert AFTER INSERT ON catalog_info_new_disc_title_media BEGIN
+ SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM catalog_info_input_budget WHERE singleton=1) THEN RAISE(ABORT,'info_source_budget_missing') END;
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes+(248+COALESCE(length(CAST(NEW.object_id AS BLOB)),0)+COALESCE(length(CAST(NEW.title_key AS BLOB)),0)+COALESCE(length(CAST(NEW.source_revision AS BLOB)),0)+COALESCE(length(CAST(NEW.fingerprint AS BLOB)),0)+COALESCE(length(CAST(NEW.revision AS BLOB)),0)+COALESCE(length(CAST(NEW.container AS BLOB)),0)+COALESCE(length(CAST(NEW.video_codec AS BLOB)),0)+COALESCE(length(CAST(NEW.audio_codec AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_disc_title_media_charge_delete AFTER DELETE ON catalog_info_new_disc_title_media BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(248+COALESCE(length(CAST(OLD.object_id AS BLOB)),0)+COALESCE(length(CAST(OLD.title_key AS BLOB)),0)+COALESCE(length(CAST(OLD.source_revision AS BLOB)),0)+COALESCE(length(CAST(OLD.fingerprint AS BLOB)),0)+COALESCE(length(CAST(OLD.revision AS BLOB)),0)+COALESCE(length(CAST(OLD.container AS BLOB)),0)+COALESCE(length(CAST(OLD.video_codec AS BLOB)),0)+COALESCE(length(CAST(OLD.audio_codec AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_disc_title_media_charge_update AFTER UPDATE ON catalog_info_new_disc_title_media
+ WHEN (248+COALESCE(length(CAST(OLD.object_id AS BLOB)),0)+COALESCE(length(CAST(OLD.title_key AS BLOB)),0)+COALESCE(length(CAST(OLD.source_revision AS BLOB)),0)+COALESCE(length(CAST(OLD.fingerprint AS BLOB)),0)+COALESCE(length(CAST(OLD.revision AS BLOB)),0)+COALESCE(length(CAST(OLD.container AS BLOB)),0)+COALESCE(length(CAST(OLD.video_codec AS BLOB)),0)+COALESCE(length(CAST(OLD.audio_codec AS BLOB)),0)) <> (248+COALESCE(length(CAST(NEW.object_id AS BLOB)),0)+COALESCE(length(CAST(NEW.title_key AS BLOB)),0)+COALESCE(length(CAST(NEW.source_revision AS BLOB)),0)+COALESCE(length(CAST(NEW.fingerprint AS BLOB)),0)+COALESCE(length(CAST(NEW.revision AS BLOB)),0)+COALESCE(length(CAST(NEW.container AS BLOB)),0)+COALESCE(length(CAST(NEW.video_codec AS BLOB)),0)+COALESCE(length(CAST(NEW.audio_codec AS BLOB)),0)) BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(248+COALESCE(length(CAST(OLD.object_id AS BLOB)),0)+COALESCE(length(CAST(OLD.title_key AS BLOB)),0)+COALESCE(length(CAST(OLD.source_revision AS BLOB)),0)+COALESCE(length(CAST(OLD.fingerprint AS BLOB)),0)+COALESCE(length(CAST(OLD.revision AS BLOB)),0)+COALESCE(length(CAST(OLD.container AS BLOB)),0)+COALESCE(length(CAST(OLD.video_codec AS BLOB)),0)+COALESCE(length(CAST(OLD.audio_codec AS BLOB)),0))+(248+COALESCE(length(CAST(NEW.object_id AS BLOB)),0)+COALESCE(length(CAST(NEW.title_key AS BLOB)),0)+COALESCE(length(CAST(NEW.source_revision AS BLOB)),0)+COALESCE(length(CAST(NEW.fingerprint AS BLOB)),0)+COALESCE(length(CAST(NEW.revision AS BLOB)),0)+COALESCE(length(CAST(NEW.container AS BLOB)),0)+COALESCE(length(CAST(NEW.video_codec AS BLOB)),0)+COALESCE(length(CAST(NEW.audio_codec AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_disc_title_media_immutable_insert BEFORE INSERT ON catalog_info_new_disc_title_media
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=NEW.change_id),-1)<>0 OR NOT EXISTS(SELECT 1 FROM catalog_info_input_families WHERE change_id=NEW.change_id AND family=16 AND sealed=0)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_disc_title_media_immutable_update BEFORE UPDATE ON catalog_info_new_disc_title_media
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_disc_title_media_immutable_delete BEFORE DELETE ON catalog_info_new_disc_title_media
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id),-1) NOT IN(0,5)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_disc_title_media_streams_charge_insert AFTER INSERT ON catalog_info_new_disc_title_media_streams BEGIN
+ SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM catalog_info_input_budget WHERE singleton=1) THEN RAISE(ABORT,'info_source_budget_missing') END;
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes+(264+COALESCE(length(CAST(NEW.object_id AS BLOB)),0)+COALESCE(length(CAST(NEW.title_key AS BLOB)),0)+COALESCE(length(CAST(NEW.type AS BLOB)),0)+COALESCE(length(CAST(NEW.codec AS BLOB)),0)+COALESCE(length(CAST(NEW.language AS BLOB)),0)+COALESCE(length(CAST(NEW.title AS BLOB)),0)+COALESCE(length(CAST(NEW.channel_layout AS BLOB)),0)+COALESCE(length(CAST(NEW.color_transfer AS BLOB)),0)+COALESCE(length(CAST(NEW.color_primaries AS BLOB)),0)+COALESCE(length(CAST(NEW.detail_json AS BLOB)),0)+COALESCE(length(CAST(NEW.breadth_json AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_disc_title_media_streams_charge_delete AFTER DELETE ON catalog_info_new_disc_title_media_streams BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(264+COALESCE(length(CAST(OLD.object_id AS BLOB)),0)+COALESCE(length(CAST(OLD.title_key AS BLOB)),0)+COALESCE(length(CAST(OLD.type AS BLOB)),0)+COALESCE(length(CAST(OLD.codec AS BLOB)),0)+COALESCE(length(CAST(OLD.language AS BLOB)),0)+COALESCE(length(CAST(OLD.title AS BLOB)),0)+COALESCE(length(CAST(OLD.channel_layout AS BLOB)),0)+COALESCE(length(CAST(OLD.color_transfer AS BLOB)),0)+COALESCE(length(CAST(OLD.color_primaries AS BLOB)),0)+COALESCE(length(CAST(OLD.detail_json AS BLOB)),0)+COALESCE(length(CAST(OLD.breadth_json AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_disc_title_media_streams_charge_update AFTER UPDATE ON catalog_info_new_disc_title_media_streams
+ WHEN (264+COALESCE(length(CAST(OLD.object_id AS BLOB)),0)+COALESCE(length(CAST(OLD.title_key AS BLOB)),0)+COALESCE(length(CAST(OLD.type AS BLOB)),0)+COALESCE(length(CAST(OLD.codec AS BLOB)),0)+COALESCE(length(CAST(OLD.language AS BLOB)),0)+COALESCE(length(CAST(OLD.title AS BLOB)),0)+COALESCE(length(CAST(OLD.channel_layout AS BLOB)),0)+COALESCE(length(CAST(OLD.color_transfer AS BLOB)),0)+COALESCE(length(CAST(OLD.color_primaries AS BLOB)),0)+COALESCE(length(CAST(OLD.detail_json AS BLOB)),0)+COALESCE(length(CAST(OLD.breadth_json AS BLOB)),0)) <> (264+COALESCE(length(CAST(NEW.object_id AS BLOB)),0)+COALESCE(length(CAST(NEW.title_key AS BLOB)),0)+COALESCE(length(CAST(NEW.type AS BLOB)),0)+COALESCE(length(CAST(NEW.codec AS BLOB)),0)+COALESCE(length(CAST(NEW.language AS BLOB)),0)+COALESCE(length(CAST(NEW.title AS BLOB)),0)+COALESCE(length(CAST(NEW.channel_layout AS BLOB)),0)+COALESCE(length(CAST(NEW.color_transfer AS BLOB)),0)+COALESCE(length(CAST(NEW.color_primaries AS BLOB)),0)+COALESCE(length(CAST(NEW.detail_json AS BLOB)),0)+COALESCE(length(CAST(NEW.breadth_json AS BLOB)),0)) BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(264+COALESCE(length(CAST(OLD.object_id AS BLOB)),0)+COALESCE(length(CAST(OLD.title_key AS BLOB)),0)+COALESCE(length(CAST(OLD.type AS BLOB)),0)+COALESCE(length(CAST(OLD.codec AS BLOB)),0)+COALESCE(length(CAST(OLD.language AS BLOB)),0)+COALESCE(length(CAST(OLD.title AS BLOB)),0)+COALESCE(length(CAST(OLD.channel_layout AS BLOB)),0)+COALESCE(length(CAST(OLD.color_transfer AS BLOB)),0)+COALESCE(length(CAST(OLD.color_primaries AS BLOB)),0)+COALESCE(length(CAST(OLD.detail_json AS BLOB)),0)+COALESCE(length(CAST(OLD.breadth_json AS BLOB)),0))+(264+COALESCE(length(CAST(NEW.object_id AS BLOB)),0)+COALESCE(length(CAST(NEW.title_key AS BLOB)),0)+COALESCE(length(CAST(NEW.type AS BLOB)),0)+COALESCE(length(CAST(NEW.codec AS BLOB)),0)+COALESCE(length(CAST(NEW.language AS BLOB)),0)+COALESCE(length(CAST(NEW.title AS BLOB)),0)+COALESCE(length(CAST(NEW.channel_layout AS BLOB)),0)+COALESCE(length(CAST(NEW.color_transfer AS BLOB)),0)+COALESCE(length(CAST(NEW.color_primaries AS BLOB)),0)+COALESCE(length(CAST(NEW.detail_json AS BLOB)),0)+COALESCE(length(CAST(NEW.breadth_json AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_disc_title_media_streams_immutable_insert BEFORE INSERT ON catalog_info_new_disc_title_media_streams
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=NEW.change_id),-1)<>0 OR NOT EXISTS(SELECT 1 FROM catalog_info_input_families WHERE change_id=NEW.change_id AND family=17 AND sealed=0)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_disc_title_media_streams_immutable_update BEFORE UPDATE ON catalog_info_new_disc_title_media_streams
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_disc_title_media_streams_immutable_delete BEFORE DELETE ON catalog_info_new_disc_title_media_streams
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id),-1) NOT IN(0,5)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_disc_title_media_members_charge_insert AFTER INSERT ON catalog_info_new_disc_title_media_members BEGIN
+ SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM catalog_info_input_budget WHERE singleton=1) THEN RAISE(ABORT,'info_source_budget_missing') END;
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes+(208+COALESCE(length(CAST(NEW.object_id AS BLOB)),0)+COALESCE(length(CAST(NEW.title_key AS BLOB)),0)+COALESCE(length(CAST(NEW.path AS BLOB)),0)+COALESCE(length(CAST(NEW.object_identity AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_disc_title_media_members_charge_delete AFTER DELETE ON catalog_info_new_disc_title_media_members BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(208+COALESCE(length(CAST(OLD.object_id AS BLOB)),0)+COALESCE(length(CAST(OLD.title_key AS BLOB)),0)+COALESCE(length(CAST(OLD.path AS BLOB)),0)+COALESCE(length(CAST(OLD.object_identity AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_disc_title_media_members_charge_update AFTER UPDATE ON catalog_info_new_disc_title_media_members
+ WHEN (208+COALESCE(length(CAST(OLD.object_id AS BLOB)),0)+COALESCE(length(CAST(OLD.title_key AS BLOB)),0)+COALESCE(length(CAST(OLD.path AS BLOB)),0)+COALESCE(length(CAST(OLD.object_identity AS BLOB)),0)) <> (208+COALESCE(length(CAST(NEW.object_id AS BLOB)),0)+COALESCE(length(CAST(NEW.title_key AS BLOB)),0)+COALESCE(length(CAST(NEW.path AS BLOB)),0)+COALESCE(length(CAST(NEW.object_identity AS BLOB)),0)) BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-(208+COALESCE(length(CAST(OLD.object_id AS BLOB)),0)+COALESCE(length(CAST(OLD.title_key AS BLOB)),0)+COALESCE(length(CAST(OLD.path AS BLOB)),0)+COALESCE(length(CAST(OLD.object_identity AS BLOB)),0))+(208+COALESCE(length(CAST(NEW.object_id AS BLOB)),0)+COALESCE(length(CAST(NEW.title_key AS BLOB)),0)+COALESCE(length(CAST(NEW.path AS BLOB)),0)+COALESCE(length(CAST(NEW.object_identity AS BLOB)),0)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_new_disc_title_media_members_immutable_insert BEFORE INSERT ON catalog_info_new_disc_title_media_members
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=NEW.change_id),-1)<>0 OR NOT EXISTS(SELECT 1 FROM catalog_info_input_families WHERE change_id=NEW.change_id AND family=18 AND sealed=0)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_disc_title_media_members_immutable_update BEFORE UPDATE ON catalog_info_new_disc_title_media_members
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+CREATE TRIGGER catalog_info_new_disc_title_media_members_immutable_delete BEFORE DELETE ON catalog_info_new_disc_title_media_members
+ WHEN COALESCE((SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id),-1) NOT IN(0,5)
+ BEGIN SELECT RAISE(ABORT,'info_source_input_sealed');END;
+
+
+-- Informational point hooks. No source-health fanout and no per-query state.
+-- OLD is captured in the SAME accepting transaction as raw physical NEW.
+CREATE TRIGGER catalog_info_asset_accept BEFORE UPDATE ON catalog_assets
+WHEN (OLD.available IS NOT NEW.available OR OLD.size IS NOT NEW.size OR OLD.modified_ns IS NOT NEW.modified_ns OR OLD.container IS NOT NEW.container OR OLD.video_codec IS NOT NEW.video_codec OR OLD.audio_codec IS NOT NEW.audio_codec OR OLD.width IS NOT NEW.width OR OLD.height IS NOT NEW.height OR OLD.duration IS NOT NEW.duration OR OLD.path IS NOT NEW.path) AND
+ (EXISTS(SELECT 1 FROM catalog_asset_links INDEXED BY catalog_asset_links_asset WHERE asset_id=OLD.id)
+  OR EXISTS(SELECT 1 FROM catalog_info_changes WHERE asset_id=OLD.id AND asset_token=OLD.token AND slot=0))
+ AND NOT ((OLD.size IS NEW.size AND OLD.modified_ns IS NEW.modified_ns AND OLD.container IS NEW.container AND OLD.video_codec IS NEW.video_codec AND OLD.audio_codec IS NEW.audio_codec AND OLD.width IS NEW.width AND OLD.height IS NEW.height AND OLD.duration IS NEW.duration AND OLD.path IS NEW.path) AND
+   (SELECT cap_bytes-used_bytes FROM catalog_info_input_budget WHERE singleton=1)<1024)
+ AND NOT EXISTS(SELECT 1 FROM catalog_info_changes WHERE asset_id=OLD.id AND asset_token=OLD.token AND slot=1 AND phase>0)
+BEGIN
+ INSERT INTO catalog_info_changes(asset_id,asset_token,slot,expected_epoch,fingerprint,created_ms)
+ VALUES(OLD.id,OLD.token,CASE WHEN EXISTS(SELECT 1 FROM catalog_info_changes WHERE asset_id=OLD.id AND asset_token=OLD.token AND slot=0 AND phase>0) THEN 1 ELSE 0 END,
+ OLD.info_epoch+CASE WHEN EXISTS(SELECT 1 FROM catalog_info_changes WHERE asset_id=OLD.id AND asset_token=OLD.token AND slot=0 AND phase BETWEEN 1 AND 3) THEN 1 ELSE 0 END,
+ zeroblob(32),CAST(strftime('%s','now') AS INTEGER)*1000)
+ ON CONFLICT(asset_id,asset_token,slot) DO UPDATE SET input_revision=input_revision+1 WHERE phase=0;
+ INSERT INTO catalog_info_scalar_old(change_id,field,kind,old_integer,old_real,old_text)
+ SELECT id,1,1,OLD.available,NULL,NULL FROM catalog_info_changes
+ WHERE id=(SELECT id FROM catalog_info_changes WHERE asset_id=OLD.id AND asset_token=OLD.token AND slot=(CASE WHEN EXISTS(SELECT 1 FROM catalog_info_changes WHERE asset_id=OLD.id AND asset_token=OLD.token AND slot=0 AND phase>0) THEN 1 ELSE 0 END)) AND OLD.available IS NOT NEW.available
+ ON CONFLICT(change_id,field) DO NOTHING;
+ INSERT INTO catalog_info_scalar_old(change_id,field,kind,old_integer,old_real,old_text)
+ SELECT id,2,1,OLD.size,NULL,NULL FROM catalog_info_changes
+ WHERE id=(SELECT id FROM catalog_info_changes WHERE asset_id=OLD.id AND asset_token=OLD.token AND slot=(CASE WHEN EXISTS(SELECT 1 FROM catalog_info_changes WHERE asset_id=OLD.id AND asset_token=OLD.token AND slot=0 AND phase>0) THEN 1 ELSE 0 END)) AND OLD.size IS NOT NEW.size
+ ON CONFLICT(change_id,field) DO NOTHING;
+ INSERT INTO catalog_info_scalar_old(change_id,field,kind,old_integer,old_real,old_text)
+ SELECT id,3,1,OLD.modified_ns,NULL,NULL FROM catalog_info_changes
+ WHERE id=(SELECT id FROM catalog_info_changes WHERE asset_id=OLD.id AND asset_token=OLD.token AND slot=(CASE WHEN EXISTS(SELECT 1 FROM catalog_info_changes WHERE asset_id=OLD.id AND asset_token=OLD.token AND slot=0 AND phase>0) THEN 1 ELSE 0 END)) AND OLD.modified_ns IS NOT NEW.modified_ns
+ ON CONFLICT(change_id,field) DO NOTHING;
+ INSERT INTO catalog_info_scalar_old(change_id,field,kind,old_integer,old_real,old_text)
+ SELECT id,4,3,NULL,NULL,OLD.container FROM catalog_info_changes
+ WHERE id=(SELECT id FROM catalog_info_changes WHERE asset_id=OLD.id AND asset_token=OLD.token AND slot=(CASE WHEN EXISTS(SELECT 1 FROM catalog_info_changes WHERE asset_id=OLD.id AND asset_token=OLD.token AND slot=0 AND phase>0) THEN 1 ELSE 0 END)) AND OLD.container IS NOT NEW.container
+ ON CONFLICT(change_id,field) DO NOTHING;
+ INSERT INTO catalog_info_scalar_old(change_id,field,kind,old_integer,old_real,old_text)
+ SELECT id,5,3,NULL,NULL,OLD.video_codec FROM catalog_info_changes
+ WHERE id=(SELECT id FROM catalog_info_changes WHERE asset_id=OLD.id AND asset_token=OLD.token AND slot=(CASE WHEN EXISTS(SELECT 1 FROM catalog_info_changes WHERE asset_id=OLD.id AND asset_token=OLD.token AND slot=0 AND phase>0) THEN 1 ELSE 0 END)) AND OLD.video_codec IS NOT NEW.video_codec
+ ON CONFLICT(change_id,field) DO NOTHING;
+ INSERT INTO catalog_info_scalar_old(change_id,field,kind,old_integer,old_real,old_text)
+ SELECT id,6,3,NULL,NULL,OLD.audio_codec FROM catalog_info_changes
+ WHERE id=(SELECT id FROM catalog_info_changes WHERE asset_id=OLD.id AND asset_token=OLD.token AND slot=(CASE WHEN EXISTS(SELECT 1 FROM catalog_info_changes WHERE asset_id=OLD.id AND asset_token=OLD.token AND slot=0 AND phase>0) THEN 1 ELSE 0 END)) AND OLD.audio_codec IS NOT NEW.audio_codec
+ ON CONFLICT(change_id,field) DO NOTHING;
+ INSERT INTO catalog_info_scalar_old(change_id,field,kind,old_integer,old_real,old_text)
+ SELECT id,7,1,OLD.width,NULL,NULL FROM catalog_info_changes
+ WHERE id=(SELECT id FROM catalog_info_changes WHERE asset_id=OLD.id AND asset_token=OLD.token AND slot=(CASE WHEN EXISTS(SELECT 1 FROM catalog_info_changes WHERE asset_id=OLD.id AND asset_token=OLD.token AND slot=0 AND phase>0) THEN 1 ELSE 0 END)) AND OLD.width IS NOT NEW.width
+ ON CONFLICT(change_id,field) DO NOTHING;
+ INSERT INTO catalog_info_scalar_old(change_id,field,kind,old_integer,old_real,old_text)
+ SELECT id,8,1,OLD.height,NULL,NULL FROM catalog_info_changes
+ WHERE id=(SELECT id FROM catalog_info_changes WHERE asset_id=OLD.id AND asset_token=OLD.token AND slot=(CASE WHEN EXISTS(SELECT 1 FROM catalog_info_changes WHERE asset_id=OLD.id AND asset_token=OLD.token AND slot=0 AND phase>0) THEN 1 ELSE 0 END)) AND OLD.height IS NOT NEW.height
+ ON CONFLICT(change_id,field) DO NOTHING;
+ INSERT INTO catalog_info_scalar_old(change_id,field,kind,old_integer,old_real,old_text)
+ SELECT id,9,2,NULL,OLD.duration,NULL FROM catalog_info_changes
+ WHERE id=(SELECT id FROM catalog_info_changes WHERE asset_id=OLD.id AND asset_token=OLD.token AND slot=(CASE WHEN EXISTS(SELECT 1 FROM catalog_info_changes WHERE asset_id=OLD.id AND asset_token=OLD.token AND slot=0 AND phase>0) THEN 1 ELSE 0 END)) AND OLD.duration IS NOT NEW.duration
+ ON CONFLICT(change_id,field) DO NOTHING;
+ INSERT INTO catalog_info_path_old(change_id,old_path)
+ SELECT id,OLD.path FROM catalog_info_changes WHERE id=(SELECT id FROM catalog_info_changes WHERE asset_id=OLD.id AND asset_token=OLD.token AND slot=(CASE WHEN EXISTS(SELECT 1 FROM catalog_info_changes WHERE asset_id=OLD.id AND asset_token=OLD.token AND slot=0 AND phase>0) THEN 1 ELSE 0 END)) AND OLD.path IS NOT NEW.path
+ ON CONFLICT(change_id) DO NOTHING;
+END;
+CREATE TRIGGER catalog_info_asset_busy BEFORE UPDATE ON catalog_assets
+WHEN NOT (OLD.size IS NEW.size AND OLD.modified_ns IS NEW.modified_ns AND OLD.container IS NEW.container AND OLD.video_codec IS NEW.video_codec AND OLD.audio_codec IS NEW.audio_codec AND OLD.width IS NEW.width AND OLD.height IS NEW.height AND OLD.duration IS NEW.duration AND OLD.path IS NEW.path) AND
+ EXISTS(SELECT 1 FROM catalog_info_changes WHERE asset_id=OLD.id AND asset_token=OLD.token AND slot=1 AND phase>0)
+BEGIN SELECT RAISE(ABORT,'info_source_busy');END;
+CREATE TRIGGER catalog_info_unlinked_asset_apply AFTER UPDATE ON catalog_assets
+WHEN (OLD.available IS NOT NEW.available OR OLD.size IS NOT NEW.size OR OLD.modified_ns IS NOT NEW.modified_ns OR OLD.container IS NOT NEW.container OR OLD.video_codec IS NOT NEW.video_codec OR OLD.audio_codec IS NOT NEW.audio_codec OR OLD.width IS NOT NEW.width OR OLD.height IS NOT NEW.height OR OLD.duration IS NOT NEW.duration OR OLD.path IS NOT NEW.path)
+ AND NOT EXISTS(SELECT 1 FROM catalog_asset_links INDEXED BY catalog_asset_links_asset WHERE asset_id=NEW.id)
+ AND NOT EXISTS(SELECT 1 FROM catalog_info_changes WHERE asset_id=NEW.id AND asset_token=NEW.token AND slot=0)
+BEGIN
+ UPDATE catalog_assets SET info_epoch=info_epoch+1,info_order_available=NEW.available WHERE id=NEW.id;
+END;
+CREATE TRIGGER catalog_info_asset_initial_order AFTER INSERT ON catalog_assets WHEN NEW.info_order_available<>NEW.available BEGIN
+ UPDATE catalog_assets SET info_order_available=NEW.available WHERE id=NEW.id;
+END;
+
+CREATE TRIGGER catalog_info_own_pending AFTER UPDATE OF info_source_blockers,info_availability_pending ON catalog_entities
+WHEN (OLD.info_source_blockers>0 OR OLD.info_availability_pending<>0)<>(NEW.info_source_blockers>0 OR NEW.info_availability_pending<>0)
+ AND NEW.parent_id IS NOT NULL BEGIN
+ UPDATE catalog_entities SET
+ info_blocked_children=info_blocked_children+(NEW.info_source_blockers>0 OR NEW.info_availability_pending<>0)-(OLD.info_source_blockers>0 OR OLD.info_availability_pending<>0),
+ info_desired_epoch=info_desired_epoch+1,
+ info_applied_epoch=CASE WHEN info_source_blockers=0 AND info_availability_pending=0
+ AND info_blocked_children+(NEW.info_source_blockers>0 OR NEW.info_availability_pending<>0)-(OLD.info_source_blockers>0 OR OLD.info_availability_pending<>0)=0
+ THEN info_desired_epoch+1 ELSE info_applied_epoch END WHERE id=NEW.parent_id;
+END;
+CREATE TRIGGER catalog_info_entity_move BEFORE UPDATE OF parent_id ON catalog_entities WHEN OLD.parent_id IS NOT NEW.parent_id BEGIN
+ UPDATE catalog_entities SET
+ info_blocked_children=info_blocked_children-(OLD.info_source_blockers>0 OR OLD.info_availability_pending<>0),
+ info_desired_epoch=info_desired_epoch+1,
+ info_applied_epoch=CASE WHEN info_source_blockers=0 AND info_availability_pending=0
+ AND info_blocked_children-(OLD.info_source_blockers>0 OR OLD.info_availability_pending<>0)=0
+ THEN info_desired_epoch+1 ELSE info_applied_epoch END WHERE id=OLD.parent_id;
+ UPDATE catalog_entities SET
+ info_blocked_children=info_blocked_children+(OLD.info_source_blockers>0 OR OLD.info_availability_pending<>0),
+ info_desired_epoch=info_desired_epoch+1,
+ info_applied_epoch=CASE WHEN info_source_blockers=0 AND info_availability_pending=0
+ AND info_blocked_children+(OLD.info_source_blockers>0 OR OLD.info_availability_pending<>0)=0
+ THEN info_desired_epoch+1 ELSE info_applied_epoch END WHERE id=NEW.parent_id;
+END;
+CREATE TRIGGER catalog_info_entity_retire BEFORE DELETE ON catalog_entities
+WHEN OLD.parent_id IS NOT NULL BEGIN
+ UPDATE catalog_entities SET info_blocked_children=info_blocked_children-(OLD.info_source_blockers>0 OR OLD.info_availability_pending<>0),
+ info_desired_epoch=info_desired_epoch+1,
+ info_applied_epoch=CASE WHEN info_source_blockers=0 AND info_availability_pending=0 AND info_blocked_children-(OLD.info_source_blockers>0 OR OLD.info_availability_pending<>0)=0 THEN info_desired_epoch+1 ELSE info_applied_epoch END
+ WHERE id=OLD.parent_id;
+END;
+CREATE TRIGGER catalog_info_entity_created AFTER INSERT ON catalog_entities WHEN NEW.parent_id IS NOT NULL BEGIN
+ UPDATE catalog_entities SET info_blocked_children=info_blocked_children+(NEW.info_source_blockers>0 OR NEW.info_availability_pending<>0),
+ info_desired_epoch=info_desired_epoch+1,
+ info_applied_epoch=CASE WHEN info_source_blockers=0 AND info_availability_pending=0 AND info_blocked_children+(NEW.info_source_blockers>0 OR NEW.info_availability_pending<>0)=0 THEN info_desired_epoch+1 ELSE info_applied_epoch END
+ WHERE id=NEW.parent_id;
+END;
+CREATE TRIGGER catalog_info_link_enroll AFTER UPDATE OF info_pending_change ON catalog_asset_links
+WHEN OLD.info_pending_change IS NOT NEW.info_pending_change AND OLD.entity_id=NEW.entity_id AND OLD.asset_id=NEW.asset_id BEGIN
+ SELECT CASE WHEN OLD.info_pending_change IS NOT NULL AND NEW.info_pending_change IS NOT NULL THEN RAISE(ABORT,'info_obligation_replaced') END;
+ UPDATE catalog_entities SET info_source_blockers=info_source_blockers+CASE WHEN NEW.info_pending_change IS NULL THEN -1 ELSE 1 END,
+ info_desired_epoch=info_desired_epoch+1,
+ info_applied_epoch=CASE WHEN NEW.info_pending_change IS NULL AND info_source_blockers=1 AND info_availability_pending=0 AND info_blocked_children=0
+ THEN info_desired_epoch+1 ELSE info_applied_epoch END WHERE id=NEW.entity_id;
+END;
+CREATE TRIGGER catalog_info_link_discharge BEFORE DELETE ON catalog_asset_links WHEN OLD.info_pending_change IS NOT NULL BEGIN
+ UPDATE catalog_entities SET info_source_blockers=info_source_blockers-1,
+ info_desired_epoch=info_desired_epoch+1,
+ info_applied_epoch=CASE WHEN info_source_blockers=1 AND info_availability_pending=0 AND info_blocked_children=0 THEN info_desired_epoch+1 ELSE info_applied_epoch END WHERE id=OLD.entity_id;
+END;
+CREATE TRIGGER catalog_info_link_move_discharge BEFORE UPDATE OF entity_id,asset_id ON catalog_asset_links
+WHEN OLD.entity_id IS NOT NEW.entity_id OR OLD.asset_id IS NOT NEW.asset_id BEGIN
+ SELECT CASE WHEN NEW.info_pending_change IS NOT OLD.info_pending_change THEN RAISE(ABORT,'info_move_changes_private_obligation') END;
+ UPDATE catalog_entities SET info_source_blockers=info_source_blockers-1,
+ info_desired_epoch=info_desired_epoch+1,
+ info_applied_epoch=CASE WHEN info_source_blockers=1 AND info_availability_pending=0 AND info_blocked_children=0 THEN info_desired_epoch+1 ELSE info_applied_epoch END
+ WHERE id=OLD.entity_id AND OLD.entity_id<>NEW.entity_id AND OLD.info_pending_change IS NOT NULL;
+ UPDATE catalog_entities SET info_source_blockers=info_source_blockers+1,info_desired_epoch=info_desired_epoch+1
+ WHERE id=NEW.entity_id AND OLD.entity_id<>NEW.entity_id AND OLD.info_pending_change IS NOT NULL;
+END;
+CREATE TRIGGER catalog_info_link_initial AFTER INSERT ON catalog_asset_links  BEGIN
+ INSERT INTO catalog_info_shapes(container,video_codec,height) SELECT COALESCE((SELECT o.old_text FROM catalog_info_changes c JOIN catalog_info_scalar_old o ON o.change_id=c.id AND o.field=4
+ WHERE c.asset_id=NEW.asset_id AND c.asset_token=a.token AND c.phase<3 ORDER BY c.slot LIMIT 1),a.container),COALESCE((SELECT o.old_text FROM catalog_info_changes c JOIN catalog_info_scalar_old o ON o.change_id=c.id AND o.field=5
+ WHERE c.asset_id=NEW.asset_id AND c.asset_token=a.token AND c.phase<3 ORDER BY c.slot LIMIT 1),a.video_codec),COALESCE((SELECT o.old_integer FROM catalog_info_changes c JOIN catalog_info_scalar_old o ON o.change_id=c.id AND o.field=8
+ WHERE c.asset_id=NEW.asset_id AND c.asset_token=a.token AND c.phase<3 ORDER BY c.slot LIMIT 1),a.height) FROM catalog_assets a WHERE a.id=NEW.asset_id
+ ON CONFLICT(container,video_codec,height) DO NOTHING;
+ UPDATE catalog_asset_links SET info_shape_id=(SELECT s.id FROM catalog_info_shapes s CROSS JOIN catalog_assets a
+ WHERE a.id=NEW.asset_id AND (s.container,s.video_codec,s.height)=(COALESCE((SELECT o.old_text FROM catalog_info_changes c JOIN catalog_info_scalar_old o ON o.change_id=c.id AND o.field=4
+ WHERE c.asset_id=NEW.asset_id AND c.asset_token=a.token AND c.phase<3 ORDER BY c.slot LIMIT 1),a.container),COALESCE((SELECT o.old_text FROM catalog_info_changes c JOIN catalog_info_scalar_old o ON o.change_id=c.id AND o.field=5
+ WHERE c.asset_id=NEW.asset_id AND c.asset_token=a.token AND c.phase<3 ORDER BY c.slot LIMIT 1),a.video_codec),COALESCE((SELECT o.old_integer FROM catalog_info_changes c JOIN catalog_info_scalar_old o ON o.change_id=c.id AND o.field=8
+ WHERE c.asset_id=NEW.asset_id AND c.asset_token=a.token AND c.phase<3 ORDER BY c.slot LIMIT 1),a.height)))
+ WHERE entity_id=NEW.entity_id AND asset_id=NEW.asset_id;
+ UPDATE catalog_asset_links SET info_duration=(SELECT COALESCE((SELECT o.old_real FROM catalog_info_changes c JOIN catalog_info_scalar_old o ON o.change_id=c.id AND o.field=9
+ WHERE c.asset_id=NEW.asset_id AND c.asset_token=a.token AND c.phase<3 ORDER BY c.slot LIMIT 1),a.duration) FROM catalog_assets a WHERE a.id=NEW.asset_id)
+ WHERE entity_id=NEW.entity_id AND asset_id=NEW.asset_id;
+ UPDATE catalog_asset_links SET info_pending_change=(SELECT id FROM catalog_info_changes c WHERE c.asset_id=NEW.asset_id AND c.asset_token=(SELECT token FROM catalog_assets WHERE id=NEW.asset_id) AND c.slot=0 AND c.phase BETWEEN 1 AND 4) WHERE entity_id=NEW.entity_id AND asset_id=NEW.asset_id AND info_pending_change IS NULL AND (SELECT id FROM catalog_info_changes c WHERE c.asset_id=NEW.asset_id AND c.asset_token=(SELECT token FROM catalog_assets WHERE id=NEW.asset_id) AND c.slot=0 AND c.phase BETWEEN 1 AND 4) IS NOT NULL;
+ UPDATE catalog_entities SET info_desired_epoch=info_desired_epoch+1,info_availability_pending=1 WHERE id=NEW.entity_id;
+END;
+CREATE TRIGGER catalog_info_link_move AFTER UPDATE OF entity_id,asset_id ON catalog_asset_links WHEN OLD.entity_id IS NOT NEW.entity_id OR OLD.asset_id IS NOT NEW.asset_id BEGIN
+ INSERT INTO catalog_info_shapes(container,video_codec,height) SELECT COALESCE((SELECT o.old_text FROM catalog_info_changes c JOIN catalog_info_scalar_old o ON o.change_id=c.id AND o.field=4
+ WHERE c.asset_id=NEW.asset_id AND c.asset_token=a.token AND c.phase<3 ORDER BY c.slot LIMIT 1),a.container),COALESCE((SELECT o.old_text FROM catalog_info_changes c JOIN catalog_info_scalar_old o ON o.change_id=c.id AND o.field=5
+ WHERE c.asset_id=NEW.asset_id AND c.asset_token=a.token AND c.phase<3 ORDER BY c.slot LIMIT 1),a.video_codec),COALESCE((SELECT o.old_integer FROM catalog_info_changes c JOIN catalog_info_scalar_old o ON o.change_id=c.id AND o.field=8
+ WHERE c.asset_id=NEW.asset_id AND c.asset_token=a.token AND c.phase<3 ORDER BY c.slot LIMIT 1),a.height) FROM catalog_assets a WHERE a.id=NEW.asset_id
+ ON CONFLICT(container,video_codec,height) DO NOTHING;
+ UPDATE catalog_asset_links SET info_shape_id=(SELECT s.id FROM catalog_info_shapes s CROSS JOIN catalog_assets a
+ WHERE a.id=NEW.asset_id AND (s.container,s.video_codec,s.height)=(COALESCE((SELECT o.old_text FROM catalog_info_changes c JOIN catalog_info_scalar_old o ON o.change_id=c.id AND o.field=4
+ WHERE c.asset_id=NEW.asset_id AND c.asset_token=a.token AND c.phase<3 ORDER BY c.slot LIMIT 1),a.container),COALESCE((SELECT o.old_text FROM catalog_info_changes c JOIN catalog_info_scalar_old o ON o.change_id=c.id AND o.field=5
+ WHERE c.asset_id=NEW.asset_id AND c.asset_token=a.token AND c.phase<3 ORDER BY c.slot LIMIT 1),a.video_codec),COALESCE((SELECT o.old_integer FROM catalog_info_changes c JOIN catalog_info_scalar_old o ON o.change_id=c.id AND o.field=8
+ WHERE c.asset_id=NEW.asset_id AND c.asset_token=a.token AND c.phase<3 ORDER BY c.slot LIMIT 1),a.height)))
+ WHERE entity_id=NEW.entity_id AND asset_id=NEW.asset_id;
+ UPDATE catalog_asset_links SET info_duration=(SELECT COALESCE((SELECT o.old_real FROM catalog_info_changes c JOIN catalog_info_scalar_old o ON o.change_id=c.id AND o.field=9
+ WHERE c.asset_id=NEW.asset_id AND c.asset_token=a.token AND c.phase<3 ORDER BY c.slot LIMIT 1),a.duration) FROM catalog_assets a WHERE a.id=NEW.asset_id)
+ WHERE entity_id=NEW.entity_id AND asset_id=NEW.asset_id;
+ UPDATE catalog_asset_links SET info_pending_change=NULL WHERE entity_id=NEW.entity_id AND asset_id=NEW.asset_id AND info_pending_change IS NOT NULL;
+ UPDATE catalog_asset_links SET info_pending_change=(SELECT id FROM catalog_info_changes c WHERE c.asset_id=NEW.asset_id AND c.asset_token=(SELECT token FROM catalog_assets WHERE id=NEW.asset_id) AND c.slot=0 AND c.phase BETWEEN 1 AND 4) WHERE entity_id=NEW.entity_id AND asset_id=NEW.asset_id;
+ UPDATE catalog_entities SET info_desired_epoch=info_desired_epoch+1,info_availability_pending=1 WHERE id=NEW.entity_id;
+END;
+
+CREATE TRIGGER catalog_info_link_local AFTER UPDATE OF part_index,start_seconds,end_seconds,edition,available ON catalog_asset_links
+WHEN OLD.part_index IS NOT NEW.part_index OR OLD.start_seconds IS NOT NEW.start_seconds OR OLD.end_seconds IS NOT NEW.end_seconds OR OLD.edition IS NOT NEW.edition OR OLD.available IS NOT NEW.available BEGIN
+ UPDATE catalog_entities SET info_desired_epoch=info_desired_epoch+1,
+ info_applied_epoch=CASE WHEN info_source_blockers=0 AND info_availability_pending=0 AND info_blocked_children=0 THEN info_desired_epoch+1 ELSE info_applied_epoch END WHERE id=NEW.entity_id;
+ UPDATE catalog_entities SET info_desired_epoch=info_desired_epoch+1,
+ info_applied_epoch=CASE WHEN info_source_blockers=0 AND info_availability_pending=0 AND info_blocked_children=0 THEN info_desired_epoch+1 ELSE info_applied_epoch END
+ WHERE id=(SELECT parent_id FROM catalog_entities WHERE id=NEW.entity_id);
+END;
+CREATE TRIGGER catalog_info_link_availability BEFORE UPDATE OF available ON catalog_asset_links WHEN OLD.available IS NOT NEW.available BEGIN
+ UPDATE catalog_entities SET info_availability_pending=1,info_desired_epoch=info_desired_epoch+1 WHERE id=NEW.entity_id AND info_availability_pending=0;
+END;
+CREATE TRIGGER catalog_info_link_removed AFTER DELETE ON catalog_asset_links BEGIN
+ UPDATE catalog_entities SET info_desired_epoch=info_desired_epoch+1,info_availability_pending=1 WHERE id=OLD.entity_id;
+ UPDATE catalog_entities SET info_desired_epoch=info_desired_epoch+1,
+ info_applied_epoch=CASE WHEN info_source_blockers=0 AND info_availability_pending=0 AND info_blocked_children=0 THEN info_desired_epoch+1 ELSE info_applied_epoch END
+ WHERE id=(SELECT parent_id FROM catalog_entities WHERE id=OLD.entity_id);
+END;
+CREATE TRIGGER catalog_info_entity_local AFTER UPDATE OF parent_id,library_id,kind,title,retired ON catalog_entities
+WHEN OLD.parent_id IS NOT NEW.parent_id OR OLD.library_id IS NOT NEW.library_id OR OLD.kind IS NOT NEW.kind OR OLD.title IS NOT NEW.title OR OLD.retired IS NOT NEW.retired BEGIN
+ UPDATE catalog_entities SET info_desired_epoch=info_desired_epoch+1,
+ info_applied_epoch=CASE WHEN info_source_blockers=0 AND info_availability_pending=0 AND info_blocked_children=0 THEN info_desired_epoch+1 ELSE info_applied_epoch END WHERE id=NEW.id;
+ UPDATE catalog_entities SET info_desired_epoch=info_desired_epoch+1,
+ info_applied_epoch=CASE WHEN info_source_blockers=0 AND info_availability_pending=0 AND info_blocked_children=0 THEN info_desired_epoch+1 ELSE info_applied_epoch END WHERE id=NEW.parent_id;
+END;
+
+-- Accepted technical shape contributions, never query/group result rows.
+CREATE TABLE catalog_info_shapes(
+ id INTEGER PRIMARY KEY,
+ container TEXT NOT NULL,
+ video_codec TEXT NOT NULL,
+ height INTEGER NOT NULL,
+ ref_count INTEGER NOT NULL DEFAULT 0 CHECK(ref_count>=0),
+ UNIQUE(container,video_codec,height)
+) STRICT;
+CREATE INDEX catalog_info_shapes_unused ON catalog_info_shapes(id) WHERE ref_count=0;
+CREATE INDEX catalog_asset_links_shape ON catalog_asset_links(entity_id,info_shape_id,part_index,asset_id);
+CREATE INDEX catalog_asset_links_info_shape ON catalog_asset_links(info_shape_id,entity_id,asset_id);
+CREATE INDEX catalog_info_changes_shape ON catalog_info_changes(target_shape_id);
+CREATE TRIGGER catalog_info_shape_charge_insert AFTER INSERT ON catalog_info_shapes BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes+168+2*length(CAST(NEW.container AS BLOB))+2*length(CAST(NEW.video_codec AS BLOB)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_shape_charge_delete AFTER DELETE ON catalog_info_shapes BEGIN
+ UPDATE catalog_info_input_budget SET used_bytes=used_bytes-168-2*length(CAST(OLD.container AS BLOB))-2*length(CAST(OLD.video_codec AS BLOB)) WHERE singleton=1;
+END;
+CREATE TRIGGER catalog_info_shape_immutable BEFORE UPDATE OF id,container,video_codec,height ON catalog_info_shapes
+ WHEN OLD.id IS NOT NEW.id OR OLD.container IS NOT NEW.container OR OLD.video_codec IS NOT NEW.video_codec OR OLD.height IS NOT NEW.height
+ BEGIN SELECT RAISE(ABORT,'immutable_info_shape');END;
+CREATE TRIGGER catalog_info_shape_link_insert AFTER INSERT ON catalog_asset_links WHEN NEW.info_shape_id IS NOT NULL BEGIN
+ UPDATE catalog_info_shapes SET ref_count=ref_count+1 WHERE id=NEW.info_shape_id;
+END;
+CREATE TRIGGER catalog_info_shape_link_delete AFTER DELETE ON catalog_asset_links WHEN OLD.info_shape_id IS NOT NULL BEGIN
+ UPDATE catalog_info_shapes SET ref_count=ref_count-1 WHERE id=OLD.info_shape_id;
+END;
+CREATE TRIGGER catalog_info_shape_link_update AFTER UPDATE OF info_shape_id ON catalog_asset_links WHEN OLD.info_shape_id IS NOT NEW.info_shape_id BEGIN
+ UPDATE catalog_info_shapes SET ref_count=ref_count-1 WHERE id=OLD.info_shape_id;
+ UPDATE catalog_info_shapes SET ref_count=ref_count+1 WHERE id=NEW.info_shape_id;
+END;
+CREATE TRIGGER catalog_info_shape_header_insert AFTER INSERT ON catalog_info_changes WHEN NEW.target_shape_id IS NOT NULL BEGIN
+ UPDATE catalog_info_shapes SET ref_count=ref_count+1 WHERE id=NEW.target_shape_id;
+END;
+CREATE TRIGGER catalog_info_shape_header_delete AFTER DELETE ON catalog_info_changes WHEN OLD.target_shape_id IS NOT NULL BEGIN
+ UPDATE catalog_info_shapes SET ref_count=ref_count-1 WHERE id=OLD.target_shape_id;
+END;
+CREATE TRIGGER catalog_info_shape_header_update AFTER UPDATE OF target_shape_id ON catalog_info_changes WHEN OLD.target_shape_id IS NOT NEW.target_shape_id BEGIN
+ UPDATE catalog_info_shapes SET ref_count=ref_count-1 WHERE id=OLD.target_shape_id;
+ UPDATE catalog_info_shapes SET ref_count=ref_count+1 WHERE id=NEW.target_shape_id;
+END;
+
+CREATE TRIGGER catalog_info_new_stream_facts_count_insert AFTER INSERT ON catalog_info_new_stream_facts BEGIN
+ UPDATE catalog_info_input_families SET rows_staged=rows_staged+1 WHERE change_id=NEW.change_id AND family=1;
+END;
+CREATE TRIGGER catalog_info_new_stream_facts_count_delete AFTER DELETE ON catalog_info_new_stream_facts
+ WHEN (SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id)=0 BEGIN
+ UPDATE catalog_info_input_families SET rows_staged=rows_staged-1 WHERE change_id=OLD.change_id AND family=1;
+END;
+
+CREATE TRIGGER catalog_info_new_streams_count_insert AFTER INSERT ON catalog_info_new_streams BEGIN
+ UPDATE catalog_info_input_families SET rows_staged=rows_staged+1 WHERE change_id=NEW.change_id AND family=2;
+END;
+CREATE TRIGGER catalog_info_new_streams_count_delete AFTER DELETE ON catalog_info_new_streams
+ WHEN (SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id)=0 BEGIN
+ UPDATE catalog_info_input_families SET rows_staged=rows_staged-1 WHERE change_id=OLD.change_id AND family=2;
+END;
+
+CREATE TRIGGER catalog_info_new_stream_breadth_count_insert AFTER INSERT ON catalog_info_new_stream_breadth BEGIN
+ UPDATE catalog_info_input_families SET rows_staged=rows_staged+1 WHERE change_id=NEW.change_id AND family=3;
+END;
+CREATE TRIGGER catalog_info_new_stream_breadth_count_delete AFTER DELETE ON catalog_info_new_stream_breadth
+ WHEN (SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id)=0 BEGIN
+ UPDATE catalog_info_input_families SET rows_staged=rows_staged-1 WHERE change_id=OLD.change_id AND family=3;
+END;
+
+CREATE TRIGGER catalog_info_new_chapter_facts_count_insert AFTER INSERT ON catalog_info_new_chapter_facts BEGIN
+ UPDATE catalog_info_input_families SET rows_staged=rows_staged+1 WHERE change_id=NEW.change_id AND family=4;
+END;
+CREATE TRIGGER catalog_info_new_chapter_facts_count_delete AFTER DELETE ON catalog_info_new_chapter_facts
+ WHEN (SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id)=0 BEGIN
+ UPDATE catalog_info_input_families SET rows_staged=rows_staged-1 WHERE change_id=OLD.change_id AND family=4;
+END;
+
+CREATE TRIGGER catalog_info_new_chapters_count_insert AFTER INSERT ON catalog_info_new_chapters BEGIN
+ UPDATE catalog_info_input_families SET rows_staged=rows_staged+1 WHERE change_id=NEW.change_id AND family=5;
+END;
+CREATE TRIGGER catalog_info_new_chapters_count_delete AFTER DELETE ON catalog_info_new_chapters
+ WHEN (SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id)=0 BEGIN
+ UPDATE catalog_info_input_families SET rows_staged=rows_staged-1 WHERE change_id=OLD.change_id AND family=5;
+END;
+
+CREATE TRIGGER catalog_info_new_subtitle_facts_count_insert AFTER INSERT ON catalog_info_new_subtitle_facts BEGIN
+ UPDATE catalog_info_input_families SET rows_staged=rows_staged+1 WHERE change_id=NEW.change_id AND family=6;
+END;
+CREATE TRIGGER catalog_info_new_subtitle_facts_count_delete AFTER DELETE ON catalog_info_new_subtitle_facts
+ WHEN (SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id)=0 BEGIN
+ UPDATE catalog_info_input_families SET rows_staged=rows_staged-1 WHERE change_id=OLD.change_id AND family=6;
+END;
+
+CREATE TRIGGER catalog_info_new_subtitle_sidecars_count_insert AFTER INSERT ON catalog_info_new_subtitle_sidecars BEGIN
+ UPDATE catalog_info_input_families SET rows_staged=rows_staged+1 WHERE change_id=NEW.change_id AND family=7;
+END;
+CREATE TRIGGER catalog_info_new_subtitle_sidecars_count_delete AFTER DELETE ON catalog_info_new_subtitle_sidecars
+ WHEN (SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id)=0 BEGIN
+ UPDATE catalog_info_input_families SET rows_staged=rows_staged-1 WHERE change_id=OLD.change_id AND family=7;
+END;
+
+CREATE TRIGGER catalog_info_new_subtitles_count_insert AFTER INSERT ON catalog_info_new_subtitles BEGIN
+ UPDATE catalog_info_input_families SET rows_staged=rows_staged+1 WHERE change_id=NEW.change_id AND family=8;
+END;
+CREATE TRIGGER catalog_info_new_subtitles_count_delete AFTER DELETE ON catalog_info_new_subtitles
+ WHEN (SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id)=0 BEGIN
+ UPDATE catalog_info_input_families SET rows_staged=rows_staged-1 WHERE change_id=OLD.change_id AND family=8;
+END;
+
+CREATE TRIGGER catalog_info_new_subtitle_inventory_evidence_count_insert AFTER INSERT ON catalog_info_new_subtitle_inventory_evidence BEGIN
+ UPDATE catalog_info_input_families SET rows_staged=rows_staged+1 WHERE change_id=NEW.change_id AND family=9;
+END;
+CREATE TRIGGER catalog_info_new_subtitle_inventory_evidence_count_delete AFTER DELETE ON catalog_info_new_subtitle_inventory_evidence
+ WHEN (SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id)=0 BEGIN
+ UPDATE catalog_info_input_families SET rows_staged=rows_staged-1 WHERE change_id=OLD.change_id AND family=9;
+END;
+
+CREATE TRIGGER catalog_info_new_disc_facts_count_insert AFTER INSERT ON catalog_info_new_disc_facts BEGIN
+ UPDATE catalog_info_input_families SET rows_staged=rows_staged+1 WHERE change_id=NEW.change_id AND family=10;
+END;
+CREATE TRIGGER catalog_info_new_disc_facts_count_delete AFTER DELETE ON catalog_info_new_disc_facts
+ WHEN (SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id)=0 BEGIN
+ UPDATE catalog_info_input_families SET rows_staged=rows_staged-1 WHERE change_id=OLD.change_id AND family=10;
+END;
+
+CREATE TRIGGER catalog_info_new_disc_titles_count_insert AFTER INSERT ON catalog_info_new_disc_titles BEGIN
+ UPDATE catalog_info_input_families SET rows_staged=rows_staged+1 WHERE change_id=NEW.change_id AND family=11;
+END;
+CREATE TRIGGER catalog_info_new_disc_titles_count_delete AFTER DELETE ON catalog_info_new_disc_titles
+ WHEN (SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id)=0 BEGIN
+ UPDATE catalog_info_input_families SET rows_staged=rows_staged-1 WHERE change_id=OLD.change_id AND family=11;
+END;
+
+CREATE TRIGGER catalog_info_new_disc_clips_count_insert AFTER INSERT ON catalog_info_new_disc_clips BEGIN
+ UPDATE catalog_info_input_families SET rows_staged=rows_staged+1 WHERE change_id=NEW.change_id AND family=12;
+END;
+CREATE TRIGGER catalog_info_new_disc_clips_count_delete AFTER DELETE ON catalog_info_new_disc_clips
+ WHEN (SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id)=0 BEGIN
+ UPDATE catalog_info_input_families SET rows_staged=rows_staged-1 WHERE change_id=OLD.change_id AND family=12;
+END;
+
+CREATE TRIGGER catalog_info_new_disc_streams_count_insert AFTER INSERT ON catalog_info_new_disc_streams BEGIN
+ UPDATE catalog_info_input_families SET rows_staged=rows_staged+1 WHERE change_id=NEW.change_id AND family=13;
+END;
+CREATE TRIGGER catalog_info_new_disc_streams_count_delete AFTER DELETE ON catalog_info_new_disc_streams
+ WHEN (SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id)=0 BEGIN
+ UPDATE catalog_info_input_families SET rows_staged=rows_staged-1 WHERE change_id=OLD.change_id AND family=13;
+END;
+
+CREATE TRIGGER catalog_info_new_disc_chapters_count_insert AFTER INSERT ON catalog_info_new_disc_chapters BEGIN
+ UPDATE catalog_info_input_families SET rows_staged=rows_staged+1 WHERE change_id=NEW.change_id AND family=14;
+END;
+CREATE TRIGGER catalog_info_new_disc_chapters_count_delete AFTER DELETE ON catalog_info_new_disc_chapters
+ WHEN (SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id)=0 BEGIN
+ UPDATE catalog_info_input_families SET rows_staged=rows_staged-1 WHERE change_id=OLD.change_id AND family=14;
+END;
+
+CREATE TRIGGER catalog_info_new_disc_media_members_count_insert AFTER INSERT ON catalog_info_new_disc_media_members BEGIN
+ UPDATE catalog_info_input_families SET rows_staged=rows_staged+1 WHERE change_id=NEW.change_id AND family=15;
+END;
+CREATE TRIGGER catalog_info_new_disc_media_members_count_delete AFTER DELETE ON catalog_info_new_disc_media_members
+ WHEN (SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id)=0 BEGIN
+ UPDATE catalog_info_input_families SET rows_staged=rows_staged-1 WHERE change_id=OLD.change_id AND family=15;
+END;
+
+CREATE TRIGGER catalog_info_new_disc_title_media_count_insert AFTER INSERT ON catalog_info_new_disc_title_media BEGIN
+ UPDATE catalog_info_input_families SET rows_staged=rows_staged+1 WHERE change_id=NEW.change_id AND family=16;
+END;
+CREATE TRIGGER catalog_info_new_disc_title_media_count_delete AFTER DELETE ON catalog_info_new_disc_title_media
+ WHEN (SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id)=0 BEGIN
+ UPDATE catalog_info_input_families SET rows_staged=rows_staged-1 WHERE change_id=OLD.change_id AND family=16;
+END;
+
+CREATE TRIGGER catalog_info_new_disc_title_media_streams_count_insert AFTER INSERT ON catalog_info_new_disc_title_media_streams BEGIN
+ UPDATE catalog_info_input_families SET rows_staged=rows_staged+1 WHERE change_id=NEW.change_id AND family=17;
+END;
+CREATE TRIGGER catalog_info_new_disc_title_media_streams_count_delete AFTER DELETE ON catalog_info_new_disc_title_media_streams
+ WHEN (SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id)=0 BEGIN
+ UPDATE catalog_info_input_families SET rows_staged=rows_staged-1 WHERE change_id=OLD.change_id AND family=17;
+END;
+
+CREATE TRIGGER catalog_info_new_disc_title_media_members_count_insert AFTER INSERT ON catalog_info_new_disc_title_media_members BEGIN
+ UPDATE catalog_info_input_families SET rows_staged=rows_staged+1 WHERE change_id=NEW.change_id AND family=18;
+END;
+CREATE TRIGGER catalog_info_new_disc_title_media_members_count_delete AFTER DELETE ON catalog_info_new_disc_title_media_members
+ WHEN (SELECT phase FROM catalog_info_changes WHERE id=OLD.change_id)=0 BEGIN
+ UPDATE catalog_info_input_families SET rows_staged=rows_staged-1 WHERE change_id=OLD.change_id AND family=18;
+END;
+
+-- One accepted owner observation and one transient target pin; no object history.
+CREATE INDEX catalog_info_owner_object ON catalog_assets(info_owner_object) WHERE info_owner_object IS NOT NULL;
+CREATE INDEX catalog_info_target_owner_object ON catalog_info_changes(target_owner_object) WHERE target_owner_object IS NOT NULL;
+
+CREATE TRIGGER catalog_info_item_edition_insert AFTER INSERT ON catalog_item_details
+ WHEN NEW.edition<>'' BEGIN
+ UPDATE catalog_entities SET info_desired_epoch=info_desired_epoch+1,
+ info_applied_epoch=CASE WHEN info_source_blockers=0 AND info_availability_pending=0 AND info_blocked_children=0 THEN info_desired_epoch+1 ELSE info_applied_epoch END WHERE id=NEW.entity_id;
+END;
+
+CREATE TRIGGER catalog_info_item_edition_update AFTER UPDATE OF edition ON catalog_item_details
+ WHEN OLD.edition IS NOT NEW.edition BEGIN
+ UPDATE catalog_entities SET info_desired_epoch=info_desired_epoch+1,
+ info_applied_epoch=CASE WHEN info_source_blockers=0 AND info_availability_pending=0 AND info_blocked_children=0 THEN info_desired_epoch+1 ELSE info_applied_epoch END WHERE id=NEW.entity_id;
+END;
+
+CREATE TRIGGER catalog_info_item_edition_delete AFTER DELETE ON catalog_item_details
+ WHEN OLD.edition<>'' BEGIN
+ UPDATE catalog_entities SET info_desired_epoch=info_desired_epoch+1,
+ info_applied_epoch=CASE WHEN info_source_blockers=0 AND info_availability_pending=0 AND info_blocked_children=0 THEN info_desired_epoch+1 ELSE info_applied_epoch END WHERE id=OLD.entity_id;
+END;
+
+-- A frozen source frame is shared by its holders, never duplicated per item.
+-- Last-holder retirement makes it unreachable; schedule ordinary raw8 source
+-- retirement rather than leaving a charged orphan until another probe arrives.
+CREATE TRIGGER catalog_info_frozen_unlinked AFTER DELETE ON catalog_asset_links
+WHEN NOT EXISTS(SELECT 1 FROM catalog_asset_links INDEXED BY catalog_asset_links_asset WHERE asset_id=OLD.asset_id)
+ AND EXISTS(SELECT 1 FROM catalog_info_changes WHERE asset_id=OLD.asset_id AND phase=0 AND copy_aux=-2) BEGIN
+ UPDATE catalog_info_changes SET phase=5,copy_family=0 WHERE asset_id=OLD.asset_id AND phase=0 AND copy_aux=-2;
+ INSERT INTO catalog_upstream_sources(domain,source_id,token,flags)
+ SELECT 41,asset_id,asset_token,32 FROM catalog_info_changes WHERE asset_id=OLD.asset_id AND phase=5 AND copy_aux=-2 AND slot=0
+ ON CONFLICT(domain,source_id) DO UPDATE SET token=excluded.token,flags=flags|32,revision=revision+1;
+ INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 41,source_id,1 FROM catalog_upstream_sources WHERE domain=41 AND source_id=OLD.asset_id
+ ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
+END;

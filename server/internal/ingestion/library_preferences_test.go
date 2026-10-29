@@ -42,7 +42,7 @@ func TestLibraryFileNamesWinWithoutDiscardingEmbeddedEvidence(t *testing.T) {
 		t.Fatal(err)
 	}
 	facts := assets.Facts{Container: "mkv", VideoCodec: "h264", AudioCodec: "aac", Duration: 6000, ObservedSize: size, ObservedModifiedNS: modified, AnalysisOperations: []string{"probe"}, AnalysisAlgorithm: mediaanalysis.Algorithm, VideoName: naming.Embedded{Title: "Wrong embedded title", Year: 2000}}
-	if err := f.s.catalog.CommitInventoryAnalysis(context.Background(), job.ID, object, revision, 1, facts); err != nil {
+	if err := settleInventoryAnalysis(t, f.s.catalog, f.db, context.Background(), job.ID, object, revision, 1, facts); err != nil {
 		t.Fatal(err)
 	}
 	if f.count(`SELECT count(*) FROM catalog_entities WHERE kind=1 AND title='Heat' AND year=1995`) != 1 || f.count(`SELECT count(*) FROM catalog_entities WHERE kind=1 AND title='Wrong embedded title'`) != 0 {

@@ -434,6 +434,7 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"DELETE /v1/libraries/{id}/browse-selection-queries/{queryId}": {check: browseSelectionQueryRestrictionCheck("DELETE")},
 		"DELETE /v1/libraries/{id}/reading-browse-queries/{queryId}":   {check: readingBrowseQueryRestrictionCheck("DELETE")},
 		"DELETE /v1/libraries/{id}/reading-facet-queries/{queryId}":    {check: readingFacetQueryRestrictionCheck("DELETE")},
+		"DELETE /v1/file-info-queries/{queryId}":                       {check: fileInfoQueryRestrictionCheck},
 		// The selection-action family acts on catalogue content only through an
 		// opaque private handle: a volatile preparation or a confirmed operation.
 		// Its check mints the real handle and proves the restricted selection is

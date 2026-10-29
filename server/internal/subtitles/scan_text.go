@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/subtitleoffer"
 )
 
 // ImportScanText is called only by the durable inventory analysis worker after
@@ -23,10 +24,4 @@ func (s *Service) ImportScanText(ctx context.Context, item, source string, check
 	return check(ctx, snapshot.Tx())
 }
 
-func textFormat(format string) bool {
-	switch format {
-	case "srt", "vtt", "ass", "ssa", "smi", "sami", "ttml", "dfxp":
-		return true
-	}
-	return false
-}
+func textFormat(s string) bool { return subtitleoffer.TextFormat(s) }

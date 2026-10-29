@@ -228,7 +228,9 @@ func (s *Service) discTitles(files []TitleFile) *FileInfoDisc {
 	if tx == nil {
 		return nil
 	}
-	// Resolve the original first available observation for each file together.
+	// Resolve the original first available observation for each file together:
+	// the lowest current object ID is chosen before its probe is tested, so a
+	// later facts-bearing observation never stands in for it.
 	// Non-disc files require no per-file probe lookup. A disc probe is still
 	// decoded and fingerprint-checked by its existing exact-observation reader.
 	type observation struct{ object, revision string }
@@ -241,7 +243,7 @@ func (s *Service) discTitles(files []TitleFile) *FileInfoDisc {
 		}
 		rows, err := tx.QueryContext(s.Context(), `SELECT requested.value,o.id,o.revision
  FROM json_each(?) requested
- JOIN inventory_objects o ON o.id=(SELECT first.id FROM inventory_objects first JOIN catalog_assets a ON a.token=first.asset_id WHERE a.token=requested.value AND first.retired=0 AND first.state='available' LIMIT 1)
+ JOIN inventory_objects o ON o.id=(SELECT first.id FROM inventory_objects first JOIN catalog_assets a ON a.token=first.asset_id WHERE a.token=requested.value AND first.retired=0 AND first.state='available' ORDER BY first.id LIMIT 1)
  JOIN inventory_disc_facts d ON d.object_id=o.id`, idsJSON(tokens))
 		if err != nil {
 			return nil

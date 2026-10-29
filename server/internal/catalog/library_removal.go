@@ -380,6 +380,13 @@ func removeLibraryFilesTx(ctx context.Context, tx *sql.Tx, library string) (bool
 		}
 	}
 	for _, f := range files {
+		ready, e := compactcatalog.PrepareInfoObjectDeleteTx(ctx, tx, f.object)
+		if e != nil {
+			return false, e
+		}
+		if !ready {
+			continue
+		}
 		if _, err = tx.ExecContext(ctx, `DELETE FROM inventory_analysis_queue WHERE object_id=?`, f.object); err != nil {
 			return false, err
 		}

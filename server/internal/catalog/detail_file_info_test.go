@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"portico.local/server/internal/catalogtest"
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 )
 
@@ -111,10 +112,11 @@ func TestFileInfoBatchedDiscFactsKeepObservationFences(t *testing.T) {
 	if err := db.QueryRow(`SELECT asset_id,revision FROM inventory_objects WHERE id=?`, object).Scan(&token, &revision); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.CommitInventoryDiscProbe(context.Background(), job, object, revision, policy, probe); err != nil {
-		t.Fatal(err)
+	if receipt, err := acceptDiscProbeForTest(t, s, context.Background(), job, object, revision, policy, probe); err != nil || receipt.State != compactcatalog.InfoInputAcceptedPending {
+		t.Fatal("structure source receipt", receipt, err)
 	}
 	c := catalogtest.New(t, db)
+	c.Drain()
 	c.Exec(`UPDATE catalog_assets SET available=1 WHERE token=?`, token)
 	c.Exec(`INSERT INTO asset_stream_facts(asset_id,revision,size,modified_ns,fingerprint) SELECT token,7,size,modified_ns,'test' FROM catalog_assets WHERE token=?`, token)
 	c.Exec(`INSERT INTO asset_chapter_facts(asset_id,revision,size,modified_ns,status,fingerprint) SELECT token,9,size,modified_ns,'known','test' FROM catalog_assets WHERE token=?`, token)
@@ -194,7 +196,7 @@ func TestFileInfoBatchedDiscFactsKeepObservationFences(t *testing.T) {
 	compare(false)
 	c.Exec(`UPDATE asset_chapter_facts SET status='known' WHERE asset_id=?`, token)
 	c.Exec(`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,object_identity,revision,evidence_json,size,modified_ns,seen_job)
- SELECT '000-first-observation',source_id,asset_id,root_incarnation,'other',object_identity,revision,evidence_json,size,modified_ns,seen_job FROM inventory_objects WHERE id=?`, object)
+ SELECT '!0-first-observation',source_id,asset_id,root_incarnation,'other',object_identity,revision,evidence_json,size,modified_ns,seen_job FROM inventory_objects WHERE id=?`, object)
 	err = dbwork.WithReadSnapshot(context.Background(), db, func(ctx context.Context) error {
 		reader := s.WithContext(ctx)
 		files := []TitleFile{{ID: token}}
@@ -207,9 +209,9 @@ func TestFileInfoBatchedDiscFactsKeepObservationFences(t *testing.T) {
 		t.Fatal(err)
 	}
 	c.Exec(`INSERT INTO inventory_disc_facts(object_id,asset_id,source_revision,source_generation,root_incarnation,kind,packaging,encryption,fingerprint,media_title_key,media_stream_revision,media_chapter_revision)
- SELECT '000-first-observation',asset_id,source_revision,source_generation,root_incarnation,kind,packaging,encryption,fingerprint,media_title_key,media_stream_revision,media_chapter_revision FROM inventory_disc_facts WHERE object_id=?`, object)
+ SELECT '!0-first-observation',asset_id,source_revision,source_generation,root_incarnation,kind,packaging,encryption,fingerprint,media_title_key,media_stream_revision,media_chapter_revision FROM inventory_disc_facts WHERE object_id=?`, object)
 	c.Exec(`INSERT INTO inventory_disc_titles(object_id,title_key,selection_token,title_number,disc_order,duration_ms,angle_count,playlist,dvd_title,vts,pgc)
- SELECT '000-first-observation',title_key,selection_token||'-other',title_number,disc_order,duration_ms,angle_count,playlist,dvd_title,vts,pgc FROM inventory_disc_titles WHERE object_id=?`, object)
+ SELECT '!0-first-observation',title_key,selection_token||'-other',title_number,disc_order,duration_ms,angle_count,playlist,dvd_title,vts,pgc FROM inventory_disc_titles WHERE object_id=?`, object)
 	for _, table := range []string{"inventory_disc_clips", "inventory_disc_streams", "inventory_disc_chapters"} {
 		rows, err := db.Query(`PRAGMA table_info(` + table + `)`)
 		if err != nil {
@@ -234,10 +236,12 @@ func TestFileInfoBatchedDiscFactsKeepObservationFences(t *testing.T) {
 		}
 		rows.Close()
 		columns := strings.Join(names, ",")
-		c.Exec(`INSERT INTO `+table+`(object_id,`+columns+`) SELECT '000-first-observation',`+columns+` FROM `+table+` WHERE object_id=?`, object)
+		c.Exec(`INSERT INTO `+table+`(object_id,`+columns+`) SELECT '!0-first-observation',`+columns+` FROM `+table+` WHERE object_id=?`, object)
 	}
 	compare(false) // Two current associations are ambiguous, never first-wins.
-	c.Exec(`DELETE FROM inventory_disc_facts WHERE object_id=?`, object)
+	// The lowest-ID current observation now lacks facts; the later original
+	// observation still has its probe and must not substitute for it.
+	c.Exec(`DELETE FROM inventory_disc_facts WHERE object_id=?`, "!0-first-observation")
 	err = dbwork.WithReadSnapshot(context.Background(), db, func(ctx context.Context) error {
 		reader := s.WithContext(ctx)
 		files := []TitleFile{{ID: token}}

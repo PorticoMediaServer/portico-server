@@ -130,3 +130,41 @@ func TestDeleteVersionReconcilesDiskDeletionBeforeRevocation(t *testing.T) {
 		t.Fatalf("availability %v, links %d: reconcile must record absence without unlink authority", available, links)
 	}
 }
+
+func TestDeleteVersionCheckedReplaysBeforeRemovedSelectionProof(t *testing.T) {
+	s, db, _, item, paths := deletionFixture(t)
+	var asset string
+	if e := db.QueryRow(`SELECT token FROM catalog_assets WHERE path=?`, paths[0]).Scan(&asset); e != nil {
+		t.Fatal(e)
+	}
+	preview, e := s.PreviewDeleteVersion(context.Background(), allow, item, asset)
+	if e != nil {
+		t.Fatal(e)
+	}
+	calls := 0
+	selection := func(ctx context.Context, tx *sql.Tx) error {
+		calls++
+		var live bool
+		e := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_asset_links l JOIN catalog_entities e ON e.id=l.entity_id JOIN catalog_assets a ON a.id=l.asset_id WHERE e.public_id=pid_blob(?) AND a.token=?)`, item, asset).Scan(&live)
+		if e != nil {
+			return e
+		}
+		if !live {
+			return ErrConflict
+		}
+		return nil
+	}
+	in := VersionDeleteRequest{Confirmation: preview.Confirmation, PreviewKey: preview.PreviewKey, OperationID: "file-info-replay"}
+	first, e := s.DeleteVersionChecked(context.Background(), allow, selection, item, asset, in)
+	if e != nil || first.Removed != 1 || calls != 1 {
+		t.Fatal(first, e, calls)
+	}
+	replay, e := s.DeleteVersionChecked(context.Background(), allow, selection, item, asset, in)
+	if e != nil || replay.Removed != 1 || calls != 1 {
+		t.Fatal("receipt re-proved its own removed link", replay, e, calls)
+	}
+	deny := func(context.Context, *sql.Tx) error { return ErrDenied }
+	if _, e = s.DeleteVersionChecked(context.Background(), deny, selection, item, asset, in); !errors.Is(e, ErrDenied) {
+		t.Fatal("replay skipped live authority", e)
+	}
+}
