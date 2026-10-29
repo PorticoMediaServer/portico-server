@@ -1,3 +1,4 @@
+import {audiobookChapterCount} from './chapter-count';
 import {Fragment, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {serviceI18n} from '@core/presentation/service-text.ts';
 import {formatClock} from '@core/presentation/content.ts';
@@ -139,6 +140,7 @@ function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: 
   const book = page.scope.view === 'book', author = page.scope.view === 'author';
   const chapters = state.appended.find(section => section.id === 'chapters'), files = state.appended.find(section => section.id === 'files');
   const rows = book ? chapters?.entries.length ? chapters : files : state.appended.find(section => section.id === 'books');
+  const chapterCount = audiobookChapterCount(chapters, entity.count);
   const context = state.appended.find(section => section.id === 'context')?.entries ?? [];
   const series = context.find(entry => entry.kind === 'book_series'), authorEntry = context.find(entry => entry.kind === 'author');
   // The filter can only use a series name this book publishes exactly; otherwise its series page stands.
@@ -182,7 +184,7 @@ function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: 
           onOpen={name => run(() => binding.openNarrator(page, name))}/></span>}
         {!book && entity.count !== undefined && <strong>{t('next.kit.books', {count: entity.count})}</strong>}
         {entity.duration !== undefined && <span>{duration(entity.duration)}</span>}
-        {book && entity.count !== undefined && <span>{t('title.chapterCount', {count: entity.count})}</span>}
+        {book && chapterCount !== undefined && <span>{t('title.chapterCount', {count: chapterCount})}</span>}
       </div>
     </header>
     <div className={styles.actions}>
