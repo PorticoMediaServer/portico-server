@@ -4101,6 +4101,12 @@ export const schemas = {
       "serverId": {
         "type": "string"
       },
+      "setupInstalled": {
+        "enum": [
+          true
+        ],
+        "type": "boolean"
+      },
       "setupTransactionId": {
         "type": "string"
       },
@@ -5668,11 +5674,19 @@ export const schemas = {
               ],
               "type": "object"
             },
+            "secureConnection": {
+              "enum": [
+                "pending",
+                "ready"
+              ],
+              "type": "string"
+            },
             "status": {
               "type": "string"
             }
           },
           "required": [
+            "secureConnection",
             "role",
             "lastSeenAt",
             "status",

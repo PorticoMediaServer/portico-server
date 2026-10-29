@@ -15,7 +15,7 @@ function fixture() {
   const controller = {review: async () => review, decide: async (decision: string) => {decisions.push(decision); if (rejectDecision) throw new Error('decision unavailable');},
     complete: async () => {completeCalls++; return completion();}, dispose: () => {disposed = true;}} as unknown as ConstructorParameters<typeof SetupApprovalFlow>[1];
   const flow = new SetupApprovalFlow(account, controller, location => navigations.push(location), () => now);
-  return {flow, navigations, decisions, completion: (work: typeof completion) => {completion = work;},
+  return {flow, review, navigations, decisions, completion: (work: typeof completion) => {completion = work;},
     rejectDecision: () => {rejectDecision = true;}, replaceFamily: () => {session = {...session, familyId: 'successor-family'};},
     closeAccountReads: () => {accountReadsClosed = true;},
     expireClock: () => {now += 180000;}, completeCalls: () => completeCalls, disposed: () => disposed};
@@ -64,4 +64,19 @@ test('a late protected completion cannot navigate after the original approval ex
   finish('https://original.example/auth/portico-return#transaction=original-transaction'); await pending;
   assert.deepEqual(f.navigations, []); assert.equal(f.disposed(), true); assert.equal(f.flow.getSnapshot().phase, 'expired');
   f.flow.dispose();
+});
+
+test('Return is offered only once Hosted reports the approved claim installed', async () => {
+  const f = fixture(); Object.assign(f.review, {status: 'approved', installed: true});
+  await f.flow.start();
+  assert.equal(f.flow.getSnapshot().phase, 'approved'); assert.equal(f.flow.getSnapshot().installed, true); f.flow.dispose();
+  const g = fixture(); Object.assign(g.review, {status: 'approved', installed: false});
+  await g.flow.start();
+  assert.equal(g.flow.getSnapshot().phase, 'approved'); assert.equal(g.flow.getSnapshot().installed, undefined);
+  g.completion(async () => undefined as never);
+  Object.assign(g.review, {installed: true});
+  await g.flow.complete();
+  assert.equal(g.flow.getSnapshot().installed, true); assert.deepEqual(g.navigations, []); g.flow.dispose();
+  const h = fixture(); await h.flow.start(); await h.flow.decide('approve');
+  assert.equal(h.flow.getSnapshot().installed, undefined); h.flow.dispose();
 });
