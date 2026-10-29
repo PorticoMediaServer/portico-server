@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/compactcatalog"
@@ -231,4 +232,43 @@ func TestReadingProjectionAssetInvalidationUsesTheUniqueReadingPublication(t *te
 	readingProjectionGeneration(t, c, library, false)
 	readingProjectionDrain(t, c)
 	readingProjectionGeneration(t, c, library, true)
+}
+
+func TestReadingProjectionPacedWorkerBoundsRawInputs(t *testing.T) {
+	c, library, items := readingProjectionFixture(t, 12)
+	w := compactcatalog.NewWorker(c.DB)
+	w.PaceToHold(20 * time.Millisecond)
+	var previousBuild, previousAfter int64
+	scanned := false
+	for i := 0; i < 1000; i++ {
+		if _, err := w.Step(context.Background(), compactcatalog.BatchMax); err != nil {
+			t.Fatal(err)
+		}
+		var build, after, ready int64
+		if err := c.DB.QueryRow(`SELECT build_generation,after_item,ready_generation FROM reading_attribution_state WHERE library_id=?`, library).Scan(&build, &after, &ready); err != nil {
+			t.Fatal(err)
+		}
+		if build == previousBuild && after > previousAfter {
+			var raw int
+			if err := c.DB.QueryRow(`SELECT count(*) FROM catalog_entities WHERE library_id=? AND id>? AND id<=?`, library, previousAfter, after).Scan(&raw); err != nil {
+				t.Fatal(err)
+			}
+			if raw > 4 {
+				t.Fatalf("paced Reading writer visited %d raw inputs, want at most four", raw)
+			}
+			scanned = true
+		}
+		previousBuild, previousAfter = build, after
+		if ready > 0 {
+			var count int
+			if err := c.DB.QueryRow(`SELECT count(*) FROM reading_attribution_members WHERE library_id=? AND generation=?`, library, ready).Scan(&count); err != nil {
+				t.Fatal(err)
+			}
+			if !scanned || count != len(items) {
+				t.Fatalf("bounded projection lost progress: scanned=%v members=%d want=%d", scanned, count, len(items))
+			}
+			return
+		}
+	}
+	t.Fatal("paced Reading projection never published all inputs")
 }

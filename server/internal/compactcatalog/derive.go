@@ -913,7 +913,18 @@ func (w *Worker) runSteps(ctx context.Context, tx *sql.Tx, limit int) (int, int,
 		if total > 0 && changed-before >= budget {
 			break
 		}
-		n, err := steps[kind](ctx, tx, limit-total)
+		stepLimit := limit - total
+		if kind == readingAttributionStep {
+			w.mu.Lock()
+			paced := w.holdTarget > 0
+			w.mu.Unlock()
+			if paced {
+				// Accepted-value resolution is per title. A fast unrelated step
+				// must not grow the next Reading writer beyond four raw inputs.
+				stepLimit = min(stepLimit, 4)
+			}
+		}
+		n, err := steps[kind](ctx, tx, stepLimit)
 		if err != nil {
 			return 0, kind, err
 		}

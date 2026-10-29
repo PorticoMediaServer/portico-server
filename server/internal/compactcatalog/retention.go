@@ -57,13 +57,19 @@ func RunRetention(ctx context.Context, db *sql.DB) {
 			started := time.Now()
 			limit := min(32*dbwork.BackgroundConcurrency(workCtx), retentionRawTurn)
 			var closed bool
+			var heldFrom time.Time
+			phase := turn.phase
 			// Advance the process-local phase only after the transaction commits.
 			nextTurn := turn
 			e := dbwork.WithWriteTx(workCtx, db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
+				heldFrom = time.Now()
 				var e error
 				_, closed, e = nextTurn.step(workCtx, tx, limit)
 				return e
 			})
+			if !heldFrom.IsZero() && time.Since(heldFrom) > dbwork.SlowReadThreshold {
+				log.Printf("Catalogue retention turn completed after %s: family=%d rawLimit=%d", time.Since(heldFrom).Round(time.Millisecond), phase, limit)
+			}
 			if e == nil {
 				turn = nextTurn
 				if !closed {
