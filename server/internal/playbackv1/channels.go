@@ -277,45 +277,7 @@ func (s *Service) channelPresentation(r row) Presentation {
 	if err != nil {
 		return p
 	}
-	gen, _ := strconv.Atoi(st.Media.BufferGeneration)
-	p.Generation, p.URL = gen, st.Media.StreamURL
-	// The engine the producer made the stream for; native until it has.
-	p.Engine = playback.EngineNative
-	if st.Media.Engine == playback.EngineMPV {
-		p.Engine = playback.EngineMPV
-	}
-	ms := func(us string) int64 { n, _ := strconv.ParseInt(us, 10, 64); return n / 1000 }
-	l := &LinearView{ReservationRequiredAtMS: st.Media.ReservationRequiredAtMS, Name: st.Name, OriginMs: st.Media.OriginMS, WindowStartMs: ms(st.Media.WindowStartUS), WindowEndMs: ms(st.Media.WindowEndUS), LiveEdgeMs: ms(st.Media.LiveEdgeUS), State: st.Media.State, ErrorCode: st.Media.ErrorCode}
-	if l.ReservationRequiredAtMS != nil {
-		now := s.now().UnixMilli()
-		l.NowMS = &now
-	}
-	if l.State == "" {
-		l.State = "preparing"
-	}
-	for _, c := range st.Media.Clocks {
-		l.Clocks = append(l.Clocks, LinearClockView{StartMs: ms(c.StartUS), EndMs: ms(c.EndUS), OffsetMs: ms(c.OffsetUS)})
-	}
-	if st.Programme != nil {
-		l.Programme = &LinearProgrammeView{ID: st.Programme.ID, ItemID: st.Programme.ItemID, Title: st.Programme.Title, StartMs: st.Programme.StartMS, EndMs: st.Programme.EndMS}
-	}
-	if st.Next != nil {
-		l.Next = &LinearProgrammeView{ID: st.Next.ID, ItemID: st.Next.ItemID, Title: st.Next.Title, StartMs: st.Next.StartMS, EndMs: st.Next.EndMS}
-	}
-	if q := st.Desired.Seek; q != nil {
-		seek := &LinearSeekView{ID: q.ID, Live: q.Kind == "live", Acknowledged: st.AcknowledgedSeekID == q.ID, Error: st.SeekError}
-		if q.PositionUS != nil {
-			v := ms(*q.PositionUS)
-			seek.PositionMs = &v
-		}
-		l.Seek = seek
-	}
-	if st.ConfirmedPositionUS != nil {
-		v := *st.ConfirmedPositionUS / 1000
-		l.ConfirmedPositionMs = &v
-	}
-	p.Linear = l
-	return p
+	return s.channelPresentationFrom(st, 0)
 }
 
 // patchChannel is PATCH on a channel session (§18.6): state (play/pause; play

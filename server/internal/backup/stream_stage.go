@@ -84,7 +84,7 @@ func (s *Service) stageStream(ctx context.Context, dir string, original Source, 
 		src := filepath.Join(dir, filepath.FromSlash(entry.Name))
 		dst := filepath.Join(incoming, filepath.FromSlash(entry.Name))
 		damage := func(reason string) {
-			addManifestDamage(report, ManifestDamage{pos.Line, pos.Line, pos.Start, pos.End, reason})
+			addManifestDamage(report, ManifestDamage{FirstLine: pos.Line, LastLine: pos.Line, StartByte: pos.Start, EndByte: pos.End, Reason: reason})
 		}
 		info, err := os.Lstat(src)
 		if err == nil && liveSourceKind(info, guard) != 0 {
@@ -168,7 +168,7 @@ func (s *Service) stageStream(ctx context.Context, dir string, original Source, 
 				return out, err
 			}
 			report.UnverifiedDatabase = true
-			addManifestDamage(report, ManifestDamage{eof.Line, eof.Line, eof.Start, eof.End, "database_entry_missing"})
+			addManifestDamage(report, ManifestDamage{FirstLine: eof.Line, LastLine: eof.Line, StartByte: eof.Start, EndByte: eof.End, Reason: "database_entry_missing"})
 		} else if statErr != nil && !os.IsNotExist(statErr) {
 			return out, statErr
 		}

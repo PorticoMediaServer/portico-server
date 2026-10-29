@@ -424,6 +424,12 @@ func (d Dependencies) deviceOf(ctx context.Context, p identity.Principal) (strin
 // wildcards must be whole segments, so "{id}:advance" is mounted as "{id}" and
 // the registry matches the suffix itself.
 func muxPattern(method, path string) string {
+	// This public suffix crosses the bulk preview-query prefix. The HTTP
+	// adapter checks metadataAction == preview before entering the handler.
+	// Keep the mapping shared with route inventory and scope resolution.
+	if method == "GET" && path == "/v1/metadata/{kind}/{id}/preview" {
+		return method + " /v1/metadata/{kind}/{id}/{metadataAction}"
+	}
 	parts := strings.Split(path, "/")
 	for i, part := range parts {
 		if strings.HasPrefix(part, "{") {

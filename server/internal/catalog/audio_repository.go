@@ -173,6 +173,7 @@ var albumRetireChecks = []string{
 
 // bookRetireChecks is the same rule for an audiobook a file has left.
 var bookRetireChecks = []string{
+	`SELECT EXISTS(SELECT 1 FROM book_resume WHERE book_id=?)`,
 	`SELECT EXISTS(SELECT 1 FROM container_personal_state WHERE container_id=?)`,
 	`SELECT EXISTS(SELECT 1 FROM catalog_book_group_members WHERE book_id=?)`,
 	`SELECT EXISTS(SELECT 1 FROM metadata_owner_fields WHERE kind='book' AND entity_id=?)`,

@@ -577,20 +577,32 @@ func registerPlaybackV1Sessions(r *apikit.Registry, d Dependencies) {
 				return ack, err
 			}
 			// A channel's view (window, programme, seek outcome) rides on the
-			// ack, so its player needs no second request a second. The view is
-			// sent only when it differs from the one the player holds.
-			view, err := d.playbackV1().Get(ctx, service, id)
+			// ack, so its player needs no second request a second. The digest
+			// and the view come from one read snapshot, and the view is built
+			// only when the tag the player holds is stale.
+			view, tag, err := d.playbackV1().ChannelObservationView(ctx, service, id, in.ViewTag)
+			if err == nil {
+				ack.ViewTag = tag
+				if view != nil {
+					ack.Session = view
+				}
+				return ack, nil
+			}
+			// The exact read refused or failed (a lapsed lease, a channel the
+			// viewer may no longer watch): take the full read, which ends the
+			// session or shows the ended/default view.
+			full, err := d.playbackV1().Get(ctx, service, id)
 			if err != nil {
 				return ack, nil
 			}
-			raw, err := json.Marshal(view)
+			raw, err := json.Marshal(full)
 			if err != nil {
 				return ack, nil
 			}
 			sum := sha256.Sum256(raw)
 			ack.ViewTag = hex.EncodeToString(sum[:16])
 			if ack.ViewTag != in.ViewTag {
-				ack.Session = &view
+				ack.Session = &full
 			}
 			return ack, nil
 		})

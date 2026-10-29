@@ -592,6 +592,21 @@ func (s *Store) Poll(ctx context.Context, caller Caller, h Handle) (Result, erro
 // Only this handle's demand is released. Unused unfinished work is cancelled;
 // complete results may remain reusable until their fixed completion TTL/eviction.
 func (s *Store) Cancel(ctx context.Context, caller Caller, h Handle) error {
+	return s.cancel(ctx, caller, h, "")
+}
+
+// CancelNamespace releases only a demand in the adapter's own fixed namespace.
+// A handle from another preparation family answers just like an absent handle
+// and remains owned by its original adapter. Caller and namespace are checked
+// together under the store lock, without a Poll allocation or check/use gap.
+func (s *Store) CancelNamespace(ctx context.Context, caller Caller, h Handle, namespace string) error {
+	if namespace == "" {
+		return ErrStale
+	}
+	return s.cancel(ctx, caller, h, namespace)
+}
+
+func (s *Store) cancel(ctx context.Context, caller Caller, h Handle, namespace string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -601,7 +616,7 @@ func (s *Store) Cancel(ctx context.Context, caller Caller, h Handle) error {
 		return ErrClosed
 	}
 	s.prune(s.cfg.Now())
-	if l := s.handles[h]; l != nil && caller != "" && l.caller == caller {
+	if l := s.handles[h]; l != nil && caller != "" && l.caller == caller && (namespace == "" || l.e.key.Namespace == namespace) {
 		s.release(h, l)
 	}
 	return nil

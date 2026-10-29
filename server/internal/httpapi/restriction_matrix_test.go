@@ -296,20 +296,27 @@ const (
 // restrictionRoutes classifies every GET route the router registers.
 func restrictionRoutes() map[string]restrictionRoute {
 	routes := map[string]restrictionRoute{
-		"GET /v1/facet-queries/{id}":                                          {check: facetQueryRestrictionCheck},
-		"GET /v1/genre-queries/{id}":                                          {check: genreQueryRestrictionCheck},
-		"GET /v1/libraries/{id}/browse-selection-queries/{queryId}":           {check: browseSelectionQueryRestrictionCheck("GET")},
-		"GET /v1/libraries/{id}/reading-browse-queries/{queryId}":             {check: readingBrowseQueryRestrictionCheck("GET")},
-		"GET /v1/libraries/{id}/reading-facet-queries/{queryId}":              {check: readingFacetQueryRestrictionCheck("GET")},
-		"GET /v1/user-mutations/{key}":                                        {check: userMutationReceiptRestrictionCheck},
-		"GET /v1/user-mutations/policy":                                       exempt("server time and numeric replay cutoff only; no catalogue identifiers or content"),
-		"GET /v1/reading/search":                                              {check: readingBodySearchRestrictionCheck},
-		"GET /v1/reading/sessions/{sessionId}/search":                         {check: readingBodySearchRestrictionCheck},
-		"GET /v1/libraries/{libraryId}/reading/mark-all":                      perLibrary("/reading/mark-all"),
-		"GET /v1/items/{id}/disc-titles":                                      perItem("/disc-titles"),
-		"GET /v1/admin/dvr/recording-root":                                    exempt(reasonAdmin),
-		"GET /v1/libraries/{libraryId}/reading/periodicals":                   {check: readingPeriodicalRestrictionCheck},
-		"GET /v1/libraries/{libraryId}/reading/periodicals/{seriesId}/issues": {check: readingPeriodicalRestrictionCheck},
+		"GET /v1/facet-queries/{id}":                                {check: facetQueryRestrictionCheck},
+		"GET /v1/genre-queries/{id}":                                {check: genreQueryRestrictionCheck},
+		"GET /v1/libraries/{id}/browse-selection-queries/{queryId}": {check: browseSelectionQueryRestrictionCheck("GET")},
+		"GET /v1/libraries/{id}/reading-browse-queries/{queryId}":   {check: readingBrowseQueryRestrictionCheck("GET")},
+		"GET /v1/libraries/{id}/reading-facet-queries/{queryId}":    {check: readingFacetQueryRestrictionCheck("GET")},
+		// Opaque private handles: the check mints the real preparation, the real
+		// confirmed operation and the real metadata preview query, then proves the
+		// restricted viewer cannot read or release them and never sees their
+		// hidden content.
+		"GET /v1/libraries/{id}/selection-actions/preparations/{preparationId}": {check: selectionActionPreparationQueryRestrictionCheck("GET")},
+		"GET /v1/selection-actions/{operationId}":                               {check: selectionActionConfirmOperationRestrictionCheck("GET")},
+		"GET /v1/metadata/bulk/preview-queries/{queryId}":                       {check: bulkMetadataPreviewQueryRestrictionCheck("GET")},
+		"GET /v1/user-mutations/{key}":                                          {check: userMutationReceiptRestrictionCheck},
+		"GET /v1/user-mutations/policy":                                         exempt("server time and numeric replay cutoff only; no catalogue identifiers or content"),
+		"GET /v1/reading/search":                                                {check: readingBodySearchRestrictionCheck},
+		"GET /v1/reading/sessions/{sessionId}/search":                           {check: readingBodySearchRestrictionCheck},
+		"GET /v1/libraries/{libraryId}/reading/mark-all":                        perLibrary("/reading/mark-all"),
+		"GET /v1/items/{id}/disc-titles":                                        perItem("/disc-titles"),
+		"GET /v1/admin/dvr/recording-root":                                      exempt(reasonAdmin),
+		"GET /v1/libraries/{libraryId}/reading/periodicals":                     {check: readingPeriodicalRestrictionCheck},
+		"GET /v1/libraries/{libraryId}/reading/periodicals/{seriesId}/issues":   {check: readingPeriodicalRestrictionCheck},
 
 		"GET /v1/reading/continue":                                {check: readingRestrictionCheck("GET /v1/reading/continue")},
 		"GET /v1/reading/items":                                   {check: readingRestrictionCheck("GET /v1/reading/items")},

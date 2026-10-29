@@ -318,7 +318,7 @@ func (d Dependencies) bulkMetadataPreviewHandler(w http.ResponseWriter, r *http.
 			fail(readprep.ErrClosed)
 			return
 		}
-		if e = store.Cancel(r.Context(), caller, readprep.Handle(r.PathValue("queryId"))); e != nil {
+		if e = store.CancelNamespace(r.Context(), caller, readprep.Handle(r.PathValue("queryId")), metadata.BulkPreviewPreparationNamespace); e != nil {
 			fail(e)
 			return
 		}

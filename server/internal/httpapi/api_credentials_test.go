@@ -517,6 +517,13 @@ func TestEveryRouteDeclaresACredentialScope(t *testing.T) {
 			t.Errorf("%s %s declares no credential scope", route.Method, route.Path)
 		}
 		typed[route.Method+" "+route.Path] = route.Requires
+		// Adapter-owned patterns retain the canonical declaration's scope.
+		// patternScope resolves this same muxPattern through Registry.Lookup.
+		mounted := muxPattern(route.Method, route.Path)
+		if previous, present := typed[mounted]; present && previous != route.Requires {
+			t.Errorf("mounted routes disagree on credential scope: %s", mounted)
+		}
+		typed[mounted] = route.Requires
 		if legacy, ok := routeScopes[muxPattern(route.Method, route.Path)]; ok && legacy != route.Requires {
 			t.Errorf("%s %s: routeScopes says %s, the registry %s", route.Method, route.Path, legacy, route.Requires)
 		}
