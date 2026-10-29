@@ -188,3 +188,27 @@ func TestInventoryCustodyProbeUsesLiteralPartialPrefix(t *testing.T) {
 		t.Fatal("partial predicate was parameterized")
 	}
 }
+
+// Deliberate direct-SQL corruption bypasses all producer fences. A capture
+// which already moved inputs must fail visibly and retain custody, never take
+// the normal stale path and acknowledge a live title as an untouched command.
+func TestInventoryCustodySourceInvariantAfterDrainKeepsAcceptedState(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.c.Exec(`INSERT INTO personal_items(profile_id,item_id,favorite,revision) VALUES(?,?,1,1)`, f.owner, f.item)
+	beginCaptureFixture(t, f)
+	titleWalkDrive(t, f.c, f.m, 160)
+	if rows(t, f.c, `SELECT count(*) FROM personal_items WHERE item_id=? AND profile_id=?`, f.item, f.owner) != 0 {
+		t.Fatal("fixture never drained actual owner input")
+	}
+	f.c.Exec(`UPDATE catalog_assets SET modified_ns=modified_ns+1 WHERE token=?`, f.token)
+	err := dbwork.WithWriteTx(context.Background(), f.c.DB, dbwork.ClassInteractive, func(tx *sql.Tx) error { _, e := RemoveTitleStepTx(context.Background(), tx, f.m.Ref); return e })
+	if !errors.Is(err, errRetainedSourceInvariant) {
+		t.Fatal("invariant drift became ordinary stale/success", err)
+	}
+	if rows(t, f.c, `SELECT count(*) FROM catalog_entity_mutations WHERE mutation_id=? AND status='active' AND entity_id=?`, f.m.Ref.ID, f.item) != 1 {
+		t.Fatal("invariant error released actual custody")
+	}
+	if rows(t, f.c, `SELECT count(*) FROM retained_title_state WHERE profile_id=? AND ready=1 AND favorite=1`, f.owner) != 1 {
+		t.Fatal("invariant error lost accepted state")
+	}
+}

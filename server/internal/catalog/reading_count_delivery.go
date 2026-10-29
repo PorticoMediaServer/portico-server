@@ -40,7 +40,7 @@ func (s *Service) reserveReadingCountRows(query string, args []any, extra ...int
 		terms[i] = "COALESCE(length(CAST(" + columns[i] + " AS BLOB)),0)"
 	}
 	// Ready attribution is a single PK row, not a history or whole-view join.
-	measure := `WITH measured(` + strings.Join(columns, ",") + `) AS (` + query + `) SELECT ` + strings.Join(terms, "+") + `+COALESCE((SELECT COALESCE(length(CAST(m.author_value AS BLOB)),0)+COALESCE(length(CAST(m.series_value AS BLOB)),0)+COALESCE(length(CAST(m.series_id AS BLOB)),0) FROM reading_attribution_members m JOIN reading_attribution_state st ON st.library_id=m.library_id WHERE m.library_id=(SELECT e.library_id FROM catalog_entities e WHERE e.id=c1) AND m.item_id=c1 AND m.generation=st.ready_generation AND st.input_generation=st.ready_generation LIMIT 1),0)+COALESCE((SELECT length(CAST(d.added_text AS BLOB)) FROM catalog_item_details d WHERE d.entity_id=c1),0) FROM measured`
+	measure := `WITH measured(` + strings.Join(columns, ",") + `) AS (` + query + `) SELECT ` + strings.Join(terms, "+") + `+COALESCE((SELECT COALESCE(length(CAST(m.author_value AS BLOB)),0)+COALESCE(length(CAST(m.series_value AS BLOB)),0)+COALESCE(length(CAST(m.series_id AS BLOB)),0) FROM reading_attribution_members m JOIN reading_attribution_state st ON st.library_id=m.library_id WHERE m.library_id=(SELECT e.library_id FROM catalog_entities e WHERE e.id=c1) AND m.item_id=c1 AND m.generation=st.ready_generation LIMIT 1),0)+COALESCE((SELECT length(CAST(d.added_text AS BLOB)) FROM catalog_item_details d WHERE d.entity_id=c1),0) FROM measured`
 	rows, err := s.read().Query(measure, args...)
 	if err != nil {
 		return err

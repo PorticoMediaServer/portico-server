@@ -45,9 +45,25 @@ func TestReadingBrowseHTTPUsesLiveReadyAuthorityForAllFourSurfaces(t *testing.T)
 		}
 	}
 	check(r.f.owner.AccessToken, 200, false)
+	initial := readingHTTP(t, h, "POST", base+"/browse", r.f.owner.AccessToken, "", map[string]any{"pivot": "books", "limit": 1})
+	var held catalog.BrowseResult
+	if initial.Code != 200 || json.Unmarshal(initial.Body.Bytes(), &held) != nil || held.PageInfo.Revision == "" {
+		t.Fatalf("initial revision: %d %s", initial.Code, initial.Body.String())
+	}
 	check("", 401, true)
 	readingSeriesOwnerField(t, r, r.item, "author", "Changed protected author")
-	check(r.f.owner.AccessToken, http.StatusPreconditionFailed, true)
+	check(r.f.owner.AccessToken, http.StatusOK, false)
+	// Unconditional reads keep the last published attribution. The pending
+	// owner edit is not falsely served as part of that immutable image.
+	w := readingHTTP(t, h, "POST", base+"/browse", r.f.owner.AccessToken, "", map[string]any{"pivot": "books", "limit": 1})
+	var updating catalog.BrowseResult
+	if err := json.Unmarshal(w.Body.Bytes(), &updating); err != nil || !updating.Importing || len(updating.Entries) != 1 || updating.Entries[0].Author != "Protected Reading author" {
+		t.Fatalf("published image while importing: %d %+v %v", w.Code, updating, err)
+	}
+	conditional := readingHTTP(t, h, "POST", base+"/browse", r.f.owner.AccessToken, "", map[string]any{"pivot": "books", "limit": 1, "range": map[string]any{"start": 0, "revision": held.PageInfo.Revision}})
+	if conditional.Code != 412 || conditional.Header().Get("ETag") == "" || conditional.Header().Get("ETag") == "\""+held.PageInfo.Revision+"\"" {
+		t.Fatalf("conditional mismatch lacks current revision: %d %s %s", conditional.Code, conditional.Header().Get("ETag"), conditional.Body.String())
+	}
 	readingSeriesDrain(t, r)
 	owner := readingOwnerLogin(t, r)
 	profiles, err := r.f.id.CreateDirectProfile(ctx, owner.AccountToken, "Browse reader", "blue")
@@ -111,6 +127,30 @@ func TestReadingBrowseFacetWindowHTTP(t *testing.T) {
 		w = readingHTTP(t, h, "GET", path+"&offset="+offset, r.f.owner.AccessToken, "", nil)
 		if w.Code != 400 {
 			t.Fatalf("invalid offset accepted %s: %d", offset, w.Code)
+		}
+	}
+}
+
+func TestReadingBrowseColdImageIsHonestBuildingOverHTTP(t *testing.T) {
+	f := newV1Fixture(t, 0)
+	library, err := f.cat.Create("Building Reading", "book", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, prepared := range []bool{false, true} {
+		d := f.deps
+		d.PrepareReadingBrowse = prepared
+		h := New(d)
+		base := "/v1/libraries/" + library.ID
+		w := readingHTTP(t, h, "GET", base+"/browse-capabilities", f.owner.AccessToken, "", nil)
+		var caps catalog.BrowseCapabilities
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &caps) != nil || !caps.Importing {
+			t.Fatalf("prepared=%v cold capabilities: %d %s", prepared, w.Code, w.Body.String())
+		}
+		w = readingHTTP(t, h, "POST", base+"/browse", f.owner.AccessToken, "", map[string]any{"pivot": "books", "limit": 1})
+		var page catalog.BrowseResult
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &page) != nil || !page.Importing || len(page.Entries) != 0 || !page.PageInfo.TotalIsLowerBound || page.WholeSelection != nil {
+			t.Fatalf("prepared=%v cold page: %d %s", prepared, w.Code, w.Body.String())
 		}
 	}
 }

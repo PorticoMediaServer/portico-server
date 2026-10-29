@@ -63,8 +63,8 @@ func TestReadingBrowseLeavesFacetsAndCompilerShareTheReadyScope(t *testing.T) {
 	for _, kind := range []string{"book", "comic"} {
 		t.Run(kind, func(t *testing.T) {
 			c, s, viewer, _ := readingBrowseFixture(t, kind)
-			if _, err := s.BrowseCapabilitiesForViewer(viewer, "reading", ""); !errors.Is(err, ErrStaleContinuation) {
-				t.Fatalf("unready capabilities: %v", err)
+			if caps, err := s.BrowseCapabilitiesForViewer(viewer, "reading", ""); err != nil || !caps.Importing {
+				t.Fatalf("building capabilities: %+v %v", caps, err)
 			}
 			c.Drain()
 			caps, err := s.BrowseCapabilitiesForViewer(viewer, "reading", "")
@@ -169,8 +169,8 @@ func TestReadingBrowseCursorBindsUnboundedSortAndRejectsInputDrift(t *testing.T)
 		t.Fatalf("expired Reading cursor renewed: %v", err)
 	}
 	c.Exec(`UPDATE metadata_owner_fields SET value='Changed Series' WHERE entity_id=? AND field='series'`, items[0].ID)
-	if _, err = s.Facets(viewer, FacetRequest{Library: "reading", Field: "series"}); !errors.Is(err, ErrStaleContinuation) {
-		t.Fatalf("unready facets returned facts: %v", err)
+	if facets, err := s.Facets(viewer, FacetRequest{Library: "reading", Field: "series"}); err != nil || len(facets.Values) == 0 || facets.Values[0].Value == "Changed Series" {
+		t.Fatalf("pending facets must serve the published image: %+v %v", facets, err)
 	}
 	c.Drain()
 	if _, err = s.BrowseEntities(viewer, BrowseRequest{Library: "reading", Limit: 1, Cursor: page.PageInfo.NextCursor}); !errors.Is(err, ErrStaleContinuation) {

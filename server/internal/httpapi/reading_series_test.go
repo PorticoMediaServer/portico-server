@@ -77,8 +77,8 @@ func TestReadingSeriesNumberedOrderingSignedPagingAndInputDrift(t *testing.T) {
 		t.Fatal("cursor crossed its captured limit", err)
 	}
 	readingSeriesOwnerField(t, r, items[0], "series", "Renamed")
-	if _, err = r.s.Series(ctx, r.p, r.library, series, "", 1); err != reading.ErrChanged {
-		t.Fatal("partial projection served", err)
+	if published, err := r.s.Series(ctx, r.p, r.library, series, "", 1); err != nil || len(published.Items) != 1 || published.Items[0].ID != items[1] {
+		t.Fatalf("pending input must keep the published series: %+v %v", published, err)
 	}
 	readingSeriesDrain(t, r)
 	if _, err = r.s.Series(ctx, r.p, r.library, series, first.NextCursor, 1); err != reading.ErrChanged {

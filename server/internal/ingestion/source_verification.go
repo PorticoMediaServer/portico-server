@@ -198,6 +198,11 @@ func (s *Service) verifyOneSource(ctx context.Context) (bool, error) {
 	if err != nil || !ok {
 		return false, err
 	}
+	if deferred, e := catalog.DeferInventorySource(ctx, s.db, walk.source); e != nil {
+		return false, e
+	} else if deferred {
+		return false, errVerificationPreempted
+	}
 	if walk.rootID == "" || !filepath.IsAbs(walk.root) {
 		// Without a catalogued root identity there is nothing a per-file check can
 		// be compared against, and this build will not conclude an absence from

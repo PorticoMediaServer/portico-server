@@ -66,12 +66,22 @@ func requireCompleteMergeTx(ctx context.Context, tx *sql.Tx, from, into int64) e
 func mutationTerminal(m compactcatalog.EntityMutation) compactcatalog.MutationStep {
 	return compactcatalog.MutationStep{Complete: m.Status == "terminal", More: m.Status != "terminal", Outcome: m.Outcome}
 }
+
+var errRetainedSourceInvariant = errors.New("retained title custody changed after capture admission")
+
 func checkedMutationTx(ctx context.Context, tx *sql.Tx, ref compactcatalog.MutationRef) (compactcatalog.EntityMutation, compactcatalog.MutationStep, error) {
 	m, err := compactcatalog.CheckEntityMutationTx(ctx, tx, ref)
 	if errors.Is(err, compactcatalog.ErrMutationSourcePaused) {
 		return m, compactcatalog.MutationStep{More: true, SourcePaused: true, Outcome: "pending"}, nil
 	}
 	if errors.Is(err, compactcatalog.ErrMutationStale) || errors.Is(err, sql.ErrNoRows) {
+		var retained bool
+		if e := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_purge_jobs WHERE mutation_id=? AND generation=?)`, ref.ID, ref.Generation).Scan(&retained); e != nil {
+			return m, compactcatalog.MutationStep{}, e
+		}
+		if retained {
+			return m, compactcatalog.MutationStep{}, fmt.Errorf("%w: %v", errRetainedSourceInvariant, err)
+		}
 		step, e := staleMutationStepTx(ctx, tx, m)
 		return m, step, e
 	}

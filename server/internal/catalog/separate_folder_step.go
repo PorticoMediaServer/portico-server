@@ -18,12 +18,12 @@ import (
 // primitive does not create a command, acquire custody or widen a write plan.
 type SeparateFolderFileRequest struct {
 	Library, Object, Revision, Source, Directory string
-	SourceGeneration                            int64
+	SourceGeneration                             int64
 	SourceIncarnation, RootIdentity, AssetPath   string
 	OldContainer, NewContainer, Child, Asset     int64
-	HasElsewhere                                bool
-	Link                                        compactcatalog.Link // parent's original link snapshot
-	Before                                      func(context.Context, *sql.Tx) error
+	HasElsewhere                                 bool
+	Link                                         compactcatalog.Link // parent's original link snapshot
+	Before                                       func(context.Context, *sql.Tx) error
 }
 
 // SeparateFolderFileResult identifies the exact published child. Repeated is
@@ -46,7 +46,7 @@ var ErrSeparateFolderFileProjection = errors.New("separate folder: book reparent
 // the parent retires old claims asynchronously under its same actual command.
 func SeparateFolderFileTx(ctx context.Context, tx *sql.Tx, req SeparateFolderFileRequest) (SeparateFolderFileResult, error) {
 	zero := SeparateFolderFileResult{}
-	if tx == nil || req.Before == nil || req.Library == "" || req.Object == "" || req.Revision == "" || req.Source == "" || req.Directory == "" || req.SourceGeneration <= 0 || req.SourceIncarnation == "" || req.AssetPath == "" || req.OldContainer <= 0 || req.NewContainer <= 0 || req.Child <= 0 || req.Asset <= 0 || req.OldContainer == req.NewContainer {
+	if tx == nil || req.Before == nil || req.Library == "" || req.Object == "" || req.Revision == "" || req.Source == "" || req.SourceGeneration <= 0 || req.SourceIncarnation == "" || req.AssetPath == "" || req.OldContainer <= 0 || req.NewContainer <= 0 || req.Child <= 0 || req.Asset <= 0 || req.OldContainer == req.NewContainer {
 		return zero, ErrAdminQuery
 	}
 	if err := req.Before(ctx, tx); err != nil {
