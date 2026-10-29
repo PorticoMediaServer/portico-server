@@ -55,6 +55,10 @@ type ReadingBrowseCountPayload struct {
 }
 
 func readingPreparationError(err error) error {
+	var revision *ReadingRevisionMismatch
+	if errors.As(err, &revision) {
+		return err
+	}
 	if errors.Is(err, sql.ErrNoRows) || errors.Is(err, ErrReadingProjectionChanged) || errors.Is(err, ErrStaleContinuation) || errors.Is(err, ErrVisibilityBuilding) || errors.Is(err, identity.ErrUnauthorized) || errors.Is(err, identity.ErrForbidden) {
 		return readprep.ErrStale
 	}
@@ -159,7 +163,7 @@ func (s *Service) SubmitReadingBrowseCount(caller readprep.Caller, viewer Viewer
 					return e
 				}
 				if revision != seed.Range.Revision {
-					return ErrReadingProjectionChanged
+					return &ReadingRevisionMismatch{Revision: revision}
 				}
 			}
 		}

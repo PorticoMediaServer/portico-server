@@ -448,6 +448,7 @@ type BrowseSurfaceCapability struct {
 	Paging          string   `json:"paging"`
 }
 type BrowseCapabilities struct {
+	Importing     bool                      `json:"importing,omitempty"`
 	Surfaces      []BrowseSurfaceCapability `json:"surfaces"`
 	Library       Library                   `json:"library"`
 	Pivots        []BrowsePivotCapability   `json:"pivots"`
