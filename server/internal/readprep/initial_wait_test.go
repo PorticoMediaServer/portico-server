@@ -646,3 +646,208 @@ func TestCancelNamespaceNeverReleasesForeignDemandAtomically(t *testing.T) {
 	ready(t, s, "owner", owner).Release()
 	ready(t, s, "other", other).Release()
 }
+
+// WaitForReadyForTest is the HTTP-test opt-in that lets an ordinary Poll observe the
+// already-admitted worker's completion instead of the Preparing answer. It
+// still returns the same singly charged Ready delivery and releases the
+// transient control reservation.
+func TestPollWaitForReadyForTestWaitsForCompletion(t *testing.T) {
+	s := storeFor(t, Config{Workers: 1})
+	gate := newIWGate()
+	t.Cleanup(gate.open)
+	key := Key{Namespace: "initial", Basis: "basis", Canonical: "http-ready"}
+	caller := Caller("caller")
+	h := submit(t, s, caller, key, iwBlockedPlan("ready", gate))
+	waitSignal(t, gate.started)
+	base := iwBase(key, caller, 64)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	results := make(chan iwResult, 1)
+	go func() {
+		r, err := s.Poll(WaitForReadyForTest(ctx), caller, h)
+		results <- iwResult{r: r, err: err}
+	}()
+	// The same control charge as PollWhenReady proves the ordinary poll is
+	// parked on the entry's completion channel rather than racing it.
+	eventually(t, func() bool { return s.Stats().Bytes == base+initialWaitBytes })
+
+	gate.open()
+	got := iwAwait(t, results)
+	if got.err != nil {
+		t.Fatalf("completion wait: %v", got.err)
+	}
+	if got.r.State != Ready || string(got.r.Payload) != "ready" {
+		t.Fatalf("completion wait returned %+v", got.r)
+	}
+	stats := s.Stats()
+	if stats.Deliveries != 1 || stats.DeliveryBytes != iwDeliveryBytes(key, len("ready")) {
+		t.Fatalf("completion accounting %+v", stats)
+	}
+	payloadCap := stats.Bytes - iwEntryBytes(key) - iwHandleBytes(caller) - iwDeliveryBytes(key, len("ready"))
+	if payloadCap < int64(len("ready")) || payloadCap > 64 {
+		t.Fatalf("completed entry reservation = %d", payloadCap)
+	}
+	if stats.Bytes != base-int64(64)+payloadCap+iwDeliveryBytes(key, len("ready")) {
+		t.Fatalf("completion bytes = %d, want control reservation released", stats.Bytes)
+	}
+	got.r.Release()
+	if after := s.Stats(); after.Bytes != iwEntryBytes(key)+iwHandleBytes(caller)+payloadCap || after.Deliveries != 0 || after.DeliveryBytes != 0 {
+		t.Fatalf("release left %+v", after)
+	}
+}
+
+// The opt-in cannot park without an existing request deadline. A background
+// context stays the ordinary immediate Poll, so a fixture cannot invent a wait.
+func TestPollWaitForReadyForTestRequiresExistingDeadline(t *testing.T) {
+	s := storeFor(t, Config{Workers: 1})
+	gate := newIWGate()
+	t.Cleanup(gate.open)
+	key := Key{Namespace: "initial", Basis: "basis", Canonical: "no-deadline"}
+	caller := Caller("caller")
+	h := submit(t, s, caller, key, iwBlockedPlan("no-deadline", gate))
+	waitSignal(t, gate.started)
+	base := iwBase(key, caller, 64)
+
+	results := make(chan iwResult, 1)
+	go func() {
+		r, err := s.Poll(WaitForReadyForTest(context.Background()), caller, h)
+		results <- iwResult{r: r, err: err}
+	}()
+	select {
+	case got := <-results:
+		if got.err != nil {
+			t.Fatalf("ordinary poll: %v", got.err)
+		}
+		if got.r.State != Preparing || got.r.delivery == nil {
+			t.Fatalf("deadline-less opt-in returned %+v", got.r)
+		}
+		got.r.Release()
+	case <-time.After(time.Second):
+		t.Fatal("Poll waited without an existing request deadline")
+	}
+	if stats := s.Stats(); stats.Bytes != base || stats.Deliveries != 0 {
+		t.Fatalf("deadline-less opt-in disturbed accounting: %+v", stats)
+	}
+
+	gate.open()
+	ready(t, s, caller, h).Release()
+}
+
+// The opt-in reuses the same caller binding and retirement wakes as
+// PollWhenReady; each refusal returns before taking or keeping the control
+// reservation.
+func TestPollWaitForReadyForTestRefusesCancelRetireAndUnknownCaller(t *testing.T) {
+	t.Run("cancellation", func(t *testing.T) {
+		s := storeFor(t, Config{Workers: 1})
+		gate := newIWGate()
+		t.Cleanup(gate.open)
+		key := Key{Namespace: "initial", Basis: "basis", Canonical: "cancel"}
+		caller := Caller("caller")
+		h := submit(t, s, caller, key, iwBlockedPlan("cancel", gate))
+		waitSignal(t, gate.started)
+		base := iwBase(key, caller, 64)
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		results := make(chan iwResult, 1)
+		go func() {
+			r, err := s.Poll(WaitForReadyForTest(ctx), caller, h)
+			results <- iwResult{r: r, err: err}
+		}()
+		eventually(t, func() bool { return s.Stats().Bytes == base+initialWaitBytes })
+
+		cancel()
+		got := iwAwait(t, results)
+		if !errors.Is(got.err, context.Canceled) {
+			t.Fatalf("cancelled wait = %v, want context.Canceled", got.err)
+		}
+		if got.r.delivery != nil {
+			t.Fatalf("cancelled wait returned a delivery: %+v", got.r)
+		}
+		stats := s.Stats()
+		if stats.Bytes != base || stats.Handles != 1 || stats.Entries != 1 || stats.Deliveries != 0 {
+			t.Fatalf("cancelled wait disturbed the lease or leaked control: %+v", stats)
+		}
+
+		gate.open()
+		ready(t, s, caller, h).Release()
+	})
+
+	t.Run("retirement", func(t *testing.T) {
+		s := storeFor(t, Config{Workers: 1})
+		gate := newIWGate()
+		t.Cleanup(gate.open)
+		key := Key{Namespace: "initial", Basis: "basis", Canonical: "retire"}
+		caller := Caller("caller")
+		h := submit(t, s, caller, key, iwBlockedPlan("retire", gate))
+		waitSignal(t, gate.started)
+		base := iwBase(key, caller, 64)
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		results := make(chan iwResult, 1)
+		go func() {
+			r, err := s.Poll(WaitForReadyForTest(ctx), caller, h)
+			results <- iwResult{r: r, err: err}
+		}()
+		eventually(t, func() bool { return s.Stats().Bytes == base+initialWaitBytes })
+
+		if err := s.Cancel(context.Background(), caller, h); err != nil {
+			t.Fatal(err)
+		}
+		got := iwAwait(t, results)
+		if !errors.Is(got.err, ErrStale) {
+			t.Fatalf("retired wait = %v, want stale", got.err)
+		}
+		if got.r.delivery != nil {
+			t.Fatalf("retired wait returned a delivery: %+v", got.r)
+		}
+		stats := s.Stats()
+		if stats.Handles != 0 || stats.Entries != 0 || stats.Deliveries != 0 {
+			t.Fatalf("retirement left %+v", stats)
+		}
+		// The unwinding work may still be charged; the control reservation may
+		// never survive its waiter.
+		if stats.Bytes != 0 && stats.Bytes != iwEntryBytes(key)+64 {
+			t.Fatalf("retirement left %d bytes", stats.Bytes)
+		}
+
+		gate.open()
+		eventually(t, func() bool {
+			st := s.Stats()
+			return st.Bytes == 0 && st.Running == 0
+		})
+	})
+
+	t.Run("unknown caller", func(t *testing.T) {
+		s := storeFor(t, Config{Workers: 1})
+		gate := newIWGate()
+		t.Cleanup(gate.open)
+		key := Key{Namespace: "initial", Basis: "basis", Canonical: "foreign"}
+		h := submit(t, s, "caller", key, iwBlockedPlan("foreign", gate))
+		waitSignal(t, gate.started)
+		base := iwBase(key, "caller", 64)
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		results := make(chan iwResult, 1)
+		go func() {
+			r, err := s.Poll(WaitForReadyForTest(ctx), "intruder", h)
+			results <- iwResult{r: r, err: err}
+		}()
+		got := iwAwait(t, results)
+		if !errors.Is(got.err, ErrStale) {
+			t.Fatalf("unknown caller = %v, want stale", got.err)
+		}
+		if got.r.delivery != nil || got.r.Payload != nil {
+			t.Fatalf("unknown caller received %+v", got.r)
+		}
+		if stats := s.Stats(); stats.Bytes != base || stats.Deliveries != 0 || stats.Handles != 1 {
+			t.Fatalf("unknown caller charged or leaked: %+v", stats)
+		}
+
+		gate.open()
+		ready(t, s, "caller", h).Release()
+	})
+}

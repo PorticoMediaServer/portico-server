@@ -574,6 +574,16 @@ func (s *Store) Poll(ctx context.Context, caller Caller, h Handle) (Result, erro
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
 	}
+	// The test-only HTTP fixture opt-in waits for the already-admitted worker
+	// before this ordinary poll body, reusing waitInitialReady's completion and
+	// retirement channels and its transient control reservation. Production
+	// never sets the marker; WaitForReadyForTest refuses outside a test binary and
+	// without an existing request deadline.
+	if waitForReady(ctx) {
+		if err := s.waitInitialReady(ctx, caller, h, 0); err != nil {
+			return Result{}, err
+		}
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {

@@ -2,6 +2,7 @@ package readprep
 
 import (
 	"context"
+	"testing"
 	"time"
 )
 
@@ -12,6 +13,39 @@ const InitialReadyGrace = 50 * time.Millisecond
 
 // Covers the timer and transient notification/control allocations.
 const initialWaitBytes int64 = 512
+
+// initialReadyWaitKey marks a context as a test fixture's opt-in for Poll's
+// completion wait. It is private so only WaitForReadyForTest can set it.
+type initialReadyWaitKey struct{}
+
+// WaitForReadyForTest is a test-only HTTP-fixture lever. It asks the next Poll
+// for the same caller and handle to wait on the already-admitted worker's
+// completion channel before returning its ordinary result, so a fixture can
+// observe the real HTTP poll without sleeping on Retry-After. It adds no
+// deadline, cap, worker, pool or cache. Outside a test binary, or without an
+// existing request deadline, it returns ctx unchanged; the marker is also
+// ignored by Poll in those cases. Cancellation, retirement, caller binding,
+// expiry and delivery charging remain Poll's.
+func WaitForReadyForTest(ctx context.Context) context.Context {
+	if !testing.Testing() {
+		return ctx
+	}
+	if _, ok := ctx.Deadline(); !ok {
+		return ctx
+	}
+	return context.WithValue(ctx, initialReadyWaitKey{}, true)
+}
+
+func waitForReady(ctx context.Context) bool {
+	if !testing.Testing() {
+		return false
+	}
+	if _, ok := ctx.Deadline(); !ok {
+		return false
+	}
+	optIn, _ := ctx.Value(initialReadyWaitKey{}).(bool)
+	return optIn
+}
 
 // PollWhenReady waits only for an initial submission's worker completion. It
 // holds no database snapshot, delivery or store lock while waiting. Admission,
@@ -30,6 +64,11 @@ func (s *Store) PollWhenReady(ctx context.Context, caller Caller, h Handle, grac
 	return s.Poll(ctx, caller, h)
 }
 
+// waitInitialReady waits only for an initial submission's worker completion. It
+// holds no database snapshot, delivery or store lock while waiting. Admission,
+// computation, caller binding, expiry and delivery charging remain Poll's.
+// A positive grace bounds the wait; zero waits until the worker completes,
+// fails, retires or ctx ends. Only the test-only Poll opt-in passes zero.
 func (s *Store) waitInitialReady(ctx context.Context, caller Caller, h Handle, grace time.Duration) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -65,8 +104,12 @@ func (s *Store) waitInitialReady(ctx context.Context, caller Caller, h Handle, g
 		}
 		s.mu.Unlock()
 	}()
-	timer := time.NewTimer(grace)
-	defer timer.Stop()
+	var expired <-chan time.Time
+	if grace > 0 {
+		timer := time.NewTimer(grace)
+		defer timer.Stop()
+		expired = timer.C
+	}
 	for {
 		s.mu.Lock()
 		s.prune(s.cfg.Now())
@@ -93,7 +136,7 @@ func (s *Store) waitInitialReady(ctx context.Context, caller Caller, h Handle, g
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-timer.C:
+		case <-expired:
 			return nil
 		case <-ready:
 		case <-retired:

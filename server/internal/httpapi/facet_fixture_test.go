@@ -90,6 +90,13 @@ func readyHTTPFacetFixture(t *testing.T, path string, call httpFacetFixtureCall)
 	}()
 	w := call(ctx, http.MethodGet, path, "")
 	polled := false
+	// The initial request above stays on the ordinary request context: its
+	// preparing/fallback headers and Retry-After are assertions, not pacing.
+	// Polls then opt in to the store's test-only completion wait, so they
+	// observe the same real HTTP route without a whole-second sleep. The
+	// existing context deadline still bounds every wait; none is added here.
+	// A poll that still answers pending keeps the old Retry-After fallback.
+	pollCtx := readprep.WaitForReadyForTest(ctx)
 	for {
 		var kind struct {
 			Kind string `json:"kind"`
@@ -133,15 +140,23 @@ func readyHTTPFacetFixture(t *testing.T, path string, call httpFacetFixtureCall)
 		if int64(seconds) > int64(time.Until(remaining)/time.Second) {
 			t.Fatalf("facet fixture %s Retry-After exceeds polling deadline: %v", path, w.Header())
 		}
-		timer := time.NewTimer(time.Duration(seconds) * time.Second)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			t.Fatalf("facet fixture did not become ready: %v", ctx.Err())
-		case <-timer.C:
+		if polled {
+			// A poll that still answers pending means the opt-in could not park
+			// (for example, its control charge did not fit). Fall back to the
+			// server's own Retry-After pacing instead of spinning.
+			timer := time.NewTimer(time.Duration(seconds) * time.Second)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				t.Fatalf("facet fixture did not become ready: %v", ctx.Err())
+			case <-timer.C:
+			}
 		}
-		w = call(ctx, http.MethodGet, location, "")
+		w = call(pollCtx, http.MethodGet, location, "")
 		polled = true
+		if err := ctx.Err(); err != nil {
+			t.Fatalf("facet fixture did not become ready: %v", err)
+		}
 	}
 	var envelope struct {
 		Kind string `json:"kind"`
