@@ -40,7 +40,8 @@ function DesktopDialog({open, onOpenChange, title, headerAction, children, descr
   return <RadixDialog.Root open={open} onOpenChange={change} modal>
     {present && <RadixDialog.Portal forceMount container={portalTarget}>
       <RadixDialog.Overlay forceMount ref={scrimRef} className={styles.scrim} data-state={open ? 'open' : 'closed'} />
-      <RadixDialog.Content forceMount ref={attachContent} className={classes(styles.dialog, className)} data-size={size} data-placement={placement} data-testid={testID}
+      {/* A closing surface keeps painting through its fade but takes no input, so nothing in it acts twice. */}
+      <RadixDialog.Content forceMount ref={attachContent} inert={!open || undefined} className={classes(styles.dialog, className)} data-size={size} data-placement={placement} data-testid={testID}
         data-state={open ? 'open' : 'closed'} role={role} aria-modal={open || undefined} aria-label={accessibilityLabel} aria-describedby={description === undefined ? undefined : `${id}-description`}
         style={width === undefined ? undefined : {'--overlay-width': `${width}px`} as OverlayStyle}
         onOpenAutoFocus={focus.onOpenAutoFocus} onCloseAutoFocus={focus.onCloseAutoFocus}

@@ -137,7 +137,7 @@ export function BottomSheet({open, onOpenChange, title, headerAction, children, 
   const change = (value: boolean) => { if (value === open) return; onOpenChange(value, reason.current); reason.current = 'action'; };
   return <RadixDialog.Root open={open} onOpenChange={change} modal>{trigger && <RadixDialog.Trigger asChild ref={triggerElement}>{trigger}</RadixDialog.Trigger>}{present && <RadixDialog.Portal forceMount container={portalTarget}>
     <RadixDialog.Overlay forceMount ref={scrim} className={styles.sheetScrim} data-state={open ? 'open' : 'closed'} />
-    <RadixDialog.Content forceMount ref={attachContent} className={classes(styles.sheet, className)} role={role} aria-modal={open || undefined} data-testid={testID} data-state={open ? 'open' : 'closed'}
+    <RadixDialog.Content forceMount ref={attachContent} inert={!open || undefined} className={classes(styles.sheet, className)} role={role} aria-modal={open || undefined} data-testid={testID} data-state={open ? 'open' : 'closed'}
       data-full-height={selected?.height === maximum || undefined} data-has-footer={footer !== undefined || undefined} aria-label={accessibilityLabel} aria-describedby={description === undefined ? undefined : `${id}-description`}
       data-footer-stack={stackFooter || undefined}
       style={{bottom: viewport.bottom, '--overlay-sheet-height': `${maximum}px`, ...(stackFooter && footerHeight ? {'--overlay-sheet-footer-height': `${footerHeight}px`} : {})} as OverlayStyle}
