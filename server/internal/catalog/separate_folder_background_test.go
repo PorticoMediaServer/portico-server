@@ -456,7 +456,17 @@ func TestSeparateFolderBackgroundRevocationAbandonsWithoutEffect(t *testing.T) {
 			if got := separateAsyncText(t, f.c, `SELECT target_public_id FROM catalog_entity_mutations WHERE mutation_id=?`, root); got != target {
 				t.Fatal("revoked command rebound its target")
 			}
-			retry, err := New(f.c.DB).SeparateFolder(WithSeparateFolderActor(context.Background(), f.principal), "music", f.objects[0], "r1", func(*sql.Tx) error { return nil })
+			// Retrying the accepted command retains its exact accepting scope.
+			// A no-op management callback would instead model a fresh owner
+			// admission under the newly rotated lifetime, not this old command.
+			accepted, typed, decodeErr := separateFolderDecodeActor(owner)
+			if decodeErr != nil || !typed {
+				t.Fatal("accepted actor", decodeErr)
+			}
+			retry, err := New(f.c.DB).SeparateFolder(WithSeparateFolderActor(context.Background(), f.principal), "music", f.objects[0], "r1", func(tx *sql.Tx) error {
+				_, err := accepted.authorizeTx(context.Background(), tx, "music")
+				return err
+			})
 			if retry != "" || !errors.Is(err, identity.ErrUnauthorized) {
 				t.Fatalf("revoked owner was not refused: id=%q err=%v", retry, err)
 			}
