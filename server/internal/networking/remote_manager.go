@@ -45,6 +45,10 @@ type RemoteManager struct {
 	// seconds, forever, on every server that does not use remote access — which
 	// is most of them.
 	quiescent atomic.Bool
+	// reprove is a one-shot request (Reprove) that the next route step probe
+	// even though the route digest is unchanged and the reproof deadline has
+	// not arrived. It is cleared once a step actually reaches the probe.
+	reprove atomic.Bool
 	// public is this server's own public addresses as the last route step saw
 	// them, for request locality (a LAN device that reaches the server through
 	// the router's public address). Read without the step's lock.
@@ -139,6 +143,17 @@ func (m *RemoteManager) Wake() {
 	case m.wake <- struct{}{}:
 	default:
 	}
+}
+
+// Reprove asks for the next route step to re-probe the published candidates
+// even when nothing about the routes changed, then wakes the loop. A hold
+// (NotBefore) is still honoured. It does not change the generation.
+func (m *RemoteManager) Reprove() {
+	if m == nil {
+		return
+	}
+	m.reprove.Store(true)
+	m.Wake()
 }
 
 // SetAdvertisedInterface installs the source for the owner's preferred LAN
@@ -591,7 +606,7 @@ func (m *RemoteManager) stepRouteLocked(ctx context.Context) error {
 	}
 	// Healthy idle ticks perform only local observations/lease checks. Keep the
 	// last proof visible until its bounded renewal, not a fake success per tick.
-	if now.Before(state.NotBefore) || (!changed && now.Before(state.NextAttempt)) {
+	if now.Before(state.NotBefore) || (!changed && now.Before(state.NextAttempt) && !m.reprove.Load()) {
 		var raw string
 		_ = m.h.store.db.QueryRowContext(ctx, `SELECT status FROM networking_remote_state WHERE singleton=1`).Scan(&raw)
 		var old RemoteStatus
@@ -603,6 +618,7 @@ func (m *RemoteManager) stepRouteLocked(ctx context.Context) error {
 		status.NextAttempt = &state.NextAttempt
 		return m.saveState(ctx, authority, c, state, status)
 	}
+	m.reprove.Store(false)
 	// Persist the exact generation before the remote effect. A lost response is
 	// retried with this same generation+digest; it cannot create a second topology.
 	if e = m.saveState(ctx, authority, c, state, status); e != nil {

@@ -22,6 +22,7 @@ import (
 	"portico.local/server/internal/requestinput"
 	"portico.local/server/internal/segmentmarkers"
 	"portico.local/server/internal/subtitles"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -192,6 +193,16 @@ func namedQualityChoice(id string) (V1Choice, bool) {
 		return V1Choice{QualityID: "original"}, true
 	case "automatic":
 		return V1Choice{QualityID: "automatic"}, true
+	}
+	if id == QualityCDID {
+		return V1Choice{QualityID: id, AudioCDQuality: true}, true
+	}
+	if rest, ok := strings.CutPrefix(id, QualityLimitPrefix); ok {
+		kbps, err := strconv.Atoi(rest)
+		if err != nil || kbps <= 0 || kbps > 10_000 || LimitQualityID(kbps) != id {
+			return V1Choice{}, false
+		}
+		return V1Choice{Limit: true, QualityID: id, MaxAudioBitrateBPS: kbps * 1000}, true
 	}
 	preset, ok := LadderPreset(id)
 	if !ok {

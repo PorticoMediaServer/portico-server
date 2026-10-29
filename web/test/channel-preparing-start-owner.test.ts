@@ -214,3 +214,17 @@ test('an ownerless Web binding truthfully refuses late cleanup and never invokes
     await settle();caller.abort();held.resolve(response(real(), 201));await pending;await settle();assert.deepEqual(methods, ['POST']);
   } finally {control.close();}
 });
+
+test('E-web-25: claimInstall accepts a Live start answered at generation 0 and refuses negative or non-integer generations', () => {
+  const f = fixture();
+  try {
+    for (const generation of [-1, 0.5, Number.NaN]) {
+      const start = f.reg.beginChannel(f.original(`bad-${generation}`), f.current);
+      assert.equal(start.claimInstall(Object.freeze({id: 'original_channel', generation})), false, `generation ${generation} is refused`);
+      start.finish();
+    }
+    const start = f.reg.beginChannel(f.original('gen0-key'), f.current);
+    assert.equal(start.claimInstall(Object.freeze({id: 'original_channel', generation: 0})), true, 'generation 0 installs');
+    start.finish();
+  } finally {f.reg.dispose();f.owner.dispose();}
+});

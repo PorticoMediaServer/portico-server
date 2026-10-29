@@ -29,6 +29,21 @@ type CertificateManager struct {
 	// quiescent means there is no scope and no pending order, so nothing this
 	// loop does can make progress until something wakes it. See CertificateManager.Run.
 	quiescent atomic.Bool
+	// onReady is called once after each certificate is installed and active.
+	onReady atomic.Pointer[func()]
+}
+
+// SetOnReady installs the callback run after a newly issued certificate has
+// been committed. It is never called on failure or for an expired receipt.
+func (m *CertificateManager) SetOnReady(f func()) {
+	if m == nil {
+		return
+	}
+	if f == nil {
+		m.onReady.Store(nil)
+		return
+	}
+	m.onReady.Store(&f)
 }
 
 type CertificateOptions struct {
@@ -148,6 +163,9 @@ func (h *ClaimHandler) ConfigureCertificates(ctx context.Context, stateDir strin
 	if e != nil {
 		return e
 	}
+	// A ready certificate lets the managed HTTPS route be proved at once; the
+	// remote manager is read at call time because it is configured afterwards.
+	m.SetOnReady(func() { h.Remote().Reprove() })
 	h.certificates = m
 	return nil
 }

@@ -6,7 +6,7 @@ import type {ServerSignInProbe} from '@core/sign-in.ts';
 
 const origin = 'https://inviting.example', serverId = 'srv_' + 's'.repeat(43), code = 'i'.repeat(43);
 const pin = {serverId, publicKey: 'p'.repeat(43), fingerprint: 'f'.repeat(43)};
-const system = {id: serverId, name: 'Actual inviting server', version: '1', signIn: 'local', move: null, setupRequired: false, hostedConfigured: false, hostedAttached: false, apiLevel: 1};
+const system = {id: serverId, name: 'Actual inviting server', version: '1', signIn: 'local', move: null, setupRequired: false, hostedConfigured: false, hostedAttached: false, apiLevel: 1, apiVersion: '1.0', apiMajors: [1], capabilities: []};
 const preview = {allLibraries: false, expiresAt: '2099-01-01T00:00:00Z', inviterUsername: 'owner', libraries: [{name: 'Actual library'}], libraryCount: 1, role: 'member', serverName: system.name, signInMethod: 'local'};
 function response() {
   return {authority: 'local', serverId, canManage: true, capabilities: {manageAccount: true, managePeople: false, manageServer: false, manageSignIn: false},

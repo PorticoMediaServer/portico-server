@@ -228,14 +228,25 @@ func TestAccountBudgetCannotKeepCorrectPasswordLockedOut(t *testing.T) {
 	if _, err := s.DirectLogin(fresh, "owner", "Testing1!"); err != nil {
 		t.Fatalf("new source's correct password was locked out: %v", err)
 	}
-	// A refused request must not renew the account-wide ledger. The refused
+	// These five guesses are evaluated and establish the source cool-off; a
+	// refused request must not renew the account-wide ledger. The refused
 	// source is delayed immediately, without taking a password-hash slot.
 	for n := 1; n <= 5; n++ {
 		_, _ = s.DirectLogin(known, "owner", "wrong")
 	}
-	var before int
-	if err := db.QueryRow(`SELECT failed_attempts FROM identity_account_attempt_budget WHERE account_id='account'`).Scan(&before); err != nil {
+	var sourceAttempts int
+	var lastFailure, lockedUntil int64
+	if err := db.QueryRow(`SELECT failed_attempts,last_failure,locked_until FROM identity_credential_attempts WHERE account_id='account' AND source_bucket='2001:db8:1::/64'`).Scan(&sourceAttempts, &lastFailure, &lockedUntil); err != nil || sourceAttempts != 5 || lockedUntil != lastFailure+1 {
+		t.Fatalf("fifth evaluated guess must establish a one-second source lock: attempts=%d last=%d until=%d err=%v", sourceAttempts, lastFailure, lockedUntil, err)
+	}
+	// This assertion exercises admission while locked, not expiry. Keep the
+	// fixture locked across a wall-clock second or a shared-runner scheduling gap.
+	if _, err := db.Exec(`UPDATE identity_credential_attempts SET locked_until=? WHERE account_id='account' AND source_bucket='2001:db8:1::/64'`, time.Now().Unix()+30); err != nil {
 		t.Fatal(err)
+	}
+	var before int
+	if err := db.QueryRow(`SELECT failed_attempts FROM identity_account_attempt_budget WHERE account_id='account'`).Scan(&before); err != nil || before != 5 {
+		t.Fatalf("five evaluated guesses must be counted account-wide: before=%d err=%v", before, err)
 	}
 	s.hashSlots <- struct{}{}
 	s.hashSlots <- struct{}{}

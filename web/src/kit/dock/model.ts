@@ -1,6 +1,7 @@
 import {sameFence, type DockState, type RemoteDock} from '../../../../packages/player-core/src/index.ts';
 import {clockText} from '@core/presentation/kit-model/text.ts';
-import type {DockAction, DockBinding, DockIntent, DockPresentation, DockView} from './types';
+import type {DockAction, DockBinding, DockIntent, DockPresentation, DockStarting, DockView} from './types';
+import type {QueuePlaybackFence} from '../../../../packages/player-core/src/index.ts';
 
 export {clockText};
 export function dockView(state: DockState, presentations: readonly DockPresentation[], retainExpandedMusic = false, retainExpandedVideo = false): DockView | null {
@@ -9,6 +10,15 @@ export function dockView(state: DockState, presentations: readonly DockPresentat
   const presentation = presentations.find(item => sameFence(item.fence, playback.fence));
   if (!presentation) return null;
   return {mode: remote?.kind ?? playback.kind, playback, presentation, ...(remote ? {remote} : {})};
+}
+/** The starting occupant as a dock view for the SAME bar component, so the real dock replaces
+ * it in place with no new entrance. Its fence is a local display key only: every action it
+ * offers is Stop, which goes to `starting.stop`, never through a binding. */
+export function startingView(starting: DockStarting): DockView {
+  const fence = Object.freeze({kind: 'queue', sessionId: `starting:${starting.key}`, generation: 0}) as unknown as QueuePlaybackFence;
+  return Object.freeze({mode: starting.kind, starting,
+    playback: Object.freeze({fence, kind: starting.kind, queue: null, positionSeconds: 0, playing: false, expanded: false}),
+    presentation: Object.freeze({fence, identity: starting.identity, artwork: starting.artwork ?? null, controls: Object.freeze([]), skipBackSeconds: 0, skipForwardSeconds: 0})});
 }
 export function actionCurrent(state: DockState, action: DockAction): boolean {
   if (action.kind === 'restore-audio') return !!state.parkedAudio && sameFence(state.parkedAudio.fence, action.fence);

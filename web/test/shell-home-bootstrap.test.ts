@@ -166,7 +166,7 @@ test('shell identity loads during a building Reading generation and retains Sett
     calls.push(path);
     if (path === '/v1/libraries') return {items: [{id: 'reading-a', name: 'Still importing', kind: 'book', summary}]};
     if (path === '/v1/direct') return directRecord();
-    if (path === '/v1/system') return {id: 'server-a', name: 'Test server', version: '1', signIn: 'local', move: null, setupRequired: false, hostedConfigured: false, hostedAttached: false, apiLevel: 1};
+    if (path === '/v1/system') return {id: 'server-a', name: 'Test server', version: '1', signIn: 'local', move: null, setupRequired: false, hostedConfigured: false, hostedAttached: false, apiLevel: 1, apiVersion: '1.0', apiMajors: [1], capabilities: []};
     if (path.startsWith('/v1/guide/sources?')) throw Object.assign(new Error('not permitted'), {status: 403});
     throw new Error(`Unexpected shell read ${path}`);
   }} as unknown as HttpLocalApi;
@@ -183,7 +183,7 @@ test('a library directory that times out never stops sign-in: the libraries are 
   const api = (libraries: () => unknown) => ({request: async (path: string) => {
     if (path === '/v1/libraries') return libraries();
     if (path === '/v1/direct') return directRecord();
-    if (path === '/v1/system') return {id: 'server-a', name: 'Test server', version: '1', signIn: 'local', move: null, setupRequired: false, hostedConfigured: false, hostedAttached: false, apiLevel: 1};
+    if (path === '/v1/system') return {id: 'server-a', name: 'Test server', version: '1', signIn: 'local', move: null, setupRequired: false, hostedConfigured: false, hostedAttached: false, apiLevel: 1, apiVersion: '1.0', apiMajors: [1], capabilities: []};
     if (path.startsWith('/v1/guide/sources?')) throw Object.assign(new Error('not permitted'), {status: 403});
     throw new Error(`Unexpected shell read ${path}`);
   }}) as unknown as HttpLocalApi;

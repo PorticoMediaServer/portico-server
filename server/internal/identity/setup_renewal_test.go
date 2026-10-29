@@ -61,20 +61,19 @@ func (f setupContinuationFixture) renew(r renewal, transaction string) error {
 }
 
 func TestSetupRenewalAfterSlowInstallAdmitsOnlyTheClaimAccount(t *testing.T) {
-	for _, mode := range []string{"bound before expiry", "expired before binding", "wrong account"} {
+	for _, mode := range []string{"installed before expiry", "expired before install", "wrong account"} {
 		t.Run(mode, func(t *testing.T) {
 			f := newSetupContinuationFixture(t)
 			f.capture(t)
 			f.install(t)
 			ctx := context.Background()
 			var old serverreturn.SetupExchange
-			var route identity.SetupReturnRoute
-			if mode != "expired before binding" {
-				old, route = f.bound(t)
+			if mode != "expired before install" {
+				old = f.installed(t)
 			}
 			f.expireStart(t)
-			if mode != "expired before binding" {
-				if err := f.write(func(tx *sql.Tx) error { _, _, e := f.s.BeginSetupReturnTx(ctx, tx, f.pending, f.proofHash, old, route); return e }); err == nil {
+			if mode != "expired before install" {
+				if err := f.write(func(tx *sql.Tx) error { _, _, e := f.s.BeginSetupReturnTx(ctx, tx, f.pending, f.proofHash, old); return e }); err == nil {
 					t.Fatal("expired start still exchanged")
 				}
 			}
@@ -82,34 +81,34 @@ func TestSetupRenewalAfterSlowInstallAdmitsOnlyTheClaimAccount(t *testing.T) {
 			if err := f.renew(r, "renewed_setup_transaction"); err != nil {
 				t.Fatal("renewal", err)
 			}
-			if mode == "expired before binding" {
-				// The resolver now binds the installed HTTPS return to the live renewed start.
-				_, route = f.bound(t)
+			if mode == "expired before install" {
+				// The installed claim now marks the live renewed start installed.
+				f.installed(t)
 			}
-			q := serverreturn.SetupExchange{TransactionID: "renewed_setup_transaction", State: r.start.State, Verifier: r.verifier, InstallationID: r.start.InstallationID, ServerChallenge: r.start.ServerChallenge, RegistrationID: route.Registration.ID, Purpose: "setup"}
+			q := serverreturn.SetupExchange{TransactionID: "renewed_setup_transaction", State: r.start.State, Verifier: r.verifier, InstallationID: r.start.InstallationID, ServerChallenge: r.start.ServerChallenge, Purpose: "setup"}
 			// The original browser binding can't use the renewed start.
 			stale := q
 			stale.State, stale.Verifier = f.start.State, f.verifier
-			if err := f.write(func(tx *sql.Tx) error { _, _, e := f.s.BeginSetupReturnTx(ctx, tx, f.pending, f.proofHash, stale, route); return e }); err == nil {
+			if err := f.write(func(tx *sql.Tx) error { _, _, e := f.s.BeginSetupReturnTx(ctx, tx, f.pending, f.proofHash, stale); return e }); err == nil {
 				t.Fatal("old binding used the renewed start")
 			}
 			var operation, attempt string
 			if err := f.write(func(tx *sql.Tx) error {
 				var e error
-				operation, attempt, e = f.s.BeginSetupReturnTx(ctx, tx, f.pending, f.proofHash, q, route)
+				operation, attempt, e = f.s.BeginSetupReturnTx(ctx, tx, f.pending, f.proofHash, q)
 				return e
 			}); err != nil {
 				t.Fatal(err)
 			}
 			who := identity.PorticoIdentity{AccountID: "account-approved", Username: "actual_setup_owner", DisplayName: "Actual setup owner", Consent: "verified-identity-fixture", SignerKeyID: "current-document-key",
-				Return: &identity.PorticoReturnBinding{Purpose: "setup", InstallationID: q.InstallationID, RegistrationID: q.RegistrationID, OperationID: operation, ClaimGeneration: 1, CredentialGeneration: 1, ExpiresAt: time.Now().Add(45 * time.Second)}}
+				Return: &identity.PorticoReturnBinding{Purpose: "setup", InstallationID: q.InstallationID, RegistrationID: "", OperationID: operation, ClaimGeneration: 1, CredentialGeneration: 1, ExpiresAt: time.Now().Add(45 * time.Second)}}
 			if mode == "wrong account" {
 				who.AccountID = "another-account"
 			}
 			var out identity.DirectSignIn
 			err := f.write(func(tx *sql.Tx) error {
 				var e error
-				out, e = f.s.CompleteSetupReturnTx(ctx, tx, f.pending, f.proofHash, operation, attempt, q, route, who, identity.Token())
+				out, e = f.s.CompleteSetupReturnTx(ctx, tx, f.pending, f.proofHash, operation, attempt, q, who, identity.Token())
 				return e
 			})
 			if mode == "wrong account" {
@@ -136,9 +135,9 @@ func TestSetupRenewalRefusals(t *testing.T) {
 		{"not installed", func(t *testing.T, f setupContinuationFixture) { f.expireStart(t) }, nil},
 		{"consumed start", func(t *testing.T, f setupContinuationFixture) {
 			f.install(t)
-			q, route := f.bound(t)
+			q := f.installed(t)
 			if err := f.write(func(tx *sql.Tx) error {
-				_, _, e := f.s.BeginSetupReturnTx(context.Background(), tx, f.pending, f.proofHash, q, route)
+				_, _, e := f.s.BeginSetupReturnTx(context.Background(), tx, f.pending, f.proofHash, q)
 				return e
 			}); err != nil {
 				t.Fatal(err)

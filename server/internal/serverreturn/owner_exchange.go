@@ -72,7 +72,7 @@ func (ExchangeRequest) GoString() string { return "[server return request redact
 func (q *ExchangeRequest) UnmarshalJSON(raw []byte) error {
 	*q = ExchangeRequest{}
 	fields, e := wirejson.Object(raw, "transactionId", "code", "state", "verifier", "registrationId", "installationId", "serverChallenge", "purpose")
-	if e != nil || len(fields) != 7 {
+	if e != nil {
 		return ErrInvalid
 	}
 	if _, hasState := fields["state"]; hasState {
@@ -80,6 +80,7 @@ func (q *ExchangeRequest) UnmarshalJSON(raw []byte) error {
 		if json.Unmarshal(fields["purpose"], &purpose) != nil {
 			return ErrInvalid
 		}
+		// Setup names no registration (six fields, O-163); its own decoder is exact.
 		if purpose == "setup" {
 			var setup SetupExchange
 			if json.Unmarshal(raw, &setup) != nil {
@@ -89,14 +90,14 @@ func (q *ExchangeRequest) UnmarshalJSON(raw []byte) error {
 			return nil
 		}
 		var owner OwnerExchange
-		if json.Unmarshal(raw, &owner) != nil {
+		if len(fields) != 7 || json.Unmarshal(raw, &owner) != nil {
 			return ErrInvalid
 		}
 		q.Owner = &owner
 		return nil
 	}
 	var normal Exchange
-	if json.Unmarshal(raw, &normal) != nil || !normal.Valid() {
+	if len(fields) != 7 || json.Unmarshal(raw, &normal) != nil || !normal.Valid() {
 		return ErrInvalid
 	}
 	q.Registered = &normal
