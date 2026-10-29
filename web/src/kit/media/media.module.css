@@ -189,7 +189,7 @@
 [data-reduce-motion="true"] .lossCountdown { animation:none; width:100%; }
 
 /* motion.html 3.7-3.9: the panel arrives with a fade and a 8px rise over standard 180 (out);
-   reduced motion keeps the fade. Its exit is still immediate: the panel is unmounted by its owner. */
+   reduced motion keeps the fade. Its exit is the owner's PanelPresence (kit/overlays): leave in 120, `in`. */
 .playbackInfo { animation: playbackInfo-arrive var(--motion-standard) var(--ease-out) both; }
 @keyframes playbackInfo-arrive { from { opacity: 0; transform: translateY(8px); } }
 @media (prefers-reduced-motion: reduce) { .playbackInfo { animation: playbackInfo-arrive-fade var(--motion-reduced) linear both; } }

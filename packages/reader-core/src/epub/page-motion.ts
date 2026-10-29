@@ -9,6 +9,16 @@ export function pageGesture(width: number, displacement: number, velocity: numbe
   return direction < 0 ? 1 : -1;
 }
 
+/** The settle spring sampled for WAAPI: linear keyframe positions from `from` to `to`, launched at the
+ * finger's `velocity` (px/s), ending exactly at `to`, with motion.html's 0.002 rest threshold. */
+export function settleFrames(from: number, to: number, velocity = 0): Readonly<{values: readonly number[]; duration: number}> {
+  const distance = to - from, normalized = distance && Number.isFinite(velocity) ? velocity / distance : 0;
+  let last = 0;
+  for (let ms = 0; ms < 3000; ms++) if (Math.abs(springPosition(springs.settle, ms / 1000, normalized) - 1) >= .002) last = ms;
+  const duration = last + 1, steps = Math.max(2, Math.ceil(duration / 16));
+  return {values: Array.from({length: steps + 1}, (_, i) => i === steps ? to : from + distance * springPosition(springs.settle, duration * i / steps / 1000, normalized)), duration};
+}
+
 /** Canonical out (.2,.8,.2,1), evaluated against elapsed time, not parameter u. */
 export function pageOut(time: number): number {
   if (time <= 0) return 0;if (time >= 1) return 1;

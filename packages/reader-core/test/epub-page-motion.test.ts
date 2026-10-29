@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createPageTurnAnimation, pageGesture, pageOut, type PageTurnPaint} from '../src/epub/page-motion.ts';
+import {createPageTurnAnimation, pageGesture, pageOut, settleFrames, type PageTurnPaint} from '../src/epub/page-motion.ts';
 import {captureReaderMotion, watchReaderMotion} from '../src/motion-policy.ts';
 
 function fixture(options: {from?: number; to?: number; velocity?: number; spring?: boolean; reduced?: boolean} = {}) {
@@ -78,4 +78,13 @@ test('unknown or refusing policy reduces without affecting source authority', ()
     const watch = watchReaderMotion(captureReaderMotion(raw), system, () => {});assert.equal(watch.reduced(), true);watch.dispose();
   }
   assert.equal(watchReaderMotion(undefined, undefined, () => {}).reduced(), true);
+});
+
+test('a released swipe settles on the settle spring from the finger, carrying its speed, and ends exactly at rest', () => {
+  const slow = settleFrames(-300, -1000, 0), fast = settleFrames(-300, -1000, -2000);
+  assert.equal(slow.values[0], -300);assert.equal(slow.values.at(-1), -1000);assert.equal(fast.values.at(-1), -1000);
+  assert.ok(fast.values[1]! < slow.values[1]!, 'a faster finger travels further in the first frame');
+  assert.ok(slow.duration > 0 && slow.duration <= 3000);
+  const back = settleFrames(180, 0, 0);
+  assert.equal(back.values.at(-1), 0);assert.ok(back.values.every(x => x > -40), 'springing back barely overshoots');
 });

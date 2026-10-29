@@ -68,6 +68,7 @@ export const overlaysMessages = {
   'next.overlays.reloadHelp': 'Reload to use the new version.',
   'next.overlays.reload': 'Try again',
   'next.overlays.detailsCopied': 'Details copied.',
+  'next.overlays.copyFailed': 'Couldn’t copy the details.',
   'next.overlays.detailsSafe': 'No passwords or sign-in details are included.',
   'next.overlays.removed': 'Removed {title} from My List.',
   'next.overlays.removalPrefix': 'Removed ',

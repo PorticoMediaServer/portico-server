@@ -60,7 +60,7 @@ export function crashDetailsText(details: CrashDetails): string {
  * page, so nothing in the shell can be trusted to draw. The error text never
  * reaches the screen; Copy details is the only way out of the browser. */
 export function LastResort({details}: {details: CrashDetails}) {
-  const width = useShellWidth(), [copied, setCopied] = useState(false);
+  const width = useShellWidth(), [copied, setCopied] = useState<'done' | 'failed'>();
   const facts: DetailsFact[] = [
     {id: 'when', label: t('next.states.when'), value: details.when},
     {id: 'app', label: t('next.states.app'), value: details.app},
@@ -69,7 +69,9 @@ export function LastResort({details}: {details: CrashDetails}) {
   ];
   const copy = () => {
     const write = navigator.clipboard?.writeText(crashDetailsText(details));
-    void Promise.resolve(write).then(() => setCopied(true), () => setCopied(false));
+    // B-12: a blocked clipboard says so instead of doing nothing visible.
+    if (!write) {setCopied('failed');return;}
+    void write.then(() => setCopied('done'), () => setCopied('failed'));
   };
   return <DocumentBootReady>
     <StateLayout className={styles.page} backdrop={{kind: 'colour', shape: 'side'}} tone="error" icon="i-warn"
@@ -82,8 +84,10 @@ export function LastResort({details}: {details: CrashDetails}) {
         <DetailsPanel audience="viewer" facts={facts} />
       </>} />
     <div className={styles.toastWrap}>
-      <Toast open={copied} onOpenChange={open => { if (!open) setCopied(false); }} icon="i-check" tone="success"
+      <Toast open={copied === 'done'} onOpenChange={open => { if (!open) setCopied(undefined); }} icon="i-check" tone="success"
         message={<><b>{t('next.overlays.detailsCopied')}</b> {t('next.overlays.detailsSafe')}</>} />
+      <Toast open={copied === 'failed'} onOpenChange={open => { if (!open) setCopied(undefined); }} icon="i-warn" tone="warning"
+        message={t('next.overlays.copyFailed')} />
     </div>
   </DocumentBootReady>;
 }

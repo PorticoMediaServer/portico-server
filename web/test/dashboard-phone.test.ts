@@ -105,10 +105,11 @@ test('a phone stream card draws the drawn lines: artwork shape, username first, 
   assert.match(html, /class="button phoneStop"[^>]*>.*buttonLabel">Stop<\/span>/s);
   assert.match(html, /aria-label="Options for sam_k&#x27;s stream"/);
   assert.match(html, /class="phoneProgress"[^>]*><i style="width:41\.99/);
-  for (const desktopOnly of ['class="session"', 'class="tracks"', 'class="device"']) assert.doesNotMatch(html, new RegExp(desktopOnly.replace(/["/]/g, '\\$&')));
+  for (const desktopOnly of ['class="session"', 'class="sessionArt"', 'class="sessionHover"']) assert.doesNotMatch(html, new RegExp(desktopOnly.replace(/["/]/g, '\\$&')));
   const desktop = renderToStaticMarkup(createElement(SessionCard, {session: session() as never, bindings: bindings() as never, refresh: () => {}}));
   assert.match(desktop, /class="session"/);
-  assert.match(desktop, /class="tracks"/);
+  assert.match(desktop, /class="sessionArt"/);
+  assert.match(desktop, /class="sessionHover"/);
   assert.doesNotMatch(desktop, /phoneSession|phoneProgress/);
 });
 

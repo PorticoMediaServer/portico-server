@@ -2,6 +2,7 @@ import {useEffect, useRef, useState, type KeyboardEvent, type ReactNode} from 'r
 import {defaultI18n} from '@i18n';
 import {ChannelMark} from '../../kit/artwork';
 import {Button} from '../../kit/controls';
+import {PanelPresence, useLeavingPresence} from '../../kit/overlays';
 import {Icon, type IconName} from '../../kit/Icon';
 import {liveRailDragHeld, liveRailDragSeek, liveBehindLabel, liveNextLine, liveRail, liveRecordLabel, liveSeekSeconds, liveTimeRange, liveRailValueText} from './live-chrome-model';
 import type {LiveChromeDrag, LiveChromePort} from './live-chrome-types';
@@ -43,6 +44,8 @@ export type LiveChromeProps = Readonly<{
  * and every action rechecks that port's exact channel fence before it runs. */
 export function LiveChrome({port, playing, onCollapse, onStop, onPlayPause, onSkip, onSeek, onMore, right, onMiniGuideOpenChange, onDragChange, initialMiniGuideOpen = false, canPlayPause = true, canSeek = true, reportError}: LiveChromeProps) {
   const [miniGuide, setMiniGuide] = useState(initialMiniGuideOpen), [recordingBusy, setRecordingBusy] = useState(false), [scrub, setScrub] = useState<number>();
+  // A-05: the mini guide stays mounted while it leaves.
+  const guidePresence = useLeavingPresence(miniGuide ? true : null);
   const guide = useRef<HTMLElement>(null), guideTrigger = useRef<HTMLButtonElement>(null), rail = useRef<HTMLDivElement>(null), drag = useRef<LiveChromeDrag | undefined>(undefined), scrubRef = useRef<number | undefined>(undefined);
   const window = port.window, channel = port.channel, programme = port.programme;
   const displayWindow = scrub === undefined || !liveRailDragHeld(drag.current, port.fence) ? window : {...window, positionMs: scrub};
@@ -108,7 +111,7 @@ export function LiveChrome({port, playing, onCollapse, onStop, onPlayPause, onSk
         <LiveControl icon="i-close" label={t('player.close')} onClick={onStop}/>
       </div>
     </header>
-    {miniGuide && <aside ref={guide} className={styles.miniGuide} aria-label={t('player.live.guide')} onKeyDown={guideKeys}>
+    {guidePresence.shown && <PanelPresence leaving={guidePresence.leaving}><aside ref={guide} className={styles.miniGuide} aria-label={t('player.live.guide')} onKeyDown={guideKeys}>
       <div className={styles.miniHead}><b>{t('player.live.guide')}</b><span>{t('next.live.miniGuideHint')}</span></div>
       {port.miniGuide.map(item => {
         const current = item.channel.id === channel.id && item.channel.sourceId === channel.sourceId;
@@ -128,7 +131,7 @@ export function LiveChrome({port, playing, onCollapse, onStop, onPlayPause, onSk
       <button type="button" className={styles.miniAll} onClick={() => {run(port.openFullGuide);openGuide(false);}}>
         {t('next.live.openFullGuide')}<Icon name="i-right" size={16}/>
       </button>
-    </aside>}
+    </aside></PanelPresence>}
     <div className={styles.bottom}>
       <div className={styles.seek}>
         <div ref={rail} className={styles.rail} role="slider" aria-label={t('player.position')}

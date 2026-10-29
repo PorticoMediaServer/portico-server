@@ -92,7 +92,7 @@
 }
 
 /* motion.html 3.7-3.9: the panel arrives with a fade and a 8px rise over standard 180 (out);
-   reduced motion keeps the fade. Its exit is still immediate: the panel is unmounted by its owner. */
+   reduced motion keeps the fade. Its exit is the owner's PanelPresence (kit/overlays): leave in 120, `in`. */
 .miniGuide { animation: miniGuide-arrive var(--motion-standard) var(--ease-out) both; }
 @keyframes miniGuide-arrive { from { opacity: 0; transform: translateY(8px); } }
 @media (prefers-reduced-motion: reduce) { .miniGuide { animation: miniGuide-arrive-fade var(--motion-reduced) linear both; } }

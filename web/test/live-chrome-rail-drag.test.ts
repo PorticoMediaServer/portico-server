@@ -58,6 +58,8 @@ const loader = registerHooks({load(url, context, next) {
   if (url.endsWith('/kit/artwork/index.ts')) return module("export const ChannelMark = 'channel-mark';");
   if (url.endsWith('/kit/controls/index.ts')) return module("export const Button = 'button';");
   if (url.endsWith('/kit/Icon.tsx')) return module("export const Icon = 'icon';");
+  // A-05 presence wrapper: an open guide renders as is; this test proves rail fencing, not panel motion.
+  if (url.endsWith('/kit/overlays/index.ts')) return module("export const PanelPresence = ({children}) => children; export const useLeavingPresence = value => ({shown: value ?? undefined, leaving: false});");
   if (url.endsWith('.tsx')) {
     let source = transformTsx(url);
     if (url.endsWith('/screens/live/LiveChrome.tsx')) source = source.replace(/from (['"])react\1/g, `from ${JSON.stringify(hookModule)}`);

@@ -5,7 +5,7 @@ import {sameFence, type PlaybackFence} from '../../../../packages/player-core/sr
 import {Icon, type IconName} from '../../kit/Icon';
 import {Artwork} from '../../kit/artwork';
 import {Button, Slider} from '../../kit/controls';
-import {Menu, type MenuEntry} from '../../kit/overlays';
+import {Menu, PanelPresence, useLeavingPresence, type MenuEntry} from '../../kit/overlays';
 import {KeyboardShortcuts} from '../../kit/states';
 import {LossNotice} from '../../kit/media';
 import {dispatchWatch, watchClock, watchIsPortrait, watchSeek, watchSeekBounds, watchShortcutTarget, watchStepIntent, type WatchIntent} from './model';
@@ -103,6 +103,8 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   // Playback info f1: the film keeps playing with no player controls under the panel.
   const infoHidesChrome = panel === 'info' && !mobile;
   const open = expanded && valid && presentation.kind === 'video' && snapshot.dock.remote?.phase !== 'playing';
+  // A-05: a closed panel (options, episodes, queue, playback info) keeps painting while it leaves.
+  const panelPresence = useLeavingPresence(open ? panel : null);
   const chromeVisible = (visible || permanent || liveGuideOpen) && !infoHidesChrome && !landing && !leaving;
   const openedBefore = useRef(open), leavingNow = useRef(false); leavingNow.current = leaving;
   const gesturePreview = !!videoGesture?.preview;
@@ -516,7 +518,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     }}>
       {surfaces?.body}
     </div>
-    {open && surfaces?.render({panel, snapshot, available: surfaces.available, reportProblem: surfaces.more?.find(action => action.id === 'report-problem'), layout: width < 1024 ? 'phone' : 'desktop', landscape: width < 1024 && width > height, phoneTop: portrait ? geometry?.picture ? geometry.picture.top + geometry.picture.height : width * 9 / 16 + (window.visualViewport?.offsetTop ?? 0) : 0, close: () => setPanel(null), show: next => showPanel(next), returnFocusRef: panelAnchor})}
+    {surfaces && panelPresence.shown && <PanelPresence leaving={panelPresence.leaving}>{surfaces.render({panel: panelPresence.shown, snapshot, available: surfaces.available, reportProblem: surfaces.more?.find(action => action.id === 'report-problem'), layout: width < 1024 ? 'phone' : 'desktop', landscape: width < 1024 && width > height, phoneTop: portrait ? geometry?.picture ? geometry.picture.top + geometry.picture.height : width * 9 / 16 + (window.visualViewport?.offsetTop ?? 0) : 0, close: () => setPanel(null), show: next => showPanel(next), returnFocusRef: panelAnchor})}</PanelPresence>}
     <Menu className={styles.playerMenu} open={more} onOpenChange={setMore} title={t('player.more')} anchorRef={moreAnchor} returnFocusRef={moreAnchor} presentation="anchored" width={300} items={menuItems} />
     <KeyboardShortcuts open={shortcuts} onOpenChange={setShortcuts} skipBackSeconds={binding.skips.back} skipForwardSeconds={binding.skips.forward} returnFocusRef={moreAnchor} />
   </div>;
