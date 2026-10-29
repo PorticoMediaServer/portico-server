@@ -4102,9 +4102,7 @@ export const schemas = {
         "type": "string"
       },
       "setupInstalled": {
-        "enum": [
-          true
-        ],
+        "const": true,
         "type": "boolean"
       },
       "setupTransactionId": {
@@ -5000,12 +4998,6 @@ export const schemas = {
             "const": "setup",
             "type": "string"
           },
-          "registrationId": {
-            "maxLength": 128,
-            "minLength": 1,
-            "pattern": "^[A-Za-z0-9_-]+$",
-            "type": "string"
-          },
           "serverChallenge": {
             "maxLength": 128,
             "minLength": 32,
@@ -5035,7 +5027,6 @@ export const schemas = {
           "transactionId",
           "state",
           "verifier",
-          "registrationId",
           "installationId",
           "serverChallenge",
           "purpose"
@@ -5686,7 +5677,6 @@ export const schemas = {
             }
           },
           "required": [
-            "secureConnection",
             "role",
             "lastSeenAt",
             "status",
@@ -5697,7 +5687,8 @@ export const schemas = {
             "baseUrl",
             "publicKey",
             "policyRevision",
-            "presence"
+            "presence",
+            "secureConnection"
           ],
           "type": "object"
         },
