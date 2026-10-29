@@ -3,6 +3,12 @@ on:
   schedule:
     - cron: '13 * * * *'
   workflow_dispatch:
+    inputs:
+      writer_holds:
+        description: Run five exact MusicBrainz writer-hold gates and removal scale shapes
+        type: boolean
+        required: false
+        default: false
   workflow_call:
     inputs:
       ref:
@@ -10,6 +16,11 @@ on:
         type: string
         required: false
         default: ''
+      writer_holds:
+        description: Run repeated writer-hold qualification
+        type: boolean
+        required: false
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -20,6 +31,9 @@ env:
   GOTOOLCHAIN: go1.26.10
   PORTICO_TEST_TIER: default
 jobs:
+  writer-holds:
+    if: ${{ inputs.writer_holds }}
+    uses: ./.github/workflows/checkpoint-writer-holds.yml
   repository:
     if: ${{ always() }}
     needs: [python-regressions]

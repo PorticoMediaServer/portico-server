@@ -1,0 +1,57 @@
+name: Writer hold gates
+on:
+  workflow_dispatch:
+  workflow_call:
+permissions:
+  contents: read
+concurrency:
+  group: writer-holds-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  musicbrainz-construction:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      GOTOOLCHAIN: go1.26.10
+      GOMAXPROCS: '2'
+      GOFLAGS: -p=2
+      PORTICO_TEST_TIER: default
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with: {go-version-file: server/go.mod, cache-dependency-path: server/go.sum}
+      - name: Five exact construction and final-publication gates
+        working-directory: server
+        run: |
+          status=0
+          for pass in 1 2 3 4 5; do
+            result=0
+            go test -json -p 2 -count=1 -timeout=12m ./internal/metadata -run '^TestMBStagingTenThousandCompleteFinalWriterHold$' > "$RUNNER_TEMP/hold-$pass.jsonl" 2>&1 || result=$?
+            echo "Exact gate pass $pass: exit $result"
+            python3 - "$RUNNER_TEMP/hold-$pass.jsonl" <<'PY'
+          import json, sys
+          for line in open(sys.argv[1]):
+              try:
+                  event = json.loads(line)
+              except ValueError:
+                  print(line.rstrip())
+                  continue
+              if event.get('Output'):
+                  print(event['Output'], end='')
+          PY
+            if test "$result" != 0; then status=1; fi
+          done
+          exit "$status"
+      - name: Existing 300 and 600 book removal shapes
+        if: ${{ !cancelled() }}
+        working-directory: server
+        run: go test -json -p 2 -count=1 -timeout=12m ./internal/catalog -run '^TestReadingLibraryRemovalCostIsLinear$' > "$RUNNER_TEMP/removal-shapes.jsonl" 2>&1
+      - name: Retain every unchanged gate result
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: writer-hold-gates
+          path: |
+            ${{ runner.temp }}/hold-*.jsonl
+            ${{ runner.temp }}/removal-shapes.jsonl
+          retention-days: 7
