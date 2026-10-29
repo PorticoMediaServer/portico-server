@@ -14,7 +14,12 @@ import (
 // is an unknown variant, not a guess. A union without such a tag fails
 // generation, unless its route is still listed in pending (the R-09b migration
 // list, which ends empty).
-func discriminateResponse(route string, s any, pending map[string]bool) error {
+// The tag is always named variant (Claude, 29 Oct), except the union nodes in
+// grandfathered, keyed "route path", which keep the domain tag they already had
+// (an event's type, a reading location's format) before R-09b.
+const unionTagName = "variant"
+
+func discriminateResponse(route string, s any, pending map[string]bool, grandfathered map[string]string) error {
 	return walkUnions(s, "$", func(node map[string]any, at string, alternatives []any) error {
 		objects := 0
 		for _, alternative := range alternatives {
@@ -25,14 +30,16 @@ func discriminateResponse(route string, s any, pending map[string]bool) error {
 		if objects < 2 {
 			return nil // A nullable member (X | null) or a scalar union needs no tag.
 		}
-		if tag := unionTag(alternatives); tag != "" {
+		if tag := unionTag(alternatives); tag == unionTagName || tag != "" && grandfathered[route+" "+at] == tag {
 			node["x-discriminator"] = tag
 			return nil
+		} else if tag != "" {
+			return fmt.Errorf("route %s: response union at %s is tagged by %q; response unions are tagged by %q", route, at, tag, unionTagName)
 		}
 		if pending[route] {
 			return nil
 		}
-		return fmt.Errorf("route %s: response union at %s has no required const discriminator (kind)", route, at)
+		return fmt.Errorf("route %s: response union at %s has no required const %s", route, at, unionTagName)
 	})
 }
 
@@ -90,7 +97,7 @@ func objectSchema(s any) bool {
 }
 
 // unionTag is the property every alternative requires with one const value,
-// distinct across alternatives. kind is preferred, then variant.
+// distinct across alternatives. variant is preferred.
 func unionTag(alternatives []any) string {
 	var candidates []string
 	first, _ := alternatives[0].(map[string]any)
@@ -102,9 +109,9 @@ func unionTag(alternatives []any) string {
 	sort.Slice(candidates, func(i, j int) bool {
 		rank := func(key string) int {
 			switch key {
-			case "kind":
+			case unionTagName:
 				return 0
-			case "variant":
+			case "kind":
 				return 1
 			}
 			return 2

@@ -274,6 +274,9 @@ type Options struct {
 	// PendingTaggedUnions lists routes whose response unions still lack a
 	// required const discriminator (O-159 R-09b migration; ends empty).
 	PendingTaggedUnions map[string]bool
+	// GrandfatheredUnionTags keeps a pre-R-09b domain tag ("route path" → tag);
+	// every other response union is tagged by variant.
+	GrandfatheredUnionTags map[string]string
 	// Components gives reusable wire types descriptive names in OpenAPI.
 	Components map[string]reflect.Type
 	// ServiceAccessRules lists access labels this service authenticates itself,
@@ -342,7 +345,7 @@ func GenerateWith(definitions []Definition, options Options) (Artifacts, error) 
 		fmt.Fprintf(&decoders, "export function decode%sResponse(input: unknown): types.%sResponse { return decode(%q, input) as types.%sResponse; }\n", name, name, name+"Response", name)
 		fmt.Fprintf(&contractTypes, "%q: { request: %sRequest; response: %sResponse };\n", d.ID, name, name)
 		schemas[name+"Request"] = request
-		if err := discriminateResponse(d.ID, response, options.PendingTaggedUnions); err != nil {
+		if err := discriminateResponse(d.ID, response, options.PendingTaggedUnions, options.GrandfatheredUnionTags); err != nil {
 			return Artifacts{}, err
 		}
 		schemas[name+"Response"] = response
