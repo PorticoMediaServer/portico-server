@@ -69,7 +69,7 @@ func readingProjectionGeneration(t *testing.T, c *catalogtest.Catalog, library i
 	}
 	defer g.Rollback()
 	out, err := compactcatalog.ReadingProjectionReadyTx(context.Background(), g.Tx(), library)
-	if ready && err != nil || !ready && !errors.Is(err, compactcatalog.ErrBuilding) {
+	if ready && (err != nil || out.Input != out.Ready) || !ready && !(errors.Is(err, compactcatalog.ErrBuilding) || err == nil && out.Input != out.Ready) {
 		t.Fatalf("ready=%v generation=%+v err=%v", ready, out, err)
 	}
 	return out
@@ -85,7 +85,7 @@ func readingProjectionDrain(t *testing.T, c *catalogtest.Catalog) {
 	t.Fatal("Reading projection did not finish bounded progress")
 }
 
-func TestReadingProjectionBoundsResumeAndPublishesOnlyAfterCleanup(t *testing.T) {
+func TestReadingProjectionBoundsResumeAndPublishesBeforeCleanup(t *testing.T) {
 	c, library, items := readingProjectionFixture(t, 105)
 	readingProjectionGeneration(t, c, library, false)
 	// A cold library first adopts the current publication rule. This bounded
@@ -121,11 +121,11 @@ func TestReadingProjectionBoundsResumeAndPublishesOnlyAfterCleanup(t *testing.T)
 	readingProjectionStep(t, c, 100)
 	readingProjectionStep(t, c, 100)
 	readingProjectionStep(t, c, 100) // True EOF; enters cleanup in its own commit.
-	readingProjectionGeneration(t, c, library, false)
+	readingProjectionGeneration(t, c, library, true)
 	if n := readingProjectionStep(t, c, 7); n != 7 {
 		t.Fatalf("cleanup exceeded or skipped its bound: %d", n)
 	}
-	readingProjectionGeneration(t, c, library, false)
+	readingProjectionGeneration(t, c, library, true)
 	readingProjectionDrain(t, c)
 	second := readingProjectionGeneration(t, c, library, true)
 	if second.Namespace != first.Namespace || second.Input <= first.Input {
@@ -137,7 +137,7 @@ func TestReadingProjectionBoundsResumeAndPublishesOnlyAfterCleanup(t *testing.T)
 	}
 }
 
-func TestReadingProjectionReadyMembersCannotMutateAndInputsRestart(t *testing.T) {
+func TestReadingProjectionReadyMembersCannotMutateAndInputsQueueNextPass(t *testing.T) {
 	c, library, items := readingProjectionFixture(t, 3)
 	readingProjectionDrain(t, c)
 	ready := readingProjectionGeneration(t, c, library, true)
@@ -207,8 +207,8 @@ func TestReadingProjectionProductionWorkerSeparatesScanAndCleanupCommits(t *test
 		if err := c.DB.QueryRow(`SELECT phase,ready_generation FROM reading_attribution_state WHERE library_id=?`, library).Scan(&phase, &ready); err != nil {
 			t.Fatal(err)
 		}
-		if phase == "ready" || ready != 0 {
-			t.Fatal("production worker scanned and published without a separate cleanup commit")
+		if phase == "ready" || phase != "cleanup" && ready != 0 {
+			t.Fatal("production worker published before captured scan EOF")
 		}
 		if phase == "cleanup" {
 			readingProjectionDrain(t, c)
