@@ -100,7 +100,7 @@ func (r *FileInfoRuntime) hydrateWindow(ctx context.Context, caller readprep.Cal
 		}
 		if len(summary.IDs) == 0 {
 			var kind string
-			e = dbwork.ReadHandle(ctx, r.db).QueryRowContext(ctx, `SELECT d.kind FROM catalog_assets a JOIN inventory_disc_facts d ON d.object_id=a.info_owner_object AND d.source_revision=a.info_owner_revision WHERE a.id=?`, d.Target.Asset).Scan(&kind)
+			e = dbwork.ReadHandle(ctx, r.db).QueryRowContext(ctx, `SELECT d.kind FROM catalog_assets a NOT INDEXED CROSS JOIN inventory_disc_facts d ON d.object_id=a.info_owner_object AND d.source_revision=a.info_owner_revision WHERE a.id=?`, d.Target.Asset).Scan(&kind)
 			if e != nil {
 				return FileInfoWindowResult{}, e
 			}

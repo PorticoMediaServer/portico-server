@@ -243,6 +243,8 @@ index catalog_facet_members_previous_group
 index catalog_identities_public
 index catalog_info_changes_shape
 index catalog_info_duration
+index catalog_info_input_families_witness
+index catalog_info_new_subtitles_sidecar
 index catalog_info_owner_object
 index catalog_info_pending_links
 index catalog_info_shapes_unused

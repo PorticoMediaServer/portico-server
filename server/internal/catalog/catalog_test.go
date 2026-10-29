@@ -44,7 +44,8 @@ func TestSharedSourceDeletionPreservesSiblingAndBytes(t *testing.T) {
 	}
 	// A second movie backed by the same file.
 	var asset int64
-	if e = db.QueryRow(`SELECT l.asset_id FROM catalog_asset_links l WHERE l.entity_id=?`, c.ID(items[0].ID)).Scan(&asset); e != nil {
+	var assetToken string
+	if e = db.QueryRow(`SELECT l.asset_id,a.token FROM catalog_asset_links l JOIN catalog_assets a ON a.id=l.asset_id WHERE l.entity_id=?`, c.ID(items[0].ID)).Scan(&asset, &assetToken); e != nil {
 		t.Fatal(e)
 	}
 	sibling := c.Entity(compactcatalog.Entity{Library: c.Handle(lib.ID), Kind: compactcatalog.Movie, Key: "file:sibling", Title: "Other episode"}, nil)
@@ -56,7 +57,8 @@ func TestSharedSourceDeletionPreservesSiblingAndBytes(t *testing.T) {
 	}
 	c.Drain()
 	got, e := s.Get("", sibling.Public)
-	if e != nil || len(got.Sources) != 1 || !got.Available {
+	sources := fileInfoSourcesForTest(t, s, "", sibling.Public)
+	if e != nil || len(got.Sources) != 0 || len(sources) != 1 || sources[0].ID != assetToken || !got.Available {
 		t.Fatalf("sibling=%+v err=%v", got, e)
 	}
 	if _, e = os.Stat(path); e != nil {

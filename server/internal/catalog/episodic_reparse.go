@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 )
 
@@ -90,23 +91,49 @@ func (s *Service) ReparseEpisodicIssues(ctx context.Context) error {
 			return err
 		}
 		for _, c := range changed {
-			err = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
-				var issue string
-				var manual int
-				err := tx.QueryRowContext(ctx, `SELECT issue,manual FROM episodic_sources WHERE library_id=? AND asset_id=?`, c.library, c.asset).Scan(&issue, &manual)
-				if errors.Is(err, sql.ErrNoRows) {
-					return nil
-				}
+			// Creating a show, season and first linked episode together exceeds
+			// the maintenance quantum once the link's FI1 hooks are included.
+			// Resolve the show in its own bounded admission. The source remains
+			// unchanged until the second admission rechecks its issue/manual CAS;
+			// cancellation merely leaves an idempotently reusable empty show.
+			turns := 1
+			if c.plan.Issue == "" {
+				turns = 2
+			}
+			for turn := 0; turn < turns; turn++ {
+				err = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
+					var issue string
+					var manual int
+					err := tx.QueryRowContext(ctx, `SELECT issue,manual FROM episodic_sources WHERE library_id=? AND asset_id=?`, c.library, c.asset).Scan(&issue, &manual)
+					if errors.Is(err, sql.ErrNoRows) {
+						return nil
+					}
+					if err != nil {
+						return err
+					}
+					if issue != c.issue || manual != 0 {
+						return nil // assigned or re-read since the batch was read
+					}
+					if turns == 2 && turn == 0 {
+						handle, e := compactcatalog.LibraryTx(ctx, tx, c.library)
+						if e != nil {
+							return e
+						}
+						asset, e := compactcatalog.AssetByTokenTx(ctx, tx, c.asset)
+						if e != nil {
+							return e
+						}
+						if asset == 0 {
+							return nil
+						}
+						_, _, e = resolveShowTx(ctx, tx, c.library, handle, asset, c.plan, false)
+						return e
+					}
+					return s.commitEpisodes(tx, c.library, c.asset, c.name, c.plan, false)
+				})
 				if err != nil {
 					return err
 				}
-				if issue != c.issue || manual != 0 {
-					return nil // assigned or re-read since the batch was read
-				}
-				return s.commitEpisodes(tx, c.library, c.asset, c.name, c.plan, false)
-			})
-			if err != nil {
-				return err
 			}
 		}
 		if batch < reparseBatch {
