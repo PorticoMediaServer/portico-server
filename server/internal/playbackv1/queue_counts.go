@@ -202,13 +202,25 @@ func (s *Service) queueDuration(ctx context.Context, l *layout, p identity.Princ
 			return queueDurationSummary{}, err
 		}
 		var catalog string
-		if err = l.tx.QueryRowContext(ctx, `SELECT COALESCE(group_concat(library_id||':'||revision,','),'') FROM (SELECT library_id,revision FROM library_revisions ORDER BY library_id)`).Scan(&catalog); err != nil {
+		var pendingSources bool
+		if err = l.tx.QueryRowContext(ctx, `SELECT
+ COALESCE((SELECT group_concat(library_id||':'||revision,',') FROM (SELECT library_id,revision FROM library_revisions ORDER BY library_id)),''),
+ EXISTS(SELECT 1 FROM catalog_upstream_sources WHERE domain=41)
+ OR EXISTS(SELECT 1 FROM catalog_upstream_sources WHERE domain=42)`).Scan(&catalog, &pendingSources); err != nil {
 			return queueDurationSummary{}, err
 		}
-		raw, _ := json.Marshal([]any{l.q.id, l.membership(), p.Authority, p.AccountID, p.ProfileID, where, args, catalog})
-		key = string(raw)
-		if cached, ok := s.durations.get(key); ok {
-			return cached, nil
+		// Asset/entity source acceptance precedes its bounded per-owner
+		// library-revision delivery. While either raw source prefix has work,
+		// read current file facts without consulting or filling an old cache
+		// key. The delivery advances the library revision before retiring the
+		// source row, after which ordinary memoization resumes. All probes and
+		// facts share this read snapshot; playback/progress writes add no epoch.
+		if !pendingSources {
+			raw, _ := json.Marshal([]any{l.q.id, l.membership(), p.Authority, p.AccountID, p.ProfileID, where, args, catalog})
+			key = string(raw)
+			if cached, ok := s.durations.get(key); ok {
+				return cached, nil
+			}
 		}
 	}
 	summary := queueDurationSummary{known: true}

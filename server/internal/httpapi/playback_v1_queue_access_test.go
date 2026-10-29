@@ -530,6 +530,21 @@ func TestPlaybackV1QueueDurationCoversBeyondWindowAndInvalidatesOnFacts(t *testi
 	if after.TotalDurationMs == nil || *after.TotalDurationMs != 200*600000+120000 {
 		t.Fatalf("stale summary %+v", after)
 	}
+	// A second acceptance before source delivery must not reuse the summary
+	// recomputed under the old library revision. Ordinary maintenance then
+	// publishes a new revision and restores the memoized path.
+	if _, err := f.db.Exec(`UPDATE catalog_assets SET duration=180 WHERE id=?`, f.records[200].Asset); err != nil {
+		t.Fatal(err)
+	}
+	f.call("GET", "/v1/queues/"+q.Queue.ID, nil, nil, 200, &after)
+	if after.TotalDurationMs == nil || *after.TotalDurationMs != 200*600000+180000 {
+		t.Fatalf("repeated source acceptance reused stale summary %+v", after)
+	}
+	f.catalogTest.Drain()
+	f.call("GET", "/v1/queues/"+q.Queue.ID, nil, nil, 200, &after)
+	if after.TotalDurationMs == nil || *after.TotalDurationMs != 200*600000+180000 {
+		t.Fatalf("settled summary %+v", after)
+	}
 }
 
 func TestPlaybackV1WholeShowQueueResolvesAnotherSeasonWithCurrentAuthority(t *testing.T) {
