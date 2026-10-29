@@ -94,7 +94,7 @@ func (p *strongInputPreparer) PrepareInput(ctx context.Context, in SourcePrepara
 			return nil, err
 		}
 		e := meta.Version.Evidence()
-		// local_revision v1 encodes mtime:ctime-seconds:ctime-nanos. Comparing the
+		// local_revision v1 encodes mtime:0:0 (the ctime fields are retired). Comparing the
 		// selected inventory snapshot prevents using stale metadata for new bytes.
 		parts := strings.Split(e.Revision, ":")
 		if len(parts) != 3 {
