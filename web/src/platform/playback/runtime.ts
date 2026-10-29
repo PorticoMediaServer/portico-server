@@ -169,7 +169,7 @@ export class WebShellPlaybackRuntime {
   private readonly recordDiagnostic: AppLogRecorder;
 
   constructor(source: WebPlaybackSource, environment: WebPlaybackEnvironment = playbackEnvironment()) {
-    if (source.contentScope.serverId !== source.authority.serverId || !source.authority.viewerFence || !source.isCurrent()) problem('invalid_playback_authority');
+    if (source.contentScope.serverId !== source.authority.serverId || source.authority.viewerFence === '' || !source.isCurrent()) problem('invalid_playback_authority');
     const localScope = source.localScope && localPlaybackScope(source.localScope);
     if (localScope && (['serverId', 'authority', 'accountId', 'profileId'] as const).some(key => localScope[key] !== source.authority[key])) problem('invalid_playback_authority');
     this.authority = Object.freeze({...source.authority});
@@ -939,7 +939,7 @@ export class WebShellPlaybackRuntime {
     this.assertCurrent();
     const scope = context.scope, authority = this.authority;
     if (signal.aborted) problem('cancelled');
-    if (scope.serverId !== authority.serverId || scope.authority !== authority.authority || scope.accountId !== authority.accountId || scope.profileId !== authority.profileId || scope.privacyFence !== authority.viewerFence || !current(context)) problem('stale_selection_context');
+    if (scope.serverId !== authority.serverId || scope.authority !== authority.authority || scope.accountId !== authority.accountId || scope.profileId !== authority.profileId || authority.viewerFence !== undefined && scope.privacyFence !== authority.viewerFence || !current(context)) problem('stale_selection_context');
   }
   private async playSelection(request: HomeSelectionPlaybackRequest, current: (context: SelectionContext) => boolean) {
     this.selectionCurrent(request.context, request.signal, current);

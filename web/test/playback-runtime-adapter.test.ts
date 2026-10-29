@@ -226,7 +226,7 @@ class ChannelPort {
     return;
   }
 }
-function setup(t: TestContext, preferences: Partial<WebPlaybackSettings> = {}, environment: import('../src/platform/playback/types.ts').WebPlaybackEnvironment = {}, local?: WebPlaybackSource['localScope'], prepareStarts?: (api: HttpLocalApi) => WebPlaybackSource['preparingStarts']) {
+function setup(t: TestContext, preferences: Partial<WebPlaybackSettings> = {}, environment: import('../src/platform/playback/types.ts').WebPlaybackEnvironment = {}, local?: WebPlaybackSource['localScope'], prepareStarts?: (api: HttpLocalApi) => WebPlaybackSource['preparingStarts'], options: Readonly<{homeFence?: boolean}> = {}) {
   const clock = manualClock(), server = new FakePlaybackServer({now: clock.now, audioItem: id => id.startsWith('song') || id.startsWith('book'), itemKind: id => id.startsWith('book') ? 'audiobook_file' : undefined}), inner = fakeHttp(server);
   const log: V1Request[] = [], callbacks = new Map<string, Set<(event: ServerEvent) => void>>();
   const hls = fakeHls(), video = new FakeVideo();
@@ -260,7 +260,7 @@ function setup(t: TestContext, preferences: Partial<WebPlaybackSettings> = {}, e
   const source: WebPlaybackSource = {
     ...(local ? {localScope: local} : {}),
     ...(prepareStarts ? {preparingStarts: prepareStarts(api)} : {}),
-    api, authority: {...viewer, epoch: 1, viewerFence: homeViewerFence}, contentScope: {serverId: 'server', viewerId: 'local_account_profile'}, isCurrent: () => current,
+    api, authority: {...viewer, epoch: 1, ...(options.homeFence === false ? {} : {viewerFence: homeViewerFence})}, contentScope: {serverId: 'server', viewerId: 'local_account_profile'}, isCurrent: () => current,
     events: {on: (type, callback) => { let list = callbacks.get(type); if (!list) callbacks.set(type, list = new Set()); list.add(callback); return () => { list!.delete(callback); }; }},
     settings: {videoSpeed: () => 1, audiobookSpeed: () => 1.25, skipModes: () => ({intro: 'off', recap: 'off', credits: 'off'}), audioEffects: () => ({gapless: false, crossfadeSeconds: 0, normalization: 'off'}), webVolume: () => true, ...preferences},
   };
@@ -3249,4 +3249,16 @@ test('AirPlay drawn to Off to text to the same drawn track keeps burn only for t
  assert.equal(f.runtime.getSnapshot().session!.presentation.subtitle?.trackId,'s4');
  await choose('client','s3');assert.deepEqual(patches().at(-1)!.subtitles,{trackId:'s3',delivery:'burn'});
  assert.equal(f.runtime.getSnapshot().session!.id,session,'all choices belong to the same playback session');
+});
+
+test('P1: the player is the session\'s, not Home\'s: with no Home document it plays an item, an album and a queue', async t => {
+  // A cold deep link, or Home answering 503: the shell builds the player from the session alone.
+  const f = setup(t, {}, {}, undefined, undefined, {homeFence: false}), life = new AbortController();
+  assert.equal(f.source.authority.viewerFence, undefined);
+  await f.runtime.playFromScreen({libraryId: 'library', itemId: 'movie', startSeconds: 0}, {signal: life.signal, isCurrent: () => true}); await f.arrive();
+  assert.equal(f.runtime.getSnapshot().session!.itemId, 'movie', 'Play on an item page starts playback');
+  await f.runtime.playFromQueue({container: {kind: 'album', id: 'ordered_release'}}, {signal: life.signal, isCurrent: () => true}); await f.arrive();
+  const created = f.log.findLast(value => value.method === 'POST' && value.path === '/v1/queues')!;
+  assert.deepEqual((created.body as {segments: unknown[]}).segments, [{source: {container: {kind: 'album', id: 'ordered_release'}}, order: {mode: 'source'}}]);
+  assert.equal(f.runtime.getSnapshot().session!.itemId, 'ordered_release-0', 'Play on an album page starts the album');
 });

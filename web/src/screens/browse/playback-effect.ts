@@ -1,9 +1,9 @@
 import type {ShellBindings} from '../../shell/bindings';
 import type {ScreenContext} from '../detail/context';
 
-/** Play before this viewer's player exists (it is built from the Home document) is refused out
- * loud: an AbortError would be presented as a cancel, and the press would silently do nothing
- * (P2-74 E-web-02). */
+/** The shell builds this viewer's player from the session, so it exists whether or not Home
+ * loaded. If it is still absent (the shell failed to build it), Play is refused out loud: an
+ * AbortError would be presented as a cancel and the press would silently do nothing (P2-74). */
 function playbackNotReady(): Error {
   return Object.assign(new Error('Playback is still loading'), {code: 'operation_unavailable'});
 }

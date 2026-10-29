@@ -25,7 +25,9 @@ import type {WebPlaybackCapacityWait} from './capacity-retry.ts';
 import type {WebPlaybackStartFailure} from './start-failure.ts';
 import type {WebPreparingStarts} from './preparing-start';
 
-export type WebPlaybackAuthority = V1Viewer & Readonly<{epoch: string | number; viewerFence: string}>;
+/** The session that owns playback. A Home privacy fence is optional: the shell's player is built
+ * from the session and never waits for Home; Home selections are then checked by their own guard. */
+export type WebPlaybackAuthority = V1Viewer & Readonly<{epoch: string | number; viewerFence?: string}>;
 export type WebPlaybackStart = Readonly<{entry: ContentEntry; target: NonNullable<ContentEntry['playback']>; origin?: Readonly<{kind: 'home-row'; rowId: string}>}>;
 export type WebPlaybackVersionStart = Readonly<{itemId: string; versionId: string; context: SelectionContext; signal: AbortSignal}>;
 export type WebPlaybackScreenTarget = Readonly<{libraryId: string; itemId: string; startSeconds: number; versionId?: string; storedResume?: boolean}>;
