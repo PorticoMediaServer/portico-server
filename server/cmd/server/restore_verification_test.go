@@ -563,7 +563,17 @@ func TestRestoreIsRefusedForEveryMissingStartupRequirement(t *testing.T) {
 				// Corrupt only this disposable backup's rows, retaining its exact schema.
 				statements = append(statements, `DROP TRIGGER remote_source_choice_definition_immutable_delete`)
 			}
+			if table == "mb_accounting_state" {
+				// This fixture models a damaged carried database, not a legal
+				// application deletion. Restore the exact guard before staging so
+				// startup must detect the absent row with its schema still intact.
+				statements = append(statements, `DROP TRIGGER mb_accounting_state_singleton`)
+			}
 			statements = append(statements, `DELETE FROM "`+table+`"`)
+			if table == "mb_accounting_state" {
+				statements = append(statements, `CREATE TRIGGER mb_accounting_state_singleton BEFORE DELETE ON mb_accounting_state
+BEGIN SELECT RAISE(ABORT,'MusicBrainz accounting state is a singleton'); END`)
+			}
 			if table == "remote_source_choice_definitions" {
 				statements = append(statements, `CREATE TRIGGER remote_source_choice_definition_immutable_delete BEFORE DELETE ON remote_source_choice_definitions
  BEGIN SELECT RAISE(ABORT,'source choice definitions are immutable'); END`)
