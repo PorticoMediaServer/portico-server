@@ -37,6 +37,12 @@ jobs:
           node --version || true
           go version || true
       - run: scripts/check-repo-binaries.sh
+      - name: Generated schema metadata is current
+        # The official generator, as checkpoint-generation runs it. Its own
+        # step, so a stale digest is never lost among shard test failures.
+        run: |
+          python3 scripts/schema-sync.py > "$RUNNER_TEMP/schema-sync.log" 2>&1 || { tail -n 40 "$RUNNER_TEMP/schema-sync.log"; exit 1; }
+          git diff --exit-code -- server/internal/persistence
       - name: Require the Python regression inventory
         if: ${{ always() }}
         env:
