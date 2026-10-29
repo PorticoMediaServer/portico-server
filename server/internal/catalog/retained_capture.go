@@ -413,7 +413,7 @@ func startRetainedCaptureTx(ctx context.Context, tx *sql.Tx, m compactcatalog.En
 	}
 
 	return advanceRetainedCaptureJobTx(ctx, tx, m,
-		`capture_arm=1,current_state_id=?,reading_arm='current',reading_started=0,reading_asset_after=0,reading_state_after=0,reading_source_after='',identity_after=0`,
+		`state='running',capture_arm=1,current_state_id=?,reading_arm='current',reading_started=0,reading_asset_after=0,reading_state_after=0,reading_source_after='',identity_after=0`,
 		header)
 }
 

@@ -9,6 +9,7 @@ import (
 	"time"
 	"unicode"
 
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/operations"
@@ -227,6 +228,9 @@ func (f *Source) saveProgress(expected int64, location Location, offline *Offlin
 		}
 	}
 	v = f.PublicationSelection()
+	if err = compactcatalog.RequireEntityAcquirableTx(ctx, tx, v.Entity); err != nil {
+		return nil, false, err
+	}
 	owner := identity.PersonalKey(p.Viewer)
 	current, err := progressTx(ctx, tx, owner, v)
 	if err != nil {

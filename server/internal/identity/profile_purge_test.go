@@ -351,7 +351,7 @@ func TestProfilePurgeCoverageReconcilesSchema(t *testing.T) {
 	profileColumns := map[string]bool{
 		"profile_id": true, "profile_key": true, "owner_key": true, "owner_profile": true,
 		"actor_profile_id": true, "recipient_profile_id": true, "last_profile_id": true,
-		"profile_cursor": true, "owner_authority": true,
+		"profile_cursor": true, "owner_authority": true, "local_profile": true,
 	}
 	rows, err := db.Query(`SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
 	if err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"portico.local/server/internal/compactcatalog"
 	"time"
 
 	"portico.local/server/internal/dbwork"
@@ -131,6 +132,9 @@ func (s *Service) SetContainerSaved(ctx context.Context, p identity.Principal, v
 		if e != nil {
 			return e
 		}
+		if e = compactcatalog.RequireEntityAcquirableTx(ctx, tx, containerID); e != nil {
+			return e
+		}
 		// The row's triggers bump the viewer revision and queue the recommender, as an item's do.
 		if _, e = tx.ExecContext(ctx, `INSERT INTO personal_items(profile_id,item_id,`+flag+`,revision) VALUES(?,?,?,1) ON CONFLICT(profile_id,item_id) DO UPDATE SET `+flag+`=excluded.`+flag+`,revision=personal_items.revision+1 WHERE personal_items.`+flag+` IS NOT excluded.`+flag, profile, containerID, value); e != nil {
 			return e
@@ -192,6 +196,9 @@ func (s *Service) SetContainerPersonal(ctx context.Context, p identity.Principal
 		}
 		if previous.Revision != m.ExpectedRevision {
 			return ErrPersonalConflict
+		}
+		if e = compactcatalog.RequirePersonalContainerWriteTx(ctx, tx, containerID); e != nil {
+			return e
 		}
 		ids, e := containerMemberIDs(ctx, tx, members, containerID)
 		if e != nil {

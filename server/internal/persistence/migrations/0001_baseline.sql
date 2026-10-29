@@ -155,7 +155,7 @@ CREATE TRIGGER catalog_missing_title_count_move AFTER UPDATE OF library_id ON ca
  ON CONFLICT(library_id) DO UPDATE SET total=total+1;
 END;
 CREATE TABLE retained_title_state(
- id INTEGER PRIMARY KEY,
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
  profile_id TEXT NOT NULL,
  kind INTEGER NOT NULL,
  title TEXT NOT NULL DEFAULT '',
@@ -170,16 +170,24 @@ CREATE TABLE retained_title_state(
  unit INTEGER NOT NULL DEFAULT 0,
  completed INTEGER NOT NULL DEFAULT 0 CHECK(completed IN(0,1)),
  progress_at TEXT NOT NULL DEFAULT '',
- retained_ms INTEGER NOT NULL) STRICT;
-CREATE INDEX retained_title_state_profile ON retained_title_state(profile_id,retained_ms,id);
+ retained_ms INTEGER NOT NULL,
+ ready INTEGER NOT NULL DEFAULT 1 CHECK(ready IN(0,1)),
+ capture_mutation_id TEXT REFERENCES catalog_entity_mutations(mutation_id) ON DELETE RESTRICT,
+ capture_generation INTEGER NOT NULL DEFAULT 0 CHECK(capture_generation>=0),
+ CHECK((ready=1 AND capture_mutation_id IS NULL AND capture_generation=0)
+    OR (ready=0 AND capture_mutation_id IS NOT NULL AND capture_generation>0))) STRICT;
+CREATE INDEX retained_title_state_profile
+ ON retained_title_state(profile_id,ready,retained_ms,id);
 CREATE TABLE retained_title_state_counts(
  profile_id TEXT PRIMARY KEY,
  title_count INTEGER NOT NULL CHECK(title_count>=0)) WITHOUT ROWID, STRICT;
-CREATE TRIGGER retained_title_state_count_insert AFTER INSERT ON retained_title_state BEGIN
+CREATE TRIGGER retained_title_state_count_insert AFTER INSERT ON retained_title_state
+WHEN NEW.ready=1 BEGIN
  INSERT INTO retained_title_state_counts(profile_id,title_count) VALUES(NEW.profile_id,1)
  ON CONFLICT(profile_id) DO UPDATE SET title_count=title_count+1;
 END;
-CREATE TRIGGER retained_title_state_count_delete AFTER DELETE ON retained_title_state BEGIN
+CREATE TRIGGER retained_title_state_count_delete AFTER DELETE ON retained_title_state
+WHEN OLD.ready=1 BEGIN
  UPDATE retained_title_state_counts SET title_count=title_count-1 WHERE profile_id=OLD.profile_id;
  DELETE FROM retained_title_state_counts WHERE profile_id=OLD.profile_id AND title_count=0;
 END;
@@ -13369,3 +13377,98 @@ CREATE TABLE catalog_availability_work(
  matching_unhealthy INTEGER NOT NULL DEFAULT 0 CHECK(matching_unhealthy IN(0,1)),
  any_available INTEGER NOT NULL DEFAULT 0 CHECK(any_available IN(0,1))
 ) STRICT;
+
+-- Private retained-state publication and capture custody.
+CREATE UNIQUE INDEX retained_title_state_capture
+ ON retained_title_state(capture_mutation_id,profile_id)
+ WHERE capture_mutation_id IS NOT NULL;
+
+CREATE TABLE catalog_purge_jobs(
+ mutation_id TEXT PRIMARY KEY REFERENCES catalog_entity_mutations(mutation_id) ON DELETE RESTRICT,
+ generation INTEGER NOT NULL CHECK(generation>0),
+ plan_digest TEXT NOT NULL CHECK(length(plan_digest)=64),
+ cursor TEXT NOT NULL DEFAULT '' CHECK(length(CAST(cursor AS BLOB))<=512),
+ owner_after TEXT NOT NULL DEFAULT '',
+ owner_value TEXT NOT NULL DEFAULT '',
+ capture_arm INTEGER NOT NULL DEFAULT 0 CHECK(capture_arm BETWEEN 0 AND 7),
+ source_after INTEGER NOT NULL DEFAULT 0,
+ state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN('pending','running','blocked')),
+ attempt INTEGER NOT NULL DEFAULT 0 CHECK(attempt>=0),
+ next_attempt_ms INTEGER NOT NULL DEFAULT 0 CHECK(next_attempt_ms>=0),
+ reason TEXT NOT NULL DEFAULT '' CHECK(length(reason)<=128),
+ owner_started INTEGER NOT NULL DEFAULT 0 CHECK(owner_started IN(0,1)),
+ current_state_id INTEGER UNIQUE REFERENCES retained_title_state(id) ON DELETE SET NULL,
+ reading_arm TEXT NOT NULL DEFAULT 'current'
+  CHECK(reading_arm IN('current','retained','complete')),
+ reading_started INTEGER NOT NULL DEFAULT 0 CHECK(reading_started IN(0,1)),
+ reading_asset_after INTEGER NOT NULL DEFAULT 0,
+ reading_state_after INTEGER NOT NULL DEFAULT 0,
+ reading_source_after TEXT NOT NULL DEFAULT '',
+ identity_after INTEGER NOT NULL DEFAULT 0 CHECK(identity_after BETWEEN 0 AND 12),
+ local_account TEXT NOT NULL DEFAULT '',
+ local_profile TEXT NOT NULL DEFAULT '',
+ local_membership_incarnation TEXT NOT NULL DEFAULT '',
+ local_profile_lifetime TEXT NOT NULL DEFAULT '',
+ CHECK((local_account='' AND local_profile='' AND local_membership_incarnation=''
+        AND local_profile_lifetime='')
+  OR (local_account<>'' AND local_profile<>''
+      AND length(local_membership_incarnation)=32
+      AND local_membership_incarnation NOT GLOB '*[^0-9a-f]*'
+      AND length(local_profile_lifetime)=32
+      AND local_profile_lifetime NOT GLOB '*[^0-9a-f]*'))) STRICT;
+
+CREATE INDEX catalog_purge_due ON catalog_purge_jobs(state,next_attempt_ms,mutation_id);
+
+CREATE INDEX catalog_purge_jobs_local_binding ON catalog_purge_jobs(
+ local_account,local_profile,local_membership_incarnation,local_profile_lifetime,mutation_id);
+
+CREATE INDEX catalog_purge_jobs_owner_value ON catalog_purge_jobs(owner_value,mutation_id);
+
+CREATE TABLE catalog_purge_identities(
+ mutation_id TEXT NOT NULL REFERENCES catalog_purge_jobs(mutation_id) ON DELETE RESTRICT,
+ ordinal INTEGER NOT NULL CHECK(ordinal BETWEEN 1 AND 12),
+ identity TEXT NOT NULL,
+ mapping_captured INTEGER NOT NULL DEFAULT 0 CHECK(mapping_captured IN(0,1)),
+ previous_state_id INTEGER,
+ PRIMARY KEY(mutation_id,ordinal),
+ UNIQUE(mutation_id,identity)
+) WITHOUT ROWID, STRICT;
+
+CREATE INDEX personal_items_retention_owner ON personal_items(item_id,profile_id);
+
+CREATE INDEX reading_progress_retention_owner ON reading_progress(item_id,owner_key,asset_id);
+
+CREATE INDEX personal_watched_intents_retention_owner ON personal_watched_intents(item_id,profile_id);
+
+CREATE INDEX container_personal_state_retention_owner
+ ON container_personal_state(container_id,profile_id,kind);
+
+CREATE TRIGGER retained_title_state_count_publish AFTER UPDATE OF ready ON retained_title_state
+WHEN OLD.ready=0 AND NEW.ready=1 BEGIN
+ INSERT INTO retained_title_state_counts(profile_id,title_count) VALUES(NEW.profile_id,1)
+ ON CONFLICT(profile_id) DO UPDATE SET title_count=title_count+1;
+END;
+
+CREATE TRIGGER retained_title_state_ready_monotone BEFORE UPDATE OF ready ON retained_title_state
+WHEN OLD.ready=1 AND NEW.ready<>1 BEGIN
+ SELECT RAISE(ABORT,'published retained state cannot become private');
+END;
+
+CREATE TRIGGER retained_title_identity_ready_insert BEFORE INSERT ON retained_title_identities
+WHEN NOT EXISTS(SELECT 1 FROM retained_title_state WHERE id=NEW.state_id AND ready=1) BEGIN
+ SELECT RAISE(ABORT,'retained identity requires a complete retained state');
+END;
+
+CREATE TRIGGER retained_title_identity_ready_update BEFORE UPDATE OF state_id ON retained_title_identities
+WHEN NOT EXISTS(SELECT 1 FROM retained_title_state WHERE id=NEW.state_id AND ready=1) BEGIN
+ SELECT RAISE(ABORT,'retained identity requires a complete retained state');
+END;
+
+CREATE TRIGGER catalog_mutation_private_capture_before_terminal
+BEFORE UPDATE OF status,entity_id ON catalog_entity_mutations
+WHEN (NEW.status='terminal' OR NEW.entity_id IS NULL)
+ AND EXISTS(SELECT 1 FROM retained_title_state
+ INDEXED BY retained_title_state_capture
+ WHERE capture_mutation_id=OLD.mutation_id AND capture_mutation_id IS NOT NULL) BEGIN
+ SELECT RAISE(ABORT,'catalog mutation still owns private retained state');
+END;

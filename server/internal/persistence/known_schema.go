@@ -275,6 +275,9 @@ index catalog_personal_visibility_sort_edge_entity
 index catalog_playlist_entries_item
 index catalog_playlist_entries_page
 index catalog_playlists_owner
+index catalog_purge_due
+index catalog_purge_jobs_local_binding
+index catalog_purge_jobs_owner_value
 index catalog_rec_facet_titles
 index catalog_rec_member_best
 index catalog_rec_postings_entity
@@ -331,6 +334,7 @@ index console_records_page
 index console_report_events_report_id_fk
 index console_reports_owner
 index console_reports_status
+index container_personal_state_retention_owner
 index container_personal_undo_container
 index container_personal_undo_expiry
 index container_personal_undo_items_item
@@ -642,6 +646,7 @@ index personal_history_page
 index personal_history_recent
 index personal_home_watched
 index personal_items_item_id_fk
+index personal_items_retention_owner
 index personal_jobs_active
 index personal_jobs_age
 index personal_jobs_state
@@ -658,6 +663,7 @@ index personal_receipts_profile
 index personal_snapshots_expiry
 index personal_snapshots_item_id_fk
 index personal_watched_intents_item_id_fk
+index personal_watched_intents_retention_owner
 index personal_watchlist
 index play_history_account
 index play_history_library
@@ -750,6 +756,7 @@ index reading_path_work_key
 index reading_path_work_turn
 index reading_progress_publication
 index reading_progress_recent
+index reading_progress_retention_owner
 index reading_publication_types_inventory_object
 index reading_saved_group_receipts_expiry
 index reading_saved_groups_owner_listed
@@ -768,6 +775,7 @@ index remote_source_cache_lru
 index remote_source_captures_pending
 index remote_source_choice_refs_name_definition_revision_fk
 index retained_title_identities_state
+index retained_title_state_capture
 index retained_title_state_profile
 index saved_entry_undo_expiry
 index saved_entry_undo_item_id_fk
@@ -1083,6 +1091,8 @@ table catalog_personal_visibility_sort_edges
 table catalog_personal_visibility_sort_profile_jobs
 table catalog_playlist_entries
 table catalog_playlists
+table catalog_purge_identities
+table catalog_purge_jobs
 table catalog_rec_df
 table catalog_rec_facets
 table catalog_rec_member_counts
@@ -2329,6 +2339,7 @@ trigger catalog_movie_category_visible_class_update
 trigger catalog_movie_category_visible_member_delete
 trigger catalog_movie_category_visible_member_insert
 trigger catalog_movie_category_visible_member_update
+trigger catalog_mutation_private_capture_before_terminal
 trigger catalog_people_names_delete
 trigger catalog_people_names_insert
 trigger catalog_people_names_update
@@ -3381,8 +3392,12 @@ trigger remote_sources_remote_sources_list_delete
 trigger remote_sources_remote_sources_list_insert
 trigger remote_sources_remote_sources_list_update
 trigger repair_delete_entity
+trigger retained_title_identity_ready_insert
+trigger retained_title_identity_ready_update
 trigger retained_title_state_count_delete
 trigger retained_title_state_count_insert
+trigger retained_title_state_count_publish
+trigger retained_title_state_ready_monotone
 trigger rev_listening_audio_evidence_delete
 trigger rev_listening_audio_evidence_insert
 trigger rev_listening_audio_evidence_update

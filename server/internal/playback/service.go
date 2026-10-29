@@ -924,6 +924,13 @@ func (s *Service) progressTx(ctx context.Context, tx *sql.Tx, p identity.Princip
 			return e
 		}
 	} else {
+		var entity int64
+		if e = tx.QueryRowContext(ctx, `SELECT item_id FROM playback_sessions WHERE id=?`, id).Scan(&entity); e != nil {
+			return e
+		}
+		if e = compactcatalog.RequireEntityAcquirableTx(ctx, tx, entity); e != nil {
+			return e
+		}
 		positionMS := int64(math.Round(position * 1000))
 		_, e = tx.ExecContext(ctx, `UPDATE progress SET position=min(?,CAST((SELECT duration FROM playback_sessions WHERE id=?)*1000 AS INTEGER)),unit=0 WHERE profile_id=? AND playback_id=?`, positionMS, id, identity.PersonalKey(p.Viewer), id)
 		if e != nil {

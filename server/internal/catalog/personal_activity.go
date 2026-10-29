@@ -61,6 +61,9 @@ func acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item stri
 	if e != nil {
 		return e
 	}
+	if e = compactcatalog.RequireEntityAcquirableTx(context.Background(), tx, entityID); e != nil {
+		return e
+	}
 	var kind int64
 	if e = tx.QueryRow(`SELECT kind FROM catalog_entities WHERE id=?`, entityID).Scan(&kind); e != nil {
 		return e
@@ -682,6 +685,9 @@ func (s *Service) MutateActivity(profile string, m ActivityMutation, authorize f
 	}
 	if out.Revision != m.ExpectedRevision {
 		return out, ErrPersonalConflict
+	}
+	if e = compactcatalog.RequireRetainedOwnerWriteTx(context.Background(), tx, profile); e != nil {
+		return out, e
 	}
 	if m.Action == "reset-viewing-activity" {
 		if _, e = tx.Exec(`INSERT INTO playback_personal_profile_fences(profile_key,through_ordinal) VALUES(?,(SELECT COALESCE(max(ordinal),0) FROM playback_personal_intents)) ON CONFLICT(profile_key) DO UPDATE SET through_ordinal=excluded.through_ordinal`, profile); e != nil {

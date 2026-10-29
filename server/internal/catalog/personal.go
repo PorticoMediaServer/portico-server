@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/requestinput"
 	"strconv"
 
@@ -114,6 +115,9 @@ func storePersonal(tx *sql.Tx, profile, item string, out PersonalState) error {
 }
 
 func storePersonalByID(tx *sql.Tx, profile string, entityID int64, out PersonalState) error {
+	if err := compactcatalog.RequireEntityAcquirableTx(context.Background(), tx, entityID); err != nil {
+		return err
+	}
 	_, e := tx.Exec(`INSERT INTO personal_items(profile_id,item_id,watchlisted,favorite,not_interested,rating,revision,watched,last_played_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(profile_id,item_id) DO UPDATE SET watchlisted=excluded.watchlisted,favorite=excluded.favorite,not_interested=excluded.not_interested,rating=excluded.rating,revision=excluded.revision,watched=excluded.watched,last_played_at=excluded.last_played_at`, profile, entityID, out.Watchlisted, out.Favorite, out.NotInterested, out.Rating, out.Revision, out.Watched, out.LastPlayedAt)
 	return e
 }
@@ -173,6 +177,9 @@ func explicitResume(tx *sql.Tx, profile, item string, position float64) error {
 }
 
 func explicitResumeByID(tx *sql.Tx, profile string, entityID int64, position float64) error {
+	if err := compactcatalog.RequireEntityAcquirableTx(context.Background(), tx, entityID); err != nil {
+		return err
+	}
 	millis := positionMillis(position)
 	if e := fenceEvidenceByID(tx, profile, entityID); e != nil {
 		return e
