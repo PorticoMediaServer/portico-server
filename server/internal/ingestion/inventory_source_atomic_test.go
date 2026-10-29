@@ -19,7 +19,7 @@ func TestInventorySourceGroupAtomicReplayAndFences(t *testing.T) {
 	f := newLoopFixture(t, "book", "A/First.epub", "B/Second.epub")
 	job := f.queue()
 	source := startInventorySource(t, f, job)
-	if err := f.s.readDirectoryPage(context.Background(), job.ID, source, "."); err != nil {
+	if err := f.s.readDirectoryPage(context.Background(), job.ID, source, ".", inventorySourceNames); err != nil {
 		t.Fatal(err)
 	}
 	var pages []catalog.InventoryPageWrite

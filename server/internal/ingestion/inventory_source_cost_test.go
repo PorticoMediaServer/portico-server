@@ -47,7 +47,7 @@ func TestInventorySourcePageCost(t *testing.T) {
 			source := startInventorySource(t, f, job)
 			if tc.name == "reading-folders" {
 				for f.count(`SELECT count(*) FROM inventory_directories WHERE job_id=? AND relative_path='.' AND state='pending'`, job.ID) > 0 {
-					if err := f.s.readDirectoryPage(context.Background(), job.ID, source, "."); err != nil {
+					if err := f.s.readDirectoryPage(context.Background(), job.ID, source, ".", inventorySourceNames); err != nil {
 						t.Fatal(err)
 					}
 				}

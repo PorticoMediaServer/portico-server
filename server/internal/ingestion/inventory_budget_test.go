@@ -35,11 +35,11 @@ func TestFolderBatchPublishesOneBudgetedPrefix(t *testing.T) {
 			source := startInventorySource(t, f, job)
 			// Seed children through bounded real root pages, without visiting them.
 			for f.count(`SELECT count(*) FROM inventory_directories WHERE job_id=? AND relative_path='.' AND state='pending'`, job.ID) > 0 {
-				if err := f.s.readDirectoryPage(context.Background(), job.ID, source, "."); err != nil {
+				if err := f.s.readDirectoryPage(context.Background(), job.ID, source, ".", inventorySourceNames); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if ok, err := f.s.inventoryFolders(context.Background(), job.ID, source); !ok || err != nil {
+			if ok, err := f.s.inventoryFolders(context.Background(), job.ID, source, inventorySourceNames); !ok || err != nil {
 				t.Fatalf("batch=%v: %v", ok, err)
 			}
 			if n := f.count(`SELECT count(*) FROM inventory_objects WHERE source_id=?`, f.source); n != inventorySourceNames {
@@ -51,7 +51,7 @@ func TestFolderBatchPublishesOneBudgetedPrefix(t *testing.T) {
 			if n := f.count(`SELECT count(*) FROM inventory_directories WHERE job_id=? AND relative_path<>'F00' AND relative_path<>'.' AND pages>0`, job.ID); n != 0 {
 				t.Fatal("listed beyond the shared raw allowance")
 			}
-			if ok, err := f.s.inventoryFolders(context.Background(), job.ID, source); !ok || err != nil {
+			if ok, err := f.s.inventoryFolders(context.Background(), job.ID, source, inventorySourceNames); !ok || err != nil {
 				t.Fatalf("next batch=%v: %v", ok, err)
 			}
 			if n := f.count(`SELECT count(*) FROM inventory_objects WHERE source_id=? AND relative_path LIKE 'F00/%'`, f.source); n != 3 {
@@ -82,11 +82,11 @@ func TestFolderBatchBoundsEmptyFolderOverhead(t *testing.T) {
 			job := f.queue()
 			source := startInventorySource(t, f, job)
 			for f.count(`SELECT count(*) FROM inventory_directories WHERE job_id=? AND relative_path='.' AND state='pending'`, job.ID) > 0 {
-				if err := f.s.readDirectoryPage(context.Background(), job.ID, source, "."); err != nil {
+				if err := f.s.readDirectoryPage(context.Background(), job.ID, source, ".", inventorySourceNames); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if ok, err := f.s.inventoryFolders(context.Background(), job.ID, source); !ok || err != nil {
+			if ok, err := f.s.inventoryFolders(context.Background(), job.ID, source, inventorySourceNames); !ok || err != nil {
 				t.Fatalf("batch=%v: %v", ok, err)
 			}
 			if n := f.count(`SELECT count(*) FROM inventory_directories WHERE job_id=? AND state='done' AND relative_path<>'.'`, job.ID); n != inventorySourceFolders {
@@ -184,7 +184,7 @@ func TestBudgetedFolderBatchIsFencedAtCommit(t *testing.T) {
 	job := f.queue()
 	f.s.processQuantum(context.Background(), job.ID, f.library)
 	f.exec(`UPDATE jobs SET status='paused' WHERE id=?`, job.ID)
-	handled, err := f.s.inventoryFolders(context.Background(), job.ID, f.librarySource())
+	handled, err := f.s.inventoryFolders(context.Background(), job.ID, f.librarySource(), inventorySourceNames)
 	if handled || err != nil {
 		t.Fatalf("a fenced batch reported handled=%v err=%v", handled, err)
 	}

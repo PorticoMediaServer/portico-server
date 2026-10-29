@@ -108,10 +108,10 @@ func (s *Service) inventoryPage(ctx context.Context, job string, source catalog.
 	var relative string
 	err := s.db.QueryRowContext(ctx, `SELECT relative_path FROM inventory_directories WHERE job_id=? AND state='pending' ORDER BY relative_path LIMIT 1`, job).Scan(&relative)
 	if err == nil && !s.storage.IsRemote(source.ResolvedPath) {
-		// Small folders — one per film, season or album — are listed and
-		// published several at a time. Anything the batch can't take is left
+		// Bound folder progress as well as raw names before listing. Anything
+		// the shared-budget path cannot take is left
 		// to the one-folder path below, which handles every failure.
-		if done, e := s.inventoryFolders(ctx, job, source); e != nil || done {
+		if done, e := s.inventoryFolders(ctx, job, source, inventoryPublicationNames); e != nil || done {
 			return e
 		}
 	}
@@ -128,7 +128,7 @@ func (s *Service) inventoryPage(ctx context.Context, job string, source catalog.
 	if err != nil {
 		return err
 	}
-	err = s.readDirectoryPage(ctx, job, source, relative)
+	err = s.readDirectoryPage(ctx, job, source, relative, inventoryPublicationNames)
 	if err == nil || ctx.Err() != nil || errors.Is(err, storage.ErrBusy) {
 		return err
 	}
@@ -159,10 +159,11 @@ func (s *Service) inventoryPage(ctx context.Context, job string, source catalog.
 
 // inventoryFolders lists at most inventorySourceFolders pending local folders
 // under one raw-name budget and publishes each real page together. It falls
-// back to the one-folder path when fewer than two requests are pending, the
+// back to the one-folder path when no requests are pending, the
 // first listing needs error/unstable handling, or publication fails. A healthy
 // single-page prefix of a batch can still be committed without rereading it.
-func (s *Service) inventoryFolders(ctx context.Context, job string, source catalog.LibrarySource) (bool, error) {
+func (s *Service) inventoryFolders(ctx context.Context, job string, source catalog.LibrarySource, limit int) (bool, error) {
+	limit = max(1, min(limit, s.inventoryBatch(ctx)))
 	// Other platforms retain a source-owned directory stream. Without the
 	// shared raw-name budget, list just one bounded page; prelisting several
 	// full pages and keeping a prefix would discard unrelated source work.
@@ -172,13 +173,12 @@ func (s *Service) inventoryFolders(ctx context.Context, job string, source catal
 	// Resolve the disc-folder capability before the page writer opens; it may
 	// read bubblewrap's help once.
 	storage.DirectoryDiscScanSupported()
-	rows, err := s.db.QueryContext(ctx, `SELECT relative_path,cursor,revision FROM inventory_directories WHERE job_id=? AND state='pending' ORDER BY relative_path LIMIT ?`, job, inventorySourceFolders)
+	rows, err := s.db.QueryContext(ctx, `SELECT relative_path,cursor,revision FROM inventory_directories WHERE job_id=? AND state='pending' ORDER BY relative_path LIMIT ?`, job, min(inventorySourceFolders, limit))
 	if err != nil {
 		return false, err
 	}
 	var writes []catalog.InventoryPageWrite
 	var requests []storage.InventoryRequest
-	limit := s.inventoryBatch(ctx)
 	for rows.Next() {
 		var w catalog.InventoryPageWrite
 		var revision string
@@ -191,7 +191,7 @@ func (s *Service) inventoryFolders(ctx context.Context, job string, source catal
 	}
 	err = rows.Err()
 	rows.Close()
-	if err != nil || len(requests) < 2 {
+	if err != nil || len(requests) == 0 {
 		return false, err
 	}
 	return s.inventoryFoldersBudget(ctx, job, source, writes, requests, limit)
@@ -304,7 +304,8 @@ func discRootOnPage(relative string, page storage.InventoryPage) bool {
 	return false
 }
 
-func (s *Service) readDirectoryPage(ctx context.Context, job string, source catalog.LibrarySource, relative string) error {
+func (s *Service) readDirectoryPage(ctx context.Context, job string, source catalog.LibrarySource, relative string, limit int) error {
+	limit = max(1, min(limit, s.inventoryBatch(ctx)))
 	storage.DirectoryDiscScanSupported()
 	var cursor, revision string
 	if err := s.db.QueryRowContext(ctx, `SELECT cursor,revision FROM inventory_directories WHERE job_id=? AND relative_path=? AND state='pending'`, job, relative).Scan(&cursor, &revision); err != nil {
@@ -312,7 +313,7 @@ func (s *Service) readDirectoryPage(ctx context.Context, job string, source cata
 	}
 	if s.storage.IsRemote(source.ResolvedPath) {
 		directory := filepath.Join(source.ResolvedPath, relative)
-		remote, err := s.storage.Remote.ListInventoryPage(ctx, job, directory, cursor, s.inventoryBatch(ctx))
+		remote, err := s.storage.Remote.ListInventoryPage(ctx, job, directory, cursor, limit)
 		if err != nil {
 			return &directoryReadError{err}
 		}
@@ -328,7 +329,7 @@ func (s *Service) readDirectoryPage(ctx context.Context, job string, source cata
 		}
 		return s.catalog.CommitInventoryPage(ctx, job, relative, cursor, page)
 	}
-	req := storage.InventoryRequest{Root: source.ResolvedPath, RelativePath: relative, RootIdentity: source.RootIdentity, DirectoryRevision: revision, Cursor: cursor, Limit: s.inventoryBatch(ctx), FollowSymlinks: source.FollowSymlinks}
+	req := storage.InventoryRequest{Root: source.ResolvedPath, RelativePath: relative, RootIdentity: source.RootIdentity, DirectoryRevision: revision, Cursor: cursor, Limit: limit, FollowSymlinks: source.FollowSymlinks}
 	var page storage.InventoryPage
 	var err error
 	if s.storage != nil {

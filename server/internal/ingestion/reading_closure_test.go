@@ -53,7 +53,7 @@ func closureList(t *testing.T, f *loopFixture, job Job, source catalog.LibrarySo
 			if state != "pending" || turn == 1000 {
 				t.Fatalf("directory %s did not reach EOF: state=%s turns=%d", path, state, turn)
 			}
-			if e := f.s.readDirectoryPage(context.Background(), job.ID, source, path); e != nil {
+			if e := f.s.readDirectoryPage(context.Background(), job.ID, source, path, inventorySourceNames); e != nil {
 				t.Fatal(e)
 			}
 		}
