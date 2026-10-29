@@ -157,9 +157,40 @@ func TestUnchangedRescanQueuesNoDerivedWork(t *testing.T) {
 		}
 		t.Fatalf("an unchanged rescan queued %d derived units", n)
 	}
-	// A real change still re-derives: the source going offline and back.
-	f.exec(`UPDATE library_sources SET health='offline' WHERE id=?`, f.source)
-	if n := f.count(`SELECT count(*) FROM catalog_dirty WHERE domain=?`, compactcatalog.DomainLibraryAvailability); n != 1 {
-		t.Fatalf("an offline source did not queue its library's availability (%d)", n)
+	// A2 retains catalogue evidence across transient transport health. Neither
+	// side of an offline/online flap invalidates predicates or queues item work.
+	epoch := f.count(`SELECT revision FROM catalog_browse_predicate_epoch WHERE singleton=1`)
+	for _, health := range []string{"offline", "healthy", "offline", "healthy"} {
+		f.exec(`UPDATE library_sources SET health=? WHERE id=?`, health, f.source)
+		if n := f.count(`SELECT count(*) FROM catalog_dirty`); n != 0 {
+			t.Fatalf("transient health %s queued %d derived units", health, n)
+		}
+		if got := f.count(`SELECT revision FROM catalog_browse_predicate_epoch WHERE singleton=1`); got != epoch {
+			t.Fatalf("transient health %s invalidated predicates: %d want %d", health, got, epoch)
+		}
+	}
+	// Entering or leaving a structural refusal fences the accepted source;
+	// repeating the same refusal is a no-op. The existing worker settles it.
+	for _, health := range []string{"root_changed", "removing"} {
+		f.exec(`UPDATE library_sources SET health=? WHERE id=?`, health, f.source)
+		epoch++
+		if got := f.count(`SELECT revision FROM catalog_browse_predicate_epoch WHERE singleton=1`); got != epoch {
+			t.Fatalf("structural health %s did not invalidate predicates: %d want %d", health, got, epoch)
+		}
+		if n := f.count(`SELECT count(*) FROM catalog_dirty WHERE domain=?`, compactcatalog.DomainLibraryAvailability); n != 1 {
+			t.Fatalf("structural health %s queued %d library availability units, want 1", health, n)
+		}
+		f.exec(`UPDATE library_sources SET health=? WHERE id=?`, health, f.source)
+		if got := f.count(`SELECT revision FROM catalog_browse_predicate_epoch WHERE singleton=1`); got != epoch {
+			t.Fatalf("structural no-op %s invalidated predicates", health)
+		}
+		f.exec(`UPDATE library_sources SET health='healthy' WHERE id=?`, f.source)
+		epoch++
+		if got := f.count(`SELECT revision FROM catalog_browse_predicate_epoch WHERE singleton=1`); got != epoch {
+			t.Fatalf("leaving structural health %s did not invalidate predicates", health)
+		}
+		if err := compactcatalog.Drain(context.Background(), f.db); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
