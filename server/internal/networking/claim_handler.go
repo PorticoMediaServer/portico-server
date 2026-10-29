@@ -489,16 +489,12 @@ func (h *ClaimHandler) snapshot(ctx context.Context) (ClaimStatus, error) {
 	result.Actions = []string{}
 	var setup SetupContinuation
 	var setupExpires int64
-	var setupRegistration, setupOrigin string
-	se := tx.QueryRowContext(ctx, `SELECT transaction_id,phase,expires_ms,registration_id,registration_origin FROM identity_setup_completions WHERE operation_id=?`, v.OperationID).Scan(&setup.TransactionID, &setup.Phase, &setupExpires, &setupRegistration, &setupOrigin)
+	se := tx.QueryRowContext(ctx, `SELECT transaction_id,phase,expires_ms FROM identity_setup_completions WHERE operation_id=?`, v.OperationID).Scan(&setup.TransactionID, &setup.Phase, &setupExpires)
 	if se != nil && !errors.Is(se, sql.ErrNoRows) {
 		return ClaimStatus{}, se
 	}
 	if se == nil {
 		setup.ExpiresAt = time.UnixMilli(setupExpires).UTC().Format(time.RFC3339Nano)
-		if setupRegistration != "" && setupOrigin != "" {
-			setup.ReturnRegistration = &serverreturn.Registration{ID: setupRegistration, Origin: setupOrigin}
-		}
 		result.SetupContinuation = &setup
 		if setup.Phase != "prepared" && setup.Phase != "installed" {
 			return result, nil

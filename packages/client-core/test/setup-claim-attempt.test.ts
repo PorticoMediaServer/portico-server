@@ -27,8 +27,7 @@ function bound(record: SetupAttempt): SetupAttempt {
 }
 const status = (state: string, revision = '5'): ClaimStatus => ({state, identity: {serverId: 'server', localGeneration: '3'},
   operation: {operationId: 'op', localGeneration: '3', revision}, installationAcknowledged: true, approvalRequired: false, actions: []});
-const installed = (extra: Record<string, unknown> = {}) => ({setupContinuation: {phase: 'installed', transactionId, expiresAt: handoffExpires,
-  returnRegistration: {id: 'ret_' + 'a'.repeat(43), origin: 'https://home.example'}, ...extra}});
+const installed = (extra: Record<string, unknown> = {}) => ({setupContinuation: {phase: 'installed', transactionId, expiresAt: handoffExpires, ...extra}});
 
 test('a new attempt carries a 32-byte verifier, its challenge and a five-minute window', async () => {
   const record = await attempt();
@@ -68,17 +67,15 @@ test('a stored handoff must bind exactly this attempt and operation', async () =
   assert.equal(setupHandoffBound({...record, handoff: undefined}), false);
 });
 
-test('only an exact installed continuation names a registration; prepared and cancelled grant nothing', async () => {
+test('only an exact installed continuation (no registration) completes admission; prepared and cancelled grant nothing', async () => {
   const record = bound(await attempt()) as Parameters<typeof setupContinuation>[2];
-  assert.deepEqual(setupContinuation(installed(), status('installed'), record), {phase: 'installed', registrationId: 'ret_' + 'a'.repeat(43)});
+  assert.deepEqual(setupContinuation(installed(), status('installed'), record), {phase: 'installed'});
   assert.deepEqual(setupContinuation({setupContinuation: {phase: 'prepared', transactionId, expiresAt: handoffExpires}}, status('installed'), record), {phase: 'pending'});
   assert.deepEqual(setupContinuation({setupContinuation: {phase: 'cancelled', transactionId, expiresAt: handoffExpires}}, status('cancelled'), record), {phase: 'cancelled'});
   assert.deepEqual(setupContinuation(installed(), status('prepared'), record), {phase: 'pending'});
   for (const raw of [installed({extra: 1}), installed({transactionId: 'other'}), installed({expiresAt: new Date(now).toISOString()}),
-    installed({returnRegistration: {id: 'ret_short', origin: 'https://home.example'}}), installed({returnRegistration: {id: 'ret_' + 'a'.repeat(43), origin: 'http://home.example'}})])
+    installed({returnRegistration: {id: 'ret_' + 'a'.repeat(43), origin: 'https://home.example'}})])
     assert.deepEqual(setupContinuation(raw, status('installed'), record), {phase: 'invalid'}, JSON.stringify(raw));
-  assert.throws(() => setupContinuation(installed({returnRegistration: {id: 'ret_' + 'a'.repeat(43), origin: 'https://home.example/path'}}), status('installed'), record),
-    {name: 'RouteError'}, 'a registration origin with a path is refused');
   assert.deepEqual(setupContinuation(installed(), status('installed', '4'), record), {phase: 'invalid'}, 'an older operation revision');
   assert.deepEqual(setupContinuation(installed(), {...status('installed'), identity: {serverId: 'server', localGeneration: '4'}}, record), {phase: 'invalid'});
 });

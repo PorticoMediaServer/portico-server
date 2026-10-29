@@ -96,7 +96,15 @@ func (ClaimSetupStartRequest) JSONSchema() map[string]any {
 	return (ClaimOwnerStartRequest{}).JSONSchema()
 }
 
-type SetupContinuation OwnerContinuation
+// SetupContinuation is the setup's browser continuation. It never carries a return
+// registration: setup finishes at claim install over its signed original address (O-163).
+type SetupContinuation struct {
+	TransactionID string           `json:"transactionId"`
+	Phase         string           `json:"phase"`
+	ExpiresAt     string           `json:"expiresAt"`
+	Claim         *claimweb.Signed `json:"claim,omitempty"`
+	Start         *claimweb.Signed `json:"start,omitempty"`
+}
 
 func (SetupContinuation) String() string   { return "[setup continuation redacted]" }
 func (SetupContinuation) GoString() string { return "[setup continuation redacted]" }

@@ -6,8 +6,9 @@ import (
 	"testing"
 )
 
-// A setup or owner return waiting on managed HTTPS says what it is waiting for: every
-// no-origin exit names a value-free reason, and the route error carries it as its step.
+// A return waiting on managed HTTPS says what it is waiting for: every no-origin exit
+// names a value-free reason, and the owner return route carries it as its step. (Setup
+// waits on no route since O-163.)
 func TestManagedHTTPSAbsenceNamesItsReason(t *testing.T) {
 	for _, c := range []struct{ name, sql, reason string }{
 		{"serving", "", ""},
@@ -34,7 +35,7 @@ func TestManagedHTTPSAbsenceNamesItsReason(t *testing.T) {
 			if err != nil || reason != c.reason || (c.reason == "") != (origin != "") {
 				t.Fatal("reason", origin, reason, err)
 			}
-			_, _, err = h.setupReturnRouteTx(ctx, tx, v)
+			_, _, err = h.ownerReturnRouteTx(ctx, tx, v)
 			if c.reason == "" {
 				if err != nil {
 					t.Fatal("serving route refused", err)
@@ -42,7 +43,7 @@ func TestManagedHTTPSAbsenceNamesItsReason(t *testing.T) {
 				return
 			}
 			s := summarizeFailure(ctx, err)
-			if !errors.Is(err, ErrUnavailable) || s.Step != "setup return route: "+c.reason || strings.Contains(s.Step, "http") {
+			if !errors.Is(err, ErrUnavailable) || s.Step != "owner return route: "+c.reason || strings.Contains(s.Step, "http") {
 				t.Fatal("the route's absence is not named", s.Step, err)
 			}
 		})

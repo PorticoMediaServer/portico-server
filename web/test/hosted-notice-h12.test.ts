@@ -5,7 +5,7 @@ import {directoryNotice} from '../src/screens/accounts/hosted-notice.ts';
 import {RouteError} from '@core/route-identity.ts';
 import {ApiError} from '@core/index.ts';
 
-const server: DirectoryItem = {id: 'srv_' + 'a'.repeat(43), name: 'Synthetic Test Server', baseUrl: 'https://c-x.ptc-y.direct.getportico.tv:32500', publicKey: 'p'.repeat(43), policyRevision: 1, endpointVerified: true, lastSeenAt: null, presence: {lastSeenAt: null}, ownedByMe: true, role: 'owner', status: 'quiet'};
+const server: DirectoryItem = {id: 'srv_' + 'a'.repeat(43), name: 'Synthetic Test Server', baseUrl: 'https://c-x.ptc-y.direct.getportico.tv:32500', publicKey: 'p'.repeat(43), policyRevision: 1, secureConnection: 'ready', endpointVerified: true, lastSeenAt: null, presence: {lastSeenAt: null}, ownedByMe: true, role: 'owner', status: 'quiet'};
 const directory = (items: DirectoryItem[]) => ({items, version: '1', watch: '1', membershipEnding: undefined});
 
 // H12 (29 Oct): a server whose old name no longer resolves (ERR_NAME_NOT_RESOLVED on /identity-proof)
