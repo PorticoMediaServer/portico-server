@@ -89,23 +89,32 @@ export class BrowserSetupClaim {
   async discardStale(api: HttpLocalApi): Promise<boolean> {
     this.ports.journal.assertAvailable();
     const route = api.getRouteConnection(), record = await this.ports.journal.read();
-    if (!route || !record || record.kind !== 'setup' || !this.expired(record) || record.pin.serverId !== route.pin.serverId) return false;
+    // The attempt record belongs to the tab that started it; another tab of the same browser
+    // has none. Then the draft's own setup secret is the authority: the server shows that
+    // pending setup's claim, and only it, to that secret.
+    if (!route || record && (record.kind !== 'setup' || record.pin.serverId !== route.pin.serverId)) return false;
     const store = this.ports.draft(route.pin.serverId), draft = await store.read();
-    if (!draft || draft.version !== 1 || draft.authMode !== 'hosted' || draft.serverId !== route.pin.serverId || draft.requestId !== record.setupRequestId) return false;
+    if (!draft || draft.version !== 1 || draft.authMode !== 'hosted' || draft.serverId !== route.pin.serverId || record && draft.requestId !== record.setupRequestId) return false;
     if (this.busy) return false;
     const owned = this.operation();
     try {
       const captured = new HttpLocalApi(api.baseUrl, draft.setupToken); captured.useRoutes(route);
-      const status = parseClaimStatus(await captured.request(routePath('get_networking_claim'), 'GET', undefined, owned.signal), route.pin);
+      const raw = await captured.request<unknown>(routePath('get_networking_claim'), 'GET', undefined, owned.signal);
+      const status = parseClaimStatus(raw, route.pin);
       if (!owned.current() || status.state === 'approved' || status.state === 'finalizing' || status.state === 'retrieving' || status.state === 'installed') return false;
-      const mine = !!record.expected && !!status.operation && status.operation.operationId === record.expected.operationId && status.operation.localGeneration === record.expected.localGeneration;
+      // Expired by this attempt's own record, or by the server's own setup start (whose clock
+      // decides): a never-approved start past its window can't finish, whatever this tab thinks.
+      const continuation = raw && typeof raw === 'object' && 'setupContinuation' in raw ? (raw as {setupContinuation?: {phase?: unknown; expiresAt?: unknown}}).setupContinuation : undefined;
+      const lapsed = continuation?.phase === 'prepared' && typeof continuation.expiresAt === 'string' && Date.parse(continuation.expiresAt) <= this.now();
+      if (!(record && this.expired(record)) && !lapsed) return false;
+      const mine = !!status.operation && (!record ? lapsed : !!record.expected && status.operation.operationId === record.expected.operationId && status.operation.localGeneration === record.expected.localGeneration);
       if (status.operation && !mine) return false;
       if (mine && status.state === 'prepared') {
         if (!status.actions.includes('cancel')) return false;
         if (!absentClaim(parseClaimStatus(await captured.request(routePath('post_networking_claim_cancel'), 'POST', {expected: status.operation}, owned.signal), route.pin))) return false;
       }
       if (!owned.current()) return false;
-      await this.ports.journal.change(old => same(old, record) ? undefined : old);
+      if (record) await this.ports.journal.change(old => same(old, record) ? undefined : old);
       await store.change(old => old?.requestId === draft.requestId && old.setupToken === draft.setupToken ? undefined : old);
       return true;
     } catch {return false;} finally {this.busy = false;}
