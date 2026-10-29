@@ -231,7 +231,7 @@ func (d Dependencies) inventoryRoutes(mux *http.ServeMux) {
 			}
 			var coded *apierror.Error
 			if errors.As(e, &coded) {
-				policyErrors.Write(w, r, e)
+				policyErrors.Write(w, w.Header().Get("X-Request-Id"), e)
 				return
 			}
 		case "separate":

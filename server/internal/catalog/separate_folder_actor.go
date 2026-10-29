@@ -111,6 +111,9 @@ func separateFolderActorAuthorizeTx(ctx context.Context, tx *sql.Tx, m compactca
 	}
 	var library string
 	if err := tx.QueryRowContext(ctx, `SELECT library_id FROM catalog_libraries WHERE id=? AND retired=0`, m.Library).Scan(&library); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return true, identity.ErrNotVisible
+		}
 		return true, err
 	}
 	if a.Folder != separateFolderOwner(library, m.SplitSourceID, m.SplitDirectory) {

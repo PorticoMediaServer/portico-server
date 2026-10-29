@@ -288,3 +288,43 @@ func TestSeparateFolderCommandRetirementCursorKeepsVerifyAndPlanDigest(t *testin
 		return nil
 	})
 }
+
+func TestSeparateFolderRawOwnerAndChildHeadsSeek(t *testing.T) {
+	f := newSeparateFolderCommandFixture(t, 1)
+	for _, probe := range []struct {
+		name, query, index string
+		args               []any
+	}{
+		{"owner", separateFolderLatestOwnerSQL, "catalog_entity_mutations_owner", []any{"absent-owner"}},
+		{"child", separateFolderNextChildSQL, "catalog_entities_parent", []any{f.album, int64(0)}},
+	} {
+		t.Run(probe.name, func(t *testing.T) {
+			plan := retirementExplain(t, f.c, probe.query, probe.args...)
+			if !strings.Contains(plan, "SEARCH") || !strings.Contains(plan, probe.index) || strings.Contains(plan, "SCAN") || strings.Contains(plan, "TEMP B-TREE") {
+				t.Fatal(plan)
+			}
+		})
+	}
+}
+
+func TestSeparateFolderAcceptedUnavailableRawObjectIsRefused(t *testing.T) {
+	f := newSeparateFolderCommandFixture(t, 1)
+	// The earliest object remains part of the accepted folder even if a later
+	// duplicate is available. Never skip the raw head to claim a complete split.
+	f.c.Exec(`UPDATE inventory_objects SET state='missing',missing_since='2026-01-01T00:00:00Z' WHERE id=?`, f.objects[0])
+	f.c.Exec(`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,directory_path,revision,evidence_json,size,modified_ns,state) SELECT 'zz-later',source_id,asset_id,root_incarnation,'later.mp3',directory_path,'r2','{}',size,modified_ns,'available' FROM inventory_objects WHERE id=?`, f.objects[0])
+	var asset, original int
+	if err := f.c.DB.QueryRow(`SELECT count(*),count(*) FROM catalog_asset_links`).Scan(&asset, &original); err != nil {
+		t.Fatal(err)
+	}
+	id, err := New(f.c.DB).SeparateFolder(context.Background(), "music", f.objects[0], "r1", func(*sql.Tx) error { return nil })
+	if id != "" || !errors.Is(err, compactcatalog.ErrMutationStale) {
+		t.Fatalf("raw unavailable head was skipped: %q %v", id, err)
+	}
+	if got := rows(t, f.c, `SELECT count(*) FROM catalog_entity_mutations WHERE mode='separate'`); got != 0 {
+		t.Fatalf("refusal admitted %d mutations", got)
+	}
+	if got := rows(t, f.c, `SELECT count(*) FROM catalog_asset_links`); got != asset {
+		t.Fatalf("refusal changed links: %d -> %d", original, got)
+	}
+}
