@@ -71,5 +71,5 @@ function fileDisplay(file: FileFacts, index: number, context: FileInfoContext, e
     return Object.freeze({id: track.id, parts});
   });
   const subtitles = separated(fileInfoTrackModels(file.subtitles, 'subtitle', env).map(track => separated([[track.name], ...track.detail.map(p => [p])], 'space').map(p => part(`subtitle:${track.id}:${p.id}`, p.text, p.role))), 'comma');
-  return Object.freeze({heading: part('version', t('next.kit.version', {number: index + 1}), 'identity'), summary: compact([fileDisplayResolutionPart(file.width, file.height, t), ...hdrParts]), video, audio: Object.freeze(audio), subtitles});
+  return Object.freeze({heading: part('version', t('next.kit.version', {number: file.ordinal ?? index + 1}), 'identity'), summary: compact([fileDisplayResolutionPart(file.width, file.height, t), ...hdrParts]), video, audio: Object.freeze(audio), subtitles});
 }
