@@ -26,7 +26,7 @@ try {
       if (pathname === '/v1/system') {
         requests.system++;response.writeHead(200, {'Content-Type': 'application/json'});
         response.end(JSON.stringify({id: pin.serverId, name: 'Startup fixture server', version: '1', signIn: 'local', move: null,
-          setupRequired: false, hostedConfigured: false, hostedAttached: false, apiLevel: 1}));return;
+          setupRequired: false, hostedConfigured: false, hostedAttached: false, apiLevel: 1, apiVersion: '1.0', apiMajors: [1], capabilities: []}));return;
       }
       if (pathname === '/v1/networking/identity-proof' && request.method === 'POST') {
         requests.proof++;let body = '';for await (const chunk of request) body += chunk;

@@ -16,7 +16,7 @@ function fixture(input: Readonly<{draft?: boolean; resume?: unknown; hosted?: ()
   const calls: {name: string; value?: unknown}[] = [], completions: number[] = [];
   let requests = 0;
   const server: SetupServer = {
-    server: {id: 'server-1', name: 'Portico demo', version: '1', signIn: 'local', move: null, setupRequired: input.setupRequired ?? true, hostedConfigured: false, hostedAttached: false, apiLevel: 1},
+    server: {id: 'server-1', name: 'Portico demo', version: '1', signIn: 'local', move: null, setupRequired: input.setupRequired ?? true, hostedConfigured: false, hostedAttached: false, apiLevel: 1, apiVersion: '1.0', apiMajors: [1], capabilities: []},
     ...(input.admittedOwner ? {admittedOwner: true as const} : {}),
     api: {getRouteConnection: () => ({pin: {serverId: 'server-1'}}), request: async (path: string) => {requests++; calls.push({name: 'request', value: path});
       if (path.includes('setup/browser')) throw Object.assign(new Error('not allowed from this address'), {status: 401});

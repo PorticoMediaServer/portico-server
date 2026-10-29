@@ -2972,7 +2972,7 @@ test('WEB002 EACH five same-authority hints preserve actual media owners in all 
     const time=manualClock(),hub=new FreshnessHub({...time,random:()=>0});
     let retired=0,homeFence=homeViewerFence,revision=1;
     const session={sessionFamilyId:'family',viewer:{...viewer,role:'owner'}} as import('@core/index.ts').LocalSession;
-    const system={id:'server',name:'Study',version:'1',signIn:'local' as const,move:null,setupRequired:false,hostedConfigured:false,hostedAttached:false, apiLevel: 1};
+    const system={id:'server',name:'Study',version:'1',signIn:'local' as const,move:null,setupRequired:false,hostedConfigured:false,hostedAttached:false, apiLevel: 1, apiVersion: '1.0', apiMajors: [1], capabilities: []};
     const direct=()=>({authority:'local',serverId:'server',canManage:true,capabilities:{manageAccount:true,managePeople:true,manageServer:true,manageSignIn:true},account:{id:'account',username:'viewer '+revision,primaryProfileId:'profile',role:'owner',revision,disabled:false,allowedLibraries:[]},profiles:[{id:'profile',name:'Evening '+revision,primary:true,position:0,art:'mint',revision,pinRevision:1,pinRequired:false}]});
     const witnesses={system,direct:parseDirectSnapshot(direct())};
     const preferences={effective:{},deviceClass:'web'} as import('../src/shell/bootstrap.ts').ShellFacts['preferences'];

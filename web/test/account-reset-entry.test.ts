@@ -12,7 +12,7 @@ function fixture(kind: 'local' | 'portico' = 'local') {
   const hints = new Set<() => void>();
   let verifyGate: Promise<void> | undefined, releaseVerify: (() => void) | undefined;
   const calls: {path: string; body?: unknown}[] = [], retired: string[] = [], installed: string[] = [], admitted: string[] = [];
-  const system = {id: serverId, name: 'Actual server', version: '1', signIn: kind, move: null, setupRequired: false, hostedConfigured: kind === 'portico', hostedAttached: kind === 'portico', apiLevel: 1};
+  const system = {id: serverId, name: 'Actual server', version: '1', signIn: kind, move: null, setupRequired: false, hostedConfigured: kind === 'portico', hostedAttached: kind === 'portico', apiLevel: 1, apiVersion: '1.0', apiMajors: [1], capabilities: []};
   const connection = {pin: {serverId, publicKey: 'p'.repeat(43), fingerprint: 'f'.repeat(43)}, getSnapshot: () => ({phase: 'ready'}), dispose: () => {}};
   const grant = (restricted: boolean) => {
     const id = wrongServer && restricted ? 'different-server' : serverId;

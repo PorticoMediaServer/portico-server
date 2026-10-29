@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {parseServerSignIn, ServerSignInProbe, signInLabelKey, serverSignInSettingsURL} from '../src/sign-in.ts';
-const system = (signIn = 'local') => ({id: 'server', name: 'Study', signIn, move:null,version: '1', setupRequired: false, hostedConfigured: true, hostedAttached: false, apiLevel: 1});
+const system = (signIn = 'local') => ({id: 'server', name: 'Study', signIn, move:null,version: '1', setupRequired: false, hostedConfigured: true, hostedAttached: false, apiLevel: 1, apiVersion: '1.0', apiMajors: [1], capabilities: []});
 test('Change this on the web opens Sign-in on the exact chosen server without secrets or alternate authorities',()=>{
   assert.equal(serverSignInSettingsURL('http://192.168.1.5:32500'),'http://192.168.1.5:32500/settings?scope=server&section=signin');
   for(const address of ['https://user:pass@server.test','https://server.test/?code=secret','https://server.test/#secret','javascript:alert(1)','https://server.test/path'])assert.throws(()=>serverSignInSettingsURL(address));
@@ -9,7 +9,7 @@ test('Change this on the web opens Sign-in on the exact chosen server without se
 test('explicit kind alone controls credential route and correct label, never old attached flag', async () => {
   for (const signIn of ['local', 'portico'] as const) {
     const calls: unknown[] = [];
-    const probe = new ServerSignInProbe(async (url, init) => {calls.push([url, init]); return Response.json({...system(signIn), hostedAttached: signIn === 'local', apiLevel: 1});});
+    const probe = new ServerSignInProbe(async (url, init) => {calls.push([url, init]); return Response.json({...system(signIn), hostedAttached: signIn === 'local', apiLevel: 1, apiVersion: '1.0', apiMajors: [1], capabilities: []});});
     await probe.inspect('http://192.168.1.5:8096');
     assert.equal(probe.getSnapshot().destination, signIn === 'local' ? 'local-account' : 'portico-account');
     assert.equal(signInLabelKey(signIn), 'accounts.session.' + signIn);
@@ -71,32 +71,34 @@ test('injected value and explicitly bound fetch transports preserve their invoca
 });
 
 // O-159, Justin's rule: if a server and a client can talk, allow the connection.
-test('negotiation connects on any shared API major, gates on capabilities, and refuses only with no overlap', async () => {
+test('negotiation connects on any shared API major, gates on capabilities, and refuses pre-release or non-overlapping servers', async () => {
   const {parseServerSignIn, negotiateServer, API_LEVEL_MISMATCH, APP_UPDATE_REQUIRED, CLIENT_API} = await import('../src/sign-in.ts');
   const {API_LEVEL, CAPABILITIES} = await import('../../contracts/src/api-level.ts');
   const raw = {id: 'server', name: 'Study', version: '1', signIn: 'portico', move: null, setupRequired: false, hostedConfigured: true, hostedAttached: true};
-  for (const apiLevel of [undefined, 0, -1, 1.5, '1', null]) assert.throws(() => parseServerSignIn({...raw, apiLevel}), /did not report how to sign in/);
-  // A server without the negotiation facts is `apiLevel`.0 with the 1.0 floor and no capabilities.
-  const older = parseServerSignIn({...raw, apiLevel: API_LEVEL});
-  assert.equal(older.apiVersion, `${API_LEVEL}.0`); assert.deepEqual(older.apiMajors, [API_LEVEL]); assert.deepEqual(older.capabilities, []);
-  assert.equal(negotiateServer(older).major, API_LEVEL); assert.equal(negotiateServer(older).can('anything'), false);
-  // Unreadable optional facts fall back rather than refusing the server (tier two).
-  const odd = parseServerSignIn({...raw, apiLevel: API_LEVEL, apiVersion: 'one', apiMajors: ['1'], capabilities: 'x'});
-  assert.deepEqual([odd.apiVersion, odd.apiMajors, odd.capabilities], [`${API_LEVEL}.0`, [API_LEVEL], []]);
-  // A newer minor with unknown capabilities connects; known ones gate, unknown ones are ignored.
-  const newer = negotiateServer(parseServerSignIn({...raw, apiLevel: API_LEVEL, apiVersion: `${API_LEVEL}.7`, apiMajors: [API_LEVEL], capabilities: ['future.thing', 'future.thing', 'alpha']}));
-  assert.equal(newer.version, `${API_LEVEL}.7`); assert.deepEqual(newer.capabilities, ['alpha', 'future.thing']); assert.equal(newer.can('alpha'), true);
+  const facts = {apiLevel: API_LEVEL, apiVersion: `${API_LEVEL}.0`, apiMajors: [API_LEVEL], capabilities: []};
+  for (const apiLevel of [undefined, 0, -1, 1.5, '1', null]) assert.throws(() => parseServerSignIn({...raw, ...facts, apiLevel}), /did not report how to sign in/);
+  const needsUpdate = (error: {code?: string}) => error.code === API_LEVEL_MISMATCH;
+  // A pre-release server (no negotiation facts, or unreadable ones) needs an update: no degraded session.
+  assert.throws(() => negotiateServer(parseServerSignIn({...raw, apiLevel: API_LEVEL})), needsUpdate);
+  for (const odd of [{apiVersion: 'one'}, {apiMajors: ['1']}, {apiMajors: []}, {capabilities: 'x'}, {capabilities: [7]}])
+    assert.throws(() => negotiateServer(parseServerSignIn({...raw, ...facts, ...odd})), needsUpdate, JSON.stringify(odd));
+  // The 1.0 floor connects; nothing baseline is ever gated.
+  const floor = negotiateServer(parseServerSignIn({...raw, ...facts}));
+  assert.equal(floor.major, API_LEVEL); assert.equal(floor.version, `${API_LEVEL}.0`); assert.deepEqual(floor.capabilities, []);
+  // A newer minor with a post-1.0 capability connects; known ones gate, unknown ones are ignored.
+  const newer = negotiateServer(parseServerSignIn({...raw, ...facts, apiVersion: `${API_LEVEL}.7`, capabilities: ['future.thing', 'future.thing', 'alpha']}));
+  assert.equal(newer.version, `${API_LEVEL}.7`); assert.deepEqual(newer.capabilities, ['alpha', 'future.thing']); assert.equal(newer.can('alpha'), true); assert.equal(newer.can('beta'), false);
   // A server that also serves a newer major is opened on the newest major both speak.
-  assert.equal(negotiateServer(parseServerSignIn({...raw, apiLevel: API_LEVEL + 1, apiMajors: [API_LEVEL, API_LEVEL + 1]})).major, API_LEVEL);
-  // No overlap is the only refusal, named for whoever must update.
-  assert.throws(() => negotiateServer(parseServerSignIn({...raw, apiLevel: API_LEVEL + 1, apiMajors: [API_LEVEL + 1]})), (error: {code?: string}) => error.code === APP_UPDATE_REQUIRED);
-  assert.throws(() => negotiateServer(older, {min: API_LEVEL + 1, max: API_LEVEL + 2}), (error: {code?: string}) => error.code === API_LEVEL_MISMATCH);
-  assert.deepEqual(CLIENT_API, {min: 1, max: API_LEVEL}); assert.deepEqual(CAPABILITIES, [], '1.0 is the capability-free floor');
+  assert.equal(negotiateServer(parseServerSignIn({...raw, ...facts, apiLevel: API_LEVEL + 1, apiMajors: [API_LEVEL, API_LEVEL + 1]})).major, API_LEVEL);
+  // No overlap: named for whoever must update.
+  assert.throws(() => negotiateServer(parseServerSignIn({...raw, ...facts, apiLevel: API_LEVEL + 1, apiMajors: [API_LEVEL + 1]})), (error: {code?: string}) => error.code === APP_UPDATE_REQUIRED);
+  assert.throws(() => negotiateServer(parseServerSignIn({...raw, ...facts}), {min: API_LEVEL + 1, max: API_LEVEL + 2}), needsUpdate);
+  assert.deepEqual(CLIENT_API, {min: 1, max: API_LEVEL}); assert.deepEqual(CAPABILITIES, [], '1.0 advertises nothing: every catalogue entry is baseline');
 });
 
 test('the move window comes from the server and is counted in whole days on this calendar (P2-66)', async () => {
   const {parseServerSignIn, moveOfferDays} = await import('../src/sign-in.ts');
-  const raw = {id: 'server', name: 'Study', version: '1', signIn: 'portico', move: 'to_portico', setupRequired: false, hostedConfigured: true, hostedAttached: true, apiLevel: 1};
+  const raw = {id: 'server', name: 'Study', version: '1', signIn: 'portico', move: 'to_portico', setupRequired: false, hostedConfigured: true, hostedAttached: true, apiLevel: 1, apiVersion: '1.0', apiMajors: [1], capabilities: []};
   assert.equal(parseServerSignIn({...raw, moveEndsAt: '2026-11-20T10:00:00Z'}).moveEndsAt, '2026-11-20T10:00:00Z');
   assert.equal(parseServerSignIn({...raw, moveEndsAt: null}).moveEndsAt, null);
   assert.equal(parseServerSignIn(raw).moveEndsAt, null);

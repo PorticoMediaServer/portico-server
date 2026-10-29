@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"slices"
 	"strconv"
 
 	"portico.local/server/internal/identity"
@@ -21,11 +22,45 @@ const APIMinor = 0
 // first entry is the oldest client major the server accepts.
 var APIMajors = []int{1}
 
-// Capabilities names what this server can do beyond the 1.0 floor: one stable
-// ID per feature added after 1.0 that a client may gate on. IDs are never
-// renamed or reused. At 1.0 the set is empty: everything shipped by 1.0 is
-// the floor every client may assume.
-var Capabilities = []string{}
+// CapabilityEntry is one stable feature ID. Baseline entries exist at 1.0:
+// always present, never gated and never advertised. Later entries name the
+// release that added them and are advertised so clients may gate on them.
+// IDs are never renamed or reused.
+type CapabilityEntry struct {
+	ID    string
+	Since string // "1.0" for the baseline
+}
+
+// CapabilityRegistry records every feature ID (O-159). The 1.0 floor has no
+// fallbacks: a server without negotiation facts is pre-release and refused.
+var CapabilityRegistry = []CapabilityEntry{
+	{"admin.certificate", "1.0"},
+	{"admin.remote-access", "1.0"},
+	{"connection.note", "1.0"},
+	{"events.stream", "1.0"},
+	{"file-info.windows", "1.0"},
+	{"home.privacy-fence", "1.0"},
+	{"links.server-scoped", "1.0"},
+	{"music.lyrics", "1.0"},
+	{"queue.track-entries", "1.0"},
+	{"reading", "1.0"},
+	{"reading.importing", "1.0"},
+}
+
+// Capabilities is what GET /v1/system advertises: the registry's features
+// added after 1.0, sorted. Empty at 1.0.
+var Capabilities = advertisedCapabilities(CapabilityRegistry)
+
+func advertisedCapabilities(registry []CapabilityEntry) []string {
+	out := []string{}
+	for _, entry := range registry {
+		if entry.Since != "1.0" {
+			out = append(out, entry.ID)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
 
 // SystemInfo is public and contains only the facts needed before sign-in.
 type SystemInfo struct {
