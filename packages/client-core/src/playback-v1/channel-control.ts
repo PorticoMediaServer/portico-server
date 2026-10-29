@@ -161,6 +161,9 @@ export const channelEndMessage = (end: Session['end']): string => {
 };
 const terminal = (e: unknown) => e instanceof PlaybackApiError && [401, 403, 404, 410].includes(e.status) || e instanceof PlaybackApiError && e.code === 'no_tuner_available';
 
+/** How long a started channel may take to have its stream, and how often to look. */
+export const CHANNEL_STREAM_WAIT_MS = 60_000, CHANNEL_STREAM_POLL_MS = 500;
+
 export class V1ChannelControl implements ChannelPlayback {
   private readonly http: V1Http;
   private readonly sessions: SessionsClient;
@@ -245,7 +248,14 @@ export class V1ChannelControl implements ChannelPlayback {
       if (!admitted()) {retireLate(result);cancel();return;}
       let install = !captureStart;
       try {if (claimInstall) install = claimInstall(Object.freeze({id: s.id, generation: s.presentation.generation})) === true;} catch { /* A host refusal cannot install or downgrade its cleanup proof. */ }
-      if (!install || !admitted()) {retireLate(result);cancel();return;}
+      if (!install || !admitted()) {
+        const refused = !install && admitted();
+        retireLate(result);cancel();
+        // An admitted start the host refused to install is a failure, never a silent no-op
+        // (P2-74 E-web-25): the caller draws its error instead of waiting forever.
+        if (refused) throw Object.assign(new Error('This channel could not start. Try again.'), {code: 'channel_start_refused'});
+        return;
+      }
       a.id = s.id;
       a.reporter = this.reporterFor(a, s.id);
       this.accept(a, s);
@@ -260,6 +270,19 @@ export class V1ChannelControl implements ChannelPlayback {
         };
         const recovery = this.events?.onResyncRead?.(({signal}) => recover(signal), {priority: 0});
         this.offResync = recovery ? () => recovery.dispose() : this.events?.onResync?.(() => {void recover().catch(error => {if (this.current(a)) sink.error(message(error), false);});});
+        // A start answered before the channel's stream exists (generation 0, no URL) has no
+        // reading or observation that may create its first join. Follow this start's own
+        // session until the server has the stream, then join (P2-74 E-web-25); never wait
+        // silently forever.
+        const deadline = Date.now() + CHANNEL_STREAM_WAIT_MS;
+        while (currentStart() && !a.joined) {
+          const ready = a.session && a.session.presentation.url && a.session.presentation.generation > 0;
+          if (ready) {this.accept(a, a.session!); break;}
+          if (Date.now() >= deadline) throw Object.assign(new Error('This channel did not start in time. Try again.'), {code: 'channel_start_timeout'});
+          await new Promise(resolve => setTimeout(resolve, CHANNEL_STREAM_POLL_MS));
+          if (!currentStart()) break;
+          await this.read(a, signal, false);
+        }
       }
     } catch (e) {
       if (!admitted()) {cancel();return;}
