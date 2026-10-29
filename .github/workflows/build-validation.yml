@@ -61,7 +61,13 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 360
     steps:
+      # The recipe opens with scripts/check-ffmpeg-build-inputs.py, which proves
+      # the pinned checkedMain commit is an ancestor of both HEAD and origin/main
+      # before any source is built. A shallow checkout carries only HEAD's tree
+      # and no main ref, so that gate would exit 128 instead of verifying the
+      # inputs; these legs need the real history, not a checkout of HEAD alone.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {fetch-depth: 0}
       - name: Reuse a matching validation toolchain when available
         if: inputs.toolchain_run != ''
         env: {GH_TOKEN: '${{ github.token }}', PREVIOUS_RUN: '${{ inputs.toolchain_run }}', VALIDATION_SCOPE: '${{ inputs.scope }}'}
