@@ -16,6 +16,7 @@ const loader = registerHooks({load(url, context, next) {
   const module = (source: string) => ({format: 'module' as const, source, shortCircuit: true});
   if (url.endsWith('/kit/controls/index.ts')) return module("export const Button='button';");
   if (url.endsWith('/kit/settings/index.ts')) return module("export const SettingsGroup='group',SettingsPageFailure='failure',SettingsTable='table';");
+  if (url.endsWith('/kit/overlays/index.ts')) return module(`export const useRetained=value=>{const r=globalThis.__invitationCopyHooks.current.useRef(undefined);if(value!=null)r.current=value;return r.current;};`);
   if (url.endsWith('/kit/overlays/Dialog.tsx')) return module("export const Dialog='dialog';");
   if (url.endsWith('/PeopleInvitations.tsx') || url.endsWith('/PeopleInvitationCard.tsx')) return module(transformTsx(url).replace(/from (['"])react\1/g, `from ${JSON.stringify(hooks)}`));
   return next(url, context);

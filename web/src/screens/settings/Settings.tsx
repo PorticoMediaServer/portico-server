@@ -7,7 +7,7 @@ import {SettingsPageFailure, SettingsPageHeading, SettingsPanel, SettingsRows, S
 import type {FactPart} from '@core/presentation/kit-model/index.ts';
 import {Icon} from '../../kit/Icon';
 import {Button} from '../../kit/controls';
-import {Dialog} from '../../kit/overlays';
+import {Dialog, useRetained} from '../../kit/overlays';
 import {settingsChangeConfirmation} from '@core/presentation/settings-change-confirm.ts';
 import {Tabs} from '../../kit/controls/Choices';
 import {settingsIconName} from '../../kit/settings/icons';
@@ -63,6 +63,7 @@ export function SettingsScreen({bindings, route, navigate, openDetail = false}: 
   const [panel, setPanel] = useState<{id: string; recordId?: string; tab?: string} | undefined>();
   // O-151: the few remote-access edits that can cut people off ask once; everything else still saves at once.
   const [confirming, setConfirming] = useState<{row: SettingsRow; value: SettingsValue; context: SettingsContext; message: string}>();
+  const shownConfirming = useRetained(confirming);
   const shown=!compact || compactPage;
   useLayoutEffect(()=>{quietOpen.setOpen(shown);bindings.setOpen?.(shown);return()=>{quietOpen.setOpen(false);bindings.setOpen?.(false);};},[quietOpen,bindings,shown]);
   const [configurationKey, setConfigurationKey] = useState<string>();
@@ -146,11 +147,11 @@ export function SettingsScreen({bindings, route, navigate, openDetail = false}: 
       saveState={snapshot.saveState} tabs={panelSpec.tabs?.map(tab => ({id: tab.id, title: t(tab.title), content: rows(tab, {...panelContext, tabId: tab.id})}))} selectedTab={panel.tab} onTabChange={value => setPanel(current => current && {...current, tab: value})}>
       {rows(tab ?? panelSpec, panelContext)}
     </SettingsPanel>}
-    {confirming && <Dialog open title={t(confirming.row.label)} onOpenChange={open => {if (!open) setConfirming(undefined);}}
+    {shownConfirming && <Dialog open={!!confirming} title={t(shownConfirming.row.label)} onOpenChange={open => {if (!open) setConfirming(undefined);}}
       footer={<><Button onClick={() => setConfirming(undefined)}>{t('action.cancel')}</Button>
-        <Button variant="primary" onClick={() => {const pending = confirming; setConfirming(undefined);
+        <Button variant="primary" onClick={() => {const pending = shownConfirming; setConfirming(undefined);
           if (rowState(pending.row, pending.context).present) bindings.change(pending.row, pending.value, pending.context);}}>{t('settings.confirm.change')}</Button></>}>
-      <p>{confirming.message}</p>
+      <p>{shownConfirming.message}</p>
     </Dialog>}
   </SettingsWorkspace></div></SettingsOpenContext.Provider>;
 }

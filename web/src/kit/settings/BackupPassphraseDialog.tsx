@@ -2,6 +2,7 @@ import {useEffect, useRef, useState, useSyncExternalStore, type RefObject} from 
 import {defaultI18n} from '@i18n';
 import {Button, TextField} from '../controls';
 import {Dialog} from '../overlays/Dialog';
+import {usePresence} from '../overlays/shared';
 import styles from './settings.module.css';
 
 const t = defaultI18n.t;
@@ -22,7 +23,8 @@ export type BackupPassphraseDialogProps = Readonly<{
 /** Ruling §17's controlled password step; no persistence, logging or optimistic switch mutation. */
 export function BackupPassphraseDialog(props: BackupPassphraseDialogProps) {
   const current = useSyncExternalStore(props.subscribeAuthority, props.isCurrent, props.isCurrent);
-  return current && props.open ? <Passphrase key={JSON.stringify([props.scopeKey, props.mode])} {...props} /> : null;
+  const present = usePresence(props.open, 160);
+  return current && present ? <Passphrase key={JSON.stringify([props.scopeKey, props.mode])} {...props} /> : null;
 }
 
 function Passphrase({open, mode, onClose, submit, onDone, onFailure, returnFocusRef, isCurrent}: BackupPassphraseDialogProps) {

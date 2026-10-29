@@ -1,7 +1,7 @@
-import {useEffect, useId, useRef, type ReactNode, type RefObject} from 'react';
+import {createContext, useCallback, useContext, useEffect, useId, useRef, type ReactNode, type RefObject} from 'react';
 import {Icon} from '../Icon';
 import {BottomSheet} from '../overlays/BottomSheet';
-import {usePhone} from '../overlays/shared';
+import {usePhone, usePresence, useSurfaceMotion} from '../overlays/shared';
 import {observedProgress} from './interaction';
 import {ReaderSheetClose} from './ReaderSheetClose';
 import styles from './panel.module.css';
@@ -13,16 +13,21 @@ export type ReaderPanelProps = Readonly<{
   returnFocusRef?: RefObject<HTMLElement | null>;
 }>;
 
+/** The chrome keeps a closed panel mounted for its exit; it reports whether the panel is still wanted. */
+export const ReaderPanelOpenContext = createContext(true);
+
 /** desktop-read 7/8, phone-read 6/7, tablet-read 7/7b. Copy and data stay with assembly. */
 export function ReaderPanel({label, tabs, selected, onSelect, onClose, children, footer, returnFocusRef}: ReaderPanelProps) {
-  const compact = usePhone(), id = useId(), region = useRef<HTMLElement>(null);
+  const compact = usePhone(), id = useId(), region = useRef<HTMLElement | null>(null);
+  const open = useContext(ReaderPanelOpenContext), present = usePresence(open, 120), motionRef = useSurfaceMotion(open, 'panel');
+  const ref = useCallback((element: HTMLElement | null) => { region.current = element; motionRef(element); }, [motionRef]);
   useEffect(() => {
-    if (compact) return;
+    if (compact || !open) return;
     const opener = returnFocusRef?.current ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     const current = region.current;
     current?.querySelector<HTMLButtonElement>('[aria-selected="true"]')?.focus();
     return () => { if (document.activeElement === document.body || current?.contains(document.activeElement)) opener?.focus({preventScroll: true}); };
-  }, [compact, returnFocusRef]);
+  }, [compact, open, returnFocusRef]);
   const content = <>
     <div className={styles.tabs} role="tablist" aria-label={label} onKeyDown={event => {
       if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -35,10 +40,11 @@ export function ReaderPanel({label, tabs, selected, onSelect, onClose, children,
       aria-controls={`${id}-body`} tabIndex={tab.id === selected ? 0 : -1} onClick={() => onSelect(tab.id)}>{tab.label}{tab.count !== undefined && <span>{tab.count}</span>}</button>)}</div>
     <div id={`${id}-body`} className={styles.body} role="tabpanel" aria-labelledby={`${id}-tab-${Math.max(0, tabs.findIndex(tab => tab.id === selected))}`}>{children}</div>
   </>;
-  if (compact) return <BottomSheet open onOpenChange={open => { if (!open) onClose(); }} title={label} accessibilityLabel={label} returnFocusRef={returnFocusRef}
+  if (!present) return null;
+  if (compact) return <BottomSheet open={open} onOpenChange={open => { if (!open) onClose(); }} title={label} accessibilityLabel={label} returnFocusRef={returnFocusRef}
     showCloseButton={false} className={styles.sheet} headerClassName={styles.sheetHeader} bodyClassName={styles.sheetBody} footerClassName={styles.footer} footer={footer}>
     <ReaderSheetClose onClose={onClose}/>{content}</BottomSheet>;
-  return <aside ref={region} className={styles.panel} data-reader-panel aria-label={label} onKeyDown={event => { if (event.key === 'Escape' && !event.defaultPrevented) { event.preventDefault(); event.stopPropagation(); onClose(); } }}>
+  return <aside ref={ref} className={styles.panel} data-reader-panel aria-label={label} data-state={open ? 'open' : 'closed'} inert={!open} aria-hidden={!open} onKeyDown={event => { if (event.key === 'Escape' && !event.defaultPrevented) { event.preventDefault(); event.stopPropagation(); onClose(); } }}>
     {content}{footer && <footer className={styles.footer}>{footer}</footer>}
   </aside>;
 }

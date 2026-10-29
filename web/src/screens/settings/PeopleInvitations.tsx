@@ -5,6 +5,7 @@ import {settingsSpec} from '@core/presentation/settings-spec.ts';
 import {randomId} from '@core/random-id.ts';
 import {Button} from '../../kit/controls';
 import {Dialog} from '../../kit/overlays/Dialog';
+import {useRetained} from '../../kit/overlays';
 import {SettingsGroup, SettingsPageFailure, SettingsTable, type SettingsTableRow, type TableQuery} from '../../kit/settings';
 import kitStyles from '../../kit/settings/settings.module.css';
 import type {SettingsInvitations} from './invitations';
@@ -132,6 +133,7 @@ function InvitationTable({view, invitations, serverName, signIn, libraries, auth
   const page = view.pageCurrent(resident) ? resident : undefined;
   const opening = view.openingCurrent(confirming) ? confirming : undefined;
   const shareOpening = view.openingCurrent(sharing) ? sharing : undefined;
+  const shownShare = useRetained(shareOpening), shownRevoke = useRetained(opening);
   const shareCurrent = useCallback(() => view.openingCurrent(sharing), [view, sharing]);
   const revoking = !!opening && running?.opening === opening;
   const more = () => {
@@ -210,15 +212,15 @@ function InvitationTable({view, invitations, serverName, signIn, libraries, auth
         </span>;
       }} />}
     </SettingsGroup>
-    {shareOpening && <Dialog open title={t('invite.readyTitle')} size="sm" width={560} returnFocusRef={shareOpening.focus}
-      onOpenChange={open => {if (!open) closeShare(shareOpening);}}
-      footer={<Button variant="primary" onClick={() => closeShare(shareOpening)}>{t('action.done')}</Button>}>
-      <PeopleInvitationCard open invitation={shareOpening.row} invitations={invitations} serverName={serverName} signIn={signIn}
+    {shownShare && <Dialog open={!!shareOpening} title={t('invite.readyTitle')} size="sm" width={560} returnFocusRef={shownShare.focus}
+      onOpenChange={open => {if (!open) closeShare(shownShare);}}
+      footer={<Button variant="primary" onClick={() => closeShare(shownShare)}>{t('action.done')}</Button>}>
+      <PeopleInvitationCard open invitation={shownShare.row} invitations={invitations} serverName={serverName} signIn={signIn}
         libraries={libraries} isCurrent={shareCurrent} />
     </Dialog>}
-    {opening && <Dialog open title={t(revokeCopy.label)} onOpenChange={open => {if (!open) cancel(opening);}}
-      returnFocusRef={opening.focus} footer={<><Button disabled={revoking} onClick={() => cancel(opening)}>{t('next.settings.cancel')}</Button>
-        <Button variant="primary" className={kitStyles.danger} loading={revoking} onClick={() => {void revoke(opening);}}>{t(revokeCopy.label)}</Button></>}>
+    {shownRevoke && <Dialog open={!!opening} title={t(revokeCopy.label)} onOpenChange={open => {if (!open) cancel(shownRevoke);}}
+      returnFocusRef={shownRevoke.focus} footer={<><Button disabled={revoking} onClick={() => cancel(shownRevoke)}>{t('next.settings.cancel')}</Button>
+        <Button variant="primary" className={kitStyles.danger} loading={revoking} onClick={() => {void revoke(shownRevoke);}}>{t(revokeCopy.label)}</Button></>}>
       <p>{t(revokeCopy.confirm!)}</p>
     </Dialog>}
   </>;

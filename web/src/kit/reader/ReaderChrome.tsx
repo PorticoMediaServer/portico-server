@@ -1,8 +1,9 @@
-import {useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject} from 'react';
+import {isValidElement, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject} from 'react';
 import {easings, motion, reducedMotion as reducedMotionPolicy} from '@design';
 import type {ReaderSurfaceInput} from '@portico/reader-core';
 import {Icon, type IconName} from '../Icon';
-import {useReducedMotion} from '../overlays/shared';
+import {useReducedMotion, useRetained} from '../overlays/shared';
+import {ReaderPanel, ReaderPanelOpenContext} from './ReaderPanel';
 import {observedProgress, readerInteractiveTarget, readKeyTurn, readTapTurn, type ReadDirection, type ReadTurn} from './interaction';
 import styles from './reader.module.css';
 
@@ -89,6 +90,9 @@ export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingIn
   const root = useRef<HTMLDivElement>(null), chrome = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(initiallyVisible), [focusWithin, setFocusWithin] = useState(false);
   const [focusRequest, requestFocus] = useState(0), focusedRequest = useRef(0);
+  const retainedPanel = useRetained(panel);
+  // Contents/Search keep rendering after close so ReaderPanel can play its exit; other panels own their own presence.
+  const leavingPanel = isValidElement(retainedPanel) && retainedPanel.type === ReaderPanel ? retainedPanel : undefined;
   const held = holdOpen || textSelectionActive || Boolean(panel) || Boolean(hint) || focusWithin;
   const shown = visible || held;
   const show = useCallback(() => setVisible(true), []);
@@ -190,7 +194,7 @@ export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingIn
       {fixedPageStrip && <div className={styles.fixedStrip} data-reader-chrome-layer="strip">{fixedPageStrip}</div>}
     </div>
     {searchNavigation && !panel && <div className={styles.searchNavigation} inert={!!hint} aria-hidden={hint ? true : undefined}>{searchNavigation}</div>}
-    {!hint && panel}
+    {!hint && <ReaderPanelOpenContext.Provider value={Boolean(panel)}>{panel ?? leavingPanel}</ReaderPanelOpenContext.Provider>}
     {hint}
   </div>;
 }
