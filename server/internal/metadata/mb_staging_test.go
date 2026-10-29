@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/metadataprovider"
 	"strings"
@@ -210,12 +211,32 @@ func TestMBStagingResumeAndReadyReuse(t *testing.T) {
 	assertMBAccounting(t, db)
 }
 
-// Exactly the stopped gate's two disjoint 10k closures, now with the real final
-// publication: active operation/base/receipt, aliases, pin, catalog fields,
-// reconciliation, candidate decisions, receipt and operation completion. The old
-// release fixture is seeded through the preserved legacy saver; the new release
-// uses every real bounded build/proof/seal transaction before this final hold.
-func TestMBStagingTenThousandCompleteFinalWriterHold(t *testing.T) {
+// mbConstructionRun is one complete, fresh construction attempt: its own
+// database and fixture, the real stage/proof/seal result, and the bounded gate
+// aggregate from that attempt's measurement window.
+type mbConstructionRun struct {
+	db    *sql.DB
+	names catalogtest.Names
+	s     *Service
+	j     mbJob
+	stage mbReleaseEvidence
+	proof mbBuildProof
+	// aggregates are the bounded gate extremes from this attempt's window.
+	aggregate dbwork.TestHoldAggregate
+	verdict   dbwork.TestHoldVerdict
+	reason    string
+	peak      time.Duration
+	elapsed   time.Duration
+	plans     dbwork.PlanStats
+}
+
+// mbFreshConstruction builds the complete old10k/disjoint-new10k fixture from
+// scratch in a new database and runs one real bounded construction: the release
+// parent, every recording build, proof and seal. A retry must never restage the
+// previous attempt's cached build, which would measure different transactions
+// than a fresh construction and could not prove the original construction path.
+func mbFreshConstruction(t *testing.T) *mbConstructionRun {
+	t.Helper()
 	db, names := mbLaneDB(t)
 	ctx := context.Background()
 	oldValue := mbAccountingLargeRelease(10)
@@ -261,20 +282,82 @@ func TestMBStagingTenThousandCompleteFinalWriterHold(t *testing.T) {
 	}
 	dbwork.ResetPlans()
 	dbwork.WriteGate().ResetPeak()
-	stageCtx, holds := dbwork.WithTestWriterHolds(ctx)
+	stageCtx, holds := dbwork.WithTestWriterHoldsPolicy(ctx, mbConstructionGatePolicy)
 	start := time.Now()
 	proof, e := s.mbStageRelease(stageCtx, j, stage, "2000-01-01T00:00:00Z")
+	elapsed := time.Since(start)
 	if e != nil {
 		t.Fatal("bounded construction", e)
 	}
-	t.Logf("10k construction/proof/seal elapsed=%s peak-held=%dms largest=%+v overruns=%d", time.Since(start), dbwork.WriteGate().Stats().MaxHeldMilli, dbwork.Plans().Largest, dbwork.Plans().Overruns)
-	if peak := dbwork.WriteGate().Stats().MaxHeldMilli; peak > 250 {
-		t.Fatalf("SRV023 STOP: construction held %dms: %s", peak, mbHoldDiagnostic(holds))
+	peak := time.Duration(dbwork.WriteGate().Stats().MaxHeldMilli) * time.Millisecond
+	run := &mbConstructionRun{
+		db: db, names: names, s: s, j: j, stage: stage, proof: proof,
+		aggregate: holds.Aggregate(), peak: peak, elapsed: elapsed, plans: dbwork.Plans(),
 	}
-	if dbwork.Plans().Overruns != 0 {
-		t.Fatal("bounded construction exceeded unchanged plans", dbwork.Plans())
+	run.verdict, run.reason = mbConstructionVerdict(run.aggregate, run.peak)
+	t.Logf("10k construction run: elapsed=%s peak-held=%s %s", elapsed, peak, mbConstructionCPULine(run.aggregate))
+	return run
+}
+
+// Exactly the stopped gate's two disjoint 10k closures, now with the real final
+// publication: active operation/base/receipt, aliases, pin, catalog fields,
+// reconciliation, candidate decisions, receipt and operation completion. The old
+// release fixture is seeded through the preserved legacy saver; the new release
+// uses every real bounded build/proof/seal transaction before this final hold.
+//
+// Construction is gated on the approved test-only rule, per opted-in turn against
+// that turn's own plan: hard on any factor-one rows/pages/VM overrun, or on a wall
+// over 250 ms with whole-process CPU at least 50 ms or VM over 10% of that turn's
+// plan; unknown CPU, cost or budget over the wall is conservatively hard. A wall
+// over 250 ms with CPU under 50 ms and VM within 10% is environmental: it warns
+// with the full bounded self-diagnosis and is remeasured with a completely fresh
+// construction. One clean run passes with one attempt; environmental then two
+// clean passes; two environmental runs of three fail; any hard run fails at once.
+func TestMBStagingTenThousandCompleteFinalWriterHold(t *testing.T) {
+	var run *mbConstructionRun
+	var verdicts []dbwork.TestHoldVerdict
+	attempts := 0
+	for {
+		if attempts >= mbConstructionAttempts {
+			t.Fatalf("SRV023 STOP: construction gate exceeded %d attempts after %v", mbConstructionAttempts, verdicts)
+		}
+		run = mbFreshConstruction(t)
+		attempts++
+		verdicts = append(verdicts, run.verdict)
+		if run.plans.Overruns != 0 {
+			t.Fatalf("SRV023 STOP: bounded construction run %d exceeded unchanged plans: %+v\n%s", attempts, run.plans, mbConstructionDiagnostic(run.aggregate, run.peak))
+		}
+		if run.verdict == dbwork.TestHoldEnvironmental {
+			t.Logf("WARN environmental construction run %d/%d: %s\n%s\nplans: overruns=%d largest=%+v",
+				len(verdicts), mbConstructionAttempts, run.reason,
+				mbConstructionDiagnostic(run.aggregate, run.peak), run.plans.Overruns, run.plans.Largest)
+		}
+		switch decision := mbConstructionNext(verdicts); decision {
+		case mbConstructionFail:
+			if run.verdict == dbwork.TestHoldHard {
+				t.Fatalf("SRV023 STOP: construction hard gate on run %d: %s\n%s", len(verdicts), run.reason, mbConstructionDiagnostic(run.aggregate, run.peak))
+			}
+			environmental := 0
+			for _, verdict := range verdicts {
+				if verdict == dbwork.TestHoldEnvironmental {
+					environmental++
+				}
+			}
+			t.Fatalf("SRV023 STOP: construction environmental in %d of %d runs %v\n%s", environmental, len(verdicts), verdicts, mbConstructionDiagnostic(run.aggregate, run.peak))
+		case mbConstructionPass:
+			if len(verdicts) > 1 {
+				t.Logf("construction passed on run %d of at most %d: earlier environmental reading did not reproduce", len(verdicts), mbConstructionAttempts)
+			}
+		default:
+			continue
+		}
+		break
 	}
-	if e = s.mbAttachStaged(ctx, j, proof); e != nil {
+	db, names, s := run.db, run.names, run.s
+	ctx := context.Background()
+	j, stage, proof := run.j, run.stage, run.proof
+	nextRequestedID := stage.requested
+	if e := s.mbAttachStaged(ctx, j, proof); e != nil {
 		t.Fatal(e)
 	}
 	assertMBAccounting(t, db)
@@ -317,7 +400,7 @@ func TestMBStagingTenThousandCompleteFinalWriterHold(t *testing.T) {
 	dbwork.ResetPlans()
 	dbwork.WriteGate().ResetPeak()
 	finalCtx, finalHolds := dbwork.WithTestWriterHolds(ctx)
-	start = time.Now()
+	start := time.Now()
 	if e = s.mbPublishAlbumReady(finalCtx, j, stage, proof, "2000-01-01T00:00:00Z"); e != nil {
 		t.Fatal("complete final publication", e)
 	}
@@ -346,7 +429,7 @@ func TestMBStagingTenThousandCompleteFinalWriterHold(t *testing.T) {
 	if e = db.QueryRow(`SELECT status FROM mb_publication_operations WHERE id=?`, j.operation).Scan(&operation); e != nil || operation != "applied" {
 		t.Fatal(operation, e)
 	}
-	if e = db.QueryRow(`SELECT decision FROM mb_candidates WHERE kind='album' AND entity_id=? AND provider_id=?`, names["album"].ID, nextValue.RequestedID).Scan(&decision); e != nil || decision != "accepted" {
+	if e = db.QueryRow(`SELECT decision FROM mb_candidates WHERE kind='album' AND entity_id=? AND provider_id=?`, names["album"].ID, nextRequestedID).Scan(&decision); e != nil || decision != "accepted" {
 		t.Fatal(decision, e)
 	}
 	var adoption int
