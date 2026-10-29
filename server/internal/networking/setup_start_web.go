@@ -46,9 +46,9 @@ func (h *ClaimHandler) beginSetupWebClaim(ctx context.Context, v Intent, address
 		return out, err
 	}
 	var claimPayload, claimSignature, startPayload, startSignature []byte
-	var phase, attempt string
+	var phase, attempt, transaction string
 	var expiresMS int64
-	err := h.store.db.QueryRowContext(ctx, `SELECT claim_payload,claim_signature,start_payload,start_signature,phase,expires_ms,attempt_id FROM identity_setup_completions WHERE operation_id=?`, v.OperationID).Scan(&claimPayload, &claimSignature, &startPayload, &startSignature, &phase, &expiresMS, &attempt)
+	err := h.store.db.QueryRowContext(ctx, `SELECT claim_payload,claim_signature,start_payload,start_signature,phase,expires_ms,attempt_id,transaction_id FROM identity_setup_completions WHERE operation_id=?`, v.OperationID).Scan(&claimPayload, &claimSignature, &startPayload, &startSignature, &phase, &expiresMS, &attempt, &transaction)
 	var start claimweb.SetupStart
 	var original claimweb.Request
 	// A slow installation (certificate issuance) can outlive the five-minute start. The same
@@ -59,7 +59,9 @@ func (h *ClaimHandler) beginSetupWebClaim(ctx context.Context, v Intent, address
 		return out, ErrUnavailable
 	}
 	if err == nil && !renewal {
-		if phase != "prepared" {
+		// A renewed start whose Hosted call or bind failed replays its own stored pair, as a
+		// prepared start does, instead of waiting out its five minutes.
+		if phase != "prepared" && !(phase == "installed" && transaction == "" && attempt == "") {
 			return out, ErrStale
 		}
 		out.Signed = claimweb.Signed{Payload: base64.RawURLEncoding.EncodeToString(claimPayload), Signature: base64.RawURLEncoding.EncodeToString(claimSignature)}

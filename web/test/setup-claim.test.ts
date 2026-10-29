@@ -35,7 +35,7 @@ async function fixture(t: TestContext, origin = original.address) {
       {id: 'second', name: 'Second', primary: false, art: 'blue', position: 1, revision: 1, pinRevision: 1, pinRequired: false}], session: nextSession};
   const expected = {operationId: original.operationId, localGeneration: original.localGeneration, revision: '2'};
   const transactionId = 'actual_setup_transaction', registration = {id: 'ret_' + 'r'.repeat(43), origin: 'https://managed.example.test'};
-  let handoff: NonNullable<Pending>['handoff'], firstSetupStart: unknown, generation = expected.localGeneration;
+  let handoff: NonNullable<Pending>['handoff'], firstSetupStart: unknown, originalSetupStart: unknown, generation = expected.localGeneration;
   const sent: {path: string; method: string; body: any; authorization: string | null}[] = [], retired: string[] = [];
   let hook = async (_path: string) => {}, lost = false, failStorage = false;
   const stamp = (time: number) => new Date(time).toISOString().replace('.000Z', 'Z');
@@ -61,8 +61,8 @@ async function fixture(t: TestContext, origin = original.address) {
       // A retry freezes the original PKCE/state/installation; only an installed setup whose start
       // lapsed (a slow certificate) renews it with a fresh one.
       if (firstSetupStart && !installed) assert.deepEqual(body.setupStart, firstSetupStart, 'retry must freeze the original PKCE/state/installation');
-      if (firstSetupStart && installed) assert.notDeepEqual(body.setupStart, firstSetupStart, 'a renewal binds a fresh browser start');
-      firstSetupStart = body.setupStart;
+      if (originalSetupStart && installed) assert.notDeepEqual(body.setupStart, originalSetupStart, 'a renewal binds a fresh browser start');
+      firstSetupStart = body.setupStart; originalSetupStart ??= body.setupStart;
       const claim = {...original, localGeneration: generation, address: origin, issuedAt: stamp(now - 1000), expiresAt: stamp(now + 599000)}, proof = signed(claim);
       const inherited=JSON.parse(vector.startPayload);
       const start = {kind: 'portico.setup-start.v1', audience: hostedOrigin, claimHash: routeBase64(await webRouteCrypto.sha256(routeBytes(proof.payload))),
@@ -229,4 +229,18 @@ test('Try again after a slow certificate renews from the original receipt', asyn
  assert.equal(f.sent.some(value => value.path.endsWith('/cancel')), false);
  // Use local still refuses a lapsed receipt: it never cancels on a stale record.
  await assert.rejects(f.receipt.useLocal());
+});
+
+// Review finding (liveness): a renewal whose Hosted call failed is retried at once with the same
+// fresh attempt, never blocked until it expires.
+test('a renewal retried after a failed Hosted call asks for the same renewal again', async t => {
+ const f = await fixture(t); await f.prepare();
+ f.install(); f.expire();
+ let failures = 1;
+ f.hook(async path => {if (path === '/v1/networking/claim/web-approval' && failures-- > 0) throw new Error('lost Hosted answer');});
+ await assert.rejects(f.prepare()); const renewed = f.pending()!;
+ assert.equal(renewed.expected?.revision, '5');
+ const url = await f.prepare();
+ assert.match(url, /\/claim#/); assert.equal(f.pending()!.attemptId, renewed.attemptId, 'the same fresh attempt, not another');
+ await f.flow.finish(f.callback);
 });

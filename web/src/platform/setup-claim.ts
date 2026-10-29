@@ -158,6 +158,14 @@ export class BrowserSetupClaim {
           await checkOpening(); captureRecovery();
         }
       }
+      // A live attempt that already names an installed operation is a renewal being retried
+      // (its Hosted call or bind failed): ask for the same renewal again.
+      if (!renewal && pending?.expected && !this.expired(pending)) {
+        const status = parseClaimStatus(await captured.request(routePath('get_networking_claim'), 'GET', undefined, operation.signal), route.pin);
+        await checkOpening();
+        renewal = status.state === 'installed' && status.installationAcknowledged && status.operation?.operationId === pending.expected.operationId
+          && status.operation.localGeneration === pending.expected.localGeneration && status.operation.revision === pending.expected.revision;
+      }
       if (!pending) {
         pending = await createSetupAttempt({origin, hostedOrigin, pin: route.pin, selectionRevision: selection.revision, draft, setupRevision: resumed.revision,
           installationId: this.ports.installationId(), now: this.now(), crypto: webRouteCrypto});
