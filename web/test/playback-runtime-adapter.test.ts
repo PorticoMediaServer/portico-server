@@ -3308,3 +3308,24 @@ test('P2-74 E-web-17: a playback start the server never answers is reported afte
   assert.equal(await outcome, 'playback_start_timeout');
   assert.equal(f.runtime.getSnapshot().session, undefined, 'the stalled start is retired, nothing half-started is left');
 });
+
+test('P2-74 E-web-14: artist and album Play mount the music dock AND start the media element, with real-shaped queue entries', async t => {
+  const {dockView} = await import('../src/kit/dock/model.ts');
+  const {playbackPresentation} = await import('../src/shell/playback-model.ts');
+  for (const kind of ['artist', 'album'] as const) {
+    const f = setup(t, {}, {}, undefined, undefined, {homeFence: false}), life = new AbortController();
+    // The real server names a song in a queue a "track" (fake windows say "song").
+    f.intercept(async (request, response) => /\/v1\/queues\/[^/]+\/window/.test(request.path) && response.status === 200
+      ? {...response, body: {...(response.body as {items: {kind: string}[]}), items: (response.body as {items: {kind: string}[]}).items.map(item => ({...item, kind: item.kind === 'song' ? 'track' : item.kind}))}}
+      : response);
+    await f.runtime.playFromQueue({container: {kind, id: `song_${kind}`}}, {signal: life.signal, isCurrent: () => true});
+    for (let step = 0; step < 3; step++) await f.arrive();
+    const s = f.runtime.getSnapshot();
+    const environment = {t: (key: string) => key, locale: 'en-US'} as never, artwork = {foreground: () => undefined, ambient: () => undefined} as never;
+    const presentation = playbackPresentation(s, environment, artwork, {back: 10, forward: 30});
+    assert.equal(s.presentation?.kind, 'music', kind);
+    assert.ok(presentation && dockView(s.dock, [presentation]), `${kind}: the dock mounts`);
+    assert.equal(s.dock.local?.expanded, false, `${kind}: music sits in the dock`);
+    assert.ok(f.video.plays > 0, `${kind}: the media element was told to play`);
+  }
+});
