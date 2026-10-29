@@ -30,19 +30,18 @@ func (v Item) MarshalJSON() ([]byte, error) {
 	return json.Marshal(object)
 }
 func (Item) JSONSchema() map[string]any {
-	normal := apiwire.DurationSchema(reflect.TypeFor[itemWire](), map[string]string{"duration": "durationMs", "progressSeconds": "progressMs"})
-	exceptional := apiwire.DurationSchema(reflect.TypeFor[itemWire](), map[string]string{"duration": "durationMs", "progressSeconds": "progressMs"})
-	properties := exceptional["properties"].(map[string]any)
-	delete(properties, "durationMs")
-	properties["durationState"] = map[string]any{"type": "string", "enum": []string{"unrepresentable"}}
+	schema := apiwire.DurationSchema(reflect.TypeFor[itemWire](), map[string]string{"duration": "durationMs", "progressSeconds": "progressMs"})
+	// One object: durationMs is present when representable, otherwise absent
+	// beside durationState "unrepresentable".
+	schema["properties"].(map[string]any)["durationState"] = map[string]any{"type": "string", "enum": []string{"unrepresentable"}}
 	required := []string{}
-	for _, key := range exceptional["required"].([]string) {
+	for _, key := range schema["required"].([]string) {
 		if key != "durationMs" {
 			required = append(required, key)
 		}
 	}
-	exceptional["required"] = append(required, "durationState")
-	return map[string]any{"anyOf": []any{normal, exceptional}}
+	schema["required"] = required
+	return schema
 }
 
 type contentEntryWire ContentEntry

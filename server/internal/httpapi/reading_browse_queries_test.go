@@ -196,6 +196,7 @@ func TestReadingBrowsePreparationRouteContracts(t *testing.T) {
 	}
 	shape := readingBrowseQueryResponse{}.JSONSchemaForStatus(200)
 	want, _ := apikit.Schema(reflect.TypeFor[catalog.BrowseResult]())
+	want = withVariantTag(want, "ready")
 	a, _ := json.Marshal(shape)
 	b, _ := json.Marshal(want)
 	if !bytes.Equal(a, b) {
