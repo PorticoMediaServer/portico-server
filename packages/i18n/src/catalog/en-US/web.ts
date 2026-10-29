@@ -93,6 +93,8 @@ export const webMessages = {
   'web.about.webApp': 'Web app',
   'web.about.server': 'Server',
   'web.about.serverVersion': 'Server version',
+  'web.about.build': 'Build',
+  'web.about.serverApi': 'Server API',
   'web.about.legal': 'Metadata and artwork are provided by TMDB and other providers configured on your server.',
   'web.about.terms': 'Terms of Use',
   'web.about.privacy': 'Privacy Policy',

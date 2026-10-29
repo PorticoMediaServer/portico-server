@@ -16,14 +16,16 @@ function About() {
   const [licenses, setLicenses] = useState(false);
   if (!captured) return null;
   const identity = captured.context.facts.identity;
-  const version = currentWebEnvironment().appVersion;
+  const {appVersion: version, buildId} = currentWebEnvironment();
   return <main className={styles.page}>
     <Button variant="text" icon="i-left" onClick={() => {void router.navigate({to: '/settings', search: {scope: 'account', section: 'device'}});}}>{t('next.settingsSpec.account.device.title')}</Button>
     <h1>{t('settings.about')}</h1><p className={styles.lede}>{t('licenses.portico.body')}</p>
     <dl className={styles.box}>
       <div><dt>{t('web.about.webApp')}</dt><dd>{version || t('next.states.versionNotRecorded')}</dd></div>
+      {buildId && <div><dt>{t('web.about.build')}</dt><dd>{buildId}</dd></div>}
       <div><dt>{t('web.about.server')}</dt><dd>{identity.serverName}</dd></div>
       <div><dt>{t('web.about.serverVersion')}</dt><dd>{identity.serverVersion || t('next.states.versionNotRecorded')}</dd></div>
+      {identity.serverApiVersion && <div><dt>{t('web.about.serverApi')}</dt><dd>{identity.serverApiVersion}</dd></div>}
     </dl>
     <section className={styles.box}>
       <button type="button" onClick={() => setLicenses(true)}><b>{t('licenses.title')}</b><span>{t('licenses.rowHelp')}</span></button>
