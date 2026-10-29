@@ -151,7 +151,7 @@ test('actual Home refresh: unmount/current authority retirement aborts the old r
 test('controller admission still rejects actual expiry, wrong row identity and old context; facade does not advertise them',async t=>{
   const f=await fixture(t),row=f.service.getSnapshot().document!.rows[1];assert.throws(()=>f.facade.controller.registerWindow({id:'copy',row:{...row},sectionOrder:1}),/unoffered-home-row/);
   const cleanup=f.facade.selection.registerWindow(row,1,0,0);assert.equal(typeof cleanup,'function');f.setTime(start+10000);
-  assert.throws(()=>f.facade.controller.registerWindow({id:'expired',row,sectionOrder:1}),/stale-home-live-window/);assert.equal(f.facade.selection.registerWindow(row,1,0,0),undefined);cleanup?.();
+  assert.deepEqual(f.facade.controller.registerWindow({id:'expired',row,sectionOrder:1}),{ok:false,reason:'stale-home-live-window'});assert.equal(f.facade.selection.registerWindow(row,1,0,0),undefined);cleanup?.();
 });
 
 test('actual Home: failed expired-window refresh leaves no stale actions and foreground retries through the service',async t=>{

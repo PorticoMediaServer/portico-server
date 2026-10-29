@@ -421,7 +421,7 @@ test('reconcile: Live expiry blocks dispatch and registration; a genuine refresh
     const key = h.controller.key({kind: 'channel', sourceId: 'source', channelId: 'channel'}); h.controller.openMenu('window', key);
     now += 1001; await assert.rejects(h.controller.executeMenu('play'), /stale-home-live-window|home-offers-changed|menu-action-not-offered/);
     assert.equal(h.controller.getSnapshot().menu, null); assert.equal(tuned, 0);
-    assert.throws(() => h.controller.registerWindow({id: 'expired', row: h.document.rows[0], sectionOrder: 0}), /stale-home-live-window/);
+    assert.deepEqual(h.controller.registerWindow({id: 'expired', row: h.document.rows[0], sectionOrder: 0}), {ok: false, reason: 'stale-home-live-window'}, 'an expired Live window is dropped, never thrown');
     const fresh = {...channel, channel: {...channel.channel, generation: 'g2'}};
     h.replace({...h.document, rows: [{...h.document.rows[0], live: {...live, revision: 'live-2', expiresAt: new Date(now + 1000).toISOString(), channels: [fresh]}}]});
     h.controller.setContext(nextContext(h)); h.controller.registerWindow({id: 'window', row: h.document.rows[0], sectionOrder: 0}); h.controller.openMenu('window', key); await h.controller.executeMenu('play');
@@ -617,4 +617,21 @@ test('RN-08: deliberately selected chapter retains its explicit position', async
     const chosen = h.played[0].items[0]; assert.ok('target' in chosen);
     assert.equal(chosen.startIntent, 'explicit'); assert.equal(chosen.target.startSeconds, 72);
   } finally {h.controller.dispose();}
+});
+
+test('removing a Home window never throws: after Live expiry, twice, or after the controller is gone (E-tv-30)', () => {
+  const h = harness(), clock = Date.now, channel = liveChannel(); let now = Date.parse('2026-10-22T12:00:00Z'); Date.now = () => now;
+  try {
+    const live = {revision: 'live-1', observedAt: new Date(now).toISOString(), expiresAt: new Date(now + 1000).toISOString(), sort: 'favorites' as const, group: '', groups: [], channels: [channel]};
+    h.replace({...h.document, rows: [{...h.document.rows[0], entries: [], live}]});
+    const registered = h.controller.registerWindow({id: 'live', row: h.document.rows[0], sectionOrder: 0});
+    assert.equal(registered.ok, true);
+    now += 5000;
+    assert.deepEqual(h.controller.registerWindow({id: 'later', row: h.document.rows[0], sectionOrder: 0}), {ok: false, reason: 'stale-home-live-window'});
+    if (!registered.ok) throw new Error('registered');
+    assert.doesNotThrow(() => registered.unregister(), 'deregistering an expired window');
+    assert.doesNotThrow(() => registered.unregister(), 'deregistering it again');
+    h.controller.dispose();
+    assert.doesNotThrow(() => registered.unregister(), 'deregistering after dispose');
+  } finally {Date.now = clock;}
 });

@@ -1,4 +1,4 @@
-import {SelectionModel, selectionActions, selectionKey, summarizeSelection, type SelectionAction, type SelectionContext, type SelectionEnvironment, type SelectionIdentity, type SelectionKind, type SelectionOperation, type SelectionTarget} from '../selection-model/index.ts';
+import {SelectionModel, selectionActions, selectionKey, summarizeSelection, type SelectionAction, type SelectionContext, type SelectionRegistration, type SelectionEnvironment, type SelectionIdentity, type SelectionKind, type SelectionOperation, type SelectionTarget} from '../selection-model/index.ts';
 import {selectionCapabilityNames} from '../selection-model/capabilities.ts';
 import {homeChannelSelection, homeCollectionCapabilities, homeCollectionSelection, homeEntryCapabilities, homeEntrySelection, type HomeActionPlatform} from '../home-selection.ts';
 import {entryActions, type EntryActionId} from '../presentation/entry-actions.ts';
@@ -13,6 +13,10 @@ import {fetchBulkMetadataPreview, metadataPreviewTargets, type BulkMetadataPrevi
 import {HomeSelectionDestinations} from './destinations.ts';
 import {explicitIdentities, runSelectionJobs, selectionExecutionError, selectionJobTasks, type HomeJobTask} from './execution.ts';
 import type {HomeSelectionActionState, HomeSelectionMember, HomeSelectionMenu, HomeSelectionOptions, HomeSelectionPlaybackItem, HomeSelectionSnapshot, HomeSelectionWindowInput} from './types.ts';
+
+/** Removing a window is cleanup and must never throw: a cleanup that throws reaches the app's error boundary
+ * (P2-74 E-tv-30, an unmount during a Live expiry re-read). An already removed or stale window is a no-op. */
+const releaseWindow = (unregister: () => void) => {try {unregister();} catch { /* nothing left to remove */ }};
 
 const idle = (): HomeSelectionActionState => ({phase: 'idle', action: null, progress: null, results: [], error: null, jobIds: []});
 const errorInfo = (error: unknown) => ({code: String((error as {code?: unknown})?.code ?? 'home-action-failed'), retryable: (error as {retryable?: unknown})?.retryable === true});
@@ -107,7 +111,7 @@ export class HomeSelectionController {
     if (!this.options.isCurrent(next)) {this.invalidate(); return;}
     if (document !== this.document || !sameContext(next, this.state.context)) this.reconcile(next, this.environment);
   }
-  private invalidate(keep?: ReadonlySet<string>) {this.cancelAction(); this.selection.clear(); for (const [id, window] of this.windows) if (!keep?.has(id)) {window.unregister(); this.windows.delete(id);} this.menuWindow = undefined; this.menuSource = undefined; this.held.clear(); this.editorEdits = []; this.editorReceipts = []; this.editorOriginalTargets = []; this.editorRetryTargets = undefined; this.deleteBody = undefined; this.jobs = []; this.personalCommands = []; this.publish({menu: null, picker: null, editor: null, deletion: null, rating: null, mixedEdit: false, editExplanation: null, action: idle()});}
+  private invalidate(keep?: ReadonlySet<string>) {this.cancelAction(); this.selection.clear(); for (const [id, window] of this.windows) if (!keep?.has(id)) {releaseWindow(window.unregister); this.windows.delete(id);} this.menuWindow = undefined; this.menuSource = undefined; this.held.clear(); this.editorEdits = []; this.editorReceipts = []; this.editorOriginalTargets = []; this.editorRetryTargets = undefined; this.deleteBody = undefined; this.jobs = []; this.personalCommands = []; this.publish({menu: null, picker: null, editor: null, deletion: null, rating: null, mixedEdit: false, editExplanation: null, action: idle()});}
   /** Revision changes may retain a menu's semantic opener, never its old grants or in-flight work. */
   private reconcile(context: SelectionContext, environment: SelectionEnvironment) {
     const previous = this.state.context, menu = this.state.menu, source = this.menuSource, window = menu && this.windows.get(menu.windowId), menuWindow = this.menuWindow;
@@ -163,7 +167,9 @@ export class HomeSelectionController {
     const rows: HomeRow[] = []; const visit = (row: HomeRow) => {rows.push(row); for (const child of row.children ?? []) visit(child);};
     for (const row of document.rows) visit(row); return rows;
   }
-  registerWindow(input: HomeSelectionWindowInput) {
+  /** An expired Live row is refused without a throw: the shell drops that window and the next Home read
+   * brings a current one. Callers can't avoid the race, since the clock can cross expiry between their check and this one. */
+  registerWindow(input: HomeSelectionWindowInput): SelectionRegistration | Readonly<{ok: false; reason: 'stale-home-live-window'}> {
     this.active();
     const row = this.rows().find(value => value === input.row);
     if (!row || row.viewerFence !== this.state.context.scope.privacyFence) throw selectionExecutionError('unoffered-home-row');
@@ -171,7 +177,7 @@ export class HomeSelectionController {
     let start = input.start ?? row.start;
     const put = (member: HomeSelectionMember) => members.set(this.key(member.item), member);
     if (input.channels !== undefined || row.live) {
-      if (!row.live || Date.parse(row.live.expiresAt) <= Date.now()) throw selectionExecutionError('stale-home-live-window');
+      if (!row.live || !(Date.parse(row.live.expiresAt) > Date.now())) return Object.freeze({ok: false as const, reason: 'stale-home-live-window' as const});
       const channels = input.channels ?? row.live.channels;
       const offset = channels.length ? row.live.channels.indexOf(channels[0]) : 0;
       if (offset < 0 || channels.some((channel, index) => row.live!.channels[offset + index] !== channel) || input.start !== undefined && input.start !== row.start + offset) throw selectionExecutionError('home-window-order-mismatch');
@@ -197,7 +203,7 @@ export class HomeSelectionController {
     const result = this.selection.registerWindow(ticket, {id: input.id, sectionId: row.id, sectionOrder: input.sectionOrder + 1, start, items: [...members.values()].map(member => member.item)});
     if (!result.ok) return result;
     this.windows.set(input.id, {token, members, unregister: result.unregister, order: input.sectionOrder + 1, start, source: {kind: 'row', id: row.id, slot: input.channels !== undefined || row.live ? 'live' : row.collection && input.entries === undefined ? 'collection' : 'entries'}, origin: {kind: 'row', row, index: this.rows().indexOf(row)}});
-    return {ok: true as const, unregister: () => {if (this.windows.get(input.id)?.token === token) this.windows.delete(input.id); result.unregister();}};
+    return {ok: true as const, unregister: () => {if (this.windows.get(input.id)?.token === token) this.windows.delete(input.id); releaseWindow(result.unregister);}};
   }
   registerSpotlight(input: Readonly<{id: string; spotlight: HomeSpotlight}>) {
     this.active();
@@ -210,7 +216,7 @@ export class HomeSelectionController {
     const result = this.selection.registerWindow(this.selection.captureContext(), {id: input.id, sectionId: 'home:spotlight', sectionOrder: 0, start: index, items: [item]});
     if (!result.ok) return result;
     this.windows.set(input.id, {token, members, unregister: result.unregister, order: 0, start: index, source: {kind: 'spotlight'}, origin: {kind: 'spotlight', spotlight: input.spotlight}});
-    return {ok: true as const, unregister: () => {if (this.windows.get(input.id)?.token === token) this.windows.delete(input.id); result.unregister();}};
+    return {ok: true as const, unregister: () => {if (this.windows.get(input.id)?.token === token) this.windows.delete(input.id); releaseWindow(result.unregister);}};
   }
   private allMembers() {const members = new Map<string, HomeSelectionMember>(); for (const window of [...this.windows.values()].sort((a, b) => b.order - a.order || b.start - a.start)) for (const [key, member] of window.members) members.set(key, member); for (const [key, member] of this.held) members.set(key, member); for (const [key, member] of this.operationMembers) members.set(key, member); return members;}
   key(identity: SelectionIdentity) {return selectionKey(this.state.context.scope, identity);}

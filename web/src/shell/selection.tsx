@@ -137,6 +137,7 @@ export function createShellSelection(context: ShellAssemblyContext, playback: Ho
         if ((error as {code?: unknown})?.code !== 'stale-home-live-window' || liveCurrent(row)) throw error;
         clearExpiredLive(row); return undefined;
       }
+      if (!registered.ok && registered.reason === 'stale-home-live-window') { clearExpiredLive(row); return undefined; }
       if (!registered.ok) { reportError(Object.assign(new Error(registered.reason), {code: registered.reason})); return undefined; }
       return () => { registered.unregister(); clearExpiredLive(row); };
     },
