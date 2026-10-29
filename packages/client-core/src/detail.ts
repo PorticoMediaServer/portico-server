@@ -1,4 +1,4 @@
-import {parseDiscMediaFacts, type DiscMediaFacts} from './disc-media-facts.ts';
+import type {DiscMediaFacts} from './disc-media-facts.ts';
 import type {RouteResponse} from "../../contracts/src/route-paths.ts";
 import {encodedRoutePath} from "../../contracts/src/route-paths.ts";
 import {wireDurations,wireDisplayDurations,durationIntent} from './wire-units.ts';
@@ -38,8 +38,7 @@ export type CreditPage = Readonly<{ revision: Readonly<{catalog:number;viewer:nu
 export type DetailEpisodeInfo = Readonly<{ showId: string; showTitle: string; seasonId?: string; /** When it first aired (YYYY-MM-DD), when known. */ airDate?: string; seasonNumber?: number | null; numbering: string; number: number; localIdentityStatus: string; providerMatchStatus: string; orderingBasis: string; sourceBoundary: string }>;
 export type DetailSongInfo = Readonly<{ albumId: string; albumTitle: string; albumArtist: string; artist: string; discNumber?: number | null; trackNumber?: number | null; providerMatchStatus: string; localMetadataIssue?: string; providerTitle?:string;providerArtist?:string;providerRecordingId?:string;providerReleaseId?:string;providerReleaseGroupId?:string;providerTrackId?:string;providerReleaseStatus?:string;providerObservedAt?:string }>;
 export type DetailBookFileInfo = Readonly<{ bookId: string; bookTitle: string; discNumber?: number | null; partNumber?: number | null; sourceBoundary: string; localMetadataIssue?: string;localMetadata?:LocalBookMetadata;localPolicy?:LocalAudioPolicy }>;
-export type DetailSource = NonNullable<MediaItem['sources']>[number] & { duration?: number };
-export type DetailItem = Omit<MediaItem, 'sources'> & { /** An episode's own still, never inherited. */ stillUrl?: string; addedAt?: string | null; sources?: DetailSource[]; episode?: DetailEpisodeInfo; song?: DetailSongInfo; bookFile?: DetailBookFileInfo };
+export type DetailItem = MediaItem & { /** An episode's own still, never inherited. */ stillUrl?: string; addedAt?: string | null; episode?: DetailEpisodeInfo; song?: DetailSongInfo; bookFile?: DetailBookFileInfo };
 /** The title's own facts (the editor's General fields): the facts line and the Details section. */
 export type TitleFacts = Readonly<{ contentRating?: string; studio?: string; network?: string; tagline?: string; releaseDate?: string; originalTitle?: string; country?: string; originalLanguage?: string; edition?: string }>;
 /** One audio or subtitle track of a file. `external` is a subtitle file beside the media. */
@@ -64,6 +63,8 @@ export type DetailProjection = Readonly<{
   missingSince?: string;
   scope: Readonly<{ serverId: string; libraryId: string; itemId: string; viewerFence: string }>;
   revision: Readonly<{ catalog: number; viewer: number }>;
+  /** Opaque opening for this exact Detail's File info lanes; present once the title is ready. */
+  fileInfoOpening?: string;
   item: Readonly<DetailItem>;
   personal: PersonalState;
   actions: readonly DetailAction[];
@@ -117,25 +118,6 @@ function personal(value: unknown): PersonalState {
   const conflicts=keepReadable('detail','personal.conflicts',array(value.conflicts??[],8),c=>{if(!obj(c)||!id(c.id)||!id(c.field)||!integer(c.baseRevision))invalid();const choices=keepReadable('detail','personal.choices',array(c.choices,100),v=>{if(!obj(v)||!id(v.operationId)||!id(v.deviceId)||!str(v.authoredAt,128))invalid();return Object.freeze({operationId:v.operationId,deviceId:v.deviceId,authoredAt:v.authoredAt,value:v.value});});return Object.freeze({id:c.id,field:c.field,baseRevision:c.baseRevision,baseValue:c.baseValue,choices:Object.freeze(choices)});});
   return Object.freeze({watchlisted:value.watchlisted===true,favorite:value.favorite===true,rating:rating(value.rating)?value.rating:null,revision:value.revision,watched:value.watched===true,progressSeconds:finite(value.progressSeconds)?value.progressSeconds:0,lastPlayedAt:str(value.lastPlayedAt,128)?value.lastPlayedAt:'',status:value.status==='needs-resolution'?'needs-resolution':'current',conflicts:Object.freeze(conflicts)});
 }
-function fileTrack(value: unknown): TitleFileTrack {
-  if (!obj(value) || !str(value.codec ?? '', 64)) invalid();
-  const text = (v: unknown, max = 256) => (str(v, max) && v ? v : undefined);
-  const count = (v: unknown) => (integer(v) && v > 0 ? v : undefined);
-  const language = text(value.language, 64), title = text(value.title), channelLayout = text(value.channelLayout, 64), objectAudio = text(value.objectAudio, 32), channels = count(value.channels), bitRate = count(value.bitRate);
-  return Object.freeze({ codec: (value.codec ?? '') as string, ...(language ? { language } : {}), ...(title ? { title } : {}), ...(channels ? { channels } : {}), ...(channelLayout ? { channelLayout } : {}), ...(objectAudio ? { objectAudio } : {}), ...(bitRate ? { bitRate } : {}), ...(value.default === true ? { default: true } : {}), ...(value.forced === true ? { forced: true } : {}), ...(value.external === true ? { external: true } : {}) });
-}
-/** One file of a title. It needs its id; a picture or track that cannot be read is left out, and a missing size, length or container is 0 or empty. */
-function titleFile(value: unknown): TitleFile {
- value=wireDisplayDurations(value,{duration:"durationMs"},left);
-  if (!obj(value) || !id(value.id) || !str(value.container ?? '', 64)) invalid();
-  const disc = parseDiscMediaFacts(value.disc);
-  const path = str(value.path, 4096) && value.path ? value.path : undefined;
-  const video = part('file.video', value.video, (v): TitleFile['video'] => {
-    if (!obj(v) || !str(v.codec, 64) || !integer(v.width) || !integer(v.height)) invalid();
-    return Object.freeze({ codec: v.codec, width: v.width, height: v.height, ...(str(v.dynamicRange, 32) && v.dynamicRange ? { dynamicRange: v.dynamicRange } : {}), ...(v.hdr10Plus === true ? { hdr10Plus: true } : {}), ...(finite(v.frameRate) && v.frameRate > 0 ? { frameRate: v.frameRate } : {}), ...(integer(v.bitDepth) && v.bitDepth > 0 ? { bitDepth: v.bitDepth } : {}), ...(integer(v.bitRate) && v.bitRate > 0 ? { bitRate: v.bitRate } : {}) });
-  });
-  return Object.freeze({ id: value.id, ...(disc ? {disc} : {}), ...(id(value.itemId)?{itemId:value.itemId}:{}),...(path ? { path } : {}), size: integer(value.size) ? value.size : 0, container: (value.container ?? '') as string, duration: finite(value.duration) ? value.duration : 0, ...(integer(value.bitRate) && value.bitRate > 0 ? { bitRate: value.bitRate } : {}), available: value.available === true, ...(integer(value.partIndex) ? { partIndex: value.partIndex } : {}), ...(str(value.edition, 512) && value.edition ? { edition: value.edition } : {}), ...(video ? { video } : {}), audio: Object.freeze(keepReadable('detail', 'file.audio', array(value.audio ?? [], 128), fileTrack)), subtitles: Object.freeze(keepReadable('detail', 'file.subtitles', array(value.subtitles ?? [], 256), fileTrack)) });
-}
 function checkScope(value: DetailScope): DetailScope {
   if (!obj(value) || !id(value.serverId) || !str(value.viewerId, 1024) || !value.viewerId) throw new Error('A bound detail viewer/server scope is required.');
   return Object.freeze({ serverId: value.serverId, viewerId: value.viewerId });
@@ -187,7 +169,7 @@ function projection(raw: unknown, scope: DetailScope, target: DetailTarget): Det
   if (s.serverId !== scope.serverId || s.libraryId !== target.libraryId || s.itemId !== target.itemId || !id(s.viewerFence) || !integer(r.catalog) || !integer(r.viewer)) invalid();
   if (!obj(item)) invalid();
   if (item.id !== target.itemId || item.libraryId !== target.libraryId || !str(item.title ?? '', 2048) || !id(item.kind)) invalid();
-  const media: DetailItem = { id: target.itemId, libraryId: target.libraryId, title: (item.title ?? '') as string, kind: item.kind, duration: finite(item.duration) ? item.duration : 0, progressSeconds: finite(item.progressSeconds) ? item.progressSeconds : 0, available: item.available === true };
+  const media: DetailItem = { id: target.itemId, libraryId: target.libraryId, title: (item.title ?? '') as string, kind: item.kind, ...(finite(item.duration) ? {duration: item.duration} : {}), ...(item.durationState === 'unrepresentable' && item.duration === undefined ? {durationUnrepresentable: true as const} : {}), progressSeconds: finite(item.progressSeconds) ? item.progressSeconds : 0, available: item.available === true };
   for (const key of ['overview','posterUrl','backdropUrl','stillUrl'] as const) { const v = item[key]; if (key === 'overview' ? typeof v === 'string' && v.length <= 65536 && !/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(v) : str(v, 4096)) media[key] = v as string; else left('item.' + key, v); }
   if (integer(item.year)) media.year = item.year; else left('item.year', item.year);
   if (item.addedAt === null || str(item.addedAt, 128)) media.addedAt = item.addedAt as string | null; else left('item.addedAt', item.addedAt);
@@ -217,7 +199,7 @@ function projection(raw: unknown, scope: DetailScope, target: DetailTarget): Det
     // An action that plays says where it starts within this title; one that cannot is not offered.
     if (action.playback !== undefined && action.playback !== null) {
       const p = wireDurations(action.playback,{startSeconds:"startMs"});
-      if (!obj(p) || p.itemId !== target.itemId || !finite(p.startSeconds) || p.startSeconds > media.duration) invalid();
+      if (!obj(p) || p.itemId !== target.itemId || !finite(p.startSeconds) || media.duration !== undefined && p.startSeconds > media.duration) invalid();
       result.playback = Object.freeze({ itemId: target.itemId, startSeconds: p.startSeconds });
     }
     return Object.freeze(result);
@@ -243,7 +225,9 @@ function projection(raw: unknown, scope: DetailScope, target: DetailTarget): Det
   const missingSince = str(raw.missingSince, 64) && raw.missingSince ? raw.missingSince : undefined;
   const related = part('related', raw.related, value => validateRelatedMovies(value, {...target,kind:media.kind}));
   const extra = part('extras', raw.extras, value => extras(value, target));
-  return Object.freeze({ ...(facts ? { facts } : {}), ...(collections.length?{collections:Object.freeze(collections)}:{}),...(episodeDetails?{episodeDetails}:{}),languages, ...(missingSince ? { missingSince } : {}), markers, scope: Object.freeze({ serverId: scope.serverId, libraryId: target.libraryId, itemId: target.itemId, viewerFence: s.viewerFence }), revision: Object.freeze({ catalog: r.catalog, viewer: r.viewer }), item: Object.freeze(media), personal: personal(raw.personal), actions: Object.freeze(actions), ...(related?{related}:{}), ...(extra?{extras:extra}:{}), metadata: Object.freeze({ ...(m.sources===undefined?{}:{sources:Object.freeze(sources)}), ...(m.attributions===undefined?{}:{attributions:Object.freeze(attributions)}),status, ratings: Object.freeze(ratings), genres: Object.freeze(genres), credits: Object.freeze(credits), ...(creditTotals?{creditTotals}:{}) }) });
+  const fileInfoOpening = typeof raw.fileInfoOpening === 'string' && /^[A-Za-z0-9._~-]{1,1024}$/.test(raw.fileInfoOpening) ? raw.fileInfoOpening : undefined;
+  if (!fileInfoOpening) left('fileInfoOpening', raw.fileInfoOpening);
+  return Object.freeze({ ...(facts ? { facts } : {}), ...(fileInfoOpening ? { fileInfoOpening } : {}), ...(collections.length?{collections:Object.freeze(collections)}:{}),...(episodeDetails?{episodeDetails}:{}),languages, ...(missingSince ? { missingSince } : {}), markers, scope: Object.freeze({ serverId: scope.serverId, libraryId: target.libraryId, itemId: target.itemId, viewerFence: s.viewerFence }), revision: Object.freeze({ catalog: r.catalog, viewer: r.viewer }), item: Object.freeze(media), personal: personal(raw.personal), actions: Object.freeze(actions), ...(related?{related}:{}), ...(extra?{extras:extra}:{}), metadata: Object.freeze({ ...(m.sources===undefined?{}:{sources:Object.freeze(sources)}), ...(m.attributions===undefined?{}:{attributions:Object.freeze(attributions)}),status, ratings: Object.freeze(ratings), genres: Object.freeze(genres), credits: Object.freeze(credits), ...(creditTotals?{creditTotals}:{}) }) });
 }
 function receipt(raw: unknown, operationId: string, data: DetailProjection): Receipt {
   if (!obj(raw) || raw.operationId !== operationId || raw.serverId !== data.scope.serverId || raw.libraryId !== data.scope.libraryId || raw.itemId !== data.scope.itemId || raw.viewerFence !== data.scope.viewerFence) invalid();
@@ -450,38 +434,5 @@ export function appendDetailRecommendationPage(current:HomeRow,next:HomeRow):Hom
  return Object.freeze({...current,entries:Object.freeze([...current.entries,...next.entries.filter(entry=>!seen.has(entry.id))]),nextCursor:next.nextCursor,hasMore:next.hasMore,total:next.total});
 }
 
-
 export type FileInfoDiscTitle = Readonly<{number: number; durationMs: number; chapters: number; angles: number}>;
 export type FileInfoDisc = Readonly<{fileId: string; kind: 'bluray' | 'dvd'; titles: readonly FileInfoDiscTitle[]}>;
-export type FileInfoProjection = Readonly<{
- scope: DetailProjection['scope']; revision: DetailProjection['revision']; kind: string;
- files: readonly TitleFile[]; nextCursor?: string;
- /** The owner-only ordered title list of a disc image's current scan. */
- disc?: FileInfoDisc;
- manage?: Readonly<{delete: boolean; split: boolean; merge: boolean}>;
-}>;
-/** The lazy read shares the detail scope but grants no mutation authority. */
-export function parseFileInfo(raw: unknown, scope: DetailScope, target: DetailTarget): FileInfoProjection {
- if (!obj(raw) || !obj(raw.scope) || raw.scope.serverId !== scope.serverId || raw.scope.itemId !== target.itemId || raw.scope.libraryId !== target.libraryId || !id(raw.scope.viewerFence) || !obj(raw.revision) || !integer(raw.revision.catalog) || !integer(raw.revision.viewer) || !id(raw.kind) || !Array.isArray(raw.files) || !str(raw.nextCursor ?? '',4096)) invalid();
- let manage: FileInfoProjection['manage'];
- if(raw.manage !== undefined) { const permissions=raw.manage;if(!obj(permissions) || ['delete','split','merge'].some(key=>typeof permissions[key] !== 'boolean')) invalid(); manage=Object.freeze({delete:permissions.delete as boolean,split:permissions.split as boolean,merge:permissions.merge as boolean}); }
- const files=raw.files.map(value=>titleFile(value));
- if(!manage && files.some(file=>file.path!==undefined)) invalid();
- let disc: FileInfoDisc|undefined;
- if(raw.disc!==undefined) {
-  const value=raw.disc;
-  // A disc block is an owner fact only; a viewer response carrying one is refused.
-  if(!manage || !obj(value) || !id(value.fileId) || !files.some(file=>file.id===value.fileId) || (value.kind!=='bluray' && value.kind!=='dvd') || !Array.isArray(value.titles) || value.titles.length>4096) invalid();
-  const titles=value.titles.map((title,index)=>{
-   if(!obj(title) || title.number!==index+1 || !integer(title.durationMs) || !integer(title.chapters) || !integer(title.angles) || title.angles<1) invalid();
-   return Object.freeze({number:title.number as number,durationMs:title.durationMs as number,chapters:title.chapters as number,angles:title.angles as number});
-  });
-  if(titles.length) disc=Object.freeze({fileId:value.fileId as string,kind:value.kind,titles:Object.freeze(titles)});
- }
- return Object.freeze({scope:Object.freeze({...raw.scope}) as FileInfoProjection['scope'],revision:Object.freeze({catalog:raw.revision.catalog,viewer:raw.revision.viewer}),kind:raw.kind,files:Object.freeze(files),...(disc?{disc}:{}),...(raw.nextCursor?{nextCursor:raw.nextCursor as string}:{}),...(manage?{manage}:{})});
-}
-export async function readFileInfo(api: DetailApi, scope: DetailScope, target: DetailTarget, options: {cursor?: string; limit?: number} = {}, signal?: AbortSignal): Promise<FileInfoProjection> {
- const query=new URLSearchParams(); if(options.cursor)query.set('cursor',options.cursor);if(options.limit!==undefined)query.set('limit',String(options.limit));
- const path=encodedRoutePath('get_items_id_file_info',{id:encodeURIComponent(target.itemId)});
- return parseFileInfo(await api.request(path+(query.size?'?'+query:''),'GET',undefined,signal),scope,target);
-}

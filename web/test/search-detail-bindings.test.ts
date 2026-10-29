@@ -362,22 +362,22 @@ test('aborting the previous caller cannot cancel a newly selected title in the s
   binding.dispose();
 });
 
-test('an owner panel permission is re-read before even preparing a delete command', async () => {
-  let fileReads = 0; const writes: string[] = [];
-  const owner = setup(async (path, method) => {
-    if (method !== 'GET') { writes.push(path); throw new Error('Revoked permission must not reach a command'); }
-    if (path.includes('/file-info')) return {scope: detailPage('one').scope, revision: {catalog: 1, viewer: 1}, kind: 'movie', files: [], manage: {delete: ++fileReads === 1, split: false, merge: false}};
-    return detailPage('one');
+test('a File info command carries its opening and exact occurrence, and a changed Detail stops it before any request', async () => {
+  const writes: {path: string; body: unknown}[] = [];
+  const owner = setup(async (path, method, body) => {
+    if (method === 'POST') { writes.push({path, body}); return {assetId: 'asset', previewKey: 'key', confirmation: 'one', confirmationKind: 'title', totalBytes: 1, totalBytesText: '1 B', targets: [{itemId: 'one'}], blocked: []}; }
+    return {...detailPage('one'), fileInfoOpening: 'opening-1'};
   });
   const binding = createDetailBindings(owner.context); await binding.select({libraryId: 'library', itemId: 'one'});
   const data = binding.service.getSnapshot().data!;
-  assert.ok(data);
-  const panel = await binding.readFileInfo(data);
-  await assert.rejects(binding.previewDelete(data, panel, 'asset'), {name: 'AbortError'});
-  assert.equal(fileReads, 2); assert.deepEqual(writes, []);
+  assert.equal(data.fileInfoOpening, 'opening-1');
+  const file = {occurrence: 'opaque-1', itemId: 'one', id: 'asset', size: {value: 1}, container: 'mkv', available: true, partIndex: 0, audioCount: 0, subtitleCount: 0};
+  await assert.rejects(binding.previewDelete(data, 'opening-0', file), /File info opening changed/);
+  assert.deepEqual(writes, []);
+  await binding.previewDelete(data, 'opening-1', file).catch(() => {});
+  assert.deepEqual(writes, [{path: '/v1/admin/items/one/files/asset/delete/preview', body: {fileInfo: {opening: 'opening-1', occurrence: 'opaque-1'}}}]);
   binding.dispose();
 });
-
 test('manual versions use fresh Options resume and never carry the choice into ordinary Play', async () => {
   const starts: unknown[] = [];
   const page = {...detailPage('one'), actions: [{id: 'play', labelKey: 'title.play', enabled: true, playback: {itemId: 'one', startMs: 100}}]};
@@ -490,20 +490,6 @@ test('entry playback keeps the source context and item detail in their own revis
   await binding.playVersion(entry, 'grouped-version', captured, new AbortController().signal);
   assert.deepEqual(starts, [{libraryId: 'library', itemId: 'one', startSeconds: 0.5, versionId: 'grouped-version'}]);
   binding.dispose();
-});
-
-test('lazy FileInfo keeps its own authority fence and rejects a changed fence before a command', async () => {
-  let reads = 0; const writes: string[] = [];
-  const owner = setup(async (path, method) => {
-    if (method !== 'GET') { writes.push(path); throw new Error('A changed file authority cannot reach a command'); }
-    if (path.includes('/file-info')) return {scope: {...detailPage('one').scope, viewerFence: ++reads === 1 ? 'file-fence' : 'changed-file-fence'}, revision: {catalog: 1, viewer: 1}, kind: 'movie', files: [], manage: {delete: true, split: false, merge: false}};
-    return detailPage('one');
-  });
-  const binding = createDetailBindings(owner.context); await binding.select({libraryId: 'library', itemId: 'one'});
-  const data = binding.service.getSnapshot().data!, files = await binding.readFileInfo(data);
-  assert.notEqual(files.scope.viewerFence, data.scope.viewerFence);
-  await assert.rejects(binding.previewDelete(data, files, 'asset'), /File authority changed/);
-  assert.deepEqual(writes, []); binding.dispose();
 });
 
 test('a removed title retains only its genuine same-target subject and clears it at disposal', async () => {

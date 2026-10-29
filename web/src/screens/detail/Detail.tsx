@@ -1,6 +1,6 @@
 import {t, locale, environment as env} from './text';
 import {useId, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject} from 'react';
-import type {DetailProjection, FileInfoProjection} from '@core/detail.ts';
+import type {DetailProjection} from '@core/detail.ts';
 import type {ContentEntry} from '@core/library-content.ts';
 import type {DownloadOptionsView} from '@core/downloads.ts';
 import type {BrowserDownloadTarget} from '../../platform/browser-download';
@@ -16,17 +16,17 @@ import type {ListeningViewerScope} from '@core/listening.ts';
 import {useRelationRow} from './relation-row';
 import {serverTextLabel} from '@core/presentation/server-text.ts';
 import {serviceI18n, serviceText} from '@core/presentation/service-text.ts';
-import {fileInfoModel, titleFactParts} from '@core/presentation/kit-model';
+import {titleFactParts} from '@core/presentation/kit-model';
 import {preferenceValue} from '@core/preferences.ts';
 import {AmbientArt, Artwork, PersonCircle, type AmbientArtProps} from '../../kit/artwork';
 import {Button, ResumeButton, Select, Tabs} from '../../kit/controls';
 import {Lockup, Shelf} from '../../kit/layout';
 import {CollectionBanner, PosterCard, SquareCard} from '../../kit/cards';
-import {Menu, MenuGroup, MenuItem, MenuSeparator, FileInfo, DiscTitles, Dialog, ToastHost, type FileInfoAction, type ToastData} from '../../kit/overlays';
+import {Menu, MenuGroup, MenuItem, MenuSeparator, Dialog, ToastHost, type ToastData} from '../../kit/overlays';
 import {StateView} from '../../kit/states';
 import {Icon} from '../../kit/Icon';
 import {useShellWidth} from '../../shell/viewport';
-import {entryCard, fileFacts, titlePageFacts, calendarDate, instantDate} from './model';
+import {entryCard, titlePageFacts, calendarDate, instantDate} from './model';
 import type {DetailBindings} from './bindings';
 import styles from './detail.module.css';
 import {dependsOn, titlesWithPersonalState} from '@core/freshness-hub.ts';
@@ -39,6 +39,7 @@ import {useLayoutMotion} from '../../kit/layout/motion';
 import motionStyles from './title-hero-motion.module.css';
 import {FileManagement} from './FileManagement';
 import {copyLink} from '../../shell/copy-link';
+import {TitleFileInfo, type FileInfoManageContext} from './TitleFileInfo';
 import {TitleTabs} from './TitleTabs';
 import {ScreenProblem} from './ScreenProblem';
 import {runScreenCommand} from './context';
@@ -155,10 +156,12 @@ export function TitleActions({binding, data, small = false, topResult = false}: 
   const run = (task: Promise<unknown>) => { void task.catch(binding.context.effects.reportError); };
   const size = small ? 'compact' as const : 'hero' as const;
   // The drawn caption is the title's own long duration ("1 h 26 min left"), not the compact one.
-  const left = titleFactParts({durationSeconds: Math.max(0, data.item.duration - data.personal.progressSeconds)}, env).find(part => part.id === 'duration')?.text;
+  // An unknown length has no time left to state and no progress line to draw; never a zero.
+  const length = data.item.duration ?? 0, fraction = length > 0 ? data.personal.progressSeconds / length : 0;
+  const left = length > 0 ? titleFactParts({durationSeconds: Math.max(0, length - data.personal.progressSeconds)}, env).find(part => part.id === 'duration')?.text : undefined;
   const remaining = primary?.id === 'resume' && left ? serviceText('duration.remaining', {duration: left}) : primary?.caption;
   return <><div className={styles.actions} data-phone-title={phone && !small || undefined}>
-    {primary && primaryAction && (primary.id === 'resume' && !phone ? <ResumeButton size={size} progress={data.item.duration > 0 ? data.personal.progressSeconds / data.item.duration : 0} remaining={remaining} onClick={() => run(binding.play(data, primaryAction.id))}>{t('next.controls.resume')}</ResumeButton>
+    {primary && primaryAction && (primary.id === 'resume' && !phone ? <ResumeButton size={size} progress={fraction} remaining={remaining} onClick={() => run(binding.play(data, primaryAction.id))}>{t('next.controls.resume')}</ResumeButton>
       : <Button variant="primary" icon="i-play" size={size} onClick={() => run(binding.play(data, primaryAction.id))}>{t(primary.id === 'resume' ? 'next.controls.resume' : 'next.controls.play')}</Button>)}
     {!small && <>
       {!phone && !topResult && restart && primary?.id === 'resume' && <Button icon="i-retry" size={size} onClick={() => run(binding.play(data, restart.id))}>{t('next.controls.startOver')}</Button>}
@@ -167,7 +170,7 @@ export function TitleActions({binding, data, small = false, topResult = false}: 
       <TitleMore binding={binding} data={data} />
     </>}
   </div>{phone && !small && primary?.id === 'resume' && <div className={styles.phoneResume}>
-    <div className={styles.phoneProgress} role="progressbar" aria-label={t('next.layout.progress')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(Math.min(1, Math.max(0, data.item.duration > 0 ? data.personal.progressSeconds / data.item.duration : 0)) * 100)}><span style={{transform: `scaleX(${Math.min(1, Math.max(0, data.item.duration > 0 ? data.personal.progressSeconds / data.item.duration : 0))})`}} /></div>
+    <div className={styles.phoneProgress} role="progressbar" aria-label={t('next.layout.progress')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(Math.min(1, Math.max(0, fraction)) * 100)}><span style={{transform: `scaleX(${Math.min(1, Math.max(0, fraction))})`}} /></div>
     <div className={styles.phoneRemaining}>{remaining}{restart && <Button variant="text" icon="i-retry" size="small" onClick={() => run(binding.play(data, restart.id))}>{t('next.controls.startOver')}</Button>}</div>
   </div>}</>;
 }
@@ -201,9 +204,8 @@ function TitlePinnedActions({binding, data}: {binding: DetailBindings; data: Det
 
 function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjection}) {
   const [open, setOpen] = useState(false), [fileOpen, setFileOpen] = useState(false), [titlesOpen, setTitlesOpen] = useState(false);
-  const [files, setFiles] = useState<FileInfoProjection>(), [failed, setFailed] = useState(false);
-  const [manage, setManage] = useState<FileInfoAction>(), [rating, setRating] = useState(false), [linkToast, setLinkToast] = useState<ToastData | null>(null);
-  const trigger = useRef<HTMLButtonElement>(null), fileRead = useRef<AbortController | undefined>(undefined), width = useShellWidth(), phone = width < 1024;
+  const [manage, setManage] = useState<FileInfoManageContext>(), [rating, setRating] = useState(false), [linkToast, setLinkToast] = useState<ToastData | null>(null);
+  const trigger = useRef<HTMLButtonElement>(null), width = useShellWidth(), phone = width < 1024;
   // music-plus: Start radio's admission lease belongs to this exact menu for this binding and
   // page, owned by a layout effect so a replayed setup gets a fresh, live lease.
   type RadioLease = Readonly<{signal: AbortSignal; seedId: string}>;
@@ -259,8 +261,8 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
   };
   useEffect(() => { setDownloadView(undefined); return () => { downloadRef.current?.request.abort(); downloadRef.current = undefined; }; }, [data]);
 
-  useEffect(() => { setOpen(false); setFileOpen(false); setTitlesOpen(false); setFiles(undefined); setManage(undefined); }, [data]);
-  useEffect(() => () => {fileRead.current?.abort();versionRead.current?.abort();versionChoice.current?.abort();}, [data]);
+  useEffect(() => { setOpen(false); setFileOpen(false); setTitlesOpen(false); setManage(undefined); }, [data]);
+  useEffect(() => () => {versionRead.current?.abort();versionChoice.current?.abort();}, [data]);
   useEffect(() => {
     if (!open || !binding.context.effects.chooseVersion || !data.actions.some(action => action.enabled && action.playback?.itemId === data.item.id && action.id !== 'start_over')) return;
     const request = new AbortController();versionRead.current = request;setVersions(undefined);
@@ -276,16 +278,8 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
       versions.request.abort();if (versionChoice.current === versions.request) versionChoice.current = undefined;
     });
   };
-  const loadFileSurface = (surface: 'file' | 'titles') => {
-    fileRead.current?.abort(); const controller = new AbortController(); fileRead.current = controller;
-    setFileOpen(surface === 'file'); setTitlesOpen(surface === 'titles'); setFiles(undefined); setFailed(false);
-    void binding.readFileInfo(data, undefined, controller.signal).then(value => { if (!controller.signal.aborted) setFiles(value); }, error => { if (!controller.signal.aborted) { setFailed(true); binding.context.effects.reportError(error); } });
-  };
-  const loadFiles = () => loadFileSurface('file');
-  const loadTitles = () => loadFileSurface('titles');
-  const closeTitles = (value: boolean) => { setTitlesOpen(value); if (!value) fileRead.current?.abort(); };
-  const closeFiles = (value: boolean) => { setFileOpen(value); if (!value) fileRead.current?.abort(); };
-  const model = useMemo(() => files && fileInfoModel(files.files.map(fileFacts), files.manage ? {audience: 'owner', manageSurface: phone ? 'phone' : 'desktop', ownerFacts: {locations: files.files.map(file => ({id: file.id, path: file.path, canDelete: files.manage?.delete})), canSplit: files.manage.split && files.files.length >= 2, canMerge: phone && files.manage.merge}} : {audience: 'viewer'}, env, phone ? 'phone' : 'desktop'), [files, phone]);
+  const loadFiles = () => { setTitlesOpen(false); setFileOpen(true); };
+  const loadTitles = () => { setFileOpen(false); setTitlesOpen(true); };
   const viewer = binding.context.identity?.viewer, owner = viewer?.role === 'owner' && viewer.authority === 'local';
   const offered = (id: string) => data.actions.some(action => action.id === id && action.enabled);
   const refreshPath = owner ? refreshMetadataPath(data.item.kind, data.item.id) : undefined;
@@ -345,12 +339,9 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
         </Dialog>)}
     <ToastHost toast={linkToast} onDismiss={() => setLinkToast(null)} />
     {rating && <TitleRating binding={binding} data={data} returnFocusRef={trigger} onClose={() => setRating(false)} />}
-    {fileOpen && model && <FileInfo model={model} subject={data.item.title} disc={files?.disc} layout={phone ? 'phone' : 'desktop'} open onOpenChange={closeFiles} returnFocusRef={trigger} onManage={action => runScreenCommand(binding.context, () => { binding.current(data); closeFiles(false); setManage(action); })} />}
-    {fileOpen && !model && <Dialog open onOpenChange={closeFiles} title={t('next.overlays.fileInfo')} returnFocusRef={trigger}>{failed ? <ScreenFailure retry={loadFiles} /> : <DetailLoading shape="panel" />}</Dialog>}
-    {titlesOpen && files?.disc && <DiscTitles open onOpenChange={closeTitles} disc={files.disc}
-      file={model?.files.find(entry => entry.id === files.disc?.fileId)?.display.heading.text} returnFocusRef={trigger} />}
-    {titlesOpen && !files?.disc && <Dialog open onOpenChange={closeTitles} title={t('next.overlays.discTitles')} returnFocusRef={trigger}>{failed ? <ScreenFailure retry={loadTitles} /> : files ? <StateView title={t('title.nothingHere')} /> : <DetailLoading shape="panel" />}</Dialog>}
-    {manage && files && <FileManagement binding={binding} data={data} files={files} action={manage} onClose={() => setManage(undefined)} returnFocusRef={trigger} />}
+    {(fileOpen || titlesOpen) && <TitleFileInfo binding={binding} data={data} surface={fileOpen ? 'file' : 'titles'} phone={phone} returnFocusRef={trigger}
+      onClose={() => { setFileOpen(false); setTitlesOpen(false); }} onManage={context => runScreenCommand(binding.context, () => { setFileOpen(false); setManage(context); })} />}
+    {manage && <FileManagement binding={binding} data={data} manage={manage} onClose={() => setManage(undefined)} returnFocusRef={trigger} />}
   </>;
 }
 

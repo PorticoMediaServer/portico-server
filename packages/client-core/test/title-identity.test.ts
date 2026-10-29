@@ -69,3 +69,25 @@ test('a setting whose own name has a dot is one key, not a path', () => {
   assert.deepEqual(withFormValue(draft, 'library.missingTitles', 'never'), {...draft, 'library.missingTitles': 'never'});
   assert.deepEqual(withFormValue(draft, 'nested.inner', 2), {...draft, nested: {inner: 2}});
 });
+
+test('O-074: File info actions use the generated routes and carry the exact opening and occurrence', async () => {
+  const {separateFileInfoOccurrence} = await import('../src/title-identity.ts');
+  const {fileInfoPaths} = await import('../src/file-info-session.ts');
+  const calls: unknown[] = [];
+  const api = {request: async <T>(path: string, method?: string, body?: unknown): Promise<T> => { calls.push([path, method, body]); return {itemId: 'n'} as T; }};
+  assert.equal(await mergeTitles(api, 'a', 'b', {opening: 'op_1', occurrence: 'oc_1'}), 'n');
+  assert.equal(await separateFileInfoOccurrence(api, 'item/1', {opening: 'op_1', occurrence: 'oc_1'}), 'n');
+  assert.deepEqual(calls, [
+    ['/v1/admin/titles/merge', 'POST', {fromId: 'a', intoId: 'b', fileInfo: {opening: 'op_1', occurrence: 'oc_1'}}],
+    ['/v1/admin/items/item%2F1/file-info/separate', 'POST', {fileInfo: {opening: 'op_1', occurrence: 'oc_1'}}],
+  ]);
+  await assert.rejects(mergeTitles(api, 'a', 'b', {opening: 'op 1', occurrence: 'oc_1'}), 'a malformed proof is refused before sending');
+  assert.equal(fileInfoPaths.files('i/1'), '/v1/items/i%2F1/file-info');
+  assert.equal(fileInfoPaths.groups('i'), '/v1/items/i/file-info/groups');
+  assert.equal(fileInfoPaths.members('i'), '/v1/items/i/file-info/groups/members');
+  assert.equal(fileInfoPaths.headTracks('i'), '/v1/items/i/file-info/groups/head-tracks');
+  assert.equal(fileInfoPaths.tracks('i'), '/v1/items/i/file-info/tracks');
+  assert.equal(fileInfoPaths.sources('i'), '/v1/items/i/file-info/sources');
+  assert.equal(fileInfoPaths.disc('i'), '/v1/items/i/file-info/disc-titles');
+  assert.equal(fileInfoPaths.query('q/1'), '/v1/file-info-queries/q%2F1');
+});

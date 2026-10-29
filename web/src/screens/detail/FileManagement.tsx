@@ -1,42 +1,43 @@
 import {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject} from 'react';
 import {deletionAllowed, type VersionDeletePreview} from '@core/administration.ts';
-import type {DetailProjection, FileInfoProjection} from '@core/detail.ts';
+import type {DetailProjection} from '@core/detail.ts';
 import type {ContentEntry} from '@core/library-content.ts';
 import {canMergeTitles, mergeExplanation} from '@core/title-identity.ts';
 import {versionModels} from '@core/presentation/kit-model';
 import {Button, TextField, Segmented} from '../../kit/controls';
-import {Dialog, type FileInfoAction} from '../../kit/overlays';
+import {Dialog} from '../../kit/overlays';
 import {TitleProse} from '../../kit/title/TitleParts';
 import {createSearchBindings} from '../search/bindings';
 import type {DetailBindings} from './bindings';
-import {fileFacts} from './model';
+import type {FileInfoManageContext} from './TitleFileInfo';
 import {t, environment} from './text';
 import {ScreenFailure} from './Detail';
 import styles from './detail.module.css';
 
-type Props = {binding: DetailBindings; data: DetailProjection; files: FileInfoProjection; action: FileInfoAction; onClose: () => void; returnFocusRef: RefObject<HTMLButtonElement | null>};
+type Props = {binding: DetailBindings; data: DetailProjection; manage: FileInfoManageContext; onClose: () => void; returnFocusRef: RefObject<HTMLButtonElement | null>};
 
 /** Retained Split and Delete dialogs. The binding rechecks permission at each command. */
 export function FileManagement(props: Props) {
-  return props.action.action === 'delete-version' ? <DeleteVersion {...props} /> : props.action.action === 'split-versions' ? <SplitVersion {...props} /> : <MergeTitle {...props} />;
+  const action = props.manage.action.action;
+  return action === 'delete-version' ? <DeleteVersion {...props} /> : action === 'split-versions' ? <SplitVersion {...props} /> : <MergeTitle {...props} />;
 }
 
-function DeleteVersion({binding, data, files, action, onClose, returnFocusRef}: Props) {
-  const file = files.files.find(value => value.id === action.fileId);
+function DeleteVersion({binding, data, manage, onClose, returnFocusRef}: Props) {
+  const file = manage.action.fileId ? manage.files.get(manage.action.fileId) : undefined;
   const [preview, setPreview] = useState<VersionDeletePreview>(), [typed, setTyped] = useState(''), [failed, setFailed] = useState(false), [busy, setBusy] = useState(false), [kept, setKept] = useState<'file_changed' | 'file_not_removed'>();
   const request = useRef<AbortController | undefined>(undefined), [operationId] = useState(() => crypto.randomUUID());
   const read = useCallback(() => {
     request.current?.abort(); const controller = request.current = new AbortController();
     setPreview(undefined); setFailed(false); setTyped('');
-    if (file) void binding.previewDelete(data, files, file.id, controller.signal).then(value => { if (!controller.signal.aborted) setPreview(value); }, error => { if (!controller.signal.aborted) { setFailed(true); binding.context.effects.reportError(error); } });
-  }, [binding, data, files, file]);
+    if (file) void binding.previewDelete(data, manage.opening, file, controller.signal).then(value => { if (!controller.signal.aborted) setPreview(value); }, error => { if (!controller.signal.aborted) { setFailed(true); binding.context.effects.reportError(error); } });
+  }, [binding, data, manage.opening, file]);
   useEffect(() => { read(); return () => request.current?.abort(); }, [read]);
   const close = () => { if (!busy) { request.current?.abort(); onClose(); } };
   const confirm = async () => {
     if (!preview || !deletionAllowed(preview) || typed.trim() !== preview.confirmation || busy) return;
     const controller = request.current = new AbortController(); setBusy(true); setFailed(false); setKept(undefined);
     try {
-      const result = await binding.deleteVersion(data, files, preview, typed.trim(), operationId, controller.signal);
+      const result = await binding.deleteVersion(data, preview, typed.trim(), operationId, controller.signal);
       if (controller.signal.aborted) return;
       const retained = result.receipts.find(value => !value.removed);
       if (retained) setKept(retained.code === 'file_changed' ? 'file_changed' : 'file_not_removed');
@@ -55,21 +56,29 @@ function DeleteVersion({binding, data, files, action, onClose, returnFocusRef}: 
   </Dialog>;
 }
 
-function SplitVersion({binding, data, files, onClose, returnFocusRef}: Props) {
+function SplitVersion({binding, data, manage, onClose, returnFocusRef}: Props) {
   const [fileId, setFileId] = useState<string>(), [busy, setBusy] = useState(false), [notFound, setNotFound] = useState(false), [failed, setFailed] = useState(false);
   const request = useRef<AbortController | undefined>(undefined);
   useEffect(() => () => request.current?.abort(), []);
-  const models = versionModels(files.files.map(fileFacts), environment);
+  // Only a version that is one file on its own (or a flat file) can become its own title.
+  const occurrenceOf = (id: string) => manage.splitCandidates.find(candidate => candidate.id === id)?.occurrence;
+  const models = versionModels(manage.splitCandidates.map(candidate => candidate.facts), environment);
   const close = () => { request.current?.abort(); onClose(); };
   const confirm = async () => {
     if (!fileId || busy) return;
     const controller = request.current = new AbortController(); setBusy(true); setFailed(false); setNotFound(false);
     try {
-      const entry = await binding.splitVersion(data, files, fileId, controller.signal);
+      const occurrence = occurrenceOf(fileId);
+      if (!occurrence) throw new DOMException('Version changed', 'AbortError');
+      const entry = await binding.splitVersion(data, manage.opening, occurrence, controller.signal);
       if (controller.signal.aborted) return;
-      if (!entry) setNotFound(true);
-      else { onClose(); binding.context.effects.openEntry(entry); }
-    } catch (error) { if (!controller.signal.aborted) { setFailed(true); binding.context.effects.reportError(error); } }
+      onClose(); binding.context.effects.openEntry(entry);
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      // The file is no longer where the owner saw it: say so, rather than a generic failure.
+      if ((error as {code?: string})?.code === 'not_found' || (error as {code?: string})?.code === 'stale_continuation') setNotFound(true);
+      else { setFailed(true); binding.context.effects.reportError(error); }
+    }
     finally { if (!controller.signal.aborted) setBusy(false); }
   };
   return <Dialog open onOpenChange={value => { if (!value) close(); }} title={t('title.split.title')} description={data.item.title} width={480} returnFocusRef={returnFocusRef}
@@ -80,7 +89,7 @@ function SplitVersion({binding, data, files, onClose, returnFocusRef}: Props) {
   </Dialog>;
 }
 
-function MergeTitle({binding, data, files, onClose, returnFocusRef}: Props) {
+function MergeTitle({binding, data, manage, onClose, returnFocusRef}: Props) {
   const search = useMemo(() => createSearchBindings(binding.context), [binding]);
   useEffect(() => () => search.dispose(), [search]);
   const snapshot = useSyncExternalStore(search.service.subscribe, search.service.getSnapshot, search.service.getSnapshot);
@@ -97,7 +106,7 @@ function MergeTitle({binding, data, files, onClose, returnFocusRef}: Props) {
     if (!candidate || busy) return;
     const controller = request.current = new AbortController(); setBusy(true); setFailed(false);
     try {
-      const entry = await binding.mergeTitle(data, files, candidate, keepId, controller.signal);
+      const entry = await binding.mergeTitle(data, manage.opening, candidate, keepId, controller.signal, manage.sourceOccurrence);
       if (!controller.signal.aborted) { onClose(); binding.context.effects.openEntry(entry); }
     } catch (error) { if (!controller.signal.aborted) { setFailed(true); binding.context.effects.reportError(error); } }
     finally { if (!controller.signal.aborted) setBusy(false); }

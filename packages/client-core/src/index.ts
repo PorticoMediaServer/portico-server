@@ -3,6 +3,9 @@ import {resendableRefusal, retryWriterCapacity} from './writer-capacity.ts';
 export {linkAbortSignals, throwIfAborted} from './abort-lifetime.ts';
 export * from './read-preparation.ts';
 export * from './server-links.ts';
+export * from './file-info-windows.ts';
+export * from './file-info-pages.ts';
+export * from './file-info-session.ts';
 export {DATABASE_BUSY, WRITER_CAPACITY, WRITER_RETRY_BUDGET_MS, resendableRefusal, retryWriterCapacity, writerRetryDelayMs} from './writer-capacity.ts';
 export * from './reading-mark-all.ts';
 export {contentEntrySubject} from './presentation/content-entry-subject.ts';
@@ -114,20 +117,15 @@ export type MediaItem = {
   title: string;
   kind: string;
   year?: number;
-  duration: number;
+  /** Seconds. Absent when not known: in particular the server could not represent it
+   * (`durationUnrepresentable`). Never read an absent length as zero. */
+  duration?: number;
+  durationUnrepresentable?: true;
   overview?: string;
   posterUrl?: string;
   backdropUrl?: string;
   progressSeconds: number;
   available: boolean;
-  sources?: {
-    id: string;
-    container: string;
-    videoCodec: string;
-    audioCodec: string;
-    width: number;
-    height: number;
-  }[];
 };
 /** Whether a session's audio can go through the effects engine: a version 2 plan
  * the device decodes (`direct`/`converted`). */
@@ -2613,7 +2611,7 @@ export {LibraryNavigationService,navigationStorageKey,type NavigationScope,type 
 export {readListeningSimilar,LibraryContentService,type ContentView,type ContentSurface,type ContentRoute,type ContentScope,type ContentReadContext,type LibraryContentApi,type ContentEntryKind,type ContentHeading,type ContentEntry,type ContentSection,type ContentProjection,type LibraryContentSnapshot} from './library-content.ts';
 
 export * from './hosted-security.ts';
-export {DetailService,type DetailScope,type DetailTarget,type DetailApi,type PersonalState,type PersonalOfflineMutation,type PersonalConflict,type DetailAction,type DetailMetadata,type DetailEpisodeInfo,type DetailSongInfo,type DetailBookFileInfo,type DetailSource,type DetailItem,type DetailProjection,type PersonalIntent,type DetailError,type DetailSnapshot} from './detail.ts';
+export {DetailService,type DetailScope,type DetailTarget,type DetailApi,type PersonalState,type PersonalOfflineMutation,type PersonalConflict,type DetailAction,type DetailMetadata,type DetailEpisodeInfo,type DetailSongInfo,type DetailBookFileInfo,type DetailItem,type DetailProjection,type PersonalIntent,type DetailError,type DetailSnapshot} from './detail.ts';
 export * from "./personal-saved.ts";
 export {SearchService,searchPath,parseSearchHistory,type SearchGroup,type SearchSort,type SearchDirection,type SearchGroupStatus,type SearchGroupErrorCode,type SearchQuery,type SearchEntry,type SearchGroupResult,type SearchGroupCapability,type SearchCapabilities,type SearchData,type SearchSnapshot,type SearchHistoryEntry,type SearchHistoryPage} from './search.ts';
 export {readSearchGenres, releaseSearchGenres, searchGenresReadMetadata, searchGenresPath, parseSearchGenres, parseSearchGenrePreparing, type SearchGenreArt, type SearchGenre, type SearchGenrePage, type SearchGenreRequest, type SearchGenreReadOptions} from './search-genres.ts';

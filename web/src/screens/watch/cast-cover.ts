@@ -1,4 +1,4 @@
-import type {GetItemsIdResponse} from '../../../../packages/contracts/src/types.ts';
+import type {ItemResponse} from '@core/media-item.ts';
 
 /** The one related catalogue entity a Cast display may read for a cover when the
  * playing item's own projection has none. A song points at its album; an
@@ -58,7 +58,7 @@ function bookItem(kind: string): boolean { return kind === 'audiobook_file' || k
  * nothing. Returns undefined when the item already has display art or has no
  * exactly typed related id.
  */
-export function castCoverTarget(item: GetItemsIdResponse): CastCoverTarget | undefined {
+export function castCoverTarget(item: ItemResponse): CastCoverTarget | undefined {
   if (item.posterUrl || item.backdropUrl) return undefined;
   if (songItem(item.kind)) return coverTarget(item.song?.albumId, 'album');
   if (bookItem(item.kind)) return coverTarget(item.bookFile?.bookId, 'book');
@@ -72,7 +72,7 @@ export function castCoverTarget(item: GetItemsIdResponse): CastCoverTarget | und
  * guessed URL. The caller owns the read, its currentness and the guard around
  * caching/publication; this helper performs no IO and holds no state.
  */
-export function castCoverPath(expected: CastCoverTarget | undefined, related: GetItemsIdResponse | undefined): string | undefined {
+export function castCoverPath(expected: CastCoverTarget | undefined, related: ItemResponse | undefined): string | undefined {
   if (!expected || !related || related.id !== expected.id || related.missing !== false || related.kind !== expected.kind) return undefined;
   const poster = related.posterUrl;
   return cataloguePath(poster) ? poster : undefined;

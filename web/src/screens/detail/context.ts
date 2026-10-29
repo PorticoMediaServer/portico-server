@@ -74,6 +74,9 @@ export function screenLifetime(context: ScreenContext) {
       const [path, method, options] = args;
       const metadataPreview = path === '/v1/metadata/bulk/preview'
         || /^\/v1\/metadata\/bulk\/preview-queries\/[A-Za-z0-9._~-]{1,128}$/.test(path);
+      // A File info window lease is released the same way when its panel or screen goes.
+      const fileInfoRelease = method === 'DELETE' && options?.singleAttempt === true && /^\/v1\/file-info-queries\/[A-Za-z0-9._~%-]{1,1024}$/.test(path);
+      if (fileInfoRelease) return context.api.requestRaw(path, method, options);
       // This private read handle is cleanup, not a new screen command. The
       // preparation owner must be able to release it after screen retirement.
       if (metadataPreview && method === 'DELETE' && options?.singleAttempt) return context.api.requestRaw(path, method, options);

@@ -4,6 +4,8 @@ import {compact, integer, part, supplied, type FactPart, type TextEnvironment} f
 
 export type TrackFacts = Readonly<{
   id: string; resourceId?: string; streamIndex?: number;
+  /** The server's 1-based place in the whole track list, when it is windowed. */
+  ordinal?: number;
   /** HLS LABEL/NAME is transport identity, never display text to sanitize or split. */
   renditionLabel?: string;
   language?: string; title?: string; channels?: number; channelLayout?: string;
@@ -65,7 +67,7 @@ function trackModels(tracks: readonly TrackFacts[], kind: 'audio' | 'subtitle', 
     const titleSDH = flagTitle === 'sdh', titleForced = flagTitle === 'forced';
     const titleCommentary = /\bcommentary\b/i.test(title ?? '');
     const extra = !repeated && !stock && !titleSDH && !titleForced ? title : undefined;
-    const name = language || (!stock && !titleSDH && !titleForced && supplied(title) ? title : t('next.kit.track', {number: index + 1}));
+    const name = language || (!stock && !titleSDH && !titleForced && supplied(title) ? title : t('next.kit.track', {number: track.ordinal ?? index + 1}));
     const codec = codecText(kind === 'subtitle' ? track.format ?? track.codec : track.codec, t), layout = kind === 'audio' ? layoutText(track, env, context) : undefined;
     return Object.freeze({id: track.id,
       ...(track.resourceId === undefined ? {} : {resourceId: track.resourceId}),
@@ -114,6 +116,8 @@ export const fileInfoTrackModels = (tracks: readonly TrackFacts[], kind: 'audio'
 export type VersionInput = Readonly<{
   id: string; name?: string; edition?: string; container?: string; height?: number; videoCodec?: string;
   dynamicRange?: string; hdr10Plus?: boolean; bitRate?: number; sizeBytes?: number;
+  /** The server's 1-based place among every version, so a windowed list keeps its numbers. */
+  ordinal?: number;
 }>;
 export type VersionModel = Readonly<{id: string; name: readonly FactPart[]; detail: readonly FactPart[]}>;
 
@@ -124,14 +128,14 @@ export function versionModels(versions: readonly VersionInput[], env: TextEnviro
   const models = versions.map((v, i): VersionModel => {
     const height = integer(v.height) && v.height >= 2100 ? t('next.kit.4k') : heightText(v.height, t), codec = codecText(v.videoCodec, t), hdr = hdrText(v.dynamicRange, v.hdr10Plus, t);
     const name = compact([supplied(v.name) ? part('name', v.name, 'identity') : undefined, height ? part('resolution', height, 'value') : undefined, codec ? part('video-codec', codec) : undefined, hdr ? part('dynamic-range', hdr) : undefined, supplied(v.container) ? part('container', v.container.toUpperCase()) : undefined]);
-    return Object.freeze({id: v.id, name: name.length ? name : [part('version', t('next.kit.version', {number: i + 1}), 'identity')], detail: compact([supplied(v.edition) && v.edition !== v.name ? part('edition', v.edition, 'context') : undefined])});
+    return Object.freeze({id: v.id, name: name.length ? name : [part('version', t('next.kit.version', {number: v.ordinal ?? i + 1}), 'identity')], detail: compact([supplied(v.edition) && v.edition !== v.name ? part('edition', v.edition, 'context') : undefined])});
   });
   const groups = new Map<string, number[]>();
   models.forEach((m, i) => { const key = JSON.stringify([m.name.map(p => p.text), m.detail.map(p => p.text)]); const group = groups.get(key) ?? []; group.push(i); groups.set(key, group); });
   for (const group of groups.values()) if (group.length > 1) {
     const rates = group.map(i => bitRateText(versions[i]!.bitRate, t)), sizes = group.map(i => bytesText(versions[i]!.sizeBytes, t));
     const distinct = (list: (string | undefined)[]) => list.every(supplied) && new Set(list).size === list.length;
-    const values = distinct(rates) ? rates : distinct(sizes) ? sizes : group.map(i => t('next.kit.version', {number: i + 1}));
+    const values = distinct(rates) ? rates : distinct(sizes) ? sizes : group.map(i => t('next.kit.version', {number: versions[i]!.ordinal ?? i + 1}));
     const id = distinct(rates) ? 'bitrate' : distinct(sizes) ? 'size' : 'ordinal';
     group.forEach((i, n) => { models[i] = Object.freeze({...models[i]!, detail: compact([...models[i]!.detail, part(id, values[n]!, 'supplement')])}); });
   }

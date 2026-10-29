@@ -1,27 +1,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type {GetItemsIdResponse} from '../../packages/contracts/src/types.ts';
+import type {ItemResponse} from '../../packages/client-core/src/media-item.ts';
 import {castCoverPath, castCoverTarget} from '../src/screens/watch/cast-cover.ts';
 
-const item = (fields: Partial<GetItemsIdResponse>): GetItemsIdResponse => ({
+const item = (fields: Partial<ItemResponse>): ItemResponse => ({
   addedAt: null, available: true, durationMs: 180_000, id: 'song-1', kind: 'song',
   libraryId: 'music', missing: false, progressMs: 0, title: 'DNA.', ...fields,
-} as GetItemsIdResponse);
+} as ItemResponse);
 
-const song = (albumId: string): NonNullable<GetItemsIdResponse['song']> => ({
+const song = (albumId: string): NonNullable<ItemResponse['song']> => ({
   albumArtist: 'Kendrick Lamar', albumId, albumTitle: 'DAMN.', artist: 'Kendrick Lamar',
   providerMatchStatus: 'matched', providerReleaseStatus: 'matched',
 });
 
-const bookFile = (bookId: string): NonNullable<GetItemsIdResponse['bookFile']> => ({
+const bookFile = (bookId: string): NonNullable<ItemResponse['bookFile']> => ({
   bookId, bookTitle: 'Project Hail Mary', sourceBoundary: 'file',
 });
 
-const relatedAlbum = (fields: Partial<GetItemsIdResponse> = {}): GetItemsIdResponse => item({
+const relatedAlbum = (fields: Partial<ItemResponse> = {}): ItemResponse => item({
   id: 'album-1', kind: 'album', title: 'DAMN.', posterUrl: '/v1/items/album-1/art/poster', ...fields,
 });
 
-const relatedBook = (fields: Partial<GetItemsIdResponse> = {}): GetItemsIdResponse => item({
+const relatedBook = (fields: Partial<ItemResponse> = {}): ItemResponse => item({
   id: 'book-1', kind: 'book', title: 'Project Hail Mary', libraryId: 'books', posterUrl: '/v1/items/book-1/art/poster', ...fields,
 });
 
@@ -81,8 +81,8 @@ test('a related cover is selected only for the exact expected entity', () => {
 });
 
 test('the related read must prove missing === false', () => {
-  assert.equal(castCoverPath(albumTarget, {...relatedAlbum(), missing: undefined} as unknown as GetItemsIdResponse), undefined);
-  assert.equal(castCoverPath(albumTarget, {...relatedAlbum(), missing: 'false'} as unknown as GetItemsIdResponse), undefined);
+  assert.equal(castCoverPath(albumTarget, {...relatedAlbum(), missing: undefined} as unknown as ItemResponse), undefined);
+  assert.equal(castCoverPath(albumTarget, {...relatedAlbum(), missing: 'false'} as unknown as ItemResponse), undefined);
   assert.equal(castCoverPath(albumTarget, relatedAlbum({missing: true})), undefined);
 });
 

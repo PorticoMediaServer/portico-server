@@ -142,7 +142,8 @@ test('one part of a title page that cannot be read is left out and the page is k
  assert.deepEqual([metadata.metadata.ratings.length,metadata.metadata.genres.length,metadata.metadata.status,metadata.metadata.creditTotals],[1,1,'available',undefined]);
  // What the page is only drawn with reads neutrally; fields this app does not know are ignored.
  const bare=await read(d=>{d.item={id:'item',libraryId:'library',kind:'hologram',year:-1,overview:42,posterUrl:'bad\nurl',future:1};d.personal={revision:4,rating:11,status:'syncing',conflicts:[{id:'c'},{id:'c1',field:'rating',baseRevision:1,choices:[{operationId:'o',deviceId:'d',authoredAt:'t',value:1},{}]}]};delete d.metadata;d.actions=undefined;d.future={a:1};d.markers='nope';});
- assert.deepEqual(bare.item,{id:'item',libraryId:'library',title:'',kind:'hologram',duration:0,progressSeconds:0,available:false});
+ // P2-29: a length the page does not carry stays unknown, never a made-up zero.
+ assert.deepEqual(bare.item,{id:'item',libraryId:'library',title:'',kind:'hologram',progressSeconds:0,available:false});
  assert.deepEqual(bare.personal,{watchlisted:false,favorite:false,rating:null,revision:4,watched:false,progressSeconds:0,lastPlayedAt:'',status:'current',conflicts:[{id:'c1',field:'rating',baseRevision:1,baseValue:undefined,choices:[{operationId:'o',deviceId:'d',authoredAt:'t',value:1}]}]});
  assert.deepEqual([bare.metadata,bare.actions,bare.markers,'future' in bare],[{status:'unavailable',ratings:[],genres:[],credits:[]},[],[],false]);
  // Related rows this app cannot read are left out whole.
@@ -208,16 +209,6 @@ test('a page of credits keeps the credits it can read; the group asked for, the 
  const page=parseCreditPage({revision,group:'cast',total:1,future:true,credits:[credit('1'),{name:'No id'},'nope',{...credit('2'),portraitUrl:'/v1/metadata/item/other/art/portrait?v=1',future:1}],nextCursor:'next'},'item','cast');
  assert.deepEqual(page,{revision,group:'cast',credits:[credit('1'),credit('2')],total:2,nextCursor:'next'});
  for(const broken of [{group:'crew',total:0,credits:[]},{group:'cast',total:0,credits:'nope'},{group:'cast',total:0,credits:[],nextCursor:7},{group:'cast',total:0,credits:Array(10001).fill(credit('1'))}])assert.throws(()=>parseCreditPage(broken,'item','cast'),{code:'invalid_detail'});
-});
-
-test('lazy file information binds scope and keeps member responses free of owner paths', async()=>{
- const {parseFileInfo,readFileInfo}=await import('../src/detail.ts');
- const raw={scope:{serverId:'server',libraryId:'library',itemId:'item',viewerFence:'fence'},revision:{catalog:1,viewer:0},kind:'movie',files:[{id:'version',container:'mkv',durationMs:100000,size:1000,available:true,audio:[{codec:'aac',language:'en'}],subtitles:[]}]};
- const parsed=parseFileInfo(raw,scope,target);assert.equal(parsed.files[0].duration,100);assert.equal(parsed.manage,undefined);
- assert.throws(()=>parseFileInfo({...raw,scope:{...raw.scope,itemId:'other'}},scope,target));
- assert.throws(()=>parseFileInfo({...raw,files:[{...raw.files[0],path:'/private/movie.mkv'}]},scope,target));
- const owner=parseFileInfo({...raw,manage:{delete:true,split:true,merge:true},files:[{...raw.files[0],path:'/private/movie.mkv'}]},scope,target);assert.equal(owner.files[0].path,'/private/movie.mkv');
- let requested='';await readFileInfo({request:async<T>(path:string)=>{requested=path;return raw as T;}},scope,target);assert.equal(requested,'/v1/items/item/file-info');
 });
 
 test('detail recommendation and credit pages preserve all 537 loaded entries and reject a different revision', async()=>{

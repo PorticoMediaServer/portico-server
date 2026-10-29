@@ -1,6 +1,6 @@
 import type {ContentEntry} from '@core/library-content.ts';
 import type {CardSubject, PlaybackSubject} from '@core/presentation/kit-model/index.ts';
-import type {GetItemsIdResponse} from '../../../../packages/contracts/src/types.ts';
+import type {ItemResponse} from '@core/media-item.ts';
 
 export function entrySubject(entry: ContentEntry): PlaybackSubject {
   if (entry.kind === 'ebook' || entry.kind === 'comic' || entry.kind === 'radio') throw new Error('invalid_playback_item');
@@ -13,7 +13,7 @@ export function entrySubject(entry: ContentEntry): PlaybackSubject {
   return {kind: entry.kind === 'song' ? 'music' : ['audiobook_file', 'book', 'chapter'].includes(entry.kind) ? 'audiobook' : 'video', item};
 }
 
-export function itemSubject(raw: GetItemsIdResponse): PlaybackSubject {
+export function itemSubject(raw: ItemResponse): PlaybackSubject {
   if (!['movie', 'episode', 'extra', 'song', 'audiobook_file'].includes(raw.kind) || !raw.id || !raw.title) throw new Error('invalid_playback_item');
   const episode = raw.episode;
   const item: CardSubject = {

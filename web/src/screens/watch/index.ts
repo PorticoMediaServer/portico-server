@@ -1,7 +1,5 @@
 export {WatchScreen} from './WatchScreen';
 export type {WatchBindings, WatchScreenProps, WatchSurfaces, WatchPanel, WatchPanelContext, WatchWindowPort, WatchGeometry, WatchRect, WatchTrickplay} from './types';
-export {readWatchFileInfo, readWatchFiles, watchFileGroups} from './file-info';
-export type {WatchFileInfoSource, WatchFileGroup, WatchFiles} from './file-info';
 export {WatchSkipPrompt} from './SkipPrompt';
 export {WatchUndoPrompt} from './UndoPrompt';
 export {WatchUpNextPrompt} from './UpNextPrompt';

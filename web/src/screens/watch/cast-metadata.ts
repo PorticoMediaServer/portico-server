@@ -1,4 +1,4 @@
-import type {GetItemsIdResponse} from '../../../../packages/contracts/src/types.ts';
+import type {ItemResponse} from '@core/media-item.ts';
 import {encodedRoutePath} from '../../../../packages/contracts/src/routes.ts';
 import {parseMediaItem} from '@core/media-item.ts';
 import type {CastApi, CastMetadata} from '@core/cast/index.ts';
@@ -8,10 +8,10 @@ import {castCoverPath, castCoverTarget} from './cast-cover';
  * relation comes only from the admitted item's own projection; it cannot select
  * another item, a new viewer or a replacement API. */
 export async function readWatchCastMetadata(api: CastApi, itemId: string, assertCurrent: () => void, purpose: 'identity' | 'cover'): Promise<Readonly<{
-  item: GetItemsIdResponse; metadata: CastMetadata;
+  item: ItemResponse; metadata: CastMetadata;
 }>> {
   assertCurrent();
-  const raw = await api.request<GetItemsIdResponse>(encodedRoutePath('get_items_id', {id: encodeURIComponent(itemId)}));
+  const raw = await api.request<ItemResponse>(encodedRoutePath('get_items_id', {id: encodeURIComponent(itemId)}));
   assertCurrent();
   const item = parseMediaItem(raw);
   if (item.id !== itemId) throw new Error('cast_item_mismatch');
@@ -21,7 +21,7 @@ export async function readWatchCastMetadata(api: CastApi, itemId: string, assert
   if (target) {
     try {
       assertCurrent();
-      const related = await api.request<GetItemsIdResponse>(encodedRoutePath('get_items_id', {id: encodeURIComponent(target.id)}));
+      const related = await api.request<ItemResponse>(encodedRoutePath('get_items_id', {id: encodeURIComponent(target.id)}));
       assertCurrent();
       artworkPath = castCoverPath(target, related);
     } catch {

@@ -2,7 +2,7 @@ import {subscribePresentation} from '../../shell/fact-hooks';
 import {shellLanguage} from '../../shell/settings';
 import {GroupSessionService, type GroupSessionSnapshot} from '@core/group-session.ts';
 import {encodedRoutePath} from '../../../../packages/contracts/src/routes.ts';
-import type {GetItemsIdResponse} from '../../../../packages/contracts/src/types.ts';
+import type {ItemResponse} from '@core/media-item.ts';
 import {parseMediaItem} from '@core/media-item.ts';
 import {subscribeFreshness} from '@core/freshness.ts';
 import type {ShellAssemblyContext} from '../../shell/bootstrap';
@@ -10,7 +10,7 @@ import type {WatchBindings} from '../watch';
 import {router} from '../../router';
 import {TogetherItemSummaries} from './item-summaries';
 
-export type TogetherSnapshot = Readonly<{room: GroupSessionSnapshot; items: ReadonlyMap<string, GetItemsIdResponse>}>;
+export type TogetherSnapshot = Readonly<{room: GroupSessionSnapshot; items: ReadonlyMap<string, ItemResponse>}>;
 /** Inert construction. The persistent Watch parent starts/disposes it for one captured session. */
 export function createTogetherBindings(context: ShellAssemblyContext, playback: WatchBindings) {
   const captured = context.session(), life = new AbortController();
@@ -34,9 +34,9 @@ export function createTogetherBindings(context: ShellAssemblyContext, playback: 
   let snapshot: TogetherSnapshot = {room: service.getSnapshot(), items: new Map()}, key = '', offGroup: (() => void) | undefined, offPreferences: (() => void) | undefined, offFreshness: (() => void) | undefined, started = false;
   const publish = (items = snapshot.items) => {snapshot = Object.freeze({room: service.getSnapshot(), items});for (const listener of [...listeners]) listener();};
   const catalogueRevisions = new Map<string, string>();
-  const summaries = new TogetherItemSummaries<GetItemsIdResponse>({current: isCurrent, publish, reportError: playback.reportError,
+  const summaries = new TogetherItemSummaries<ItemResponse>({current: isCurrent, publish, reportError: playback.reportError,
     read: async (id, signal) => {
-      const raw = await api.request<GetItemsIdResponse>(encodedRoutePath('get_items_id', {id: encodeURIComponent(id)}), 'GET', undefined, signal);
+      const raw = await api.request<ItemResponse>(encodedRoutePath('get_items_id', {id: encodeURIComponent(id)}), 'GET', undefined, signal);
       if (parseMediaItem(raw).id !== id) throw new Error('unexpected_group_item');
       return raw;
     },

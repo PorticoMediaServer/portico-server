@@ -1,4 +1,5 @@
 import type {GuideChannelMark} from './channel-guide.ts';
+import type {FileInfoActionProof} from './file-info-pages.ts';
 import {parsePersistedRemoteConfiguration, type PersistedRemoteConfiguration} from './linear-api.ts';
 import {parseInventorySource,type InventorySource} from './library-inventory.ts';
 import {encodedRoutePath} from "../../contracts/src/route-paths.ts";
@@ -462,9 +463,12 @@ export function parseVersionDeletePreview(raw:unknown):VersionDeletePreview{
 }
 export function versionDeletionService(request:<T>(path:string,method?:string,body?:unknown)=>Promise<T>){
  const path=(item:string,asset:string)=>encodedRoutePath("delete_title_version", {"id": encodeURIComponent(item), "fileId": encodeURIComponent(asset)});
+ // From File info, `fileInfo` names the exact occurrence of the accepted opening; the route's
+ // item and file must be that occurrence's. The server refuses a stale opening before any change.
+ const proof=(fileInfo?:FileInfoActionProof)=>fileInfo?{fileInfo:{opening:fileInfo.opening,occurrence:fileInfo.occurrence}}:{};
  return Object.freeze({
-  async preview(item:string,asset:string){return parseVersionDeletePreview(await request<unknown>(path(item,asset)+'/delete/preview','POST'));},
-  async remove(preview:VersionDeletePreview,confirmation:string,operationId:string){return parseDeleteResult(await request<unknown>(path(preview.targets[0].itemId,preview.assetId),'DELETE',{confirmation,operationId,previewKey:preview.previewKey}));},
+  async preview(item:string,asset:string,fileInfo?:FileInfoActionProof){return parseVersionDeletePreview(await request<unknown>(encodedRoutePath("preview_delete_title_version", {"id": encodeURIComponent(item), "fileId": encodeURIComponent(asset)}),'POST',fileInfo?proof(fileInfo):undefined));},
+  async remove(preview:VersionDeletePreview,confirmation:string,operationId:string,fileInfo?:FileInfoActionProof){return parseDeleteResult(await request<unknown>(path(preview.targets[0].itemId,preview.assetId),'DELETE',{confirmation,operationId,previewKey:preview.previewKey,...proof(fileInfo)}));},
  });
 }
 

@@ -1,4 +1,5 @@
 import {routeBody} from "../../contracts/src/routes.ts";
+import type {FileInfoActionProof} from './file-info-pages.ts';
 import type {RouteResponse} from "../../contracts/src/route-paths.ts";
 import {routePath, encodedRoutePath} from "../../contracts/src/route-paths.ts";
 /** Titles as things in their own right: titles whose files are gone from disk,
@@ -68,9 +69,13 @@ export async function emptyMissingTitles(api:TitleIdentityApi,libraryId?:string,
 }
 /** Says two titles of one library are the same title: `fromId` becomes part of `intoId`, with its
  * files as versions and everyone's state combined. Returns the id that remains. */
-export async function mergeTitles(api:TitleIdentityApi,fromId:string,intoId:string):Promise<string>{
+/** From File info, `fileInfo` proves the exact source file of the opening the owner acted on; the
+ * server refuses a stale proof with 409 before changing anything. */
+const proofToken=(v:unknown)=>typeof v==='string'&&v.length>0&&v.length<=1024&&!/[\s\x00-\x1f\x7f]/.test(v);
+export async function mergeTitles(api:TitleIdentityApi,fromId:string,intoId:string,fileInfo?:FileInfoActionProof):Promise<string>{
  if(!id(fromId)||!id(intoId)||fromId===intoId)invalid('titles to merge');
- const out=await api.request<RouteResponse<"merge_titles">>(routePath("merge_titles"),'POST',routeBody("merge_titles", {fromId,intoId}));
+ if(fileInfo&&(!proofToken(fileInfo.opening)||!proofToken(fileInfo.occurrence)))invalid('titles to merge');
+ const out=await api.request<RouteResponse<"merge_titles">>(routePath("merge_titles"),'POST',routeBody("merge_titles", {fromId,intoId,...(fileInfo?{fileInfo:{opening:fileInfo.opening,occurrence:fileInfo.occurrence}}:{})}));
  if(!obj(out)||!id(out.itemId))invalid('merged title');
  return out.itemId;
 }
@@ -158,6 +163,14 @@ export async function separateLibraryFolder(api:TitleIdentityApi,libraryId:strin
 }
 
 /** Says one file is not a version of the title it was grouped with: it becomes a title of its own, and the choice is remembered across scans. Returns the new title's id. */
+/** "Not this title" from File info: the server resolves the exact occurrence by point and applies
+ * the same separate action. No library inventory lookup. Returns the new title's id. */
+export async function separateFileInfoOccurrence(api:TitleIdentityApi,itemId:string,fileInfo:FileInfoActionProof):Promise<string>{
+ if(!id(itemId)||!proofToken(fileInfo.opening)||!proofToken(fileInfo.occurrence))invalid('file to separate');
+ const out=await api.request<RouteResponse<"separate_item_file_info">>(routePath("separate_item_file_info",{id:itemId}),'POST',routeBody("separate_item_file_info",{fileInfo:{opening:fileInfo.opening,occurrence:fileInfo.occurrence}}));
+ if(!obj(out)||!id(out.itemId))invalid('separated title');
+ return out.itemId;
+}
 export async function separateLibraryFile(api:TitleIdentityApi,libraryId:string,file:LibraryFileRecord):Promise<string>{
  if(!id(libraryId)||!id(file.objectId)||!id(file.revision))invalid('file to separate');
  const out=await api.request<unknown>(libraryBase(libraryId)+'/inventory/'+encodeURIComponent(file.objectId)+'/separate','POST',{revision:file.revision});

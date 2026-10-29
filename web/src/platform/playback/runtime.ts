@@ -6,7 +6,7 @@ import {capacityRetryHttp, type WebPlaybackCapacityWait} from './capacity-retry'
 import {startFailureHttp, type WebPlaybackStartFailure} from './start-failure';
 import {PlaybackService, type PlaybackSnapshot} from '@core/index.ts';
 import {encodedRoutePath} from '../../../../packages/contracts/src/routes.ts';
-import type {GetItemsIdResponse} from '../../../../packages/contracts/src/types.ts';
+import type {ItemResponse} from '@core/media-item.ts';
 import {parseMediaItem} from '@core/media-item.ts';
 import {localV1Http} from '@core/playback-v1/local-http.ts';
 import {V1QueuePlayer} from '@core/playback-v1/v1-queue-player.ts';
@@ -571,7 +571,7 @@ export class WebShellPlaybackRuntime {
     const finishRetention = this.retainMediaStart(context.signal, () => serial === this.operation);
     try {
       const reading = AbortSignal.any([context.signal, previous.life.signal, this.life.signal]);
-      const raw = await this.source.api.request<GetItemsIdResponse>(encodedRoutePath('get_items_id', {id: encodeURIComponent(captured.itemId)}), 'GET', undefined, reading);
+      const raw = await this.source.api.request<ItemResponse>(encodedRoutePath('get_items_id', {id: encodeURIComponent(captured.itemId)}), 'GET', undefined, reading);
       check();
       if (!this.current(previous) || serial !== this.operation) problem('stale_selection_context');
       const item = parseMediaItem(raw);
@@ -649,7 +649,7 @@ export class WebShellPlaybackRuntime {
     const serial = ++this.operation, previous = this.stack;
     const finishRetention = this.retainMediaStart(context.signal, () => serial === this.operation);
     try {
-      const raw = await this.source.api.request<GetItemsIdResponse>(encodedRoutePath('get_items_id', {id: encodeURIComponent(itemId)}), 'GET', undefined, AbortSignal.any([context.signal, previous.life.signal, this.life.signal]));
+      const raw = await this.source.api.request<ItemResponse>(encodedRoutePath('get_items_id', {id: encodeURIComponent(itemId)}), 'GET', undefined, AbortSignal.any([context.signal, previous.life.signal, this.life.signal]));
       if (!this.current(previous) || serial !== this.operation || context.signal.aborted || !context.isCurrent()) problem('stale_selection_context');
       const item = parseMediaItem(raw);if (item.id !== itemId || !item.available || raw.missing) problem('invalid_playback_target');
       const stack = this.replace();stack.itemId = item.id;stack.libraryId = item.libraryId;stack.subject = itemSubject(raw);stack.posterUrl = item.posterUrl;stack.backdropUrl = item.backdropUrl;stack.expanded = stack.subject.kind !== 'music';
@@ -1266,7 +1266,7 @@ export class WebShellPlaybackRuntime {
     const current = () => this.current(stack) && stack.sessionKey === key && !abort.signal.aborted;
     const read = async () => {
       if (stack.metadataItemId !== itemId || !stack.libraryId || !stack.subject) {
-        const raw = await this.source.api.request<GetItemsIdResponse>(encodedRoutePath('get_items_id', {id: encodeURIComponent(itemId)}), 'GET', undefined, AbortSignal.any([abort.signal, stack.life.signal]));
+        const raw = await this.source.api.request<ItemResponse>(encodedRoutePath('get_items_id', {id: encodeURIComponent(itemId)}), 'GET', undefined, AbortSignal.any([abort.signal, stack.life.signal]));
         const item = parseMediaItem(raw);
         if (!current()) return;
         if (item.id !== itemId || !item.available || raw.missing) problem('invalid_playback_item');
