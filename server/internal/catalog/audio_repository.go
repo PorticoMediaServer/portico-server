@@ -268,6 +268,9 @@ func settleEmptiedInto(ctx context.Context, tx *sql.Tx, id, into int64, checks [
 		return compactcatalog.RetireEntityTx(ctx, tx, id)
 	}
 	if into != 0 && into != id {
+		if err := compactcatalog.RequireEntityAcquirableTx(ctx, tx, into); err != nil {
+			return err
+		}
 		for _, q := range []string{
 			// Ids it had absorbed lead on, and then its own.
 			`UPDATE catalog_merged_ids SET entity_id=?2 WHERE entity_id=?1`,
