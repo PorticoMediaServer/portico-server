@@ -48,12 +48,12 @@ func (d Dependencies) homeRequest(r *http.Request) (identity.Principal, catalog.
 // homeRequestFor is homeRequest with the viewer and their restriction already
 // resolved, so it can run inside the caller's read snapshot.
 func (d Dependencies) homeRequestFor(r *http.Request, p identity.Principal, restrictions identity.ContentRestrictions) (catalog.HomeRequest, error) {
-	libraries, fence, e := d.homeScopeFor(r, p)
+	libraries, fence, privacy, e := d.homeScopeFences(r, p)
 	if e != nil {
 		return catalog.HomeRequest{}, e
 	}
 	viewer := catalog.Viewer{Profile: identity.PersonalKey(p.Viewer), Fence: fence, Libraries: libraries, Restrictions: restrictions}
-	request := catalog.HomeRequest{Viewer: viewer, ServerID: d.Identity.ID(), Profile: identity.PersonalKey(p.Viewer), ViewerFence: fence, Libraries: libraries, Restrictions: restrictions}
+	request := catalog.HomeRequest{Viewer: viewer, ServerID: d.Identity.ID(), Profile: identity.PersonalKey(p.Viewer), ViewerFence: fence, PrivacyFence: privacy, Libraries: libraries, Restrictions: restrictions}
 	if identity.CanUsePersonalState(p) {
 		request.ReadingPersonalAuthorize = func(tx *sql.Tx, library string) error {
 			live, err := d.Identity.PrincipalByDigestTx(r.Context(), tx, p.Hash)

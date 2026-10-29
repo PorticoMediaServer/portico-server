@@ -34,8 +34,18 @@ func (d Dependencies) homeScope(r *http.Request) (identity.Principal, []string, 
 
 // homeScopeFor is homeScope with the principal already resolved.
 func (d Dependencies) homeScopeFor(r *http.Request, p identity.Principal) ([]string, string, error) {
+	ids, fence, _, e := d.homeScopeFences(r, p)
+	return ids, fence, e
+}
+
+// homeScopeFences is homeScopeFor plus the privacy fence: the same inputs without the
+// allowed library ID list. The viewer fence changes whenever a library is added or
+// removed; the privacy fence changes only when who the viewer is, or what they may see,
+// changes (account epoch, policy, restrictions, content fence). Clients rebuild their
+// whole shell on the privacy fence and merely refresh on the viewer fence.
+func (d Dependencies) homeScopeFences(r *http.Request, p identity.Principal) ([]string, string, string, error) {
 	var ids []string
-	var fence string
+	var fence, privacy string
 	resolve := func(ctx context.Context) error {
 		libraries, e := d.Catalog.WithContext(ctx).Libraries()
 		if e != nil {
@@ -75,15 +85,23 @@ func (d Dependencies) homeScopeFor(r *http.Request, p identity.Principal) ([]str
 			return e
 		}
 		fence = fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d:%d:%d:%s:%s", presentationIdentity(p), p.Epoch, policy, restriction, raw, contentFence))))
+		privacy = homePrivacyFence(p, policy, restriction, contentFence)
 		return nil
 	}
 	if d.DB == nil {
-		return ids, fence, resolve(r.Context())
+		e := resolve(r.Context())
+		return ids, fence, privacy, e
 	}
 	if e := dbwork.WithReadSnapshot(r.Context(), d.DB, resolve); e != nil {
-		return nil, "", e
+		return nil, "", "", e
 	}
-	return ids, fence, nil
+	return ids, fence, privacy, nil
+}
+
+// homePrivacyFence hashes every viewer-fence input except the library list, under its own
+// label so it can never equal a viewer fence.
+func homePrivacyFence(p identity.Principal, policy, restriction int64, contentFence string) string {
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("privacy:%s:%d:%d:%d:%s", presentationIdentity(p), p.Epoch, policy, restriction, contentFence))))
 }
 
 // homeFenceAfter is the post-read authorisation proof. The catalogue half of the
