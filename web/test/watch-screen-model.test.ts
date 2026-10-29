@@ -472,5 +472,8 @@ test('the actual screen renders one empty picture target and real identity, with
   }));
   assert.doesNotMatch(render(pending), /class="watch" hidden/);
   dock.remote({id: 'cast', kind: 'cast', phase: 'playing', sequence: '2', playback, positionSeconds: 35}, 1000);
-  assert.match(render(snapshot({dock: dock.getSnapshot()})), /class="watch" hidden/);
+  const closed = render(snapshot({dock: dock.getSnapshot()}));
+  assert.match(closed, /class="watch" hidden/);
+  // A-03: a closed root never carries visible controls, so the commit that shows it can't paint them at full opacity.
+  assert.match(closed, /data-controls-visible="false"/);
 });

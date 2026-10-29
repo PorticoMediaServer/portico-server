@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState, type KeyboardEvent, type ReactNode} from 'react';
+import {useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import {ChannelMark} from '../../kit/artwork';
 import {Button} from '../../kit/controls';
@@ -50,6 +50,24 @@ export function LiveChrome({port, playing, onCollapse, onStop, onPlayPause, onSk
   const window = port.window, channel = port.channel, programme = port.programme;
   const displayWindow = scrub === undefined || !liveRailDragHeld(drag.current, port.fence) ? window : {...window, positionMs: scrub};
   const railFacts = liveRail(displayWindow), behindSeconds = Math.max(0, (window.liveEdgeMs - displayWindow.positionMs) / 1000);
+  const times = useRef<HTMLDivElement>(null), goLive = useRef<HTMLButtonElement>(null), [goLiveRoom, setGoLiveRoom] = useState<{start: number; end: number; docked: boolean}>();
+  // The Go live pill rides the live edge between the position and "Ends" labels and never covers
+  // either; where they leave no room for it (phone width, long labels) it sits after the bar
+  // instead, as phone-player.html draws it.
+  useLayoutEffect(() => {
+    const row = times.current, pill = goLive.current;
+    if (!row || !pill || typeof ResizeObserver === 'undefined') return;
+    const measure = () => {
+      const [position, ends] = [row.firstElementChild, row.lastElementChild].map(node => (node as HTMLElement | null)?.offsetWidth ?? 0);
+      const half = pill.offsetWidth / 2, start = position + 12 + half, end = ends + 12 + half;
+      const next = {start, end, docked: start + end > row.clientWidth};
+      setGoLiveRoom(prior => prior && prior.start === next.start && prior.end === next.end && prior.docked === next.docked ? prior : next);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    for (const node of [row, pill, row.firstElementChild, row.lastElementChild]) if (node) observer.observe(node);
+    return () => observer.disconnect();
+  }, [window.atLive]);
   const behind = liveBehindLabel(behindSeconds), next = liveNextLine(port), range = programme ? liveTimeRange(programme.startMs, programme.endMs, time) : undefined;
   const recordLabel = liveRecordLabel(programme);
   const openGuide = (value: boolean) => {
@@ -106,7 +124,7 @@ export function LiveChrome({port, playing, onCollapse, onStop, onPlayPause, onSk
         {(range || next) && <p>{range}{range && next && <i className={styles.gap}/>}{next}</p>}
       </div>
       <div className={styles.tools}>
-        {channel.recordAvailable && programme && recordLabel && <Button className={styles.record} variant="glass" size="small" icon="i-rec" disabled={recordingBusy} onClick={record}>{recordLabel}</Button>}
+        {channel.recordAvailable && programme && recordLabel && <Button className={styles.record} variant="glass" size="small" icon="i-rec" disabled={recordingBusy} onClick={record}><span className={styles.recordText}>{recordLabel}</span></Button>}
         <button type="button" className={styles.control} aria-label={t('player.more')} title={t('player.more')} onClick={event => onMore(event.currentTarget)}><Icon name="i-more" size={24}/></button>
         <LiveControl icon="i-close" label={t('player.close')} onClick={onStop}/>
       </div>
@@ -148,11 +166,12 @@ export function LiveChrome({port, playing, onCollapse, onStop, onPlayPause, onSk
           <span className={styles.edge} style={{left: `${railFacts.edge}%`}} title={t('guide.live')}/>
           <span className={styles.knob} style={{left: `${railFacts.knob}%`}}/>
         </div>
+        {!window.atLive && <button ref={goLive} type="button" className={styles.goLive} data-docked={goLiveRoom?.docked || undefined}
+          style={goLiveRoom && !goLiveRoom.docked ? {left: `clamp(${goLiveRoom.start}px, ${railFacts.edge}%, calc(100% - ${goLiveRoom.end}px))`} : undefined}
+          aria-label={t('player.live.goLive')} onClick={() => act(port.goLive)}><i/>{t('player.live.goLive')}</button>}
       </div>
-      <div className={styles.times}>
+      <div ref={times} className={styles.times}>
         <span><b>{time(displayWindow.positionMs)}</b>{behind && <><i className={styles.gap}/><em>{behind}</em></>}</span>
-        {!window.atLive && <button type="button" className={styles.goLive} style={{left: `clamp(72px, ${railFacts.edge}%, calc(100% - 72px))`}} aria-label={t('player.live.goLive')}
-          onClick={() => act(port.goLive)}><i/>{t('player.live.goLive')}</button>}
         <span>{programme && t('guide.ends', {time: time(programme.endMs)})}</span>
       </div>
       <div className={styles.controls}>

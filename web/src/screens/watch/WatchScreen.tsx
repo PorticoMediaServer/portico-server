@@ -105,9 +105,13 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   const open = expanded && valid && presentation.kind === 'video' && snapshot.dock.remote?.phase !== 'playing';
   // A-05: a closed panel (options, episodes, queue, playback info) keeps painting while it leaves.
   const panelPresence = useLeavingPresence(open ? panel : null);
-  const chromeVisible = (visible || permanent || liveGuideOpen) && !infoHidesChrome && !landing && !leaving;
   const openedBefore = useRef(open), leavingNow = useRef(false); leavingNow.current = leaving;
   const gesturePreview = !!videoGesture?.preview;
+  // The commit that shows the root already holds the controls back: the landing state below is
+  // set after that commit, and a style read in between would paint them at full opacity and fade
+  // them out (A-03). A closed root carries no visible controls either (a gesture preview keeps its own).
+  const landingPending = open && !openedBefore.current && !leaving && !gesturePreview;
+  const chromeVisible = (visible || permanent || liveGuideOpen) && (open || gesturePreview) && !infoHidesChrome && !landing && !landingPending && !leaving;
   useLayoutEffect(() => {
     if (open === openedBefore.current) return;
     openedBefore.current = open;
@@ -357,7 +361,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   const promptHost = useMemo<PromptFocusHost | undefined>(() => promptSource ? {...promptSource, source: promptSource, seekPresent,
     controlsVisible: chromeVisible, focusAllowed: promptFocusAllowed} : undefined,
   [promptSource, seekPresent, chromeVisible, promptFocusAllowed]);
-  return <div ref={attachRoot} className={styles.watch} hidden={!open && !leaving && !videoGesture?.preview} inert={!open || undefined} aria-hidden={!open || undefined} data-video-preview={!open && videoGesture?.preview || undefined} tabIndex={-1} data-watch-screen data-mode={mode} data-still-watching={stillWatching || undefined} data-touch-expanded={coarsePointer && width >= 1024 || undefined} data-controls-visible={chromeVisible} data-controls-exit={leaving ? 'close' : controlsExit} data-panel-open={!!panel} data-scrubbing={!!activeScrub && mobile}
+  return <div ref={attachRoot} className={styles.watch} hidden={!open && !leaving && !videoGesture?.preview} inert={!open || undefined} aria-hidden={!open || undefined} data-video-preview={!open && videoGesture?.preview || undefined} tabIndex={-1} data-watch-screen data-mode={mode} data-still-watching={stillWatching || undefined} data-touch-expanded={coarsePointer && width >= 1024 || undefined} data-controls-visible={chromeVisible} data-live-guide-open={liveGuideOpen || undefined} data-controls-exit={leaving ? 'close' : controlsExit} data-panel-open={!!panel} data-scrubbing={!!activeScrub && mobile}
     onBlurCapture={event => {if (!chrome.current?.contains(event.relatedTarget as Node | null)) reveal();}}
     onPointerMove={event => { if (event.pointerType === 'mouse') reveal(); }} onFocusCapture={reveal}>
     <div ref={surfaceSlotRef} className={styles.pictureSlot} style={rectStyle(geometry?.picture)} data-watch-picture-slot data-media-slot="expanded" aria-hidden="true" />

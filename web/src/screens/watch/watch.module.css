@@ -84,7 +84,12 @@
 .volume > :last-child { width: 84px; }
 .center { display: none; }
 .body { position: absolute; inset: 100% 0 auto; visibility: hidden; pointer-events: none; }
-.notices { position: absolute; top: 104px; right: 40px; pointer-events: auto; }
+.notices { position: absolute; top: 104px; right: var(--watch-notice-right, 40px); pointer-events: auto; }
+/* A-08: the notice column (live notices and the loss notice) stays top right but moves beside an
+   open Live mini guide (live-chrome .miniGuide: right 40 / 24, 440 wide) instead of over its rows. */
+.watch[data-live-guide-open] { --watch-notice-right: calc(40px + 440px + 16px); }
+@media (max-width: 1023px) { .watch[data-live-guide-open] { --watch-notice-right: calc(24px + 440px + 12px); } }
+@media (max-width: 899px) { .watch[data-live-guide-open] { --watch-notice-right: 24px; } }
 .prompts { position: absolute; inset: 0; pointer-events: none; }
 .prompts > * { pointer-events: auto; }
 /* Keep only the outgoing paint through its fade. The original groups become

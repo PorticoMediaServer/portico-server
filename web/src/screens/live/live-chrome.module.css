@@ -38,9 +38,12 @@
 .times { position: relative; display: flex; justify-content: space-between; margin-top: 8px; font-size: var(--type-report-meta-size); font-weight: var(--type-body-strong-weight); color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
 .times b { color: var(--color-text); font-weight: var(--type-button-weight); }
 .times em { font-style: normal; color: var(--color-text-secondary); }
-.goLive { position: absolute; top: -6px; transform: translateX(-50%); height: 30px; padding: 0 13px 0 11px; border: 0; border-radius: 15px; display: inline-flex; align-items: center; gap: 8px; font-family: var(--font); font-size: var(--type-report-meta-size); font-weight: var(--type-button-weight); color: var(--color-text); background: color-mix(in srgb, var(--color-text) 14%, transparent); backdrop-filter: blur(20px); white-space: nowrap; cursor: pointer; pointer-events: auto; }
+/* Drawn on the times row (seek 22 + gap 8 − 6); see LiveChrome for its clamp. */
+.goLive { position: absolute; top: 24px; transform: translateX(-50%); flex: none; height: 30px; padding: 0 13px 0 11px; border: 0; border-radius: 15px; display: inline-flex; align-items: center; gap: 8px; font-family: var(--font); font-size: var(--type-report-meta-size); font-weight: var(--type-button-weight); color: var(--color-text); background: color-mix(in srgb, var(--color-text) 14%, transparent); backdrop-filter: blur(20px); white-space: nowrap; cursor: pointer; pointer-events: auto; }
 .goLive:hover { background: color-mix(in srgb, var(--color-text) 22%, transparent); }
 .goLive i { width: 8px; height: 8px; border-radius: 50%; background: var(--color-record); }
+.goLive[data-docked], .goLive:not([style]) { position: static; transform: none; margin-left: 12px; }
+@media (max-width: 599px) { .goLive.goLive { position: static; transform: none; margin-left: 12px; } }
 .controls { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin-top: 10px; }
 .left { display: flex; align-items: center; gap: 6px; }
 .center { display: flex; align-items: center; gap: 14px; }
@@ -78,7 +81,10 @@
   .identity h2 { font-size: var(--type-live-chrome-phone-title-size); line-height: var(--type-live-chrome-phone-title-line); }
   .identity p { font-size: var(--type-label-size); }
   .liveTag { margin-left: 8px; font-size: var(--type-label-size); }
-  .record.record { height: 36px; padding: 0 10px; font-size: var(--type-caption-size); }
+  /* phone-player.html: Record is an icon button at phone width (its words stay its name), so the
+     channel and programme keep the room. */
+  .record.record { width: 36px; height: 36px; padding: 0; justify-content: center; font-size: var(--type-caption-size); }
+  .recordText { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .control { width: 40px; height: 40px; }
   .control[data-main] { width: 54px; height: 54px; }
   .bottom { padding: 0 14px 14px; }

@@ -74,6 +74,8 @@
 .progressTrack i { display: block; height: 100%; background: var(--color-accent-strong); border-radius: 6px; transform-origin: left; }
 .row { --layout-gutter: clamp(32px, calc(32px + (100vw - 1024px) * .076923), 64px); position: relative; margin-top: 44px; }
 .row:first-child { margin-top: 0; }
+/* phone-detail.html: row headings and the first card share the 20 px phone gutter. */
+@media (max-width: 599px) { .row { --layout-gutter: 20px; } }
 .rowHead { display: flex; align-items: baseline; gap: 14px; padding: 0 var(--layout-gutter); margin-bottom: 14px; }
 .rowHead h2 { margin: 0; }
 .rowSubtitle { color: var(--color-text-tertiary); }

@@ -4,7 +4,8 @@
 
 .heroArt { position: absolute; inset: 0; }
 
-.copy { position: absolute; z-index: 1; left: 64px; bottom: 64px; width: 720px; max-width: calc(100% - 128px); }
+/* kit.css .t-hero .copy: 620 wide, so the credits wrap before the art is fully revealed (K-06). */
+.copy { position: absolute; z-index: 1; left: 64px; bottom: 64px; width: 620px; max-width: calc(100% - 128px); }
 
 .copy h1 { margin: 0 0 20px; }
 

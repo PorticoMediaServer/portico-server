@@ -12,7 +12,7 @@ const changed = (a: readonly unknown[] | undefined, b: readonly unknown[] | unde
 const bridgeKey = '__porticoLiveChromeRailDrag';
 const bridge = {current: undefined as HookFrame | undefined};
 (globalThis as Record<string, unknown>)[bridgeKey] = bridge;
-const hookModule = 'data:text/javascript,' + encodeURIComponent(`const bridge = globalThis.${bridgeKey}; ${['useRef', 'useState', 'useEffect'].map(name => `export const ${name} = (...args) => bridge.current.${name}(...args);`).join('\n')}`);
+const hookModule = 'data:text/javascript,' + encodeURIComponent(`const bridge = globalThis.${bridgeKey}; ${['useRef', 'useState', 'useEffect', 'useLayoutEffect'].map(name => `export const ${name} = (...args) => bridge.current.${name}(...args);`).join('\n')}`);
 
 class HookFrame {
   private slots: any[] = [];
@@ -32,6 +32,7 @@ class HookFrame {
     const i = this.cursor++, previous = this.slots[i];
     if (!previous || changed(previous.deps, deps)) this.effects.push({deps, cleanup: previous?.cleanup, run});
   }
+  useLayoutEffect(run: () => void | (() => void), deps?: readonly unknown[]) { this.useEffect(run, deps); }
   render(component: () => ReactNode): ReactNode {
     for (let attempt = 0; attempt < 8; attempt++) {
       bridge.current = this; this.cursor = 0; this.effects = []; this.dirty = false;

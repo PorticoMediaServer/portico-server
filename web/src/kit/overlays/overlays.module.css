@@ -50,7 +50,7 @@
 .grabber:focus-visible { outline: none; }
 .grabber:focus-visible > span { outline: 3px solid var(--color-focus); outline-offset: 3px; }
 .sheetHeading { display: flex; align-items: center; gap: 10px; padding: var(--overlay-sheet-heading-padding, 2px 20px 6px); }
-.sheetTitle { margin: 0; font-size: 21px; font-weight: 800; letter-spacing: -.02em; line-height: normal; }
+.sheetTitle { min-width: 0; margin: 0; font-size: 21px; font-weight: 800; letter-spacing: -.02em; line-height: normal; }
 .sheetDone.sheetDone { margin-left: auto; padding: 0; height: 28px; min-width: 0; color: var(--color-text-secondary); font-size: 15px; font-weight: 700; line-height: normal; }
 .sheetDescription { margin: 6px 20px 0; font-size: 14px; line-height: 1.5; color: var(--color-text-secondary); }
 .sheetBody { flex: 1; min-height: 0; overflow: hidden; overscroll-behavior: contain; }
