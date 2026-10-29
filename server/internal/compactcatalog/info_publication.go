@@ -345,7 +345,9 @@ func retireInfoChange(ctx context.Context, tx *sql.Tx, c infoChange) (bool, erro
 	// may advance through the fixed family list in the same writer: they change
 	// no rows and need only full change_id-prefix seeks. Save copy_family once,
 	// so an availability-only change does not need 18 empty writer admissions
-	// before reaching its scalar witness. Parent retirement remains a later turn.
+	// before reaching its scalar witness. A populated child always ends the
+	// turn. Once every remaining prefix is empty in this writer, the parent
+	// can retire immediately without saving a cursor for an empty-only turn.
 	var phase int
 	if err := tx.QueryRowContext(ctx, `SELECT copy_family FROM catalog_info_changes WHERE id=?`, c.id).Scan(&phase); err != nil {
 		return false, err
@@ -378,10 +380,6 @@ func retireInfoChange(ctx context.Context, tx *sql.Tx, c infoChange) (bool, erro
 			return false, err
 		}
 		phase++
-	}
-	if phase != started {
-		_, err := tx.ExecContext(ctx, `UPDATE catalog_info_changes SET copy_family=? WHERE id=? AND phase=5`, phase, c.id)
-		return false, err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM catalog_info_changes WHERE id=? AND phase=5`, c.id); err != nil {
 		return false, err

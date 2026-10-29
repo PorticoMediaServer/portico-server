@@ -212,6 +212,11 @@ func (w *upstreamSource) asset(ctx context.Context, tx *sql.Tx, limit int) (int,
 	if err != nil {
 		return 0, false, err
 	}
+	// Empty protocol phases do not consume a separate writer admission. They
+	// move only forward (0 -> 1 -> 2 -> 3) inside this captured pass. A raw
+	// inventory page, availability publication or FI1 quantum still returns
+	// immediately, preserving its existing work budget and yield boundary.
+assetPhase:
 	switch w.phase {
 	case 0:
 		if err = tx.QueryRowContext(ctx, `SELECT availability_epoch FROM catalog_facet_source_state WHERE singleton=1`).Scan(&w.epoch); err != nil {
@@ -233,11 +238,11 @@ func (w *upstreamSource) asset(ctx context.Context, tx *sql.Tx, limit int) (int,
 		}
 		w.has, w.after, w.key = false, 0, ""
 		w.passRevision, w.phase = w.revision, 1
-		return 0, false, nil
+		goto assetPhase
 	case 1:
 		if !w.active.Valid {
 			w.phase = 2
-			return 0, false, nil
+			goto assetPhase
 		}
 		q := `SELECT o.id,o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND s.enabled=1 AND s.health NOT IN('root_changed','removing') AND o.root_incarnation=s.incarnation
  FROM inventory_objects o INDEXED BY inventory_objects_reading_asset_object CROSS JOIN library_sources s ON s.id=o.source_id
@@ -310,6 +315,9 @@ func (w *upstreamSource) asset(ctx context.Context, tx *sql.Tx, limit int) (int,
 			}
 		}
 		w.phase = 3
+		if !w.seen {
+			goto assetPhase
+		}
 		return 0, false, nil
 	case 3:
 		if w.flags&sourceInfoInvalidated != 0 && w.passRevision == w.revision && w.key != "rerun" {

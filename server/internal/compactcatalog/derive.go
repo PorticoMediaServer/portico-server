@@ -256,6 +256,20 @@ func (w *Worker) PaceToHold(target time.Duration) {
 	w.holdTarget = target
 }
 
+// singleHeadDomain identifies drains whose key window is independent of the
+// raw-row budget passed to their internal cursor walk.
+func singleHeadDomain(domain int) bool {
+	switch domain {
+	case DomainBrowseRows, DomainBrowseEdges, DomainAvailability,
+		DomainItemMetrics, DomainAssetMetrics, DomainLibraryAvailability,
+		DomainFacetCounts, DomainContainerRefresh,
+		DomainAssetSources, DomainEntitySources, DomainLibrarySources, DomainMissingSources:
+		return true
+	default:
+		return false
+	}
+}
+
 // batchFor is the units of the next batch of a domain: the limit when not
 // paced, else what its recent cost per unit says fits the hold target.
 func (w *Worker) batchFor(domain, limit int) int {
@@ -264,7 +278,11 @@ func (w *Worker) batchFor(domain, limit int) int {
 	if w.holdTarget <= 0 {
 		return limit
 	}
-	if last, ok := w.lastUnits[domain]; ok {
+	// A cursor drain reports one holder key even when it consumed a larger
+	// raw page. Its key count cannot size that page: applying the doubling
+	// guard would permanently pin every such drain at two raw rows. The
+	// measured row/hold limits below and each drain's raw cap still apply.
+	if last, ok := w.lastUnits[domain]; ok && !singleHeadDomain(domain) {
 		limit = min(limit, max(1, 2*last))
 	}
 	if rows := w.unitRows[domain]; rows > 0 {
@@ -735,16 +753,13 @@ func (w *Worker) drainDomain(ctx context.Context, tx *sql.Tx, domain, rebuilding
 	// makes a one-head walk quadratic and reports untouched keys as work.
 	// Keep the raw-row limit passed to Drain unchanged; only its key window is
 	// one, including rebuild enumeration and the covered-prefix proof.
-	switch domain {
-	case DomainBrowseRows, DomainBrowseEdges, DomainAvailability,
-		DomainItemMetrics, DomainAssetMetrics, DomainLibraryAvailability,
-		DomainFacetCounts, DomainContainerRefresh,
-		DomainAssetSources, DomainEntitySources, DomainLibrarySources, DomainMissingSources:
+	if singleHeadDomain(domain) {
 		batch = 1
 	}
 	if w.isolate[domain] || retry {
 		batch = 1
 	}
+
 	after := w.retryAfter[domain]
 	assetAfter := w.assetSourceAfter
 	// Alternate source enumeration and queued edits at bounded checkpoints.

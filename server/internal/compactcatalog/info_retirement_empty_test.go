@@ -54,6 +54,20 @@ func TestInfoRetirementSkipsEmptyFamiliesWithinTheRawQuantum(t *testing.T) {
 		t.Fatalf("empty prefix did not reach exactly the scalar family: phase=%d family=%d rows=%d", phase, family, remaining)
 	}
 	t.Logf("retirement: raw=%d rows=%d pages=%d vmops=%d", before, stats.Largest.Rows, stats.Largest.Pages, stats.Largest.VMOps)
+	// The next turn proves all remaining child prefixes empty. It must retire
+	// the header then, rather than persist another empty protocol cursor.
+	dbwork.ResetPlans()
+	f.step(t)
+	var headers int
+	if err := f.c.DB.QueryRow(`SELECT count(*) FROM catalog_info_changes WHERE id=?`, change).Scan(&headers); err != nil {
+		t.Fatal(err)
+	}
+	if headers != 0 {
+		t.Fatal("proved-empty child prefixes left an extra parent-only turn")
+	}
+	if stats := dbwork.Plans(); stats.Measured != 1 || stats.Overruns != 0 {
+		t.Fatalf("empty-tail parent retirement exceeded its existing writer plan: %+v", stats)
+	}
 	for turn := 0; turn < 16; turn++ {
 		if f.step(t) {
 			return
