@@ -119,9 +119,61 @@ func TestElevenLibraryImportSummaryReadCost(t *testing.T) {
 	if len(got) != 11 {
 		t.Fatalf("global list lost libraries: %d", len(got))
 	}
-	assertReadingSummaryPreparing(t, got["summary-10"], 6000)
+	assertReadingSummaryPreparing(t, got["summary-10"], 128)
 	if got["summary-0"].Counts[0].Count != 1 || got["summary-0"].Empty {
 		t.Fatal("import blocked another library", got["summary-0"])
 	}
 	t.Logf("eleven-library global summary: elapsed=%s cost=%+v (Contabo target <500ms)", elapsed, cost())
+}
+
+// Import summaries promise a lower bound, so neither a long eligible suffix nor
+// an empty raw prefix may force a whole-library eligibility search.
+func TestPendingReadingSummaryBoundsRawWindowAndNeverClaimsAnEmptyTail(t *testing.T) {
+	c := catalogtest.Open(t)
+	handle := c.Library("pending", "Pending", "book", "/pending")
+	viewer := Viewer{Libraries: []string{"pending"}}
+	s := New(c.DB)
+	seed := func(start, n int, eligible bool) {
+		t.Helper()
+		c.Exec(`WITH RECURSIVE seq(n) AS(VALUES(1) UNION ALL SELECT n+1 FROM seq WHERE n<?)
+   INSERT INTO catalog_entities(id,public_id,library_id,kind,title,sort_key,sort_head,added_ms)
+   SELECT ?+n,randomblob(16),?,20,'Book '||n,'book '||n,'B',?+n FROM seq`, n, start, handle, start)
+		if eligible {
+			c.Exec(`WITH RECURSIVE seq(n) AS(VALUES(1) UNION ALL SELECT n+1 FROM seq WHERE n<?)
+    INSERT INTO catalog_assets(id,token,path,size,modified_ns,available,container,video_codec,audio_codec,width,height,duration)
+    SELECT ?+n,'pending-'||(?+n),'/pending/'||(?+n)||'.pdf',10,1,0,'pdf','','',0,0,0 FROM seq`, n, start, start, start)
+			c.Exec(`INSERT INTO catalog_asset_links(entity_id,asset_id) SELECT id,id FROM catalog_entities WHERE library_id=? AND id>? AND id<=?`, handle, start, start+n)
+			c.Exec(`INSERT INTO reading_publications(item_id,asset_id,format) SELECT id,id,'pdf' FROM catalog_entities WHERE library_id=? AND id>? AND id<=?`, handle, start, start+n)
+		}
+	}
+	read := func() (LibrarySummary, dbwork.Cost) {
+		t.Helper()
+		ctx, cost := dbwork.Measure(context.Background())
+		out, err := s.SummarizeLibraries(ctx, viewer, []Library{{ID: "pending", Kind: "book"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out["pending"], cost()
+	}
+	seed(100000, 256, true)
+	first, cost := read()
+	assertReadingSummaryPreparing(t, first, 128)
+	if first.Empty {
+		t.Fatal("eligible raw prefix was called empty")
+	}
+	// More catalogue rows must not increase the raw candidate work.
+	seed(101000, 512, true)
+	larger, moreCost := read()
+	assertReadingSummaryPreparing(t, larger, 128)
+	if moreCost.VMSteps > cost.VMSteps+5000 {
+		t.Fatalf("walk grew with the tail: %+v -> %+v", cost, moreCost)
+	}
+	// Put more than a full raw window of publication-less titles in front of
+	// every eligible title. Its empty prefix is UNKNOWN, never an exact zero.
+	seed(102000, 256, false)
+	hidden, _ := read()
+	if hidden.EmptyKnown || !hidden.Counts[0].AtLeast || hidden.Counts[0].Count != 0 {
+		t.Fatalf("ineligible prefix claimed the eligible tail empty: %+v", hidden)
+	}
+	t.Logf("bounded pending raw windows: initial=%+v larger=%+v", cost, moreCost)
 }
