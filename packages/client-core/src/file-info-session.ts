@@ -1,6 +1,6 @@
 import {FileInfoWindowSession, fileInfoRows, type FileInfoRows, type FileInfoWindowFacts} from './file-info-windows.ts';
 import {
-  FILE_INFO_DEFAULT_LIMIT, fileInfoReadyQueryId, parseFileInfoDiscPage, parseFileInfoGroupsPage, parseFileInfoHeadTracksPage, parseFileInfoMembersPage, parseFileInfoPreparing, parseFileInfoTracksPage,
+  FILE_INFO_DEFAULT_LIMIT, fileInfoReadyQueryId, parseFileInfoDiscPage, parseFileInfoFilesPage, parseFileInfoGroupsPage, parseFileInfoHeadTracksPage, parseFileInfoMembersPage, parseFileInfoPreparing, parseFileInfoTracksPage,
   type FileInfoDiscPage, type FileInfoFileRow, type FileInfoGroupRow, type FileInfoHeadTrackRow, type FileInfoOpening, type FileInfoSurface, type FileInfoTrackLane, type FileInfoTrackRow,
 } from './file-info-pages.ts';
 import type {PreparationRequestPort, PreparationResponse, PreparationRuntime} from './read-preparation.ts';
@@ -29,7 +29,10 @@ export type FileInfoLane<Row> = Readonly<{
 }>;
 export type {FileInfoTrackLane};
 export type FileInfoSnapshot = Readonly<{
+  /** Versions of a playable item. Absent on a flat-file surface. */
   groups: FileInfoLane<FileInfoGroupRow>;
+  /** The flat files of any other kind (an album, a book…), in the server's file order. */
+  files?: FileInfoLane<FileInfoFileRow>;
   surface?: FileInfoSurface;
   /** Raw tracks, keyed by `fileInfoTrackKey(occurrence, lane)`. Absent until a renderer asks. */
   tracks: ReadonlyMap<string, FileInfoLane<FileInfoTrackRow>>;
@@ -40,6 +43,10 @@ export type FileInfoSnapshot = Readonly<{
   disc?: FileInfoLane<FileInfoDiscPage['titles'][number]> & Readonly<{occurrence?: string; discKind?: FileInfoDiscPage['discKind']}>;
 }>;
 export const fileInfoTrackKey = (occurrence: string, lane: FileInfoTrackLane) => `${lane}:${occurrence}`;
+/** Playable single items (catalog `playable`) read versions as groups; every other kind (albums,
+ * books, shows…) reads its flat files. Groups on another kind are refused by the server. */
+const playable: readonly string[] = ['movie', 'episode', 'extra', 'song', 'audiobook_file'];
+export const fileInfoUsesGroups = (kind: string) => playable.includes(kind);
 
 export type FileInfoSessionOptions = Readonly<{
   api: PreparationRequestPort;
@@ -129,6 +136,17 @@ export class FileInfoSession {
     return lane;
   }
 
+  /** A flat-file surface's files, with the same surface facts as groups. */
+  files(mode: 'open' | 'next' | 'restart' = 'open'): Promise<void> {
+    const {opening} = this.options, item = opening.target.itemId;
+    const lane = this.lane('files', () => ({
+      read: {},
+      session: this.window((_read, cursor) => lanePath(fileInfoPaths.files(item), opening, this.limit(), cursor),
+        (body, response) => parseFileInfoFilesPage(body, opening, response), () => this.publish({files: Object.freeze({...this.snapshot.files, status: 'preparing'})})),
+      rows: page => page.files,
+    }));
+    return this.drive(lane, mode, () => this.snapshot.files, value => this.publish({files: value}), page => this.publish({surface: page.surface}));
+  }
   /** The versions. `more` reads the next window; `restart` reads the lane from its start. */
   groups(mode: 'open' | 'next' | 'restart' = 'open'): Promise<void> {
     const {opening} = this.options, item = opening.target.itemId;

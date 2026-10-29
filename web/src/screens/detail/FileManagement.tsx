@@ -4,7 +4,6 @@ import type {DetailProjection} from '@core/detail.ts';
 import type {ContentEntry} from '@core/library-content.ts';
 import {canMergeTitles, mergeExplanation} from '@core/title-identity.ts';
 import {versionModels} from '@core/presentation/kit-model';
-import {fileInfoVersionFacts} from '@core/presentation/file-info-versions.ts';
 import {Button, TextField, Segmented} from '../../kit/controls';
 import {Dialog} from '../../kit/overlays';
 import {TitleProse} from '../../kit/title/TitleParts';
@@ -24,7 +23,7 @@ export function FileManagement(props: Props) {
 }
 
 function DeleteVersion({binding, data, manage, onClose, returnFocusRef}: Props) {
-  const file = manage.action.fileId ? manage.files.get(manage.action.fileId)?.file : undefined;
+  const file = manage.action.fileId ? manage.files.get(manage.action.fileId) : undefined;
   const [preview, setPreview] = useState<VersionDeletePreview>(), [typed, setTyped] = useState(''), [failed, setFailed] = useState(false), [busy, setBusy] = useState(false), [kept, setKept] = useState<'file_changed' | 'file_not_removed'>();
   const request = useRef<AbortController | undefined>(undefined), [operationId] = useState(() => crypto.randomUUID());
   const read = useCallback(() => {
@@ -61,11 +60,9 @@ function SplitVersion({binding, data, manage, onClose, returnFocusRef}: Props) {
   const [fileId, setFileId] = useState<string>(), [busy, setBusy] = useState(false), [notFound, setNotFound] = useState(false), [failed, setFailed] = useState(false);
   const request = useRef<AbortController | undefined>(undefined);
   useEffect(() => () => request.current?.abort(), []);
-  // Only a version that is one file on its own can become its own title. Its file is the one
-  // the owner saw listed; a version whose files were not read yet is named by its head.
-  const singles = manage.groups.filter(group => group.memberCount === 1);
-  const occurrenceOf = (groupId: string) => [...manage.files.values()].find(entry => entry.group.id === groupId)?.file.occurrence ?? singles.find(group => group.id === groupId)?.headOccurrence;
-  const models = versionModels(singles.map(group => fileInfoVersionFacts(group)), environment);
+  // Only a version that is one file on its own (or a flat file) can become its own title.
+  const occurrenceOf = (id: string) => manage.splitCandidates.find(candidate => candidate.id === id)?.occurrence;
+  const models = versionModels(manage.splitCandidates.map(candidate => candidate.facts), environment);
   const close = () => { request.current?.abort(); onClose(); };
   const confirm = async () => {
     if (!fileId || busy) return;

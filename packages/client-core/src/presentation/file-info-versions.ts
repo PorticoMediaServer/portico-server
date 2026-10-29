@@ -1,4 +1,4 @@
-import {fileInfoBytesValue, type FileInfoGroupRow, type FileInfoHeadTrackRow, type FileInfoTrackRow} from '../file-info-pages.ts';
+import {fileInfoBytesValue, type FileInfoFileRow, type FileInfoGroupRow, type FileInfoHeadTrackRow, type FileInfoTrackRow} from '../file-info-pages.ts';
 import {fileInfoModel, type FileFacts, type FileInfoModel, type TrackFacts} from './kit-model/index.ts';
 import type {TextEnvironment} from './kit-model/text.ts';
 import {fileInfoTrackKey, type FileInfoSnapshot} from '../file-info-session.ts';
@@ -26,6 +26,25 @@ export function fileInfoVersionFacts(group: FileInfoGroupRow, audio: readonly (F
   };
 }
 
+/** One file of a flat-file surface (an album's track, a book's part), from its row and resident raw
+ * tracks. A flat file has no server ordinal; its place in the resident list numbers it. */
+export function fileInfoFileFacts(file: FileInfoFileRow, audio: readonly FileInfoTrackRow[] = [], subtitles: readonly FileInfoTrackRow[] = []): FileFacts {
+  const video = file.video, bytes = fileInfoBytesValue(file.size);
+  const track = (lane: 'audio' | 'subtitle') => (row: FileInfoTrackRow): TrackFacts => ({
+    id: `${file.occurrence}:${lane}:${row.ordinal}`, ordinal: row.ordinal, codec: row.codec, language: row.language, title: row.title,
+    channels: row.channels, channelLayout: row.channelLayout, forced: row.forced, default: row.default, external: row.external,
+    commentary: row.commentary, hearingImpaired: row.hearingImpaired,
+    objectAudio: lane === 'audio' && (row.objectAudio === 'atmos' || row.objectAudio === 'dtsx') ? row.objectAudio : undefined,
+  });
+  return {
+    id: file.occurrence, available: file.available, edition: file.edition, container: file.container, sizeBytes: bytes,
+    durationSeconds: file.duration && file.duration > 0 ? file.duration : undefined, bitRate: file.bitRate,
+    videoCodec: video?.codec, videoProfile: video?.profile, width: video?.width, height: video?.height, dynamicRange: video?.dynamicRange, hdr10Plus: video?.hdr10Plus,
+    frameRate: video?.frameRate, bitDepth: video?.bitDepth,
+    audio: audio.map(track('audio')), subtitles: subtitles.map(track('subtitle')),
+  };
+}
+
 export type FileInfoPanelPolicy = Readonly<{
   /** Web lists a version head's raw stored tracks; native lists the head's offered tracks. */
   tracks: 'raw' | 'offered';
@@ -38,7 +57,16 @@ export type FileInfoPanelPolicy = Readonly<{
  * and numbering, each with its resident tracks, and for an owner the listed files of each version.
  * Split is the server's global answer (`surface.canSplit`), never a count of resident rows. */
 export function fileInfoPanelModel(snapshot: FileInfoSnapshot, policy: FileInfoPanelPolicy, env: TextEnvironment): FileInfoModel | undefined {
-  const groups = snapshot.groups.rows?.rows, surface = snapshot.surface;
+  const groups = snapshot.groups.rows?.rows, files = snapshot.files?.rows?.rows, surface = snapshot.surface;
+  if (files && surface) {
+    // A flat-file surface lists each file with its own raw tracks; its owner sees each file's path.
+    const raw = (file: FileInfoFileRow, lane: 'audio' | 'subtitles') => snapshot.tracks.get(fileInfoTrackKey(file.occurrence, lane))?.rows?.rows;
+    const manage = surface.manage;
+    return fileInfoModel(files.map(file => fileInfoFileFacts(file, raw(file, 'audio'), raw(file, 'subtitles'))), manage ? {audience: 'owner', manageSurface: policy.manageSurface, ownerFacts: {
+      locations: files.map(file => ({id: file.occurrence, path: file.path, canDelete: manage.delete})),
+      canSplit: manage.split && surface.canSplit && policy.split, canMerge: manage.merge && policy.merge,
+    }} : {audience: 'viewer'}, env, policy.context);
+  }
   if (!groups || !surface) return undefined;
   const tracks = (group: FileInfoGroupRow, lane: 'audio' | 'subtitles') => policy.tracks === 'raw'
     ? snapshot.tracks.get(fileInfoTrackKey(group.headOccurrence, lane))?.rows?.rows : snapshot.headTracks.get(fileInfoTrackKey(group.id, lane))?.rows?.rows;

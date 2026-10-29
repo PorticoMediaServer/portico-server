@@ -1,8 +1,9 @@
-import {useEffect, useMemo, useState, useSyncExternalStore, type RefObject} from 'react';
+import {useCallback, useEffect, useMemo, useState, useSyncExternalStore, type RefObject} from 'react';
 import type {DetailProjection, FileInfoDisc} from '@core/detail.ts';
-import {fileInfoTrackKey, type FileInfoLane, type FileInfoSession, type FileInfoTrackLane} from '@core/file-info-session.ts';
+import {fileInfoTrackKey, fileInfoUsesGroups, type FileInfoLane, type FileInfoSession, type FileInfoTrackLane} from '@core/file-info-session.ts';
 import type {FileInfoFileRow, FileInfoGroupRow, FileInfoSurface} from '@core/file-info-pages.ts';
-import {fileInfoPanelModel} from '@core/presentation/file-info-versions.ts';
+import {fileInfoFileFacts, fileInfoPanelModel, fileInfoVersionFacts} from '@core/presentation/file-info-versions.ts';
+import type {FileFacts} from '@core/presentation/kit-model';
 import {Dialog, DiscTitles, FileInfo, type FileInfoAction, type FileInfoContinuation, type FileInfoMore} from '../../kit/overlays';
 import {StateView} from '../../kit/states';
 import type {DetailBindings} from './bindings';
@@ -14,8 +15,10 @@ import {t, environment} from './text';
  * files that were on screen. Commands send the exact occurrence; the server rechecks the rest. */
 export type FileInfoManageContext = Readonly<{
   action: FileInfoAction; opening: string; surface: FileInfoSurface;
-  groups: readonly FileInfoGroupRow[];
-  files: ReadonlyMap<string, Readonly<{group: FileInfoGroupRow; file: FileInfoFileRow}>>;
+  /** The files that were listed, by exact occurrence. */
+  files: ReadonlyMap<string, FileInfoFileRow>;
+  /** What Split can make a title of: a version that is one file on its own, or any flat file. */
+  splitCandidates: readonly Readonly<{id: string; occurrence: string; facts: FileFacts}>[];
 }>;
 type Props = {
   binding: DetailBindings; data: DetailProjection; surface: 'file' | 'titles'; phone: boolean;
@@ -30,7 +33,7 @@ export function TitleFileInfo({binding, data, surface, phone, returnFocusRef, on
   useEffect(() => {
     const opened = binding.openFileInfo(data);
     setSession(opened ?? null);
-    void opened?.groups();
+    void (fileInfoUsesGroups(data.item.kind) ? opened?.groups() : opened?.files());
     return () => opened?.retire();
   }, [binding, data]);
   // A Detail that is not ready yet has no opening; reading it again brings one.
@@ -40,53 +43,61 @@ export function TitleFileInfo({binding, data, surface, phone, returnFocusRef, on
   return session ? <Opened session={session} binding={binding} data={data} surface={surface} phone={phone} returnFocusRef={returnFocusRef} onClose={onClose} onManage={onManage} /> : null;
 }
 
+/** One listed entry: a version of a playable item, or a file of any other kind. */
+type Entry = Readonly<{id: string; head: string; audioCount: number; subtitleCount: number; group?: FileInfoGroupRow; file?: FileInfoFileRow}>;
+
 function Opened({session, binding, data, surface, phone, returnFocusRef, onClose, onManage}: Props & {session: FileInfoSession}) {
   const snapshot = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
-  const groups = snapshot.groups.rows?.rows, manage = snapshot.surface?.manage;
+  const flat = !fileInfoUsesGroups(data.item.kind), manage = snapshot.surface?.manage;
+  const lane: FileInfoLane<unknown> | undefined = flat ? snapshot.files : snapshot.groups;
+  const read = useCallback((mode: 'open' | 'next' | 'restart') => { void (flat ? session.files(mode) : session.groups(mode)); }, [flat, session]);
+  const entries = useMemo((): readonly Entry[] | undefined => flat
+    ? snapshot.files?.rows?.rows.map(file => ({id: file.occurrence, head: file.occurrence, audioCount: file.audioCount, subtitleCount: file.subtitleCount, file}))
+    : snapshot.groups.rows?.rows.map(group => ({id: group.id, head: group.headOccurrence, audioCount: group.audioCount, subtitleCount: group.subtitleCount, group})), [flat, snapshot.files, snapshot.groups]);
   const close = (open: boolean) => { if (!open) onClose(); };
   // The owner's disc block shows in File info and in Titles; members never have one.
   useEffect(() => {
     if (snapshot.surface?.ownerDiscOccurrence && !snapshot.disc) void session.disc();
   }, [session, snapshot.surface, snapshot.disc]);
 
-  const more = <Row,>(lane: FileInfoLane<Row> | undefined, next: () => void): FileInfoMore | undefined =>
-    lane && (lane.rows?.more || lane.status === 'failed') ? {busy: lane.status === 'loading' || lane.status === 'preparing', failed: lane.status === 'failed', onPress: next} : undefined;
-  const byId = useMemo(() => new Map(groups?.map(group => [group.id, group])), [groups]);
-  const continuation = useMemo((): FileInfoContinuation | undefined => groups && {
-    versionCount: snapshot.surface?.groupCount ?? groups.length,
-    more: more(snapshot.groups, () => { void session.groups(snapshot.groups.status === 'failed' && !snapshot.groups.rows?.more ? 'restart' : 'next'); }),
-    earlier: snapshot.groups.rows?.earlier ? {busy: false, failed: false, onPress: () => { void session.groups('restart'); }} : undefined,
+  const more = <Row,>(held: FileInfoLane<Row> | undefined, next: () => void): FileInfoMore | undefined =>
+    held && (held.rows?.more || held.status === 'failed') ? {busy: held.status === 'loading' || held.status === 'preparing', failed: held.status === 'failed', onPress: next} : undefined;
+  const byId = useMemo(() => new Map(entries?.map(entry => [entry.id, entry])), [entries]);
+  const continuation = useMemo((): FileInfoContinuation | undefined => entries && {
+    versionCount: (flat ? snapshot.surface?.fileCount : snapshot.surface?.groupCount) ?? entries.length,
+    more: more(lane, () => read(lane?.status === 'failed' && !lane.rows?.more ? 'restart' : 'next')),
+    earlier: lane?.rows?.earlier ? {busy: false, failed: false, onPress: () => read('restart')} : undefined,
     onVersionVisible: id => {
-      const group = byId.get(id);
-      if (!group) return;
-      if (group.audioCount > 0) void session.tracks(group.headOccurrence, 'audio');
-      if (group.subtitleCount > 0) void session.tracks(group.headOccurrence, 'subtitles');
-      if (manage) void session.members(group.id);
+      const entry = byId.get(id);
+      if (!entry) return;
+      if (entry.audioCount > 0) void session.tracks(entry.head, 'audio');
+      if (entry.subtitleCount > 0) void session.tracks(entry.head, 'subtitles');
+      if (manage && entry.group) void session.members(entry.group.id);
     },
     tracks: (id, kind: FileInfoTrackLane) => {
-      const group = byId.get(id);
-      if (!group || (kind === 'audio' ? group.audioCount : group.subtitleCount) === 0) return undefined;
-      const lane = snapshot.tracks.get(fileInfoTrackKey(group.headOccurrence, kind));
-      return {pending: !lane?.rows, more: more(lane, () => { void session.tracks(group.headOccurrence, kind, lane?.rows?.more ? 'next' : 'open'); })};
+      const entry = byId.get(id);
+      if (!entry || (kind === 'audio' ? entry.audioCount : entry.subtitleCount) === 0) return undefined;
+      const held = snapshot.tracks.get(fileInfoTrackKey(entry.head, kind));
+      return {pending: !held?.rows, more: more(held, () => { void session.tracks(entry.head, kind, held?.rows?.more ? 'next' : 'open'); })};
     },
-    locationsMore: id => more(snapshot.members.get(id), () => { void session.members(id, snapshot.members.get(id)?.rows?.more ? 'next' : 'open'); }),
-  }, [groups, byId, manage, session, snapshot]);
+    locationsMore: id => flat ? undefined : more(snapshot.members.get(id), () => { void session.members(id, snapshot.members.get(id)?.rows?.more ? 'next' : 'open'); }),
+  }, [entries, byId, flat, lane, manage, read, session, snapshot]);
 
   // Web lists a version head's raw tracks; Merge is drawn in the phone sheet only (phone-detail 12).
   const model = useMemo(() => fileInfoPanelModel(snapshot, {tracks: 'raw', context: phone ? 'phone' : 'desktop', manageSurface: phone ? 'phone' : 'desktop', split: true, merge: phone}, environment), [phone, snapshot]);
 
-  // The disc block names its version by the version whose head file it was read from.
+  // The disc block names the entry whose file it was read from.
   const disc = useMemo((): FileInfoDisc | undefined => {
-    const lane = snapshot.disc, titles = lane?.rows?.rows;
-    if (!lane?.occurrence || !lane.discKind || !titles?.length) return undefined;
-    const version = groups?.find(group => group.headOccurrence === lane.occurrence);
-    return {fileId: version?.id ?? lane.occurrence, kind: lane.discKind, titles};
-  }, [snapshot.disc, groups]);
+    const held = snapshot.disc, titles = held?.rows?.rows;
+    if (!held?.occurrence || !held.discKind || !titles?.length) return undefined;
+    const entry = entries?.find(value => value.head === held.occurrence);
+    return {fileId: entry?.id ?? held.occurrence, kind: held.discKind, titles};
+  }, [snapshot.disc, entries]);
 
-  const failed = snapshot.groups.status === 'failed' && !groups;
+  const failed = lane?.status === 'failed' && !entries;
   // A stale opening (409) is refreshed through the Detail: the newer Detail is a new opening.
   const stale = (error: unknown) => (error as {code?: string} | undefined)?.code === 'stale_continuation';
-  const retry = () => { if (stale(snapshot.groups.error)) void binding.service.revalidate(); else void session.groups('restart'); };
+  const retry = () => { if (stale(lane?.error)) void binding.service.revalidate(); else read('restart'); };
   if (surface === 'titles') {
     const owner = snapshot.surface && !!snapshot.surface.ownerDiscOccurrence;
     if (disc) return <DiscTitles open onOpenChange={close} disc={disc} file={model?.files.find(file => file.id === disc.fileId)?.display.heading.text} more={more(snapshot.disc, () => { void session.disc('next'); })} returnFocusRef={returnFocusRef} />;
@@ -99,8 +110,13 @@ function Opened({session, binding, data, surface, phone, returnFocusRef, onClose
   return <FileInfo model={model} subject={data.item.title} disc={disc} continuation={continuation} layout={phone ? 'phone' : 'desktop'} open onOpenChange={close} returnFocusRef={returnFocusRef}
     onManage={action => {
       binding.current(data);
-      const files = new Map<string, Readonly<{group: FileInfoGroupRow; file: FileInfoFileRow}>>();
-      for (const group of groups ?? []) for (const file of snapshot.members.get(group.id)?.rows?.rows ?? []) files.set(file.occurrence, Object.freeze({group, file}));
-      onManage(Object.freeze({action, opening: session.opening.token, surface: snapshot.surface!, groups: groups ?? [], files}));
+      const files = new Map<string, FileInfoFileRow>(), candidates: {id: string; occurrence: string; facts: FileFacts}[] = [];
+      for (const entry of entries ?? []) {
+        if (entry.file) { files.set(entry.file.occurrence, entry.file); candidates.push({id: entry.id, occurrence: entry.file.occurrence, facts: fileInfoFileFacts(entry.file)}); continue; }
+        const listed = snapshot.members.get(entry.group!.id)?.rows?.rows ?? [];
+        for (const file of listed) files.set(file.occurrence, file);
+        if (entry.group!.memberCount === 1) candidates.push({id: entry.id, occurrence: listed[0]?.occurrence ?? entry.head, facts: fileInfoVersionFacts(entry.group!)});
+      }
+      onManage(Object.freeze({action, opening: session.opening.token, surface: snapshot.surface!, files, splitCandidates: Object.freeze(candidates)}));
     }} />;
 }

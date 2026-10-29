@@ -170,3 +170,21 @@ test('the panel model numbers versions by the server, lists raw tracks on web an
   assert.equal(fileInfoPanelModel(member.session.getSnapshot(), {tracks: 'raw', context: 'desktop', manageSurface: 'desktop', split: true, merge: true}, env)!.owner, undefined);
   session.retire(); member.session.retire();
 });
+
+import {fileInfoUsesGroups} from '../src/file-info-session.ts';
+
+test('an album or a book reads its flat files: each listed with its raw tracks, its owner sees each path, and groups are only for playable kinds', async () => {
+  assert.deepEqual(['movie', 'episode', 'extra', 'song', 'audiobook_file', 'album', 'book', 'show'].map(fileInfoUsesGroups), [true, true, true, true, true, false, false, false]);
+  const file = (n: number) => ({occurrence: `album.t${n}`, itemId: `song${n}`, id: `t${n}`, path: `/music/${n}.flac`, size: 30, container: 'flac', duration: 200, available: true, partIndex: 0, audioCount: 1, subtitleCount: 0});
+  const {session, calls} = panelSession({
+    '/v1/items/m1/file-info/tracks': envelope('file-info-tracks', 'q2', {lane: 'audio', occurrence: 'album.t1', total: 1, tracks: [{ordinal: 1, codec: 'flac', channels: 2}]}),
+    '/v1/items/m1/file-info': envelope('file-info-files', 'q1', {itemKind: 'album', surface: owner, files: [file(1), file(2)]}, {returned: 2}),
+  });
+  await session.files(); await session.tracks('album.t1', 'audio');
+  const model = fileInfoPanelModel(session.getSnapshot(), {tracks: 'raw', context: 'desktop', manageSurface: 'desktop', split: true, merge: false}, {t: defaultI18n.t})!;
+  assert.deepEqual(model.files.map(row => [row.id, row.display.heading.text]), [['album.t1', 'Version 1'], ['album.t2', 'Version 2']]);
+  assert.equal(model.files[0]!.display.audio.length, 1);
+  assert.deepEqual(model.owner?.locations.map(location => [location.id, location.versionId, location.path]), [['album.t1', 'album.t1', '/music/1.flac'], ['album.t2', 'album.t2', '/music/2.flac']]);
+  assert.equal(calls[0], 'GET /v1/items/m1/file-info?opening=o1&limit=40');
+  session.retire();
+});
