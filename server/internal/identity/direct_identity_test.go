@@ -233,7 +233,9 @@ func TestDirectPINRevisionRevokesFamiliesAndInstallationTrust(t *testing.T) {
 	if e != nil || selected.TrustedSelection == nil {
 		t.Fatal("explicit trust selection", e)
 	}
-	trusted, e := s.SelectDirectProfile(ctx, login.AccountToken, child.ID, DirectSelection{TrustToken: selected.TrustedSelection.Token, InstallationID: "installation"})
+	// Re-select from the profile's own session: remembered trust may spare a
+	// same-profile selection, but never a switch from another profile.
+	trusted, e := s.SelectDirectProfile(ctx, selected.Session.AccessToken, child.ID, DirectSelection{TrustToken: selected.TrustedSelection.Token, InstallationID: "installation"})
 	if e != nil || trusted.Session.SessionFamilyID == selected.Session.SessionFamilyID {
 		t.Fatal("trust did not issue independent viewing family", e)
 	}
