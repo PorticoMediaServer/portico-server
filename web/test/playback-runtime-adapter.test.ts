@@ -3538,8 +3538,10 @@ for (const path of startPaths) {
     assert.equal(f.runtime.getSnapshot().startTimedOut, undefined); assert.ok(f.runtime.getSnapshot().presentation, 'and drew its real dock');
   });
   const slowLiveToBound = async (t: TestContext) => {
-    const f = setup(t, {}, {}, undefined, undefined, {homeFence: false}), life = new AbortController();
+    // Mock time before setup: a real timer armed by setup's own requests could not be cleared by a
+    // mocked clearTimeout, and would hold the process open after the file's tests end.
     t.mock.timers.enable({apis: ['setTimeout', 'Date'], now: Date.now()});
+    const f = setup(t, {}, {}, undefined, undefined, {homeFence: false}), life = new AbortController();
     slowChannel(f, {ready: false});
     const run = path.run(f, life.signal).catch(() => {});
     await spinUntil(f, () => !!f.runtime.getSnapshot().starting);
@@ -3587,8 +3589,8 @@ async function tickLive(t: TestContext, f: ReturnType<typeof setup>, totalMs: nu
 }
 
 test('P2-61 Live: a slow stream keeps the starting dock with no watchdog, then the real dock replaces it', async t => {
+  t.mock.timers.enable({apis: ['setTimeout', 'Date'], now: Date.now()}); // before setup (see above)
   const f = setup(t, {}, {}, undefined, undefined, {homeFence: false}), life = new AbortController();
-  t.mock.timers.enable({apis: ['setTimeout', 'Date'], now: Date.now()});
   const state = {ready: false};
   slowChannel(f, state);
   const run = f.runtime.playFromGuide(homeChannel.channel, {signal: life.signal, isCurrent: () => true}).catch(() => {});
@@ -3610,8 +3612,8 @@ test('P2-61 Live: a slow stream keeps the starting dock with no watchdog, then t
 });
 
 test('P2-61 Live: a recoverable session reads as waiting on the channel source within one poll', async t => {
+  t.mock.timers.enable({apis: ['setTimeout', 'Date'], now: Date.now()}); // before setup (see above)
   const f = setup(t, {}, {}, undefined, undefined, {homeFence: false}), life = new AbortController();
-  t.mock.timers.enable({apis: ['setTimeout', 'Date'], now: Date.now()});
   const state: {ready: boolean; reason?: string} = {ready: false};
   slowChannel(f, state);
   const run = f.runtime.playFromGuide(homeChannel.channel, {signal: life.signal, isCurrent: () => true}).catch(() => {});
