@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {SetupFlow, type SetupPorts, type SetupServer} from '../src/screens/setup/setup-flow.ts';
 import {defaultSetupServerName, localPasswordValid, setupErrorMessage, validLocalUsername} from '../src/screens/setup/setup-model.ts';
-import {SetupStageFailure} from '../src/platform/setup-failure.ts';
+import {SetupStageFailure, addressSetupFailure, notLocalSourceFailure} from '../src/platform/setup-failure.ts';
 import type {SetupDraft} from '@core/setup-onboarding.ts';
 
 function session(serverId = 'server-1') {
@@ -188,5 +188,30 @@ test('a recovery callback cannot publish the local form after replacing its orig
     await f.flow.start(); await f.flow.submitHosted(); await f.flow.useLocalFailure(failure);
     assert.equal(f.flow.getSnapshot().phase, 'error'); assert.equal(f.flow.getSnapshot().mode, 'hosted');
     assert.equal(draft?.setupToken, 'foreign-proof'); assert.equal(f.requests(), 0);
+  } finally {f.flow.dispose();}
+});
+
+const notLocalLine = 'Setup has to start from a device on the same network as this server. Open this page from there, or use a claim token.';
+test('a setup_source_not_local refusal shows the one honest line, with no retry to dead-end on', async () => {
+  const refusal = new SetupStageFailure('browser-start', Object.assign(new Error('forbidden'), {status: 403, code: 'setup_source_not_local'}));
+  assert.equal(setupErrorMessage(refusal), notLocalLine);
+  assert.equal(setupErrorMessage(Object.assign(new Error('forbidden'), {status: 403, code: 'setup_source_not_local'})), notLocalLine);
+  assert.equal(addressSetupFailure(refusal), false);
+  assert.equal(notLocalSourceFailure(refusal), true);
+  const f = fixture({hosted: async () => {throw refusal;}});
+  try {
+    await f.flow.start(); await f.flow.submitHosted();
+    const state = f.flow.getSnapshot();
+    assert.equal(state.phase, 'error'); assert.equal(state.error, notLocalLine);
+    assert.equal(state.failure, refusal); assert.equal(refusal.retry, undefined); assert.equal(refusal.useLocal, undefined);
+  } finally {f.flow.dispose();}
+});
+test('a not-local refusal on a local setup keeps the form and says the same line', async () => {
+  const f = fixture();
+  (f.server.api as {request: unknown}).request = async () => {throw Object.assign(new Error('forbidden'), {status: 403, code: 'setup_source_not_local'});};
+  try {
+    await f.flow.start(); f.flow.setMode('local'); f.flow.setUsername('owner'); f.flow.setPassword('a long enough password 1'); f.flow.setConfirm('a long enough password 1');
+    await f.flow.submitLocal();
+    assert.equal(f.flow.getSnapshot().error, notLocalLine);
   } finally {f.flow.dispose();}
 });

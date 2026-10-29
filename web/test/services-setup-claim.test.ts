@@ -104,14 +104,19 @@ test('canonical completion refusal propagates once, without reapproval or an ord
   assert.equal(f.calls.filter(value => value.path.endsWith('/complete')).length, 1);
   assert(f.calls.every(value => value.path.endsWith('/lookup') || value.path.endsWith('/complete')));
 });
-test('setup return accepts the narrow original localhost exception, never network HTTP or ordinary code/state', () => {
+test('setup return accepts the exact signed original local-network address, never a public http address or ordinary code/state', () => {
   const review = {address: 'http://localhost:32500', transactionId: 'opaque_setup_transaction'};
   const location = review.address + '/auth/portico-return#transaction=' + review.transactionId;
   assert.equal(validateHostedSetupReturn(location, review), location);
   for (const invalid of [location + '&code=private', location + '&state=private', location.replace('transaction=', 'setupTransactionId='),
     location.replace('localhost', '127.0.0.1'), location.replace('/auth/', '/auth/../auth/'), location.replace('#', '?return=1#')])
     assert.throws(() => validateHostedSetupReturn(invalid, review));
-  assert.throws(() => validateHostedSetupReturn('http://server.example/auth/portico-return#transaction=opaque_setup_transaction', {...review, address: 'http://server.example'}));
+  for (const address of ['http://192.168.1.20:32400', 'http://10.0.0.5', 'http://[::1]:32400', 'http://tower.local:32400', 'http://server.example']) {
+    const lan = address + '/auth/portico-return#transaction=opaque_setup_transaction';
+    assert.equal(validateHostedSetupReturn(lan, {...review, address}), lan);
+  }
+  for (const address of ['http://8.8.8.8', 'http://[2001:db8::1]:32400', 'http://[::ffff:7f00:1]', 'http://192.168.1.20/path'])
+    assert.throws(() => validateHostedSetupReturn(address + '/auth/portico-return#transaction=opaque_setup_transaction', {...review, address}));
 });
 
 test('setupInstalled with an approved claim offers Return; absent offers none', async () => {

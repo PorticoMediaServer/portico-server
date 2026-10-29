@@ -12,7 +12,7 @@ import {connectPairedServer, connectPairedPorticoServer, rememberNativeSession, 
 import {CodedError} from '@core/server-messages.ts';
 import {routePath} from '../../../packages/contracts/src/routes.ts';
 import {dispatchPorticoReturn, type CapturedPorticoReturn} from './portico-return-dispatch';
-import {secureBrowserPending} from './secure-pending';
+import {setupBrowserPending} from './setup-pending';
 import {BrowserProtectedStore, browserAppSessions, browserConnectionEnvironment} from './server-connections';
 
 /** Reuse the original setup draft namespace. Passwords are never stored here. */
@@ -358,11 +358,11 @@ export class BrowserSetupClaim {
 }
 
 export function createBrowserSetupClaim() {
-  const guard = secureBrowserPending<Pending>('portico.setup-claim.guard'); guard.assertAvailable();
+  const guard = setupBrowserPending<Pending>('portico.setup-claim.guard'); guard.assertAvailable();
   const key = 'portico.setup-claim.tab.v1'; let tab = sessionStorage.getItem(key);
   if (tab !== null) routeBytes(tab, 32);
   else {tab = routeBase64(crypto.getRandomValues(new Uint8Array(32))); sessionStorage.setItem(key, tab);}
-  return new BrowserSetupClaim({journal: secureBrowserPending<Pending>('portico.setup-claim.v1:' + tab),
-    draft: id => secureBrowserPending<SetupDraft>('portico.initialize.' + id), sessions: browserAppSessions(), environment: browserConnectionEnvironment,
+  return new BrowserSetupClaim({journal: setupBrowserPending<Pending>('portico.setup-claim.v1:' + tab),
+    draft: id => setupBrowserPending<SetupDraft>('portico.initialize.' + id), sessions: browserAppSessions(), environment: browserConnectionEnvironment,
     installationId: () => {const value = installationIdentity(); if (!value) throw invalid(); return value.installationId;}, pageOrigin: () => location.origin});
 }

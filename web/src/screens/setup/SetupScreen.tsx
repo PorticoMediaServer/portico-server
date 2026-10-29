@@ -6,7 +6,7 @@ import {Button, TextField} from '../../kit/controls';
 import {AuthLoading, AuthStage} from '../../kit/accounts/AuthStage';
 import {ServicesStrength} from '../../kit/accounts/ServicesAuth';
 import {Icon} from '../../kit/Icon';
-import {addressSetupFailure, unavailableSetupFailure} from '../../platform/setup-failure.ts';
+import {addressSetupFailure, notLocalSourceFailure, unavailableSetupFailure} from '../../platform/setup-failure.ts';
 import {SetupFlow, type SetupPorts, type SetupSnapshot} from './setup-flow';
 import {libraryKindDescription, localPasswordValid, setupLibraryKinds, setupNameValid, setupSteps, validLocalUsername} from './setup-model';
 import styles from './setup.module.css';
@@ -34,13 +34,16 @@ function SetupBody({flow}: {flow: SetupFlow}) {
   const preparing = state.phase === 'loading' || state.phase === 'waiting';
   // The panel belongs to the exact failure this render shows, never a later one.
   const errorFailure = state.phase === 'error' ? state.failure : undefined;
+  const notLocal = state.phase === 'error' && (notLocalSourceFailure(errorFailure) || notLocalSourceFailure(state.connectError));
   const addressFailure = errorFailure && addressSetupFailure(errorFailure) ? errorFailure : undefined;
   const servicesFailure = errorFailure && unavailableSetupFailure(errorFailure) ? errorFailure : undefined;
   const steps = setupSteps({serverName: state.serverName, mode: state.mode, phase: state.phase === 'library' ? 'library' : 'form', local});
   return <div className={styles.host}>
     {state.phase === 'library' ? <FirstLibrary flow={flow} state={state}/> : <AuthStage legal={false} shape={preparing ? 'round' : 'side'} layout={preparing ? 'center' : 'column'} contentClassName={preparing ? styles.loadingContent : state.phase === 'form' ? styles.content : styles.contentLibrary}>
       {preparing && <AuthLoading>{t('web.setup.preparing')}</AuthLoading>}
-      {state.phase === 'error' && (addressFailure ? <>
+      {state.phase === 'error' && (notLocal ? <>
+        <p className={styles.error} role="alert"><Icon name="i-warn" size={20}/>{t('web.setup.notLocalSource')}</p>
+      </> : addressFailure ? <>
         <p className={styles.error} role="alert"><Icon name="i-warn" size={20}/>{t('web.setup.notOnNetwork')}</p>
         <div className={styles.field}><TextField variant="auth" label={t('web.general.serverName')} value={state.name || state.serverName} readOnly/></div>
         <Button variant="primary" size="hero" disabled>{t('accounts.signIn.handoff')}</Button>

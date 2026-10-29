@@ -8,11 +8,12 @@ import {sameServerPin, type ServerPin} from '@core/route-identity.ts';
 import {rememberNativeSession} from '@core/server-connections.ts';
 import {installationIdentity} from '@core/installation.ts';
 import {CodedError} from '@core/server-messages.ts';
+import {setupAddressAllowed} from '@core/setup-address.ts';
 import {decodePostLibrariesResponse} from '../../../packages/contracts/src/decoders.ts';
 import {routeBody, routePath, encodedRoutePath} from '../../../packages/contracts/src/routes.ts';
 import {browserAppSessions, browserConnectionEnvironment, restoreBrowserConnection} from './server-connections';
 import {createBrowserSetupClaim, type BrowserSetupClaim, type SetupClaimRecovery} from './setup-claim';
-import {secureBrowserPending} from './secure-pending';
+import {setupBrowserPending} from './setup-pending';
 import {SetupStageFailure, type SetupFailureStage} from './setup-failure';
 import {randomId} from '@core/random-id.ts';
 
@@ -23,7 +24,7 @@ type CompositionPorts = Readonly<{
   draft: (id: string) => SetupDraftStore & {assertAvailable: () => void};
 }>;
 const defaultPorts: CompositionPorts = {sessions: browserAppSessions, environment: browserConnectionEnvironment, restore: restoreBrowserConnection,
-  remember: rememberNativeSession, claim: createBrowserSetupClaim, draft: id => secureBrowserPending<SetupDraft>('portico.initialize.' + id)};
+  remember: rememberNativeSession, claim: createBrowserSetupClaim, draft: id => setupBrowserPending<SetupDraft>('portico.initialize.' + id)};
 const changed = () => new CodedError('cancelled', 'The pending setup or selected server changed.');
 const sameDraft = (a: SetupDraft | undefined, b: SetupDraft | undefined) => JSON.stringify(a) === JSON.stringify(b);
 type HostedOpening = {readonly server: SetupTarget; readonly name: string; readonly requestId: string; readonly abort: AbortController;
@@ -158,6 +159,8 @@ export class BrowserSetupComposition {
     const server = held.server, store = this.ports.draft(server.pin.serverId);
     const signal = AbortSignal.any([this.abort.signal, held.abort.signal]);
     try {
+      // The same rule the server and Hosted apply; a public http address is refused before any request.
+      if (!setupAddressAllowed(held.origin)) throw new CodedError('setup_source_not_local', 'Setup has to start from a device on the same network as this server.');
       store.assertAvailable(); await this.assertHosted(held);
       if (!held.draftCaptured) {
         const draft = await store.read(); await this.assertHosted(held);

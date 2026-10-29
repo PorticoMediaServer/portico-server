@@ -13,7 +13,11 @@ export class SetupStageFailure extends Error {
     this.status = typeof value?.status === 'number' ? value.status : undefined;
   }
 }
+/** The server (403) or this page refused because setup was not started from the server's own
+ * network (PLEX-SETUP-NOTES S7). Nothing here can be retried from the same place. */
+export const notLocalSourceFailure = (error: unknown): boolean =>
+  (error as {code?: unknown} | null)?.code === 'setup_source_not_local';
 export const addressSetupFailure = (error: unknown): error is SetupStageFailure =>
-  error instanceof SetupStageFailure && error.stage === 'browser-start' && (error.status === 401 || error.status === 403);
+  error instanceof SetupStageFailure && error.stage === 'browser-start' && (error.status === 401 || error.status === 403) && !notLocalSourceFailure(error);
 export const unavailableSetupFailure = (error: unknown): error is SetupStageFailure =>
   error instanceof SetupStageFailure && error.stage === 'claim' && error.code === 'claim_unavailable' && error.status === 503;
