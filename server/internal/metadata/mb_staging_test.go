@@ -23,6 +23,18 @@ func mbStagingJob(t *testing.T, s *Service, kind string) mbJob {
 	}
 	return *j
 }
+
+// mbHoldDiagnostic renders the largest opted-in hold sample for a failed gate
+// assertion. A peak that came from a write not carrying the collector context is
+// reported as unsampled rather than guessed at.
+func mbHoldDiagnostic(holds *dbwork.WriterHoldCollector) string {
+	sample, ok := holds.Snapshot()
+	if !ok {
+		return "no opted-in hold sampled"
+	}
+	return fmt.Sprintf("largest-sampled-hold %+v", sample)
+}
+
 func TestMBStagingParentPayloadHold(t *testing.T) {
 	db, _ := mbLaneDB(t)
 	s := New(db, "")
@@ -249,14 +261,15 @@ func TestMBStagingTenThousandCompleteFinalWriterHold(t *testing.T) {
 	}
 	dbwork.ResetPlans()
 	dbwork.WriteGate().ResetPeak()
+	stageCtx, holds := dbwork.WithTestWriterHolds(ctx)
 	start := time.Now()
-	proof, e := s.mbStageRelease(ctx, j, stage, "2000-01-01T00:00:00Z")
+	proof, e := s.mbStageRelease(stageCtx, j, stage, "2000-01-01T00:00:00Z")
 	if e != nil {
 		t.Fatal("bounded construction", e)
 	}
 	t.Logf("10k construction/proof/seal elapsed=%s peak-held=%dms largest=%+v overruns=%d", time.Since(start), dbwork.WriteGate().Stats().MaxHeldMilli, dbwork.Plans().Largest, dbwork.Plans().Overruns)
 	if peak := dbwork.WriteGate().Stats().MaxHeldMilli; peak > 250 {
-		t.Fatalf("SRV023 STOP: construction held %dms", peak)
+		t.Fatalf("SRV023 STOP: construction held %dms: %s", peak, mbHoldDiagnostic(holds))
 	}
 	if dbwork.Plans().Overruns != 0 {
 		t.Fatal("bounded construction exceeded unchanged plans", dbwork.Plans())
@@ -303,8 +316,9 @@ func TestMBStagingTenThousandCompleteFinalWriterHold(t *testing.T) {
 	assertMBAccounting(t, db)
 	dbwork.ResetPlans()
 	dbwork.WriteGate().ResetPeak()
+	finalCtx, finalHolds := dbwork.WithTestWriterHolds(ctx)
 	start = time.Now()
-	if e = s.mbPublishAlbumReady(ctx, j, stage, proof, "2000-01-01T00:00:00Z"); e != nil {
+	if e = s.mbPublishAlbumReady(finalCtx, j, stage, proof, "2000-01-01T00:00:00Z"); e != nil {
 		t.Fatal("complete final publication", e)
 	}
 	elapsed := time.Since(start)
@@ -316,7 +330,7 @@ func TestMBStagingTenThousandCompleteFinalWriterHold(t *testing.T) {
 	// Runtime's post-Begin timer asserts the precise bound after release;
 	// peak-held excludes queue wait, while outer elapsed is diagnostic only.
 	if held > uint64(mbFinalExtremeHold/time.Millisecond) {
-		t.Errorf("SRV023 STOP before merge: complete final elapsed=%s maxheld=%dms >500ms", elapsed, held)
+		t.Errorf("SRV023 STOP before merge: complete final elapsed=%s maxheld=%dms >500ms: %s", elapsed, held, mbHoldDiagnostic(finalHolds))
 	}
 	if dbwork.Plans().Overruns != 0 {
 		t.Fatal("complete final exceeded unchanged plan", dbwork.Plans())
