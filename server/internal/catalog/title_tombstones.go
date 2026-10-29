@@ -3,7 +3,9 @@ package catalog
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"strings"
+	"time"
 
 	"portico.local/server/internal/dbwork"
 )
@@ -73,12 +75,65 @@ func (s *Service) DismissRemovedTitle(v Viewer, id string, authorize func(*sql.T
 	})
 }
 
-// PruneRemovedTitles expires private references without retaining title names.
+const expiredTombstoneHeadSQL = `SELECT public_id FROM catalog_title_tombstones INDEXED BY catalog_title_tombstones_expiry WHERE expires_at<=strftime('%Y-%m-%dT%H:%M:%fZ','now') ORDER BY expires_at LIMIT 1`
+
+// PruneRemovedTitles drains expired references child-first. Empty upkeep is a
+// read; each admitted writer changes at most eight rows including revision
+// triggers (four viewers or eight attributes), or one empty header.
+// Every turn rechecks expiry, so no durable cursor or snapshot spans turns.
 func (s *Service) PruneRemovedTitles(ctx context.Context) error {
-	return dbwork.WithWriteTx(ctx, s.db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `DELETE FROM catalog_title_tombstones WHERE expires_at<=strftime('%Y-%m-%dT%H:%M:%fZ','now')`)
-		return err
-	})
+	ctx = dbwork.WithClass(ctx, dbwork.ClassMaintenance)
+	for ctx.Err() == nil {
+		var id string
+		err := s.WithContext(ctx).read().QueryRowContext(ctx, expiredTombstoneHeadSQL).Scan(&id)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if !dbwork.PaceBackground(ctx, time.Time{}) {
+			return ctx.Err()
+		}
+		err = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
+			_, err := pruneRemovedTitleTurnTx(ctx, tx)
+			return err
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return ctx.Err()
+}
+
+func pruneRemovedTitleTurnTx(ctx context.Context, tx *sql.Tx) (bool, error) {
+	var id string
+	err := tx.QueryRowContext(ctx, expiredTombstoneHeadSQL).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	for _, statement := range []string{
+		`DELETE FROM catalog_title_tombstone_viewers WHERE public_id=?1 AND profile_id IN(SELECT profile_id FROM catalog_title_tombstone_viewers WHERE public_id=?1 ORDER BY profile_id LIMIT 4)`,
+		`DELETE FROM catalog_title_tombstone_attributes WHERE public_id=?1 AND (field_id,value_key) IN(SELECT field_id,value_key FROM catalog_title_tombstone_attributes WHERE public_id=?1 ORDER BY field_id,value_key LIMIT 8)`,
+	} {
+		result, e := tx.ExecContext(ctx, statement, id)
+		if e != nil {
+			return false, e
+		}
+		n, e := result.RowsAffected()
+		if e != nil {
+			return false, e
+		}
+		if n > 0 {
+			return true, nil
+		}
+	}
+	// The two child-prefix proofs prevent the parent's CASCADE from doing work.
+	_, err = tx.ExecContext(ctx, `DELETE FROM catalog_title_tombstones WHERE public_id=? AND expires_at<=strftime('%Y-%m-%dT%H:%M:%fZ','now') AND NOT EXISTS(SELECT 1 FROM catalog_title_tombstone_viewers WHERE public_id=catalog_title_tombstones.public_id LIMIT 1) AND NOT EXISTS(SELECT 1 FROM catalog_title_tombstone_attributes WHERE public_id=catalog_title_tombstones.public_id LIMIT 1)`, id)
+	return true, err
 }
 
 // homeRemovedSource has exactly the same personal/current-policy fence as a
