@@ -90,6 +90,13 @@ func (s *Service) PreviewDeleteVersion(ctx context.Context, auth Authorize, item
 // DeleteVersion removes just the approved link, keeping the title and personal
 // state. If this was its last file the usual missing-title rule takes over.
 func (s *Service) DeleteVersion(ctx context.Context, auth Authorize, item, asset string, in VersionDeleteRequest) (DeleteResult, error) {
+	return s.DeleteVersionChecked(ctx, auth, nil, item, asset, in)
+}
+
+// DeleteVersionChecked supplements the established command with an exact
+// selection proof. A completed receipt replays after live owner admission but
+// before re-proving a link that this same operation already removed.
+func (s *Service) DeleteVersionChecked(ctx context.Context, auth, selection Authorize, item, asset string, in VersionDeleteRequest) (DeleteResult, error) {
 	out := DeleteResult{Receipts: []DeleteReceipt{}}
 	if validTargets([]string{item}) != nil || validTargets([]string{asset}) != nil || !validOperationID(in.OperationID) || !safeText(in.Confirmation, 400) || len(in.PreviewKey) != 64 {
 		return out, ErrInput
@@ -108,6 +115,11 @@ func (s *Service) DeleteVersion(ctx context.Context, auth Authorize, item, asset
 		if found {
 			out, replay = stored, true
 			return nil
+		}
+		if selection != nil {
+			if e = selection(ctx, tx); e != nil {
+				return e
+			}
 		}
 		var key string
 		t, key, e = versionTarget(ctx, tx, item, asset)

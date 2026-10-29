@@ -100,6 +100,24 @@ func discPublicationFixture(t *testing.T) (*Service, *sql.DB, LibrarySource, str
 	return s, db, source, job, object, policy.Revision, probe
 }
 
+// A sealed input waits for the real finite A5 directory pass before acceptance.
+// Drive that existing worker between retries, just as ingestion does; never
+// forge an accepted target pin or drain a still-unaccepted producer to EOF.
+func acceptDiscProbeForTest(t *testing.T, s *Service, ctx context.Context, job, object, revision string, policy int64, probe disc.Probe) (compactcatalog.InfoAcceptReceipt, error) {
+	t.Helper()
+	worker := compactcatalog.NewWorker(s.db)
+	for i := 0; i < 1000; i++ {
+		r, err := s.AcceptInventoryDiscProbe(ctx, job, object, revision, policy, probe)
+		if !errors.Is(err, compactcatalog.ErrInfoInputDeferred) && !errors.Is(err, compactcatalog.ErrInfoInputBusy) {
+			return r, err
+		}
+		if _, err = worker.Step(ctx, 8); err != nil {
+			return r, err
+		}
+	}
+	return compactcatalog.InfoAcceptReceipt{}, compactcatalog.ErrInfoInputDeferred
+}
+
 func TestDiscStructurePublicationStableIdentitiesReorderAndCurrentRead(t *testing.T) {
 	s, db, _, job, object, policy, probe := discPublicationFixture(t)
 	ctx := context.Background()
@@ -109,7 +127,7 @@ func TestDiscStructurePublicationStableIdentitiesReorderAndCurrentRead(t *testin
 	}
 	publish := func(p disc.Probe) compactcatalog.InfoAcceptReceipt {
 		t.Helper()
-		receipt, err := s.AcceptInventoryDiscProbe(ctx, job, object, revision, policy, p)
+		receipt, err := acceptDiscProbeForTest(t, s, ctx, job, object, revision, policy, p)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -190,7 +208,7 @@ func TestDiscStructureSourceFencesAndCorruptionStayClosed(t *testing.T) {
 	if err := db.QueryRow(`SELECT revision FROM inventory_objects WHERE id=?`, object).Scan(&revision); err != nil {
 		t.Fatal(err)
 	}
-	receipt, err := s.AcceptInventoryDiscProbe(ctx, job, object, revision, policy, probe)
+	receipt, err := acceptDiscProbeForTest(t, s, ctx, job, object, revision, policy, probe)
 	if err != nil || receipt.State != compactcatalog.InfoInputAcceptedPending {
 		t.Fatalf("structure source receipt: %+v %v", receipt, err)
 	}

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -19,6 +20,13 @@ import (
 // catalog.acceptInventoryInfo/AcceptDiscAlternate stage them; the fixture
 // supplies the already-accepted observation and title rows those producers
 // require, and never calls a retired all-holder helper.
+//
+// Acceptance now freezes A5's coherent object directory in the same writer as
+// the typed body. A sealed frame can therefore observe a truthful
+// ErrInfoInputDeferred while source41 is still walking its finite pass, and the
+// fixture drives the real compact Worker between attempts just as ingestion
+// does. It never forges the phase-1 owner pin: the accepted frame itself must
+// carry the lowest raw ID chosen before any probe test.
 
 type discProjectionFixture struct {
 	t           *testing.T
@@ -32,7 +40,9 @@ type discProjectionFixture struct {
 	fingerprint string
 	source      string
 	incarnation string
+	generation  int64
 	policy      int64
+	job         string
 	frame       int
 }
 
@@ -51,6 +61,7 @@ func newDiscProjectionFixture(t *testing.T, holders int) *discProjectionFixture 
 		object:      "disc-observation",
 		revision:    "revision-1",
 		fingerprint: hex.EncodeToString(sum[:]),
+		job:         "disc-projection-job",
 	}
 	for i := 0; i < holders; i++ {
 		item := c.Entity(compactcatalog.Entity{Library: lib, Kind: compactcatalog.Movie, Key: fmt.Sprintf("discproj:%d", i), Title: "Disc"}, nil)
@@ -68,23 +79,32 @@ func newDiscProjectionFixture(t *testing.T, holders int) *discProjectionFixture 
 	if err := c.DB.QueryRow(`SELECT size,modified_ns FROM catalog_assets WHERE id=?`, f.asset).Scan(&size, &modified); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.DB.QueryRow(`SELECT incarnation FROM library_sources WHERE id=?`, f.source).Scan(&f.incarnation); err != nil {
+	if err := c.DB.QueryRow(`SELECT incarnation,generation FROM library_sources WHERE id=?`, f.source).Scan(&f.incarnation, &f.generation); err != nil {
 		t.Fatal(err)
 	}
-	c.Exec(`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,object_identity,revision,evidence_json,size,modified_ns,state)
- VALUES(?,?,?,?,?,?,?,?,?,?,'available')`, f.object, f.source, f.token, f.incarnation, "VIDEO_TS", "object-identity", f.revision, "{}", size, modified)
 	if err := c.DB.QueryRow(`SELECT revision FROM library_scan_policies WHERE library_id=?`, "discproj").Scan(&f.policy); err != nil {
 		t.Fatal(err)
 	}
+	// The disc witness is a live producer: the real job/run pair and the seen
+	// object keep recovery from treating the staged frame as a dead witness
+	// while source41 catches up to its coherent pass.
+	c.Exec(`INSERT INTO jobs(id,library_id,status,created_at) VALUES(?,?,'running','now')`, f.job, f.source)
+	c.Exec(`INSERT INTO inventory_runs(job_id,source_id,source_generation,root_incarnation,root_identity,policy_revision)
+ SELECT ?,id,generation,incarnation,root_identity,? FROM library_sources WHERE id=?`, f.job, f.policy, f.source)
+	c.Exec(`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,object_identity,revision,evidence_json,size,modified_ns,seen_job,state)
+ VALUES(?,?,?,?,?,?,?,?,?,?,?,'available')`, f.object, f.source, f.token, f.incarnation, "VIDEO_TS", "object-identity", f.revision, "{}", size, modified, f.job)
 	c.Exec(`INSERT INTO asset_stream_facts(asset_id,revision,size,modified_ns,fingerprint,detail_version) VALUES(?,3,?,?,?,1)`, f.token, size, modified, "stream-facts")
 	c.Drain()
 	return f
 }
 
 // publish accepts one normalized source frame through the real public writer.
-// The production A5 pass pins the accepted owner observation before pre-fence;
-// the fixture performs that point choice explicitly so the test stays inside the
-// producer gap it covers.
+// Acceptance freezes A5's coherent owner observation in the same writer as the
+// typed body. If source41 has not finished its finite pass yet the writer
+// truthfully returns ErrInfoInputDeferred and this fixture drives the real
+// compact Worker between attempts, exactly as ingestion does. The fixture then
+// proves the accepted frame already carries its own phase-1 pin; it never
+// writes one by hand.
 func (f *discProjectionFixture) publish(mask int64, families []compactcatalog.InfoSourceFamily) int64 {
 	f.t.Helper()
 	f.frame++
@@ -101,9 +121,9 @@ func (f *discProjectionFixture) publish(mask int64, families []compactcatalog.In
 		Fingerprint:   fingerprint,
 		Witnesses: []compactcatalog.InfoWitness{{
 			Kind:             compactcatalog.InfoWitnessDisc,
-			JobID:            "disc-job",
+			JobID:            f.job,
 			SourceID:         f.source,
-			SourceGeneration: 1,
+			SourceGeneration: f.generation,
 			RootIncarnation:  f.incarnation,
 			ObjectID:         f.object,
 			ObjectRevision:   f.revision,
@@ -111,21 +131,64 @@ func (f *discProjectionFixture) publish(mask int64, families []compactcatalog.In
 			Fingerprint:      fingerprint,
 		}},
 	}
-	receipt, err := compactcatalog.PublishInfoSource(context.Background(), f.c.DB,
-		func(context.Context, *sql.Tx) error { return nil },
-		func(context.Context, *sql.Tx) (compactcatalog.InfoInputSpec, []compactcatalog.InfoSourceFamily, error) {
-			return spec, families, nil
-		})
+	accept := func() (compactcatalog.InfoAcceptReceipt, error) {
+		return compactcatalog.PublishInfoSource(context.Background(), f.c.DB,
+			func(context.Context, *sql.Tx) error { return nil },
+			func(context.Context, *sql.Tx) (compactcatalog.InfoInputSpec, []compactcatalog.InfoSourceFamily, error) {
+				return spec, families, nil
+			})
+	}
+	receipt, err := accept()
+	for attempt := 0; errors.Is(err, compactcatalog.ErrInfoInputDeferred) || errors.Is(err, compactcatalog.ErrInfoInputBusy); attempt++ {
+		if attempt >= 1000 {
+			f.t.Fatalf("accept disc source frame: %v", err)
+		}
+		f.coherentSource()
+		receipt, err = accept()
+	}
 	if err != nil {
 		f.t.Fatalf("accept disc source frame: %v", err)
 	}
 	if receipt.State != compactcatalog.InfoInputAcceptedPending && receipt.State != compactcatalog.InfoInputApplied {
 		f.t.Fatalf("disc source receipt state %v", receipt.State)
 	}
-	// A5's exact owner choice: the lowest current observation, before its probe
-	// is tested. Pin it so phase 1 does not wait for a source pass.
-	f.c.Exec(`UPDATE catalog_info_changes SET target_owner_object=?,target_owner_revision=?,copy_family=1 WHERE id=? AND phase=1`, f.object, f.revision, receipt.ChangeID)
+	// A5 pins the lowest eligible raw object before testing its probe. The
+	// accepted header must already hold exactly that point choice.
+	var pinned bool
+	var owner, revision sql.NullString
+	if err := f.c.DB.QueryRow(`SELECT copy_family=1,target_owner_object,target_owner_revision FROM catalog_info_changes WHERE id=?`, receipt.ChangeID).
+		Scan(&pinned, &owner, &revision); err != nil {
+		f.t.Fatal(err)
+	}
+	if !pinned || owner.String != f.object || revision.String != f.revision {
+		f.t.Fatalf("accepted disc frame pinned %q/%q (pinned=%v), want %q/%q", owner.String, revision.String, pinned, f.object, f.revision)
+	}
 	return receipt.ChangeID
+}
+
+// coherentSource runs the real compact Worker until source41 reaches the exact
+// coherent phase 3 that freezeInfoInputOwnerTx accepts: the pass revision is
+// current, the frame is not a rerun, and the captured availability epoch still
+// matches. It never installs a source row or a pin itself.
+func (f *discProjectionFixture) coherentSource() {
+	f.t.Helper()
+	worker := compactcatalog.NewWorker(f.c.DB)
+	for i := 0; i < 1000; i++ {
+		var ready bool
+		if err := f.c.DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM catalog_upstream_sources w
+ JOIN catalog_facet_source_state s ON s.singleton=1
+ WHERE w.domain=41 AND w.source_id=? AND w.token=? AND w.phase=3
+ AND w.pass_revision=w.revision AND w.after_key<>'rerun' AND w.source_epoch=s.availability_epoch)`, f.asset, f.token).Scan(&ready); err != nil {
+			f.t.Fatal(err)
+		}
+		if ready {
+			return
+		}
+		if _, err := worker.Step(context.Background(), 8); err != nil {
+			f.t.Fatal(err)
+		}
+	}
+	f.t.Fatal("A5 coherent source pass never reached phase 3")
 }
 
 func (f *discProjectionFixture) advance(change int64) bool {
@@ -400,6 +463,9 @@ func TestInfoDiscSubtitleProjectionPreservesAlternateTitlesAndClear(t *testing.T
 		t.Fatalf("alternate resources %d, want %d", n, mainResources+1)
 	}
 	alternateID := infoDiscResourceID(item, f.token, f.object, "title-b", "facts-b", f.policy, 5)
+	if n := infoTestCount(t, f.c.DB, `SELECT count(*) FROM subtitle_resources WHERE id=?`, alternateID); n != 1 {
+		t.Fatal("accepted alternate resource absent", n)
+	}
 	// The alternate accept updated only its own title; the accepted main title's
 	// resources keep their exact identities.
 	mainID := infoDiscResourceID(item, f.token, f.object, "title-a", "facts-a", f.policy, 2)

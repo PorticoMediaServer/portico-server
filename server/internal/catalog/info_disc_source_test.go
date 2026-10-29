@@ -18,7 +18,7 @@ func TestInfoDiscSourcePublishesNormalizedStructureAndKeepsSurvivingTokens(t *te
 	c := catalogtest.New(t, db)
 	publish := func() {
 		t.Helper()
-		receipt, err := s.AcceptInventoryDiscProbe(context.Background(), job, object, revision, policy, probe)
+		receipt, err := acceptDiscProbeForTest(t, s, context.Background(), job, object, revision, policy, probe)
 		if err != nil || receipt.State != compactcatalog.InfoInputAcceptedPending {
 			t.Fatal("disc source receipt", receipt, err)
 		}
@@ -66,7 +66,7 @@ func TestInfoDiscSourcePublishesNormalizedStructureAndKeepsSurvivingTokens(t *te
 		t.Fatal(err)
 	}
 	rows.Close()
-	receipt, err := s.AcceptInventoryDiscProbe(context.Background(), job, object, revision, policy, probe)
+	receipt, err := acceptDiscProbeForTest(t, s, context.Background(), job, object, revision, policy, probe)
 	if err != nil || receipt.State != compactcatalog.InfoInputApplied || receipt.ChangeID != 0 {
 		t.Fatal("same structure wasn't an applied no-op", receipt, err)
 	}

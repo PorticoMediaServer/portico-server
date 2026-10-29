@@ -341,6 +341,13 @@ func (w *upstreamSource) asset(ctx context.Context, tx *sql.Tx, limit int) (int,
 			// otherwise finish the old owner walk and honor its existing rerun.
 			c, e := activeInfoChange(ctx, tx, w.id, w.token)
 			unresolved := errors.Is(e, sql.ErrNoRows) || e == nil && c.phase <= 1
+			if e == nil && c.phase == 1 {
+				var pinned bool
+				if e = tx.QueryRowContext(ctx, `SELECT copy_family=1 FROM catalog_info_changes WHERE id=?`, c.id).Scan(&pinned); e != nil {
+					return 0, false, e
+				}
+				unresolved = !pinned
+			}
 			if e != nil && !errors.Is(e, sql.ErrNoRows) {
 				return 0, false, e
 			}

@@ -189,8 +189,12 @@ func (d *delivery) resize(adapterBytes int64) error {
 // Unfinished steps must return no Payload. Encode incrementally within the budget;
 // do not construct an unbounded result and attempt admission afterward.
 type StepResult struct {
-	Done    bool
-	Payload []byte
+	// RetryAfter yields a pending read without occupying a worker or spinning on
+	// an unchanged readiness head. It is memory-only, at most one second, and
+	// never renews the handle, poll deadline or original expiry.
+	RetryAfter time.Duration
+	Done       bool
+	Payload    []byte
 }
 
 // Computation is used by only one worker at a time. Each Step must do a bounded
@@ -806,11 +810,17 @@ func (s *Store) armWake(now time.Time) {
 	delay := coldPruneInterval
 	needed := false
 	for _, e := range s.entries {
-		if !e.cold || e.complete {
+		if e.complete {
 			continue
 		}
-		needed = true
-		delay = min(delay, e.pollUntil.Sub(now))
+		if e.cold {
+			needed = true
+			delay = min(delay, e.pollUntil.Sub(now))
+		} else if !e.running && !e.retryAt.IsZero() {
+			needed = true
+		} else {
+			continue
+		}
 		if !e.running && !e.retryAt.IsZero() {
 			// A poll may acquire mu after the retry deadline but before its
 			// timer callback. Keep an elapsed retry immediately runnable;
@@ -851,6 +861,10 @@ func (s *Store) wake() {
 // and memory until the callback actually exits.
 func (s *Store) next(now time.Time) *entry {
 	for i, e := range s.queue {
+		if now.Before(e.retryAt) {
+			continue
+		}
+		e.retryAt = time.Time{}
 		if e.cold && s.coldOwner != nil {
 			continue
 		}
@@ -905,7 +919,7 @@ func (s *Store) worker() {
 			e.retryAt = s.cfg.Now().Add(coldRetryDelay)
 			continue
 		}
-		if err != nil || bytes < 0 || bytes > e.reserved || (!out.Done && out.Payload != nil) || (out.Done && int64(cap(out.Payload)) > bytes) {
+		if err != nil || bytes < 0 || bytes > e.reserved || (!out.Done && out.Payload != nil) || (out.Done && int64(cap(out.Payload)) > bytes) || out.RetryAfter < 0 || out.RetryAfter > time.Second || (out.Done && out.RetryAfter != 0) {
 			if err == nil {
 				err = ErrInvalid
 			}
@@ -927,8 +941,13 @@ func (s *Store) worker() {
 				s.coldOwner = nil
 				s.cond.Broadcast()
 			}
-		} else if !e.cold {
-			s.queue = append(s.queue, e)
+		} else {
+			if out.RetryAfter > 0 {
+				e.retryAt = s.cfg.Now().Add(out.RetryAfter)
+			}
+			if !e.cold {
+				s.queue = append(s.queue, e)
+			}
 		}
 		// Requeue ordinary work then select under the same lock, preserving
 		// its existing queue bound and one-worker-at-a-time computation rule.

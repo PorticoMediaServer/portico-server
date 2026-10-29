@@ -11,6 +11,33 @@ import (
 	"portico.local/server/internal/subtitles"
 )
 
+func acceptInventoryInfoForTest(t *testing.T, s *Service, ctx context.Context, job, object, revision string, policy int64, facts assets.Facts, refresh bool) (compactcatalog.InfoAcceptReceipt, error) {
+	t.Helper()
+	return runInfoProducerForTest(t, s, ctx, func() (compactcatalog.InfoAcceptReceipt, error) {
+		return s.acceptInventoryInfo(ctx, job, object, revision, policy, facts, refresh)
+	})
+}
+func acceptDiscAlternateForTest(t *testing.T, s *Service, ctx context.Context, job, object, revision string, policy int64, facts assets.Facts) (compactcatalog.InfoAcceptReceipt, error) {
+	t.Helper()
+	return runInfoProducerForTest(t, s, ctx, func() (compactcatalog.InfoAcceptReceipt, error) {
+		return s.AcceptDiscAlternate(ctx, job, object, revision, policy, facts)
+	})
+}
+func runInfoProducerForTest(t *testing.T, s *Service, ctx context.Context, produce func() (compactcatalog.InfoAcceptReceipt, error)) (compactcatalog.InfoAcceptReceipt, error) {
+	t.Helper()
+	worker := compactcatalog.NewWorker(s.db)
+	for i := 0; i < 1000; i++ {
+		receipt, err := produce()
+		if !errors.Is(err, compactcatalog.ErrInfoInputDeferred) && !errors.Is(err, compactcatalog.ErrInfoInputBusy) {
+			return receipt, err
+		}
+		if _, err = worker.Step(ctx, 8); err != nil {
+			return receipt, err
+		}
+	}
+	return compactcatalog.InfoAcceptReceipt{}, compactcatalog.ErrInfoInputDeferred
+}
+
 func TestInfoInventorySourceUsesLiveFenceAndExplicitReceipt(t *testing.T) {
 	s, db, _, job, object, policy, _ := discPublicationFixture(t)
 	var revision, token string
@@ -19,7 +46,7 @@ func TestInfoInventorySourceUsesLiveFenceAndExplicitReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 	facts := assets.Facts{Container: "mkv", VideoCodec: "h264", AudioCodec: "aac", Duration: 120, Streams: []assets.Stream{{Index: 0, Type: "video", Codec: "h264"}, {Index: 1, Type: "audio", Codec: "aac"}}, ChapterStatus: "known", Chapters: []assets.Chapter{{Title: "Opening", Start: 0, End: 60}}, SubtitleInventory: &subtitles.Inventory{Status: "known", Tracks: []subtitles.Track{{Origin: "embedded", StreamIndex: 2, Format: "vtt", Language: "en"}}}}
-	receipt, err := s.acceptInventoryInfo(context.Background(), job, object, revision, policy, facts, false)
+	receipt, err := acceptInventoryInfoForTest(t, s, context.Background(), job, object, revision, policy, facts, false)
 	if err != nil || receipt.State != compactcatalog.InfoInputAcceptedPending {
 		t.Fatal("not accepted-pending", receipt, err)
 	}
@@ -35,7 +62,7 @@ func TestInfoInventorySourceUsesLiveFenceAndExplicitReceipt(t *testing.T) {
 	if err := db.QueryRow(`SELECT info_epoch FROM catalog_assets WHERE id=?`, asset).Scan(&epoch); err != nil {
 		t.Fatal(err)
 	}
-	unchanged, err := s.acceptInventoryInfo(context.Background(), job, object, revision, policy, facts, false)
+	unchanged, err := acceptInventoryInfoForTest(t, s, context.Background(), job, object, revision, policy, facts, false)
 	if err != nil || unchanged.State != compactcatalog.InfoInputApplied || unchanged.ChangeID != 0 {
 		t.Fatal("unchanged source was not an applied no-op", unchanged, err)
 	}
@@ -65,12 +92,12 @@ func TestInfoInventorySourceFingerprintBindsHiddenTechnicalFamilies(t *testing.T
 		t.Fatal(err)
 	}
 	facts := assets.Facts{Container: "mkv", VideoCodec: "h264", AudioCodec: "aac", Duration: 120, Streams: []assets.Stream{{Index: 0, Type: "video", Codec: "h264"}, {Index: 1, Type: "audio", Codec: "aac"}}, ChapterStatus: "known", Chapters: []assets.Chapter{{Title: "OLD chapter", Start: 0, End: 60}}, SubtitleInventory: &subtitles.Inventory{Status: "known", Tracks: []subtitles.Track{{Origin: "embedded", StreamIndex: 2, Format: "vtt", Language: "en"}}}}
-	first, err := s.acceptInventoryInfo(context.Background(), job, object, revision, policy, facts, false)
+	first, err := acceptInventoryInfoForTest(t, s, context.Background(), job, object, revision, policy, facts, false)
 	if err != nil || first.State != compactcatalog.InfoInputAcceptedPending {
 		t.Fatal("first", first, err)
 	}
 	facts.Chapters[0].Title = "NEW chapter"
-	second, err := s.acceptInventoryInfo(context.Background(), job, object, revision, policy, facts, false)
+	second, err := acceptInventoryInfoForTest(t, s, context.Background(), job, object, revision, policy, facts, false)
 	if err != nil || second.State != compactcatalog.InfoInputAcceptedPending || second.ChangeID == first.ChangeID {
 		t.Fatal("chapter-only successor collapsed", first, second, err)
 	}
@@ -81,7 +108,7 @@ func TestInfoInventorySourceFingerprintBindsHiddenTechnicalFamilies(t *testing.T
 		t.Fatal("queued chapter not applied", title, err)
 	}
 	facts.SubtitleInventory.Tracks[0].Language = "ja"
-	third, err := s.acceptInventoryInfo(context.Background(), job, object, revision, policy, facts, false)
+	third, err := acceptInventoryInfoForTest(t, s, context.Background(), job, object, revision, policy, facts, false)
 	if err != nil || third.State != compactcatalog.InfoInputAcceptedPending {
 		t.Fatal("subtitle-only input", third, err)
 	}
@@ -91,7 +118,7 @@ func TestInfoInventorySourceFingerprintBindsHiddenTechnicalFamilies(t *testing.T
 		t.Fatal("subtitle-only input lost", language, err)
 	}
 	facts.Streams[1].Codec = "flac"
-	fourth, err := s.acceptInventoryInfo(context.Background(), job, object, revision, policy, facts, false)
+	fourth, err := acceptInventoryInfoForTest(t, s, context.Background(), job, object, revision, policy, facts, false)
 	if err != nil || fourth.State != compactcatalog.InfoInputAcceptedPending {
 		t.Fatal("stream base field input", fourth, err)
 	}

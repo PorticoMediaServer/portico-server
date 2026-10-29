@@ -52,6 +52,9 @@ type mergeTitlesRequest struct {
 	// FromID is merged into IntoID and removed; IntoID keeps its id.
 	FromID string `json:"fromId"`
 	IntoID string `json:"intoId"`
+	// FileInfo optionally names the exact source member shown on the FileInfo
+	// surface. It never changes the merge target.
+	FileInfo *catalog.FileInfoActionProof `json:"fileInfo,omitempty"`
 }
 
 type mergeTitlesResponse struct {
@@ -121,10 +124,10 @@ func registerIdentityRoutes(r *apikit.Registry, d Dependencies) {
 			id = "preview_delete_title_version"
 			method = "POST"
 		}
-		meta := apikit.Metadata{Audience: apikit.Clients, Admission: laneAdminHeavy, ID: id, Method: method, Path: path, Summary: "Delete one file version while keeping its title and personal state", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Cost: apikit.PageSized, Status: status, BodyLimit: 4096, Errors: []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "revision_mismatch", "confirmation_mismatch", "administration_unavailable", "internal"}}
+		meta := apikit.Metadata{Audience: apikit.Clients, Admission: laneAdminHeavy, ID: id, Method: method, Path: path, Summary: "Delete one file version while keeping its title and personal state", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Cost: apikit.PageSized, Status: status, BodyLimit: 4096, Errors: []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "revision_mismatch", "confirmation_mismatch", "administration_unavailable", "stale_continuation", "metadata_unavailable", "internal"}}
 		if preview {
 			meta.OptionalBody = true
-			v1Route(r, meta, func(ctx context.Context, q *http.Request, _ noBody) (administration.VersionDeletePreview, error) {
+			v1Route(r, meta, func(ctx context.Context, q *http.Request, in versionDeletePreviewRequest) (administration.VersionDeletePreview, error) {
 				p, e := d.owner(q)
 				if e != nil {
 					return administration.VersionDeletePreview{}, e
@@ -132,11 +135,25 @@ func registerIdentityRoutes(r *apikit.Registry, d Dependencies) {
 				if d.Administration == nil {
 					return administration.VersionDeletePreview{}, &apierror.Error{Code: "administration_unavailable"}
 				}
-				out, e := d.Administration.PreviewDeleteVersion(ctx, d.administrationAuthority(p), q.PathValue("id"), q.PathValue("fileId"))
+				authority := d.administrationAuthority(p)
+				if in.FileInfo != nil {
+					if !validFileInfoActionProof(in.FileInfo) {
+						return administration.VersionDeletePreview{}, &apierror.Error{Code: "invalid_request"}
+					}
+					if d.FileInfoRuntime == nil {
+						return administration.VersionDeletePreview{}, &apierror.Error{Code: "metadata_unavailable", RetryAfterSeconds: 1}
+					}
+					scope, e := d.fileInfoActionScope(p, q)
+					if e != nil {
+						return administration.VersionDeletePreview{}, fileInfoActionError(e)
+					}
+					authority = d.fileInfoActionAuthority(authority, d.fileInfoActionResource(p), scope, *in.FileInfo, fileInfoActionPathTarget(q.PathValue("id"), q.PathValue("fileId")))
+				}
+				out, e := d.Administration.PreviewDeleteVersion(ctx, authority, q.PathValue("id"), q.PathValue("fileId"))
 				return out, versionDeletionError(e)
 			})
 		} else {
-			v1Route(r, meta, func(ctx context.Context, q *http.Request, in administration.VersionDeleteRequest) (administration.DeleteResult, error) {
+			v1Route(r, meta, func(ctx context.Context, q *http.Request, in versionDeleteInput) (administration.DeleteResult, error) {
 				p, e := d.owner(q)
 				if e != nil {
 					return administration.DeleteResult{}, e
@@ -144,7 +161,22 @@ func registerIdentityRoutes(r *apikit.Registry, d Dependencies) {
 				if d.Administration == nil {
 					return administration.DeleteResult{}, &apierror.Error{Code: "administration_unavailable"}
 				}
-				out, e := d.Administration.DeleteVersion(ctx, d.administrationAuthority(p), q.PathValue("id"), q.PathValue("fileId"), in)
+				authority := d.administrationAuthority(p)
+				var selection administration.Authorize
+				if in.FileInfo != nil {
+					if !validFileInfoActionProof(in.FileInfo) {
+						return administration.DeleteResult{}, &apierror.Error{Code: "invalid_request"}
+					}
+					if d.FileInfoRuntime == nil {
+						return administration.DeleteResult{}, &apierror.Error{Code: "metadata_unavailable", RetryAfterSeconds: 1}
+					}
+					scope, e := d.fileInfoActionScope(p, q)
+					if e != nil {
+						return administration.DeleteResult{}, fileInfoActionError(e)
+					}
+					selection = d.fileInfoActionAuthority(nil, d.fileInfoActionResource(p), scope, *in.FileInfo, fileInfoActionPathTarget(q.PathValue("id"), q.PathValue("fileId")))
+				}
+				out, e := d.Administration.DeleteVersionChecked(ctx, authority, selection, q.PathValue("id"), q.PathValue("fileId"), in.VersionDeleteRequest)
 				if e == nil && out.Removed > 0 && d.Catalog != nil && d.Catalog.MissingRule(ctx).Mode == "immediately" {
 					if _, err := d.Catalog.EmptyMissingDue(ctx); err != nil {
 						return out, err
@@ -154,6 +186,8 @@ func registerIdentityRoutes(r *apikit.Registry, d Dependencies) {
 			})
 		}
 	}
+
+	registerFileInfoActionRoutes(r, d)
 
 	registerStorageStatus(r, d)
 	registerDataStorage(r, d)
@@ -212,10 +246,35 @@ func registerIdentityRoutes(r *apikit.Registry, d Dependencies) {
 			}
 		})
 	v1Route(r, apikit.Metadata{Audience: apikit.Clients, Admission: laneAdminHeavy, ID: "merge_titles", Method: "POST", Path: "/v1/admin/titles/merge", Summary: "Say that two titles of one library are the same title: the first becomes part of the second, with its files as versions (an album, book, artist or author: its songs, files, albums or books) and everyone's state combined",
-		Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Cost: apikit.PageSized, BodyLimit: 4096, Status: 200, Errors: ownerErrors},
+		Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Cost: apikit.PageSized, BodyLimit: 4096, Status: 200, Errors: append(append([]string{}, ownerErrors...), "stale_continuation", "metadata_unavailable")},
 		func(ctx context.Context, q *http.Request, in mergeTitlesRequest) (mergeTitlesResponse, error) {
-			p, _ := d.foundationCaller(q)
-			err := d.Catalog.MergeTitles(ctx, in.FromID, in.IntoID, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") })
+			p, e := d.foundationCaller(q)
+			if e != nil {
+				return mergeTitlesResponse{}, e
+			}
+			authorize := func(ctx context.Context, tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") }
+			if in.FileInfo != nil {
+				if !validFileInfoActionProof(in.FileInfo) {
+					return mergeTitlesResponse{}, &apierror.Error{Code: "invalid_request"}
+				}
+				if d.FileInfoRuntime == nil {
+					return mergeTitlesResponse{}, &apierror.Error{Code: "metadata_unavailable", RetryAfterSeconds: 1}
+				}
+				scope, e := d.fileInfoActionScope(p, q)
+				if e != nil {
+					return mergeTitlesResponse{}, fileInfoActionError(e)
+				}
+				// The FileInfo cohort supplies the exact source member. The merge
+				// target selection stays the caller's fromId/intoId; a proof for
+				// any other title is a substituted selection, not a merge grant.
+				authorize = d.fileInfoActionAuthorityFirst(authorize, d.fileInfoActionResource(p), scope, *in.FileInfo, func(t catalog.FileInfoActionTarget) bool {
+					return t.ItemID == in.FromID
+				})
+			}
+			err := d.Catalog.MergeTitles(ctx, in.FromID, in.IntoID, func(tx *sql.Tx) error { return authorize(ctx, tx) })
+			if in.FileInfo != nil {
+				return mergeTitlesResponse{ItemID: in.IntoID}, fileInfoActionFailure(err)
+			}
 			return mergeTitlesResponse{ItemID: in.IntoID}, identityRouteError(err)
 		})
 	v1Route(r, apikit.Metadata{Audience: apikit.Clients, Admission: laneAdmin, ID: "separate_artist", Method: "POST", Path: "/v1/admin/titles/separate-artist", Summary: "Say that some albums are not by the artist they are filed under: they move, with their songs' credits, to a new artist of the same name that is never joined back automatically; at least one album stays",

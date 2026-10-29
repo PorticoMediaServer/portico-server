@@ -6708,7 +6708,7 @@ END;
 CREATE TRIGGER catalog_rec_dataset_tags_delete AFTER DELETE ON catalog_dataset_tags BEGIN
  INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(32,OLD.entity_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
-CREATE TRIGGER artwork_head_entities_insert AFTER INSERT ON catalog_entities WHEN NEW.kind IN(1,2,3,4,5,6,7,8,9,11,12) BEGIN
+CREATE TRIGGER artwork_head_entities_insert AFTER INSERT ON catalog_entities WHEN NEW.kind IN(1,2,3,4,5,6,7,8,9,10,11,12) BEGIN
  INSERT OR IGNORE INTO artwork_entity_heads(kind,entity_id) VALUES(CASE NEW.kind WHEN 2 THEN 'show' WHEN 3 THEN 'season' WHEN 5 THEN 'artist' WHEN 6 THEN 'album' WHEN 8 THEN 'book' ELSE 'item' END,NEW.id);
  INSERT INTO artwork_dirty(kind,entity_id) SELECT CASE NEW.kind WHEN 2 THEN 'show' WHEN 3 THEN 'season' WHEN 5 THEN 'artist' WHEN 6 THEN 'album' WHEN 8 THEN 'book' ELSE 'item' END,NEW.id WHERE NEW.kind IN(1,4,7,9,11,12) ON CONFLICT(kind,entity_id) DO NOTHING;
 END;

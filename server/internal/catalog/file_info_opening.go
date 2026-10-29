@@ -34,8 +34,8 @@ type fileInfoOpeningProof struct {
 	Item    int64
 	Library int64
 	// ItemIncarnation is the complete 128-bit incarnation nonce of the item,
-	// taken from the existing artwork_entity_heads.incarnation (32 hex, created
-	// for every classic FileInfo root kind and deleted with the entity). It is
+	// taken from the existing metadata or artwork publication head incarnation
+	// (32 hex, created and deleted with the entity). It is
 	// stored and matched in full, never truncated or re-hashed. Because it dies
 	// with the row, a deleted and recreated item cannot replay an old opening
 	// even when it reuses the row id, the original public id and info epoch 1;

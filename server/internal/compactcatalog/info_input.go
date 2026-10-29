@@ -833,6 +833,9 @@ func AcceptInfoInputTx(ctx context.Context, tx *sql.Tx, ref InfoInputRef) (InfoA
 		// asset vanished, so absence is detected as an unusable target instead.
 		return InfoAcceptReceipt{}, fmt.Errorf("%w: asset %d has no availability target", ErrInfoInputNoAsset, h.assetID)
 	}
+	if err = freezeInfoInputOwnerTx(ctx, tx, h); err != nil {
+		return InfoAcceptReceipt{}, err
+	}
 	var result sql.Result
 	if h.slot == 0 {
 		result, err = tx.ExecContext(ctx, `UPDATE catalog_info_changes SET phase=1,has_after=0,target_available=?,

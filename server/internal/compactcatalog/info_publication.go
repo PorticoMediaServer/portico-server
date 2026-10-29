@@ -157,6 +157,20 @@ func AdvanceInfoPublicationTx(ctx context.Context, tx *sql.Tx, asset int64, toke
 		}
 		_, err = tx.ExecContext(ctx, `UPDATE catalog_info_changes SET phase=3 WHERE id=?`, c.id)
 	case 3:
+		// Custody can change after the final materializer quantum. Discharge
+		// that exact scope before activation as well; a replacement must not
+		// inherit the old asset's selected observation.
+		object, e := infoCopyWitnessObject(ctx, tx, c.id, c.familyMask)
+		if e != nil {
+			return false, e
+		}
+		_, blocked, e := infoCopyDiscCustodyTx(ctx, tx, c.id, c.token, object)
+		if e != nil || blocked {
+			return false, e
+		}
+		if e = tx.QueryRowContext(ctx, `SELECT target_owner_object,target_owner_revision FROM catalog_info_changes WHERE id=?`, c.id).Scan(&c.targetOwner, &c.targetOwnerRevision); e != nil {
+			return false, e
+		}
 		// A raw NEW2/NEW3 may already exist. The sealed target is NEW1's
 		// availability, and must win over those later physical observations.
 		if !c.targetAvailable.Valid || !c.targetShape.Valid {

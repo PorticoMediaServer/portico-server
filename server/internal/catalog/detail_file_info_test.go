@@ -112,7 +112,7 @@ func TestFileInfoBatchedDiscFactsKeepObservationFences(t *testing.T) {
 	if err := db.QueryRow(`SELECT asset_id,revision FROM inventory_objects WHERE id=?`, object).Scan(&token, &revision); err != nil {
 		t.Fatal(err)
 	}
-	if receipt, err := s.AcceptInventoryDiscProbe(context.Background(), job, object, revision, policy, probe); err != nil || receipt.State != compactcatalog.InfoInputAcceptedPending {
+	if receipt, err := acceptDiscProbeForTest(t, s, context.Background(), job, object, revision, policy, probe); err != nil || receipt.State != compactcatalog.InfoInputAcceptedPending {
 		t.Fatal("structure source receipt", receipt, err)
 	}
 	c := catalogtest.New(t, db)

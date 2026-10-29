@@ -23,10 +23,19 @@ func prepareInfoOwnerTargetTx(ctx context.Context, tx *sql.Tx, asset int64, toke
 	if err != nil && !missing {
 		return false, err
 	}
-	if !missing && c.phase != 1 {
+	if !missing && c.phase != 0 && c.phase != 1 {
 		return true, nil
 	}
-	if !missing {
+	if !missing && c.phase == 0 {
+		var typed bool
+		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_info_input_witnesses WHERE change_id=?)`, c.id).Scan(&typed); err != nil {
+			return false, err
+		}
+		if typed || c.familyMask != 0 {
+			return true, nil
+		}
+	}
+	if !missing && c.phase == 1 {
 		var resolved bool
 		if err = tx.QueryRowContext(ctx, `SELECT copy_family=1 FROM catalog_info_changes WHERE id=?`, c.id).Scan(&resolved); err != nil || resolved {
 			return err == nil, err
@@ -37,7 +46,7 @@ func prepareInfoOwnerTargetTx(ctx context.Context, tx *sql.Tx, asset int64, toke
 		return false, err
 	}
 	var chosen, revision sql.NullString
-	if capable && available {
+	if capable && available && object != "" {
 		// A5's pass revision is checked by the caller in this same writer. No object
 		// or source/root mutation can interleave with this point revalidation.
 		if err = tx.QueryRowContext(ctx, `SELECT id,revision FROM inventory_objects WHERE id=? AND asset_id=?`, object, token).Scan(&chosen, &revision); err != nil {
@@ -67,14 +76,15 @@ func prepareInfoOwnerTargetTx(ctx context.Context, tx *sql.Tx, asset int64, toke
 		if err != nil {
 			return false, err
 		}
-		// Phase0 captures shape/availability first; the next turn pins the owner.
-		return true, nil
+		// Capture this coherent directory choice before scalar acceptance in
+		// this same writer, not in a later mutable phase-1 observation.
+		c.phase = 0
 	}
 	var room bool
 	if err = tx.QueryRowContext(ctx, `SELECT cap_bytes-used_bytes>=2*length(CAST(? AS BLOB))+length(CAST(? AS BLOB)) FROM catalog_info_input_budget WHERE singleton=1`, chosen.String, revision.String).Scan(&room); err != nil || !room {
 		return false, err
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE catalog_info_changes SET target_owner_object=?,target_owner_revision=?,copy_family=1 WHERE id=? AND phase=1`, chosen, revision, c.id)
+	_, err = tx.ExecContext(ctx, `UPDATE catalog_info_changes SET target_owner_object=?,target_owner_revision=?,copy_family=1 WHERE id=? AND phase IN(0,1)`, chosen, revision, c.id)
 	return err == nil, err
 }
 
@@ -119,4 +129,38 @@ func PrepareInfoObjectDeleteTx(ctx context.Context, tx *sql.Tx, object string) (
 		err = queueSource(ctx, tx, DomainAssetSources, asset, token, sourceInfo|sourceAvailability|sourceMissing)
 	}
 	return false, err
+}
+
+// freezeInfoInputOwnerTx captures A5's complete current object directory at the
+// same acceptance point as a typed body. Staging can finish while A5 catches up;
+// no holder is pre-fenced and no accepted receipt exists during that deferral.
+func freezeInfoInputOwnerTx(ctx context.Context, tx *sql.Tx, h infoInputHeader) error {
+	capable, e := infoDiscCapableTx(ctx, tx, h.assetID, h.token)
+	if e != nil {
+		return e
+	}
+	var object, revision sql.NullString
+	if capable {
+		w, e := readUpstreamSource(ctx, tx, DomainAssetSources, h.assetID)
+		if errors.Is(e, sql.ErrNoRows) {
+			return ErrInfoInputDeferred
+		}
+		if e != nil {
+			return e
+		}
+		var epoch int64
+		if e = tx.QueryRowContext(ctx, `SELECT availability_epoch FROM catalog_facet_source_state WHERE singleton=1`).Scan(&epoch); e != nil {
+			return e
+		}
+		if w.token != h.token || w.phase != 3 || w.passRevision != w.revision || w.key == "rerun" || w.epoch != epoch {
+			return ErrInfoInputDeferred
+		}
+		if w.available && w.innerKey != "" {
+			if e = tx.QueryRowContext(ctx, `SELECT id,revision FROM inventory_objects WHERE id=? AND asset_id=?`, w.innerKey, h.token).Scan(&object, &revision); e != nil {
+				return e
+			}
+		}
+	}
+	_, e = tx.ExecContext(ctx, `UPDATE catalog_info_changes SET target_owner_object=?,target_owner_revision=?,copy_family=1 WHERE id=? AND phase=0 AND input_revision=?`, object, revision, h.changeID, h.inputRevision)
+	return infoInputClassifyWrite(e)
 }

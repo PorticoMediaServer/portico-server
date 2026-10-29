@@ -202,7 +202,7 @@ func TestInfoDiscMediaSourceMainStagesTimedTitleAndStopsWhenUnchanged(t *testing
 	if err := db.QueryRow(`SELECT revision FROM inventory_objects WHERE id=?`, object).Scan(&revision); err != nil {
 		t.Fatal(err)
 	}
-	receipt, err := s.AcceptInventoryDiscProbe(context.Background(), job, object, revision, policy, probe)
+	receipt, err := acceptDiscProbeForTest(t, s, context.Background(), job, object, revision, policy, probe)
 	if err != nil || receipt.State != compactcatalog.InfoInputAcceptedPending {
 		t.Fatal("structure source receipt", receipt, err)
 	}
@@ -310,7 +310,7 @@ func TestInfoDiscMediaSourceAlternateOnlyStagesRequestedTimedTitle(t *testing.T)
 	if err := db.QueryRow(`SELECT revision FROM inventory_objects WHERE id=?`, object).Scan(&revision); err != nil {
 		t.Fatal(err)
 	}
-	receipt, err := s.AcceptInventoryDiscProbe(context.Background(), job, object, revision, policy, probe)
+	receipt, err := acceptDiscProbeForTest(t, s, context.Background(), job, object, revision, policy, probe)
 	if err != nil || receipt.State != compactcatalog.InfoInputAcceptedPending {
 		t.Fatal("structure source receipt", receipt, err)
 	}
@@ -421,7 +421,7 @@ func TestInfoDiscMediaSourceAlternateRespectsOwnerChoiceAndStagesRequestedTitle(
 	if err := db.QueryRow(`SELECT revision FROM inventory_objects WHERE id=?`, object).Scan(&revision); err != nil {
 		t.Fatal(err)
 	}
-	receipt, err := s.AcceptInventoryDiscProbe(context.Background(), job, object, revision, policy, probe)
+	receipt, err := acceptDiscProbeForTest(t, s, context.Background(), job, object, revision, policy, probe)
 	if err != nil || receipt.State != compactcatalog.InfoInputAcceptedPending {
 		t.Fatal("structure source receipt", receipt, err)
 	}
@@ -511,7 +511,7 @@ func TestInfoDiscMediaSourceRejectsUnfencedFacts(t *testing.T) {
 	if err := db.QueryRow(`SELECT revision FROM inventory_objects WHERE id=?`, object).Scan(&revision); err != nil {
 		t.Fatal(err)
 	}
-	receipt, err := s.AcceptInventoryDiscProbe(context.Background(), job, object, revision, policy, probe)
+	receipt, err := acceptDiscProbeForTest(t, s, context.Background(), job, object, revision, policy, probe)
 	if err != nil || receipt.State != compactcatalog.InfoInputAcceptedPending {
 		t.Fatal("structure source receipt", receipt, err)
 	}
@@ -556,7 +556,7 @@ func infoDiscMediaStructure(t *testing.T, s *Service, db *sql.DB, job, object st
 	if err := db.QueryRow(`SELECT revision FROM inventory_objects WHERE id=?`, object).Scan(&revision); err != nil {
 		t.Fatal(err)
 	}
-	receipt, err := s.AcceptInventoryDiscProbe(context.Background(), job, object, revision, policy, probe)
+	receipt, err := acceptDiscProbeForTest(t, s, context.Background(), job, object, revision, policy, probe)
 	if err != nil || receipt.State != compactcatalog.InfoInputAcceptedPending {
 		t.Fatalf("structure source receipt: %+v %v", receipt, err)
 	}
@@ -611,7 +611,7 @@ func TestInfoInventorySourceDiscMediaPublishesSelectedTimedTitle(t *testing.T) {
 	// The disc reader observes the selected title's chapters with its timed
 	// media; the association names exactly those chapter facts.
 	f.ChapterStatus = "known"
-	receipt, err := s.acceptInventoryInfo(context.Background(), job, object, revision, policy, f, false)
+	receipt, err := acceptInventoryInfoForTest(t, s, context.Background(), job, object, revision, policy, f, false)
 	if err != nil || receipt.State != compactcatalog.InfoInputAcceptedPending {
 		t.Fatal("disc media source receipt", receipt, err)
 	}
@@ -648,7 +648,7 @@ func TestInfoInventorySourceDiscMediaPublishesSelectedTimedTitle(t *testing.T) {
 		t.Fatal("asset chapters not installed", assetChapters, err)
 	}
 	// The same immutable observation is now a truthful accepted no-op.
-	again, err := s.acceptInventoryInfo(context.Background(), job, object, revision, policy, f, false)
+	again, err := acceptInventoryInfoForTest(t, s, context.Background(), job, object, revision, policy, f, false)
 	if err != nil || again.State != compactcatalog.InfoInputApplied || again.ChangeID != 0 {
 		t.Fatal("unchanged disc media was not an applied no-op", again, err)
 	}
@@ -676,7 +676,7 @@ func TestInfoInventorySourceClearsDiscMainAssociationWithoutSelection(t *testing
 		Streams:       []assets.Stream{{Index: 0, Type: "video", Codec: "h264"}, {Index: 1, Type: "audio", Codec: "aac"}},
 		ChapterStatus: "known",
 	}
-	receipt, err := s.acceptInventoryInfo(context.Background(), job, object, revision, policy, plain, false)
+	receipt, err := acceptInventoryInfoForTest(t, s, context.Background(), job, object, revision, policy, plain, false)
 	if err != nil || receipt.State != compactcatalog.InfoInputAcceptedPending {
 		t.Fatal("clear source receipt", receipt, err)
 	}
@@ -696,7 +696,7 @@ func TestInfoInventorySourceClearsDiscMainAssociationWithoutSelection(t *testing
 		t.Fatal("clear retired accepted members", members, err)
 	}
 	// A second nil-selection analysis is already clear, so it is a no-op.
-	again, err := s.acceptInventoryInfo(context.Background(), job, object, revision, policy, plain, false)
+	again, err := acceptInventoryInfoForTest(t, s, context.Background(), job, object, revision, policy, plain, false)
 	if err != nil || again.State != compactcatalog.InfoInputApplied || again.ChangeID != 0 {
 		t.Fatal("already-clear association restaged", again, err)
 	}
@@ -722,7 +722,7 @@ func TestAcceptDiscAlternateStagesRequestedTitleOnly(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO inventory_disc_title_requests(job_id,object_id,title_key,source_revision,fingerprint) VALUES(?,?,?,?,?)`, job, object, alt.DiscSelection.TitleKey, revision, alt.DiscSelection.StructureFingerprint); err != nil {
 		t.Fatal(err)
 	}
-	receipt, err := s.AcceptDiscAlternate(context.Background(), job, object, revision, policy, alt)
+	receipt, err := acceptDiscAlternateForTest(t, s, context.Background(), job, object, revision, policy, alt)
 	if err != nil || receipt.State != compactcatalog.InfoInputAcceptedPending {
 		t.Fatal("alternate source receipt", receipt, err)
 	}
@@ -739,7 +739,7 @@ func TestAcceptDiscAlternateStagesRequestedTitleOnly(t *testing.T) {
 	if key != main.DiscSelection.TitleKey || streams != 3 || chapters != 2 {
 		t.Fatal("alternate disturbed the main association", key, streams, chapters)
 	}
-	again, err := s.AcceptDiscAlternate(context.Background(), job, object, revision, policy, alt)
+	again, err := acceptDiscAlternateForTest(t, s, context.Background(), job, object, revision, policy, alt)
 	if err != nil || again.State != compactcatalog.InfoInputApplied || again.ChangeID != 0 {
 		t.Fatal("unchanged alternate was not an applied no-op", again, err)
 	}

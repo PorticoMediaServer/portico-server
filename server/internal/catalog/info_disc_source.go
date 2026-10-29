@@ -67,10 +67,11 @@ func (s *Service) AcceptInventoryDiscProbe(ctx context.Context, job, object, rev
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return compactcatalog.InfoInputSpec{}, nil, err
 		}
-		if exists && old.AssetID != frame.token {
-			return compactcatalog.InfoInputSpec{}, nil, compactcatalog.ErrInfoInvariant
-		}
-		same := exists && old.SourceRevision == revision && old.SourceGeneration == frame.source.Generation && old.RootIncarnation == frame.source.Incarnation && old.Fingerprint == fingerprint
+		// A real observation may now belong to a replacement asset. Its exact
+		// fresh probe is a new structure; the materializer releases any prior
+		// accepted owner before replacing the shared object tree.
+		replacement := exists && old.AssetID != frame.token
+		same := exists && !replacement && old.SourceRevision == revision && old.SourceGeneration == frame.source.Generation && old.RootIncarnation == frame.source.Incarnation && old.Fingerprint == fingerprint
 		var epoch int64
 		if err = tx.QueryRowContext(ctx, `SELECT info_epoch FROM catalog_assets WHERE id=? AND token=?`, frame.asset, frame.token).Scan(&epoch); err != nil {
 			return compactcatalog.InfoInputSpec{}, nil, err
@@ -80,7 +81,7 @@ func (s *Service) AcceptInventoryDiscProbe(ctx context.Context, job, object, rev
 			return spec, nil, nil
 		}
 		choice := int64(1)
-		if exists {
+		if exists && !replacement {
 			choice = old.ChoiceRevision
 			if old.SourceRevision != revision || old.Fingerprint != fingerprint {
 				choice++
@@ -93,9 +94,9 @@ func (s *Service) AcceptInventoryDiscProbe(ctx context.Context, job, object, rev
 			return row, nil
 		}}}
 		// A source revision-only reaffirmation retains the unchanged title tree.
-		changedTree := !exists || old.Fingerprint != fingerprint || old.RootIncarnation != frame.source.Incarnation
+		changedTree := !exists || replacement || old.Fingerprint != fingerprint || old.RootIncarnation != frame.source.Incarnation
 		if changedTree {
-			rotate := exists && old.RootIncarnation != frame.source.Incarnation
+			rotate := replacement || (exists && old.RootIncarnation != frame.source.Incarnation)
 			families = append(families,
 				compactcatalog.InfoSourceFamily{Number: 11, Count: int64(len(titles)), Row: func(ctx context.Context, tx *sql.Tx, i int64) (compactcatalog.InfoStageRow, error) {
 					title := titles[i]

@@ -114,7 +114,7 @@ func (s *fileInfoOpeningScan) Step(ctx context.Context, b *readprep.Budget) (rea
 		return readprep.StepResult{}, e
 	}
 	if !ad.Head.Ready() {
-		return readprep.StepResult{}, nil
+		return readprep.StepResult{RetryAfter: time.Second}, nil
 	}
 	if e = b.Resize(s.bytes + 8); e != nil {
 		return readprep.StepResult{}, e

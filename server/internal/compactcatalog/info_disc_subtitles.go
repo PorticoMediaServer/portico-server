@@ -224,8 +224,12 @@ func resolveInfoDiscSubtitleTarget(ctx context.Context, tx *sql.Tx, c infoChange
 func loadInfoDiscSubtitleTarget(ctx context.Context, tx *sql.Tx, c infoChange, object, title, revision string) (infoDiscSubtitleTarget, bool, error) {
 	var t infoDiscSubtitleTarget
 	t.object, t.title, t.revision = object, title, revision
+	frame, e := ReadInfoAsset(ctx, tx, c.asset, c.token, false)
+	if e != nil {
+		return t, false, e
+	}
 	var size, modified, facts int64
-	err := tx.QueryRowContext(ctx, `SELECT a.size,a.modified_ns,COALESCE(st.revision,0),
+	err := tx.QueryRowContext(ctx, `SELECT ?,?,COALESCE(st.revision,0),
  d.source_revision,d.fingerprint,tm.revision,tm.origin_us,tm.timing_known,
  COALESCE(
   (SELECT w.policy_revision FROM catalog_info_input_families f
@@ -236,15 +240,13 @@ func loadInfoDiscSubtitleTarget(ctx context.Context, tx *sql.Tx, c infoChange, o
    WHERE f.change_id=? AND f.family=10 AND f.sealed=1),
   0)
  FROM catalog_assets a
- JOIN inventory_objects o ON o.id=a.info_owner_object AND o.asset_id=a.token
- JOIN inventory_disc_facts d ON d.object_id=o.id AND d.asset_id=a.token
+ JOIN inventory_disc_facts d ON d.object_id=a.info_owner_object AND d.asset_id=a.token
  JOIN inventory_disc_title_media tm ON tm.object_id=d.object_id AND tm.title_key=?
- LEFT JOIN asset_stream_facts st ON st.asset_id=a.token AND st.size=a.size AND st.modified_ns=a.modified_ns
- WHERE a.id=? AND a.token=? AND a.info_owner_object=? AND a.info_owner_revision=o.revision
- AND o.revision=d.source_revision AND d.encryption='none'
+ LEFT JOIN asset_stream_facts st ON st.asset_id=a.token AND st.size=? AND st.modified_ns=?
+ WHERE a.id=? AND a.token=? AND a.info_owner_object=? AND a.info_owner_revision=d.source_revision AND d.encryption='none'
  AND tm.source_revision=d.source_revision AND tm.fingerprint=d.fingerprint AND tm.timing_known=1
  AND (?='' OR tm.revision=?)`,
-		c.id, c.id, title, c.asset, c.token, object, revision, revision).
+		frame.Size, frame.ModifiedNS, c.id, c.id, title, frame.Size, frame.ModifiedNS, c.asset, c.token, object, revision, revision).
 		Scan(&size, &modified, &facts, &t.sourceRevision, &t.fingerprint, &t.revision,
 			&t.originUS, &t.timingKnown, &t.policyRevision)
 	if errors.Is(err, sql.ErrNoRows) {

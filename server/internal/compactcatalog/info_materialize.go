@@ -493,19 +493,19 @@ ON CONFLICT(asset_id) DO UPDATE SET revision=excluded.revision,evidence=excluded
 	infoCopyInsertStep(10, "catalog_info_new_disc_facts", infoCopyObjectAssetScope,
 		`INSERT INTO inventory_disc_facts(object_id,asset_id,source_revision,source_generation,root_incarnation,kind,packaging,encryption,fingerprint,owner_title_key,choice_revision,media_title_key,media_stream_revision,media_chapter_revision)
 SELECT s.object_id,s.asset_id,s.source_revision,s.source_generation,s.root_incarnation,s.kind,s.packaging,s.encryption,s.fingerprint,
- CASE WHEN c.choice_revision>s.choice_revision THEN c.owner_title_key ELSE s.owner_title_key END,
- max(COALESCE(c.choice_revision,0),s.choice_revision),
+ CASE WHEN c.asset_id=s.asset_id AND c.choice_revision>s.choice_revision THEN c.owner_title_key ELSE s.owner_title_key END,
+ max(CASE WHEN c.asset_id=s.asset_id THEN c.choice_revision ELSE 0 END,s.choice_revision),
  s.media_title_key,s.media_stream_revision,s.media_chapter_revision
 FROM catalog_info_new_disc_facts s LEFT JOIN inventory_disc_facts c ON c.object_id=s.object_id
 WHERE s.change_id=? AND s.object_id=? AND s.asset_id=? AND s.input_ordinal IN(%s)
  AND EXISTS(SELECT 1 FROM inventory_objects o WHERE o.id=s.object_id)
-ON CONFLICT(object_id) DO UPDATE SET asset_id=excluded.asset_id,source_revision=excluded.source_revision,source_generation=excluded.source_generation,root_incarnation=excluded.root_incarnation,kind=excluded.kind,packaging=excluded.packaging,encryption=excluded.encryption,fingerprint=excluded.fingerprint,owner_title_key=excluded.owner_title_key,choice_revision=excluded.choice_revision,media_title_key=excluded.media_title_key,media_stream_revision=excluded.media_stream_revision,media_chapter_revision=excluded.media_chapter_revision`, prepareInfoCopyDiscFacts),
+ON CONFLICT(object_id) DO UPDATE SET asset_id=excluded.asset_id,source_revision=excluded.source_revision,source_generation=excluded.source_generation,root_incarnation=excluded.root_incarnation,kind=excluded.kind,packaging=excluded.packaging,encryption=excluded.encryption,fingerprint=excluded.fingerprint,owner_title_key=excluded.owner_title_key,choice_revision=excluded.choice_revision,media_title_key=excluded.media_title_key,media_stream_revision=excluded.media_stream_revision,media_chapter_revision=excluded.media_chapter_revision`, nil),
 	infoCopyInsertStep(11, "catalog_info_new_disc_titles", infoCopyObjectScope,
 		`INSERT INTO inventory_disc_titles(object_id,title_key,selection_token,title_number,disc_order,duration_ms,angle_count,playlist,dvd_title,vts,pgc)
 SELECT s.object_id,s.title_key,s.selection_token,s.title_number,s.disc_order,s.duration_ms,s.angle_count,s.playlist,s.dvd_title,s.vts,s.pgc FROM catalog_info_new_disc_titles s
 WHERE s.change_id=? AND s.object_id=? AND s.input_ordinal IN(%s)
  AND EXISTS(SELECT 1 FROM inventory_disc_facts f WHERE f.object_id=s.object_id)
-ON CONFLICT(object_id,title_key) DO UPDATE SET title_number=excluded.title_number,disc_order=excluded.disc_order,duration_ms=excluded.duration_ms,angle_count=excluded.angle_count,playlist=excluded.playlist,dvd_title=excluded.dvd_title,vts=excluded.vts,pgc=excluded.pgc`, nil),
+ON CONFLICT(object_id,title_key) DO UPDATE SET selection_token=excluded.selection_token,title_number=excluded.title_number,disc_order=excluded.disc_order,duration_ms=excluded.duration_ms,angle_count=excluded.angle_count,playlist=excluded.playlist,dvd_title=excluded.dvd_title,vts=excluded.vts,pgc=excluded.pgc`, nil),
 	infoCopyInsertStep(15, "catalog_info_new_disc_media_members", infoCopyObjectScope,
 		`INSERT INTO inventory_disc_media_members(object_id,path,object_identity,size,modified_ns,required,directory)
 SELECT s.object_id,s.path,s.object_identity,s.size,s.modified_ns,s.required,s.directory FROM catalog_info_new_disc_media_members s
@@ -592,6 +592,10 @@ func MaterializeInfoChangeTx(ctx context.Context, tx *sql.Tx, changeID int64) (b
 			return false, err
 		}
 	}
+	discLive, blocked, err := infoCopyDiscCustodyTx(ctx, tx, changeID, token, object)
+	if err != nil || blocked {
+		return false, err
+	}
 	run := infoCopyRun{changeID: changeID, token: token, object: object}
 	// Timed facts are independent per-title observations. A nonempty family16
 	// pins one exact title; an empty family16 is the structure-wide reset.
@@ -612,7 +616,7 @@ func MaterializeInfoChangeTx(ctx context.Context, tx *sql.Tx, changeID int64) (b
 	next := int(step)
 	for next < len(infoCopySteps) && !budget.exhausted() {
 		current := &infoCopySteps[next]
-		if mask&(int64(1)<<uint(current.family-1)) == 0 {
+		if mask&(int64(1)<<uint(current.family-1)) == 0 || (!discLive && current.family >= 10) {
 			next++
 			cursor = infoCopyCursor{}
 			continue
@@ -711,31 +715,14 @@ func verifyInfoCopyInput(ctx context.Context, tx *sql.Tx, changeID int64, token 
 	if object == "" {
 		return nil
 	}
-	// The witness object must still belong to this asset, and its canonical
-	// observation must never be repointed to another asset.
-	var owner string
-	err := tx.QueryRowContext(ctx, `SELECT asset_id FROM inventory_objects WHERE id=?`, object).Scan(&owner)
-	switch {
-	case errors.Is(err, sql.ErrNoRows):
-		// The object is physically gone, so its canonical rows are gone with it.
-	case err != nil:
-		return err
-	case owner != token:
-		return fmt.Errorf("%w: disc object %s belongs to another asset", ErrInfoInvariant, object)
-	}
-	var canonical string
-	err = tx.QueryRowContext(ctx, `SELECT asset_id FROM inventory_disc_facts WHERE object_id=?`, object).Scan(&canonical)
-	switch {
-	case errors.Is(err, sql.ErrNoRows):
-	case err != nil:
-		return err
-	case canonical != token:
-		return fmt.Errorf("%w: disc object %s is installed for another asset", ErrInfoInvariant, object)
-	}
+	// Physical custody may move after acceptance. The whole object scope is
+	// discharged by MaterializeInfoChangeTx when that exact obligation is gone;
+	// it must never fail one child at a time or overwrite the replacement.
+
 	// One manifest witness cannot represent two objects: staged disc facts for
 	// any other object are refused instead of being silently coalesced.
 	var mixed bool
-	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_info_new_disc_facts WHERE change_id=? AND object_id<>?)`, changeID, object).Scan(&mixed); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_info_new_disc_facts WHERE change_id=? AND object_id<>?)`, changeID, object).Scan(&mixed); err != nil {
 		return err
 	}
 	if mixed {
@@ -909,61 +896,6 @@ func stagedInfoCopyOrdinals(ctx context.Context, tx *sql.Tx, table string, chang
 	}
 	rows.Close()
 	return ordinals, err
-}
-
-// prepareInfoCopyDiscFacts drops observations whose physical object is already
-// gone (the obligation disappeared with it) and refuses to repoint an object
-// that a different asset now owns.
-func prepareInfoCopyDiscFacts(ctx context.Context, tx *sql.Tx, changeID int64, ordinals []int64) ([]int64, error) {
-	args := make([]any, 0, 1+len(ordinals))
-	args = append(args, changeID)
-	for _, ordinal := range ordinals {
-		args = append(args, ordinal)
-	}
-	rows, err := tx.QueryContext(ctx, `SELECT input_ordinal,object_id,asset_id FROM catalog_info_new_disc_facts WHERE change_id=? AND input_ordinal IN(`+infoCopyPlaceholders(len(ordinals))+`) ORDER BY input_ordinal`, args...)
-	if err != nil {
-		return nil, err
-	}
-	type observation struct {
-		ordinal int64
-		object  string
-		asset   string
-	}
-	var batch []observation
-	for rows.Next() {
-		var v observation
-		if err = rows.Scan(&v.ordinal, &v.object, &v.asset); err != nil {
-			break
-		}
-		batch = append(batch, v)
-	}
-	if err == nil {
-		err = rows.Err()
-	}
-	rows.Close()
-	if err != nil {
-		return nil, err
-	}
-	keep := make([]int64, 0, len(batch))
-	for _, v := range batch {
-		var present bool
-		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_objects WHERE id=?)`, v.object).Scan(&present); err != nil {
-			return nil, err
-		}
-		if !present {
-			continue
-		}
-		var owner string
-		err = tx.QueryRowContext(ctx, `SELECT asset_id FROM inventory_disc_facts WHERE object_id=?`, v.object).Scan(&owner)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return nil, err
-		}
-		if err == nil && owner != v.asset {
-			return nil, fmt.Errorf("%w: disc object %s belongs to another asset", ErrInfoInvariant, v.object)
-		}
-		keep = append(keep, v.ordinal)
-	}
-	return keep, nil
 }
 
 // saveInfoCopyCursor checkpoints the step and the last fully processed raw key.

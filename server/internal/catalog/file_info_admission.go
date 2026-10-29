@@ -30,10 +30,21 @@ func (s *Service) CaptureFileInfoAdmission(ctx context.Context, v Viewer, server
 	case "album", "show", "season", "artist", "book", "collection":
 		visible, args = v.entityVisibilitySQL("e.id", "cl.library_id")
 	}
+	// metadata_publication_heads exists only for playable kinds. A container
+	// root instead owns the full artwork incarnation, created with the entity
+	// and deleted with it, so that nonce witnesses the same lifetime. The join
+	// must name the artwork head's own (kind,entity_id) namespace, so only the
+	// head for this exact root kind can supply the nonce.
+	head := `metadata_publication_heads h ON h.item_id=e.id`
+	switch kind {
+	case "album", "show", "season", "artist", "book", "collection":
+		head = `artwork_entity_heads h ON h.entity_id=e.id AND h.kind=CASE e.kind
+ WHEN 2 THEN 'show' WHEN 3 THEN 'season' WHEN 5 THEN 'artist' WHEN 6 THEN 'album' WHEN 8 THEN 'book' ELSE 'item' END`
+	}
 	values := append([]any{item}, args...)
 	e := q.QueryRowContext(ctx, `SELECT e.id,e.library_id,e.public_id,h.incarnation,cl.library_id,k.name,k.playable,COALESCE(c.revision,1),e.info_desired_epoch,e.info_applied_epoch,e.info_source_blockers,e.info_availability_pending,e.info_blocked_children
  FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id
- JOIN catalog_kinds k ON k.id=e.kind JOIN metadata_publication_heads h ON h.item_id=e.id
+ JOIN catalog_kinds k ON k.id=e.kind JOIN `+head+`
  LEFT JOIN library_configuration c ON c.library_id=cl.library_id
  WHERE e.public_id=pid_blob(?) AND `+visible, values...).Scan(&ad.Identity.Item, &ad.Identity.Library, &public, &nonce, &library, &ad.Kind, &playable, &ad.ConfigurationRevision, &ad.Head.Desired, &ad.Head.Applied, &ad.Head.SourceBlockers, &ad.Head.AvailabilityPending, &ad.Head.BlockedChildren)
 	if e != nil {

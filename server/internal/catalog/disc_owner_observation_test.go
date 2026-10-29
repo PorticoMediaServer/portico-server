@@ -55,7 +55,7 @@ func (o *discOwnerObservationScenario) observe(t *testing.T, id string) {
 
 func (o *discOwnerObservationScenario) publish(t *testing.T, id string) {
 	t.Helper()
-	receipt, err := o.service.AcceptInventoryDiscProbe(context.Background(), o.job, id, o.revision, o.policy, o.probe)
+	receipt, err := acceptDiscProbeForTest(t, o.service, context.Background(), o.job, id, o.revision, o.policy, o.probe)
 	if err != nil || receipt.State != compactcatalog.InfoInputAcceptedPending {
 		t.Fatal("structure source receipt", receipt, err)
 	}
