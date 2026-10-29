@@ -362,7 +362,7 @@ func (s *Service) librarySummaryKey(ctx context.Context, viewer Viewer, library 
 	}
 	if isReadingLibrary(library.Kind) {
 		r, e := s.readingBrowseScope(library.ID)
-		if e != nil || r == nil {
+		if e != nil || r == nil || r.generation.Ready == 0 || r.generation.Input != r.generation.Ready {
 			return key, telemetry.SummaryBypassReading
 		}
 		key.Reading = summaryReading{Library: r.library, Namespace: r.generation.Namespace, Input: r.generation.Input, Ready: r.generation.Ready, Kind: r.kind, Rule: compactcatalog.ReadingProjectionRuleVersion, Mobi: r.mobi, CB7: readingcap.CB7(), CBR: readingcap.CBR()}
