@@ -487,7 +487,14 @@ func (s *Service) reportEvery(state string) time.Duration {
 	return ReportPlaying
 }
 
-func (s *Service) view(r row) SessionView {
+// view is the session resource for a read that has no channel state yet.
+func (s *Service) view(r row) SessionView { return s.sessionView(r, nil, 0) }
+
+// sessionView renders a session, optionally from channel state read in the
+// caller's own snapshot. channelPresentation is reused when it is not (reads,
+// starts and changes), and channelPresentationFrom when it is (the observation
+// ack's one-read view).
+func (s *Service) sessionView(r row, channel *playback.ChannelState, nowMS int64) SessionView {
 	v := SessionView{DiscTitle: r.stored().selectedDiscTitle(), ID: r.id, Revision: strconv.Itoa(r.revision), Kind: r.kind, Role: r.role, State: r.state, ItemID: r.item, VersionID: r.version, ChannelID: r.channel}
 	if r.ended > 0 {
 		v.State = "ended"
@@ -517,7 +524,11 @@ func (s *Service) view(r row) SessionView {
 	v.Presentation.Generation = r.generation
 	v.Presentation.ChoiceRevision = r.choiceRevision()
 	if isChannel(r) {
-		v.Presentation = s.channelPresentation(r)
+		if channel != nil {
+			v.Presentation = s.channelPresentationFrom(*channel, nowMS)
+		} else {
+			v.Presentation = s.channelPresentation(r)
+		}
 	} else {
 		v.Presentation.SeekID = r.stored().SeekID
 	}

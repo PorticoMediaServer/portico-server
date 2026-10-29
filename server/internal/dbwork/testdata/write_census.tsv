@@ -424,7 +424,7 @@ internal/metadata/screen_review.go	(*Service).RetryScreen	Begin	ClassBackgroundM
 internal/metadata/screen_review.go	(*Service).SearchScreen	Begin	ClassBackgroundMedia	-
 internal/metadata/screen_review.go	(*Service).SelectAnimeSeason	Begin	ClassBackgroundMedia	-
 internal/metadata/screen_review.go	(*Service).SelectScreen	Begin	ClassBackgroundMedia	-
-internal/metadata/screen_review.go	(*Service).UpdateScreenPolicy	Begin	ClassBackgroundMedia	screenPolicyConsentPlan
+internal/metadata/screen_review.go	(*Service).UpdateScreenPolicy	Begin	ClassBackgroundMedia	-
 internal/metadata/screen_worker.go	(*Service).claimScreen	Begin	ClassBackgroundMedia	-
 internal/metadata/screen_worker.go	(*Service).dispatchScreenChildren	Begin	ClassBackgroundMedia	-
 internal/metadata/screen_worker.go	(*Service).failScreen	Begin	ClassBackgroundMedia	-
@@ -673,7 +673,6 @@ plan	internal/metadata/mb_retire.go	mbRetireRowsTx	mbEvidenceParentPlan
 plan	internal/metadata/mb_staging.go	(*Service).mbEnsureBuild	mbEvidenceParentPlan
 plan	internal/metadata/screen_fanout.go	(*Service).ScreenFanoutStep	screenFanoutPlan
 plan	internal/metadata/screen_publish.go	(*Service).publishScreen	screenPublishPlan
-plan	internal/metadata/screen_review.go	(*Service).UpdateScreenPolicy	screenPolicyConsentPlan
 plan	internal/metadata/tvdb_episode_credits.go	(*Service).tvdbEpisodeCreditsStep	tvdbEpisodeCreditsPlan
 plan	internal/persistence/schema.go	installBaseline	baselinePlan
 plan	internal/playbackv1/observations.go	(*Service).applyObservationBatch	observationBatchPlan(len(batch))

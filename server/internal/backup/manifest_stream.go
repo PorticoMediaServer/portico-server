@@ -165,7 +165,7 @@ func scanStream(ctx context.Context, m Manifest, visit func(FileEntry, streamPos
 	ended := false
 	report := func(pos streamPosition, reason string) {
 		if damage != nil {
-			damage(ManifestDamage{pos.Line, pos.Line, pos.Start, pos.End, reason})
+			damage(ManifestDamage{FirstLine: pos.Line, LastLine: pos.Line, StartByte: pos.Start, EndByte: pos.End, Reason: reason})
 		}
 	}
 	// TeeReader may prefetch later bytes, so end-record validation hashes lines

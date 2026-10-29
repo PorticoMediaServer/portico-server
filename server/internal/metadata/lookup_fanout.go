@@ -39,6 +39,8 @@ type lookupFanoutSource struct{ table, kind, id string }
 
 func lookupFanoutSourceFor(effect string) (lookupFanoutSource, error) {
 	switch effect {
+	case "screen_consent":
+		return lookupFanoutSource{"screen_metadata_policies", "library_id", ""}, nil
 	case "screen", "screen_retry":
 		return lookupFanoutSource{"screen_metadata_work", "target_kind", "target_id"}, nil
 	case "mb":
@@ -169,7 +171,7 @@ func (s *Service) lookupFanoutQuantum(ctx context.Context, tx *sql.Tx, m *lookup
 		}
 		m.afterKind, m.afterID = k.kind, k.id
 	}
-	stamp := `MAX(?,COALESCE((SELECT MAX(last_served_ms) FROM metadata_lookup_fanout),0)+1)` // <= six policy classes
+	stamp := `MAX(?,COALESCE((SELECT MAX(last_served_ms) FROM metadata_lookup_fanout),0)+1)` // <= seven policy classes
 	done := len(page) < lookupFanoutRowLimit || m.afterKind == m.upperKind && m.afterID == m.upperID
 	if done {
 		// A completed old pass acknowledges only its captured witness. Even if
@@ -184,6 +186,9 @@ func (s *Service) lookupFanoutQuantum(ctx context.Context, tx *sql.Tx, m *lookup
 func applyLookupFanoutKey(ctx context.Context, tx *sql.Tx, effect, kind string, id int64) error {
 	var err error
 	switch effect {
+	case "screen_consent":
+		_, err = tx.ExecContext(ctx, `INSERT INTO screen_metadata_fanout(library_id,effect) VALUES(?,'screen')
+ ON CONFLICT(library_id,effect) DO UPDATE SET generation=generation+1,pending=1,rerun=1`, kind)
 	case "screen":
 		_, err = tx.ExecContext(ctx, `UPDATE screen_metadata_work SET status=CASE WHEN status='provider_disabled' THEN 'pending' ELSE status END,generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error='' WHERE target_kind=? AND target_id=?`, kind, id)
 	case "screen_retry":

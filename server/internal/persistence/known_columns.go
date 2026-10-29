@@ -6744,6 +6744,7 @@ tvdb_jobs.staged_bytes
 tvdb_jobs.status
 tvdb_projection_coverage.after_item
 tvdb_projection_coverage.complete
+tvdb_projection_coverage.consent_revision
 tvdb_projection_coverage.hierarchy_revision
 tvdb_projection_coverage.policy_incarnation
 tvdb_projection_coverage.policy_revision
@@ -6835,6 +6836,7 @@ tvdb_publication_pages.set_incarnation
 tvdb_publication_pages.show_id
 tvdb_publication_pages.validated_revision
 tvdb_publication_sets.complete
+tvdb_publication_sets.consent_revision
 tvdb_publication_sets.episode_order
 tvdb_publication_sets.generation
 tvdb_publication_sets.incarnation
