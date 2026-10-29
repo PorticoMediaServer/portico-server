@@ -141671,11 +141671,20 @@ var PorticoCastContracts = (function(exports) {
 		},
 		"GetSystemResponse": {
 			"properties": {
+				"apiLevel": {
+					"maximum": 9007199254740991,
+					"minimum": -9007199254740991,
+					"type": "integer"
+				},
 				"hostedAttached": { "type": "boolean" },
 				"hostedConfigured": { "type": "boolean" },
 				"id": { "type": "string" },
 				"move": {
 					"enum": ["to_portico", "to_local"],
+					"nullable": true,
+					"type": "string"
+				},
+				"moveEndsAt": {
 					"nullable": true,
 					"type": "string"
 				},
@@ -141692,10 +141701,12 @@ var PorticoCastContracts = (function(exports) {
 				"name",
 				"signIn",
 				"move",
+				"moveEndsAt",
 				"setupRequired",
 				"hostedConfigured",
 				"hostedAttached",
-				"version"
+				"version",
+				"apiLevel"
 			],
 			"type": "object"
 		},
