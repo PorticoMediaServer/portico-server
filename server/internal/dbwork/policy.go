@@ -14,9 +14,13 @@ import (
 // conservative: SQLite serialises writers, so a large pool only multiplies lock
 // competition and each connection's private page cache. The preset keeps the
 // configured page-cache allowance at 36 MiB (6 foreground + 2 background + 1
-// writer connections x 4 MiB), with at most four idle foreground handles after a
-// read burst. Database mmap is disabled; SQLite's allocator, retained statements
-// and temporary sorts still use memory outside the Go runtime's soft limit.
+// writer connections x 4 MiB). Every allowed foreground connection stays idle
+// between bursts: closing one discards both its page cache and prepared
+// bytecode, forcing schema/statement parsing on the next request burst.
+// Retaining six instead of four idle handles raises resting usage to the
+// already-permitted burst peak, not the concurrent capacity or memory ceiling.
+// Database mmap is disabled; SQLite's allocator, retained statements and
+// temporary sorts still use memory outside the Go runtime's soft limit.
 type Policy struct {
 	MaxOpenConns      int
 	MaxIdleConns      int
@@ -34,8 +38,9 @@ type Policy struct {
 }
 
 const (
-	safeMaxOpenConns      = 6
-	safeMaxIdleConns      = 4
+	safeMaxOpenConns = 6
+	// Retain the already-allowed reader peak and its per-connection bytecode.
+	safeMaxIdleConns      = safeMaxOpenConns
 	safeCacheSizeKiB      = 4 * 1024 // 4 MiB per connection
 	safeMmapSizeBytes     = 0        // mmap deliberately off; it is untracked memory
 	safeConnMaxLifetime   = 30 * time.Minute
