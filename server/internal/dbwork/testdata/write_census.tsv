@@ -120,9 +120,10 @@ internal/catalog/visibility_frontier.go	(*Service).clearVisibilityDirtyThrough	W
 internal/catalog/visibility_frontier.go	(*Service).settleVisibilitySourceTarget	WithWriteTx	ClassBackgroundMedia	-
 internal/catalog/visibility_incremental.go	(*Service).refreshVisibilityClass	WithWriteTx	ClassBackgroundMedia	-	×2
 internal/catalogtest/catalogtest.go	(*Catalog).Write	WithWriteTx	ClassMaintenance	-
+internal/compactcatalog/browse_counter_repair.go	sampleBrowseCounterWriter	WithWriteTx	ClassMaintenance	-
 internal/compactcatalog/derive.go	(*Worker).Rebuild	WithWriteTx	ClassMaintenance	-
 internal/compactcatalog/derive.go	(*Worker).Step	WithWriteTx	ClassMaintenance	DrainPlan|derivationUnitPlan
-internal/compactcatalog/derive.go	(*Worker).prepare	WithWriteTx	ClassMaintenance	-	×2
+internal/compactcatalog/derive.go	(*Worker).prepare	WithWriteTx	ClassMaintenance	-
 internal/compactcatalog/derive.go	(*Worker).setAside	WithWriteTx	ClassMaintenance	-
 internal/compactcatalog/info_source.go	PublishInfoSource	WithWriteTxContext	ClassFrom(ctx, dbwork.ClassBackgroundMedia)	-	×2
 internal/compactcatalog/local_genres.go	ProjectAudioLocalGenresBatch	Begin	ClassFrom(ctx, dbwork.ClassBackgroundMedia)	-
