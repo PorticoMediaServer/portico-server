@@ -27,6 +27,24 @@ to a relative state path; setting the absolute path avoids sharing another run's
 database accidentally. FFmpeg/FFprobe must be available for probing and playback;
 qualified release bundles are validated against `third_party/ffmpeg`.
 
+A development build (`make build-server`, `make dev-api`) carries the same
+reader capability as CI but not the release trust marker: `make` reads
+`scripts/release-build-tags.py --capability` (`portico_rar7z,portico_cb7`). Every
+official build takes its Go tags from that one helper: the sealed release
+builder and the container image use its release set
+(`release,portico_rar7z,portico_cb7`), and CI compiles and tests the capability
+set so tagged-only code cannot rot. Plain `go build ./cmd/server` without the
+tags is still dark. To reproduce the reader capability locally, use the same
+capability set:
+
+```sh
+(cd server && go build -tags "$(../scripts/release-build-tags.py --capability)" -o ../dist/portico-server ./cmd/server)
+```
+
+`scripts/test-official-build-tags.py` fails CI when a build, test or vet command
+drops that capability, so a plain `-tags release` is a regression, not a local
+preference.
+
 For browser development, run `npm run dev:web` in another terminal. Vite proxies
 `/v1` to port 32500. `make dev-api` runs Go source; provide the same explicit
 state and web environment. Development and release trust roots differ.

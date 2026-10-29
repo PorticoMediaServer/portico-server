@@ -25,7 +25,11 @@ FFmpeg component release, and builds:
 
 Each server binary is built from an isolated source snapshot and sealed with a
 signed manifest (`scripts/build-server-release.py`; see
-`server/api/release-signing.md`). The release workflow then writes SHA-256
+`server/api/release-signing.md`). Every shipped build takes its Go build tags
+from `scripts/release-build-tags.py` (`release` plus the `portico_rar7z` and
+`portico_cb7` reader capabilities); the same list is used to build and test the
+release revision, the verifier refuses a manifest whose binary carries a
+different set, and the container image uses the same list. The release workflow then writes SHA-256
 checksums, an SBOM, build provenance, and a small update manifest before
 publishing the GitHub Release. A final signed artifact inventory authenticates
 the complete archives/installers after packaging, including web assets. The release body describes a development preview. The workflow sets

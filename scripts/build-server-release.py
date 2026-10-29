@@ -7,6 +7,16 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey,
 ROOT=pathlib.Path(__file__).resolve().parent.parent
 RCLONE=runpy.run_path(str(ROOT/'scripts/rclone-bundle.py'))
 SONIC=runpy.run_path(str(ROOT/'scripts/sonic-bundle.py'))
+TAGS=runpy.run_path(str(ROOT/'scripts/release-build-tags.py'))
+BUILD_TAGS=TAGS['value']()
+
+def build_tags(component):
+    # The server carries the reader capability; only the server is a buildable
+    # component today, and its tag set is the single checked list.
+    return BUILD_TAGS if component=='server' else 'release'
+
+def tags_are_official(component, supplied):
+    return TAGS['covers'](supplied) if component=='server' else TAGS['tags'](supplied)=={'release'}
 
 def official_root():
     path=pathlib.Path(os.environ.get('PORTICO_ROOT_PUBLIC_KEY_FILE',str(ROOT/'trust/hosted-root-public-key.pem')))
@@ -131,7 +141,7 @@ def verify_manifest(directory,expected_source,trusted_public_key):
     if source_digest!=expected_source:raise ValueError('Build snapshot changed')
     embedded,settings=artifact_identity(artifact)
     trust_symbol='portico.local/server/internal/hostedtrust.OfficialRoot' if component=='server' else 'portico.local/hosted/trust.OfficialRoot'
-    if settings.get('-tags')!='release' or embedded.get(trust_symbol)!=manifest.get('officialRoot'):raise ValueError('Release lacks the certified official trust root')
+    if not tags_are_official(component,settings.get('-tags')) or embedded.get(trust_symbol)!=manifest.get('officialRoot'):raise ValueError('Release lacks the certified official trust root or its official build tags')
     if settings.get('-trimpath')!='true':raise ValueError('Release was built without -trimpath and carries build-machine paths')
     prefix='portico.local/'+component+'/internal/buildinfo.'
     if embedded.get(prefix+'SourceDigest')!=expected_source or embedded.get(prefix+'BuildID')!=manifest['buildId']:raise ValueError('Embedded build identity does not match release source')
@@ -159,7 +169,11 @@ def release_version(value):
     return value
 
 def main():
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--version',required=True,type=release_version);parser.add_argument('--os',choices=['linux','darwin','windows'],default='linux');parser.add_argument('--arch',choices=['amd64','arm64'],default='amd64');parser.add_argument('--component',choices=['server'],default='server');parser.add_argument('--ffmpeg-bundle',type=pathlib.Path,default=ROOT/'third_party/ffmpeg/bundle');parser.add_argument('--sonic-bundle',type=pathlib.Path);parser.add_argument('--source-dir',type=pathlib.Path);args=parser.parse_args()
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--version',required=False,type=release_version);parser.add_argument('--os',choices=['linux','darwin','windows'],default='linux');parser.add_argument('--arch',choices=['amd64','arm64'],default='amd64');parser.add_argument('--component',choices=['server'],default='server');parser.add_argument('--ffmpeg-bundle',type=pathlib.Path,default=ROOT/'third_party/ffmpeg/bundle');parser.add_argument('--sonic-bundle',type=pathlib.Path);parser.add_argument('--source-dir',type=pathlib.Path);parser.add_argument('--print-tags',action='store_true',help='print the official Go build tags this builder uses and exit');args=parser.parse_args()
+    # Dry run for the CI guard: the tags below are the ones the build uses, not a
+    # second copy of the list.
+    if args.print_tags:print(build_tags(args.component));return
+    if not args.version:parser.error('--version is required to build')
     key=signing_key()
     root_key,root_pem=official_root()
     if args.component=='server':
@@ -198,7 +212,7 @@ def main():
     flags+=' -X '+('portico.local/server/internal/hostedtrust.OfficialRoot' if args.component=='server' else 'portico.local/hosted/trust.OfficialRoot')+'='+root_key
     env=controlled_env();env.update({'GOOS':args.os,'GOARCH':args.arch,'CGO_ENABLED':'0'})
     # -trimpath: the binary names module paths, never this machine's folders (the snapshot, the module cache, Go's own).
-    subprocess.run([str(ROOT/'scripts/env.sh'),'go','build','-tags','release','-buildvcs=false','-mod=readonly','-trimpath','-ldflags',flags,'-o',str(stage/('portico-'+args.component+('.exe' if args.os=='windows' else ''))),'./cmd/'+args.component],cwd=source,env=env,check=True)
+    subprocess.run([str(ROOT/'scripts/env.sh'),'go','build','-tags',build_tags(args.component),'-buildvcs=false','-mod=readonly','-trimpath','-ldflags',flags,'-o',str(stage/('portico-'+args.component+('.exe' if args.os=='windows' else ''))),'./cmd/'+args.component],cwd=source,env=env,check=True)
     if snapshot_digest(source)[0]!=snapshot:raise SystemExit('Source snapshot changed during build.')
     if hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest()!=builder_digest:raise SystemExit('Builder changed during execution; discard output and retry.')
     binary=stage/('portico-'+args.component+('.exe' if args.os=='windows' else ''));manifest={'schema':1,'version':args.version,'component':args.component,'buildId':build_id,'sourceDigest':snapshot,'officialRoot':root_key,'builtAt':built_at,'target':args.os+'-'+args.arch,'builderSha256':builder_digest,'sourceFiles':copied,'artifact':{'path':binary.name,'sha256':hashlib.sha256(binary.read_bytes()).hexdigest()}}

@@ -41,6 +41,14 @@ Run the operator scripts against the private tunnel. The root is a path on
 the server, while `--manifest` is a local downloaded file. Credentials must
 be owned by the operator with mode 0600 and remain outside Git.
 
+Hardening is exact-file only: the private parent directory is 0700 and each
+credential or report file is 0600. Never `chmod -R` through the fixture library,
+media roots or hardlink aliases: recursive changes traverse shared inodes and
+rewrite the source ctime every copy records. A local QA helper did exactly that
+at 12:34:22.711Z on 29 October (`chmod -R go-rwx`), changing all fixture source
+ctimes. Do not "repair" that with copies or timestamps; a separate server P0
+fix removes ctime's content meaning. No operator or private file is edited here.
+
 ```sh
 python3 fixtures/test-library-v3/seed_state.py \
   --base http://localhost:49300 \
@@ -68,9 +76,12 @@ The ten-client smoke is a bounded service check: JSON browsing, actual media
 decoding and session timeline reports for ten minutes. It does not substitute
 for device acceptance or the full load test.
 
-CBR ingestion requires a server built with `-tags portico_rar7z`; the default
-build intentionally omits its decoder and does not advertise CBR. Check
-`go version -m /path/to/portico-server` before a CBR walk. Do not rename CBR
+CBR ingestion requires a server built with the official reader capability,
+`portico_rar7z`, which every official build takes from
+`scripts/release-build-tags.py` (alongside `portico_cb7`). A plain untagged
+`go build` intentionally omits the decoder and does not advertise CBR. Check
+`go version -m /path/to/portico-server` before a CBR walk: a build that shows
+only `-tags release` predates this and cannot admit CBR. Do not rename CBR
 files to CBZ or bypass archive admission.
 
 The offline CI smoke runs the real generator naming/copy helpers and fixture

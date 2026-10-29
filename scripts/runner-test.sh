@@ -159,6 +159,12 @@ set -uo pipefail
 remote="$1"; module="$2"; tier="$3"; modules="$4"; prefix="$5"; shift 5
 export PORTICO_TEST_TIER="$tier"
 work="$HOME/$remote"
+# The one checked capability list, from the synced worktree: the helper build and
+# every go test below carry the same tags as an official build.
+PORTICO_GO_TAGS="$(python3 "$work/scripts/release-build-tags.py" --capability)" || {
+	echo "runner-test: could not read the official capability tags" >&2; exit 2; }
+[ -n "$PORTICO_GO_TAGS" ] || { echo "runner-test: empty official capability tag list" >&2; exit 2; }
+export PORTICO_GO_TAGS
 mkdir -p "$HOME/slots"
 slot=""
 waited=0
@@ -205,7 +211,7 @@ if [ -x /opt/portico-ffmpeg/bin/ffmpeg ]; then
 	export PATH="/opt/portico-ffmpeg/bin:$PATH"
 fi
 if [ -d "$work/server" ]; then
-	(cd "$work/server" && go build -o "$PORTICO_PLAYBACK_TEST_HELPER" ./cmd/server) || { echo "runner-test: helper build failed" >&2; exit 1; }
+	(cd "$work/server" && go build -tags "$PORTICO_GO_TAGS" -o "$PORTICO_PLAYBACK_TEST_HELPER" ./cmd/server) || { echo "runner-test: helper build failed" >&2; exit 1; }
 fi
 
 defaults() {
@@ -222,6 +228,7 @@ gotest() {
 	local mod="$1"; shift
 	local extra=()
 	mapfile -t extra < <(defaults "$@")
+	extra=(-tags "$PORTICO_GO_TAGS" "${extra[@]}")
 	echo "runner-test: [$mod] go test ${extra[*]} $*" >&2
 	# Its own process group (setsid), recorded so --stop can end exactly this job.
 	setsid bash -c 'cd "$1" && shift && exec go test "$@"' _ "$work/$prefix$mod" "${extra[@]}" "$@" &

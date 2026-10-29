@@ -71,7 +71,7 @@ if '--force' in sys.argv:
                    prefix + "Version": "0.1.0", "portico.local/server/internal/hostedtrust.OfficialRoot": "fixture-root"}
         info = {"Path": "portico.local/server/cmd/server", "Settings": [
             {"Key": "GOOS", "Value": "darwin"}, {"Key": "GOARCH", "Value": "arm64"},
-            {"Key": "-tags", "Value": "release"},
+            {"Key": "-tags", "Value": runpy.run_path(str(self.fixture.repo / "scripts/release-build-tags.py"))["value"]()},
             {"Key": "-ldflags", "Value": " ".join("-X " + k + "=" + v for k, v in symbols.items())}]}
         go = self.tools / "go"
         go.write_text("#!/bin/sh\ncat <<'INFO'\n" + json.dumps(info) + "\nINFO\n")

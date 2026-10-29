@@ -85,10 +85,11 @@ jobs:
           gh release download "$TOOLCHAIN_TAG" --pattern "portico-ffmpeg-${TOOLCHAIN_TAG}-linux-x64.tar.xz" --dir .toolchain
           tar -xJf .toolchain/*.tar.xz -C third_party/ffmpeg/bundle
           scripts/verify-ffmpeg-bundle.sh third_party/ffmpeg/bundle full
+          export PORTICO_GO_TAGS="$(python3 scripts/release-build-tags.py --capability)"
           cd server
-          go build -o ../.scratch/portico-server ./cmd/server
+          go build -tags "$PORTICO_GO_TAGS" -o ../.scratch/portico-server ./cmd/server
           export PORTICO_PLAYBACK_TEST_HELPER="$GITHUB_WORKSPACE/.scratch/portico-server"
-          go test -timeout=120m ./...
+          go test -tags "$PORTICO_GO_TAGS" -timeout=120m ./...
 
   web:
     needs: [identity, tests]

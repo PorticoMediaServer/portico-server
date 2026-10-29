@@ -461,6 +461,15 @@ class GoPackageRunnerTests(ProcessChecks, unittest.TestCase):
         self.assertIn("PASS  ./b  tests=1", text)
         self.assertIn("exit: 1", text)
 
+    def test_the_capability_tags_from_the_job_are_on_the_test_command(self):
+        self.install_go(["a"], {"a": "pass"})
+        with patch.dict(ci.os.environ, {"PORTICO_GO_TAGS": "portico_rar7z,portico_cb7"}), \
+                contextlib.redirect_stdout(io.StringIO()):
+            status = ci.go_test("server", [("./a", None)])
+        self.assertEqual(status, 0)
+        call = next(line for line in self.argv.read_text().splitlines() if line.startswith("test "))
+        self.assertIn("test -tags portico_rar7z,portico_cb7 -json -count=1", call)
+
     def test_a_normal_failure_prints_its_decoded_block_and_file_line(self):
         results = self.root / "results.jsonl"
         self.install_go(["a"], {"a": "fail-detail"})
@@ -992,6 +1001,19 @@ class GoPackageRunnerTests(ProcessChecks, unittest.TestCase):
             ci.go_checks("apikit", "affected")
         self.assertEqual(tests.call_args.args, ("apikit", [("./a", None)], 0, 1))
         self.assertEqual(vet.call_args.args[0], [(["go", "vet", "./..."], self.root / "apikit")])
+
+    def test_full_module_apikit_vet_carries_the_capability_tags(self):
+        with patch.dict(ci.os.environ, {"CI_FULL_TREE": "1", "CI_SHARD_INDEX": "0",
+                                        "CI_SHARD_TOTAL": "1",
+                                        "PORTICO_GO_TAGS": "portico_rar7z,portico_cb7"}), \
+                patch.object(ci, "module_packages", return_value=["./a"]), \
+                patch.object(ci, "go_test", return_value=0), \
+                patch.object(ci, "run_all_status", return_value=0) as vet, \
+                contextlib.redirect_stdout(io.StringIO()):
+            ci.go_checks("apikit", "affected")
+        self.assertEqual(vet.call_args.args[0],
+                         [(["go", "vet", "-tags", "portico_rar7z,portico_cb7", "./..."],
+                           self.root / "apikit")])
 
     def test_dependency_change_compiles_the_module_one_package_per_run(self):
         with patch.dict(ci.os.environ, {"CI_FULL_TREE": "0"}), \
@@ -2328,7 +2350,7 @@ class CatalogShardCoverageTests(unittest.TestCase):
         with patch.object(ci, "run_capture", return_value=output) as run:
             names = ci.catalog_run_names("server")
         self.assertEqual(set(names), {"TestAlpha", "TestBeta", "Example", "ExampleLibrary_title", "FuzzCursor"})
-        self.assertEqual(run.call_args.args[0], ["go", "test", "-list", "^(Test|Example|Fuzz)", "./internal/catalog"])
+        self.assertEqual(run.call_args.args[0], ["go", "test", *ci.tag_args(), "-list", "^(Test|Example|Fuzz)", "./internal/catalog"])
         with patch.object(ci, "run_capture", return_value="ok example/catalog\n"):
             with self.assertRaisesRegex(RuntimeError, "inventory is empty"):
                 ci.catalog_run_names("server")

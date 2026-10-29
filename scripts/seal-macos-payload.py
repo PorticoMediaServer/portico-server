@@ -11,7 +11,9 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey,
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 RCLONE = runpy.run_path(str(ROOT / "scripts/rclone-bundle.py"))
-artifact_identity = runpy.run_path(str(ROOT / "scripts/build-server-release.py"))["artifact_identity"]
+BUILDER = runpy.run_path(str(ROOT / "scripts/build-server-release.py"))
+artifact_identity = BUILDER["artifact_identity"]
+tags_are_official = BUILDER["tags_are_official"]
 
 
 def digest(path):
@@ -45,7 +47,7 @@ def verify_payload(directory, public_key):
     for symbol, field in [("SourceDigest", "sourceDigest"), ("BuildID", "buildId"), ("Version", "version")]:
         if embedded.get(prefix + symbol) != manifest[field]:
             raise ValueError("Embedded build identity does not match the source seal")
-    if settings.get("-tags") != "release" or settings.get("GOOS") != "darwin" or settings.get("GOARCH") != "arm64":
+    if not tags_are_official("server", settings.get("-tags")) or settings.get("GOOS") != "darwin" or settings.get("GOARCH") != "arm64":
         raise ValueError("Invalid compiler target or release mode")
     if embedded.get("portico.local/server/internal/hostedtrust.OfficialRoot") != manifest.get("officialRoot"):
         raise ValueError("Official trust root changed")

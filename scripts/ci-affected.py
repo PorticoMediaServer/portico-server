@@ -4,6 +4,7 @@ import argparse
 import test_watchdog
 import shutil
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -18,6 +19,34 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 TEST = re.compile(r"^func (Test[A-Z]\w*)\(", re.M)
+
+
+def official_tags():
+    """The capability tags this run's tests, vet and package inventory use.
+
+    Official CI exports PORTICO_GO_TAGS from the same helper its build step uses.
+    A direct local run reads that one checked list instead, so tagged-only code
+    is compiled and tested rather than passing by being invisible. A checkout
+    without the helper (the mocked roots in this file's own tests) stays on the
+    compiler default.
+    """
+    supplied = os.environ.get("PORTICO_GO_TAGS", "").strip()
+    if supplied:
+        return supplied
+    helper = ROOT / "scripts/release-build-tags.py"
+    if not helper.is_file():
+        return ""
+    specification = importlib.util.spec_from_file_location("release_build_tags", helper)
+    module = importlib.util.module_from_spec(specification)
+    specification.loader.exec_module(module)
+    return module.value(release=False)
+
+
+def tag_args():
+    """`-tags` arguments for the official capability set, or none when absent."""
+    value = official_tags()
+    return ["-tags", value] if value else []
+
 
 # Per-package deadline passed to `go test -timeout`. This is the hang guard for
 # one package, not a scope filter: the slowest package measured on mini-1
@@ -386,7 +415,7 @@ def module_packages(module):
     """
     root = ROOT / module
     try:
-        text = run_capture(["go", "list", "-e", "-f", "{{.ImportPath}}\t{{.Dir}}", "./..."], root)
+        text = run_capture(["go", "list", *tag_args(), "-e", "-f", "{{.ImportPath}}\t{{.Dir}}", "./..."], root)
     except CommandTimeout as error:
         raise RuntimeError(f"go list in {module} did not finish within {error.timeout:g}s") from None
     except subprocess.CalledProcessError as error:
@@ -422,7 +451,7 @@ def shard(packages, index=0, total=1):
 
 def catalog_run_names(module):
     """Use Go's built inventory, including examples and fuzz seeds, not source guesses."""
-    text = run_capture(["go", "test", "-list", "^(Test|Example|Fuzz)",
+    text = run_capture(["go", "test", *tag_args(), "-list", "^(Test|Example|Fuzz)",
                         "./internal/catalog"], ROOT / module, timeout=GO_LIST_TIMEOUT)
     names = {line.strip() for line in text.splitlines()
              if re.fullmatch(r"(?:Test[A-Z]\w*|Fuzz[A-Z]\w*|Example(?:_[A-Za-z0-9_]+|[A-Z]\w*)?)", line.strip())
@@ -1218,7 +1247,7 @@ def _lines(sink, run, report):
 
 
 def execute_package(module, result, report):
-    argv = ["go", "test", "-json", "-count=1", f"-timeout={GO_TEST_TIMEOUT}s"]
+    argv = ["go", "test", *tag_args(), "-json", "-count=1", f"-timeout={GO_TEST_TIMEOUT}s"]
     if result.pattern:
         argv += ["-run", result.pattern]
     argv.append(result.package)
@@ -1401,7 +1430,7 @@ def go_checks(module, group):
         print(f"+ go test inventory: {len(planned)} packages, shard "
               f"{shard_index + 1}/{shard_total} runs {len(selection)}", flush=True)
         vet = (["bash", str(ROOT / "scripts/vet-go.sh")] if module == "server"
-               else ["go", "vet", "./..."])
+               else ["go", "vet", *tag_args(), "./..."])
         finish(go_test(module, selection, shard_index, shard_total),
                run_all_status([(vet, ROOT / module)]))
         return
@@ -1448,7 +1477,7 @@ def go_checks(module, group):
             actual = test_names((ROOT / module / package.removeprefix("./")).glob("*_test.go"))
             if not names or not names <= actual:
                 raise RuntimeError(f"missing mandatory security test: {package}: {names - actual}")
-        vet = ["go", "vet"]
+        vet = ["go", "vet", *tag_args()]
         if package == "./internal/thirdparty/sqlite":
             vet.append("-unsafeptr=false")  # same maintained-driver exception as vet-go.sh
         vet_commands.append(([*vet, package], ROOT / module))

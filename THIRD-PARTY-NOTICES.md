@@ -28,6 +28,16 @@ module. Go itself and copied Go image-scaling code use BSD-3-Clause terms.
 | github.com/ncruces/go-strftime | v1.0.0 | MIT |
 | github.com/remyoudompheng/bigfft | v0.0.0-20230129092748-24d4a6f8daec | BSD-3-Clause |
 | gopkg.in/yaml.v3 | v3.0.1 | MIT and Apache-2.0, per file |
+| github.com/bodgit/sevenzip | v1.6.5 | BSD-3-Clause |
+| github.com/nwaples/rardecode/v2 | v2.4.5 | BSD-2-Clause |
+
+The two archive readers are the bounded comic readers: `rardecode` for CBR and
+`sevenzip` for the CB7 worker. Both are pinned in `server/go.mod` as direct
+requirements and are linked into official builds, which set `portico_rar7z` and
+`portico_cb7` from `scripts/release-build-tags.py`. CB7 still requires a
+supported platform and the bounded `archive7z` worker; the tag alone never opens
+an in-process reader. Their licence texts are the packages' own unchanged
+`LICENSE` files, not rewritten here.
 
 The maintained SQLite driver's copied files retain upstream notices in
 [server/internal/thirdparty/sqlite/LICENSE](server/internal/thirdparty/sqlite/LICENSE)

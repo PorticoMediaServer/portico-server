@@ -54,6 +54,10 @@ RUN cp /out/portico-build.json /out/web/portico-build.json
 
 FROM golang:1.26.10-bookworm@sha256:632dff7351799a5a9954a48dc06670ade72ee44e8c351cdc0e5a57af2fea21af AS build
 WORKDIR /src/server
+# Official Go build tags, from scripts/release-build-tags.py. The default is the
+# release argument for the same list; a CI guard (scripts/test-official-build-tags.py)
+# fails when this default and the helper disagree or when a build drops the tag.
+ARG PORTICO_GO_TAGS=release,portico_rar7z,portico_cb7
 COPY trust/hosted-root-public-key.pem /identity/root-public-key.pem
 COPY scripts/inspect-hosted-root.go /identity/inspect-hosted-root.go
 COPY apikit /src/apikit
@@ -62,7 +66,7 @@ RUN test "$(go env GOVERSION)" = "go$(sed -n 's/^go //p' go.mod)" && go mod down
 COPY server ./
 COPY --from=web /out/build.env /identity/build.env
 ENV CGO_ENABLED=0
-RUN ROOT_KEY=$(go run /identity/inspect-hosted-root.go /identity/root-public-key.pem) && test -n "$ROOT_KEY" && . /identity/build.env && go build -tags release -buildvcs=false -mod=readonly -trimpath -ldflags "-s -w -X portico.local/server/internal/hostedtrust.OfficialRoot=$ROOT_KEY -X portico.local/server/internal/buildinfo.Version=$VERSION -X portico.local/server/internal/buildinfo.BuildID=$BUILD_ID -X portico.local/server/internal/buildinfo.SourceDigest=$SOURCE_DIGEST -X portico.local/server/internal/buildinfo.BuiltAt=$BUILT_AT" -o /out/portico-server ./cmd/server
+RUN ROOT_KEY=$(go run /identity/inspect-hosted-root.go /identity/root-public-key.pem) && test -n "$ROOT_KEY" && . /identity/build.env && go build -tags "$PORTICO_GO_TAGS" -buildvcs=false -mod=readonly -trimpath -ldflags "-s -w -X portico.local/server/internal/hostedtrust.OfficialRoot=$ROOT_KEY -X portico.local/server/internal/buildinfo.Version=$VERSION -X portico.local/server/internal/buildinfo.BuildID=$BUILD_ID -X portico.local/server/internal/buildinfo.SourceDigest=$SOURCE_DIGEST -X portico.local/server/internal/buildinfo.BuiltAt=$BUILT_AT" -o /out/portico-server ./cmd/server
 
 # The qualified FFmpeg bundle for the architecture this image is being built
 # for. A multi-architecture build supplies one bundle per architecture, in

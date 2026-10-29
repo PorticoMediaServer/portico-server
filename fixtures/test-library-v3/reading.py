@@ -29,8 +29,10 @@ Library roots and importer facts (verified in server source at c1c9ce7d5):
 CBR is a genuine stored RAR5 container written by the small original writer
 below (adapted from the project's CC0 fixture tooling). A ZIP renamed to
 ``.cbr`` is never produced, and no external RAR encoder is required. Server
-admission still needs a ``portico_rar7z`` build. Normal release builds do not
-currently set that tag; check the actual binary before qualifying CBR ingestion.
+admission still needs a ``portico_rar7z`` build; every official build takes that
+tag (with ``portico_cb7``) from ``scripts/release-build-tags.py``, while a plain
+untagged ``go build`` stays dark. Check the actual binary before qualifying CBR
+ingestion.
 
 Root sections (each is its own state-helper library root/type):
 ``Reading/Books`` (book), ``Reading/Comics`` (comic),

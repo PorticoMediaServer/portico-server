@@ -109,6 +109,11 @@ jobs:
         run: |
           node --version || true
           go version || true
+      - name: Official server build tags
+        # One list, from scripts/release-build-tags.py: CI compiles the same
+        # reader capability every official build ships, so tagged-only code
+        # cannot rot between releases.
+        run: echo "PORTICO_GO_TAGS=$(python3 scripts/release-build-tags.py --capability)" >> "$GITHUB_ENV"
       - name: Disposable database
         run: |
           mkdir -p .scratch
@@ -118,7 +123,7 @@ jobs:
         working-directory: ${{ matrix.module }}
         run: |
           status=0
-          go build ./... > "$RUNNER_TEMP/go-build.log" 2>&1 || status=$?
+          go build -tags "$PORTICO_GO_TAGS" ./... > "$RUNNER_TEMP/go-build.log" 2>&1 || status=$?
           tail -n 20 "$RUNNER_TEMP/go-build.log"
           exit "$status"
       - if: ${{ !cancelled() }}
@@ -129,6 +134,7 @@ jobs:
           CI_GO_RESULTS: ${{ runner.temp }}/go-results-${{ matrix.module }}-${{ matrix.shard }}.jsonl
         run: |
           status=0
+          test -n "$PORTICO_GO_TAGS" || { echo "PORTICO_GO_TAGS is unset; refusing to run tests without the official capability" >&2; exit 2; }
           python3 scripts/ci-affected.py go --module '${{ matrix.module }}' > "$RUNNER_TEMP/full-ci.log" 2>&1 || status=$?
           tail -n 20 "$RUNNER_TEMP/full-ci.log"
           exit "$status"
@@ -230,7 +236,9 @@ jobs:
           mkdir -p .scratch
           printf '%s' 'postgres://portico:disposable-ci-password@localhost:5432/portico_test?sslmode=disable' > .scratch/postgres.url
           echo "PORTICO_TEST_DATABASE_URL_FILE=$PWD/.scratch/postgres.url" >> "$GITHUB_ENV"
-          (cd server && go build -o ../.scratch/portico-server ./cmd/server)
+          tags="$(python3 scripts/release-build-tags.py --capability)"
+          echo "PORTICO_GO_TAGS=$tags" >> "$GITHUB_ENV"
+          (cd server && go build -tags "$tags" -o ../.scratch/portico-server ./cmd/server)
           echo "PORTICO_PLAYBACK_TEST_HELPER=$PWD/.scratch/portico-server" >> "$GITHUB_ENV"
       - name: Sign-in, sessions, account/profile privacy, restrictions, egress, sandbox and spawn allowlist
         env:

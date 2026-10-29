@@ -120,11 +120,34 @@ function subtitleAndFontComponents(read: (rel: string) => string): CollectedComp
   return out;
 }
 
+/** The licence a Go module's own licence text states, from its wording alone.
+ *
+ * 2-clause and 3-clause BSD share their first two conditions, so the third
+ * (non-endorsement) clause is what separates them. Its wording varies ("Neither
+ * the name(s) of ...", first person, "may not"), so it is matched by the
+ * endorsement restriction it states rather than one fixed sentence. The original
+ * text is preserved separately; this only labels it. */
+export function classifyGoLicence(text: string): string {
+  const wording = text.replace(/\s+/g, ' ');
+  if (/Apache License/.test(wording)) return 'Apache-2.0';
+  if (/Permission is hereby granted, free of charge/.test(wording)) return 'MIT';
+  if (/Redistribution and use in source and binary forms/.test(wording)) {
+    return /(?:may|shall|must)(?: not)? be used to endorse or promote products derived from/i.test(wording)
+      ? 'BSD-3-Clause' : 'BSD-2-Clause';
+  }
+  return 'See text';
+}
+
 /** The Go modules linked into the server binary on each release platform. */
 function goModules(): {path: string; version: string; dir: string}[] {
+  // Same capability list as the official build: an untagged `go list -deps`
+  // omits modules behind portico_rar7z/portico_cb7, which would silently drop
+  // their licences from Settings › About.
+  const tags = execFileSync('python3', [path.join(root, 'scripts/release-build-tags.py'), '--capability'], {encoding: 'utf8'}).trim();
+  if (!tags) throw new Error('licences: scripts/release-build-tags.py returned an empty capability list');
   const found = new Map<string, {path: string; version: string; dir: string}>();
   for (const goos of ['linux', 'darwin', 'windows']) for (const goarch of ['amd64', 'arm64']) {
-    const out = execFileSync('go', ['list', '-deps', '-f', '{{with .Module}}{{.Path}}\t{{.Version}}\t{{.Dir}}{{end}}', './cmd/server'], {
+    const out = execFileSync('go', ['list', '-deps', `-tags=${tags}`, '-f', '{{with .Module}}{{.Path}}\t{{.Version}}\t{{.Dir}}{{end}}', './cmd/server'], {
       cwd: path.join(root, 'server'), encoding: 'utf8', env: {...process.env, GOOS: goos, GOARCH: goarch, GOFLAGS: '-mod=readonly', GOPROXY: 'off'},
     });
     for (const line of out.split('\n')) {
@@ -139,6 +162,8 @@ function goModules(): {path: string; version: string; dir: string}[] {
 function serverComponents(read: (rel: string) => string, licenceText: string): CollectedComponent[] {
   read('server/go.mod');
   read('server/go.sum');
+  // The tag list decides which modules are linked, so it is a generation input.
+  read('scripts/release-build-tags.py');
   const out: CollectedComponent[] = [];
   const goroot = execFileSync('go', ['env', 'GOROOT'], {encoding: 'utf8'}).trim();
   const goVersion = execFileSync('go', ['env', 'GOVERSION'], {encoding: 'utf8'}).trim().replace(/^go/, '');
@@ -147,7 +172,7 @@ function serverComponents(read: (rel: string) => string, licenceText: string): C
   for (const m of goModules()) {
     const text = folderLicence(m.dir);
     if (!text) throw new Error(`licences: Go module ${m.path} has no licence file in ${m.dir}`);
-    const licence = /Apache License/.test(text) ? 'Apache-2.0' : /Permission is hereby granted, free of charge/.test(text) ? 'MIT' : /Redistribution and use in source and binary forms/.test(text) ? 'BSD-3-Clause' : 'See text';
+    const licence = classifyGoLicence(text);
     out.push({id: `go:${m.path}@${m.version}`, name: m.path, version: m.version, licence: m.path === 'modernc.org/sqlite' ? 'BSD-3-Clause; SQLite is public domain' : licence, group: 'server', text, url: `https://pkg.go.dev/${m.path}@${m.version}`});
   }
   out.push({id: 'server:sqlite-driver', name: 'SQLite driver (adapted copy)', licence: 'BSD-3-Clause', group: 'server', text: read('server/internal/thirdparty/sqlite/LICENSE'), url: 'https://gitlab.com/cznic/sqlite'});
