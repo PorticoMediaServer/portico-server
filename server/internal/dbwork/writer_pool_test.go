@@ -173,3 +173,24 @@ func TestBackgroundReadersSerializeWithoutHoldingForegroundCapacity(t *testing.T
 		t.Fatal("background reader did not resume", err)
 	}
 }
+
+func TestCheckpointControlBypassesOnlyTheBackgroundConnection(t *testing.T) {
+	db := testDB(t)
+	for _, class := range []Class{ClassMaintenance, ClassBackgroundMedia} {
+		ctx := WithClass(context.Background(), class)
+		background := ReadHandle(ctx, db)
+		if background == db || background.Stats().MaxOpenConnections != 1 {
+			t.Fatalf("ordinary %v work escaped the single background connection", class)
+		}
+		control := context.WithValue(ctx, checkpointReaderBypassKey{}, true)
+		if ReadHandle(control, db) != db {
+			t.Fatal("checkpoint control waited on the connection it must recover")
+		}
+		if ReadHandle(ctx, db) != background {
+			t.Fatal("checkpoint control changed ordinary background routing")
+		}
+	}
+	if db.Stats().MaxOpenConnections != 6 {
+		t.Fatal("foreground capacity changed")
+	}
+}

@@ -100,17 +100,27 @@ func TestCheckpointScheduleLookupCancellationRetainsRegularCare(t *testing.T) {
 func TestCheckpointSchedulePathLookupHonorsPoolWaitCancellation(t *testing.T) {
 	db := readerFixture(t)
 	ctx := WithClass(context.Background(), ClassMaintenance)
-	pool := ReadHandle(ctx, db)
-	first, err := pool.Conn(ctx)
-	if err != nil {
-		t.Fatal(err)
+	// Checkpoint control must not wait for the single background connection:
+	// it can be occupied by the long read that hard recovery must cancel.
+	// Saturate its actual foreground pool to exercise the same bounded wait.
+	pool := db
+	limit := pool.Stats().MaxOpenConnections
+	if limit <= 0 {
+		t.Fatal("checkpoint control pool has no connection bound")
 	}
-	defer first.Close()
-	second, err := pool.Conn(ctx)
-	if err != nil {
-		t.Fatal(err)
+	var held []*sql.Conn
+	defer func() {
+		for _, conn := range held {
+			_ = conn.Close()
+		}
+	}()
+	for i := 0; i < limit; i++ {
+		conn, err := pool.Conn(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		held = append(held, conn)
 	}
-	defer second.Close()
 	limited, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
 	defer cancel()
 	start := time.Now()
