@@ -34,7 +34,7 @@ export type WebPlaybackVersionStart = Readonly<{itemId: string; versionId: strin
 export type WebPlaybackStartDisplay = Readonly<{subject: PlaybackSubject; posterUrl?: string}>;
 export type WebPlaybackScreenTarget = Readonly<{libraryId: string; itemId: string; startSeconds: number; versionId?: string; storedResume?: boolean; display?: WebPlaybackStartDisplay}>;
 /** A start with no drawable dock yet: drawn from its display facts with Stop only, never "playing". */
-export type WebPlaybackStarting = Readonly<{key: string; display: WebPlaybackStartDisplay; stop: () => void}>;
+export type WebPlaybackStarting = Readonly<{key: string; display: WebPlaybackStartDisplay; stop: () => void; /** The server reports why it isn't ready yet. */ waiting?: 'channel_source'}>;
 /** An accepted start that never became drawable by its deadline: stopped, with Try again. */
 export type WebPlaybackStartTimedOut = Readonly<{key: string; retry: () => Promise<void>; close: () => void}>;
 export type WebPlaybackScreenLifetime = Readonly<{signal: AbortSignal; isCurrent(): boolean}>;

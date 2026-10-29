@@ -163,6 +163,8 @@ const terminal = (e: unknown) => e instanceof PlaybackApiError && [401, 403, 404
 
 /** How long a started channel may take to have its stream, and how often to look. */
 export const CHANNEL_STREAM_WAIT_MS = 60_000, CHANNEL_STREAM_POLL_MS = 500;
+/** The plain, terminal words for a start the host refused and one whose stream never came. */
+export const CHANNEL_START_REFUSED = 'This channel could not start. Try again.', CHANNEL_START_TIMEOUT = 'This channel did not start in time. Try again.';
 
 export class V1ChannelControl implements ChannelPlayback {
   private readonly http: V1Http;
@@ -253,7 +255,7 @@ export class V1ChannelControl implements ChannelPlayback {
         retireLate(result);cancel();
         // An admitted start the host refused to install is a failure, never a silent no-op
         // (P2-74 E-web-25): the caller draws its error instead of waiting forever.
-        if (refused) throw Object.assign(new Error('This channel could not start. Try again.'), {code: 'channel_start_refused'});
+        if (refused) sink.error(CHANNEL_START_REFUSED, true);
         return;
       }
       a.id = s.id;
@@ -278,7 +280,10 @@ export class V1ChannelControl implements ChannelPlayback {
         while (currentStart() && !a.joined) {
           const ready = a.session && a.session.presentation.url && a.session.presentation.generation > 0;
           if (ready) {this.accept(a, a.session!); break;}
-          if (Date.now() >= deadline) throw Object.assign(new Error('This channel did not start in time. Try again.'), {code: 'channel_start_timeout'});
+          if (Date.now() >= deadline) {
+            // The hard bound: end this start (Stop frees the tuner) and say so, terminally.
+            this.close(); sink.error(CHANNEL_START_TIMEOUT, true); return;
+          }
           await new Promise(resolve => setTimeout(resolve, CHANNEL_STREAM_POLL_MS));
           if (!currentStart()) break;
           await this.read(a, signal, false);
@@ -396,9 +401,14 @@ export class V1ChannelControl implements ChannelPlayback {
   }
 
   private stop(id: string, generation?: number): Promise<unknown> {
-    const work = call(this.http, {method: 'DELETE', path: encodedRoutePath("stop_playback_session", {"id": enc(id)}), body: {generation}}, [200, 204]).then(async response => {
+    const send = (g?: number) => call(this.http, {method: 'DELETE', path: encodedRoutePath("stop_playback_session", {"id": enc(id)}), body: g === undefined ? {} : {generation: g}}, [200, 204]);
+    // A generation the stream moved past since the last reading (412) still ends this session.
+    const work = send(generation).then(async response => {
       if (generation !== undefined) await this.http.acknowledgeUserMutation?.(`stop:${id}:${generation}`);
       return response;
+    }, error => {
+      if (generation !== undefined && error instanceof PlaybackApiError && error.status === 412) return send(undefined);
+      throw error;
     });
     this.stopping = Promise.all([this.stopping.catch(() => {}), work]);
     // The barrier tracks completion even when there is no later open to await
@@ -417,6 +427,9 @@ export class V1ChannelControl implements ChannelPlayback {
     a.startAbort.abort();
     sink?.preparation?.(undefined);
     a.reporter?.stop();
-    if (a.id) void this.stop(a.id, a.session?.presentation.generation).catch(error => sink?.error(message(error), true));
+    // Stop frees the tuner now, including a slow start still at stream generation 0: the
+    // server refuses generation 0, so an unseen generation ends the session by id alone.
+    const generation = a.session?.presentation.generation;
+    if (a.id) void this.stop(a.id, generation !== undefined && generation > 0 ? generation : undefined).catch(error => sink?.error(message(error), true));
   }
 }

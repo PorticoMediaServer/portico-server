@@ -32,7 +32,7 @@ export type DockPresentation = Readonly<{
 /** O-159: an accepted start that has no playable dock yet, drawn from the pressed card's own facts
  * in the connecting look (phone-player f7d-7f): title and art, a pending ring, and Stop only. It
  * never claims playing: no Pause, no progress. Stop cancels the start itself. */
-export type DockStarting = Readonly<{key: string; kind: 'music' | 'audiobook' | 'video'; identity: PlaybackIdentityModel; artwork?: ArtworkSource | null; stop: () => void}>;
+export type DockStarting = Readonly<{key: string; kind: 'music' | 'audiobook' | 'video'; identity: PlaybackIdentityModel; artwork?: ArtworkSource | null; stop: () => void; waiting?: 'channel_source'}>;
 export type DockView = Readonly<{mode: DockMode; playback: DockPlayback; remote?: RemoteDock; presentation: DockPresentation; starting?: DockStarting}>;
 export type DockRendererProps = Readonly<{
   view: DockView; binding: DockBinding; t?: DockTranslate; className?: string; style?: CSSProperties;

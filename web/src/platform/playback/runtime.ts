@@ -749,7 +749,11 @@ export class WebShellPlaybackRuntime {
         const preparation = captureLocalQueue(resource.preparation, scope);
         lease = {preparation, release: () => resource.release(), retired: false, released: false};this.localLeases.add(lease);
         serial = ++this.operation;
-        starting = this.beginStarting(localStartDisplay(preparation.items[0]), () => this.playLocalQueue(resource, this.retryLifetime()));
+        starting = this.beginStarting(localStartDisplay(preparation.items[0]), async () => {
+          // The stopped start released this resource; Try again never replays it, only a fresh one.
+          if (!resource.reacquire) problem('local_playback_unavailable');
+          await this.playLocalQueue(await resource.reacquire(), this.retryLifetime());
+        });
         starting.stopWith(() => stopped.abort());
         stack = this.replace('local');
         starting.attach(stack);
@@ -1108,7 +1112,7 @@ export class WebShellPlaybackRuntime {
     const finishRetention = this.retainMediaStart(context.signal, () => serial === this.operation);
     // The channel's own name is the only fact a guide start has; no art is invented.
     const subject = {kind: 'channel' as const, id: value.id, sourceId: value.sourceId, channelName: value.name};
-    const starting = this.beginStarting({subject}, () => this.playFromGuide(value, this.retryLifetime())), stopped = new AbortController();
+    const starting = this.beginStarting({subject}, () => this.playFromGuide(value, this.retryLifetime()), {watchdog: false}), stopped = new AbortController();
     starting.stopWith(() => stopped.abort());
     try {
       const stack = this.replace();
@@ -1425,10 +1429,13 @@ export class WebShellPlaybackRuntime {
    * that is still not drawable at START_DEADLINE_MS is stopped, recorded and offered again; slow
    * buffering never trips it, because a drawn dock ends the watch. Before acceptance the start's
    * own deadline (startDeadline) reports as it always has. */
-  private beginStarting(display: WebPlaybackStartDisplay | undefined, retry: () => Promise<void>): Starting {
+  private beginStarting(display: WebPlaybackStartDisplay | undefined, retry: () => Promise<void>, options: Readonly<{watchdog?: boolean}> = {}): Starting {
     this.endStarting(); this.startTimedOut = undefined;
     const state: StartingState = {key: String(++this.startingKeys), display, accepted: false, stop: () => {}, retry, timer: undefined};
-    state.timer = this.setTimer(() => this.expireStarting(state), START_DEADLINE_MS);
+    // A Live tune is drawn by its starting dock from acceptance: a slow stream keeps that dock
+    // (with the server's reason, if it has one) under the channel's own hard bound, and never
+    // trips this watchdog.
+    if (options.watchdog !== false) state.timer = this.setTimer(() => this.expireStarting(state), START_DEADLINE_MS);
     this.startingState = state; this.sync();
     const mine = () => this.startingState === state;
     return {
@@ -1485,7 +1492,12 @@ export class WebShellPlaybackRuntime {
     return {...(live?.display && live.stack === stack ? {starting: this.startingView(live)} : {}), ...(this.startTimedOut ? {startTimedOut: this.startTimedOut} : {})};
   }
   private startingView(state: StartingState): WebPlaybackStarting {
-    if (state.view?.display !== state.display) state.view = Object.freeze({key: state.key, display: state.display!, stop: () => this.stopStarting(state)});
+    // A starting channel whose session the server reports recoverable says so, plainly, while
+    // it keeps trying: never a silent "Starting…" when the server already knows why.
+    const service = state.stack?.service.getSnapshot();
+    const waiting = service?.channel && service.linearStalled ? 'channel_source' as const : undefined;
+    if (state.view?.display !== state.display || state.view?.waiting !== waiting)
+      state.view = Object.freeze({key: state.key, display: state.display!, stop: () => this.stopStarting(state), ...(waiting ? {waiting} : {})});
     return state.view!;
   }
   /** The queue's own entry for the item now playing, when the loaded window holds it. */

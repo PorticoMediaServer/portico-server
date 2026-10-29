@@ -9,6 +9,7 @@ export const dockMessages = {
   'next.dock.replay': 'Replay',
   'next.dock.stop': 'Stop',
   'next.dock.starting': 'Starting…',
+  'next.dock.channelSourceWaiting': 'The channel’s source isn’t responding. Still trying…',
   'next.dock.stopConnecting': 'Stop connecting',
   'next.dock.stopClose': 'Stop and close',
   'next.dock.close': 'Close',

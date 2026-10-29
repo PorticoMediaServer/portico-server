@@ -185,3 +185,17 @@ test('a starting dock draws the pressed title with a pending ring and only Stop,
   assert.doesNotMatch(html, /The pressed film/);
   assert.equal(stopped, 0);
 });
+
+// A Live start the server reports as waiting on its source says so, and still offers Stop.
+test('a starting dock waiting on the channel source says so instead of "Starting…" and still offers Stop', async () => {
+  const {DockHost} = await import('../../src/kit/dock/DockHost.tsx');
+  const dock = new PlaybackDock(scope);
+  const starting = {key: '1', kind: 'video' as const, identity: {id: 'channel', kind: 'channel' as const, title: 'News', subtitle: []} as never, stop: () => {}, waiting: 'channel_source' as const};
+  for (const layout of ['desktop', 'phone'] as const) {
+    const html = renderToStaticMarkup(createElement(DockHost, {state: dock.getSnapshot(), presentations: [], binding: {getSnapshot: dock.getSnapshot, onAction() {}}, layout, starting}));
+    assert.match(html, /The channel’s source isn’t responding\. Still trying…/, layout);
+    assert.doesNotMatch(html, /Starting…/, layout);
+    assert.match(html, layout === 'phone' ? /aria-label="Stop"/ : />Stop</, layout);
+    assert.doesNotMatch(html, /aria-label="(Pause|Play|Next|Previous|Expand)"/, layout);
+  }
+});

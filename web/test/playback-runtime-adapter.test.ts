@@ -1149,6 +1149,23 @@ test('dock completion keeps real listening auto-advance and marks only the confi
   assert.ok(finishedSessions.includes(last.sessionId));
 });
 
+test('E-web-14: a music queue start whose offers carry an unoffered "limit" quality still publishes a dock presentation', async t => {
+  const f = setup(t), port = f.runtime.selectionPlayback(() => true);
+  f.intercept(async (request, response) => {
+    if (request.path.includes('/playback-offers?')) {
+      const body = response.body as {current: Record<string, unknown>};
+      return {...response, body: {...body, current: {...body.current, qualityId: 'limit'}}};
+    }
+    return response;
+  });
+  await port.play({context: selectionContext, items: [selectionLeaf('song-first'), selectionLeaf('song-last')], signal: new AbortController().signal});
+  await f.arrive();
+  const snapshot = f.runtime.getSnapshot();
+  assert.ok(snapshot.fence, 'the queue fence exists');
+  assert.ok(snapshot.presentation, 'the dock presentation is published');
+  assert.equal(snapshot.playback.itemId, 'song-first');
+});
+
 test('dock completion with zero countdown advances only after the real controller publishes its held completion', async t => {
   const f = setup(t);
   f.intercept(async (request, response) => request.method === 'GET' && /^\/v1\/queues\/[^/]+$/.test(request.path)
@@ -3496,7 +3513,7 @@ for (const path of startPaths) {
     assert.equal(f.runtime.getSnapshot().startTimedOut, undefined);
   });
 
-  test(`P2-61 ${path.name}: an accepted start never drawn stops at the deadline with a named diagnostic, and Try again reruns it`, async t => {
+  if (!path.live) test(`P2-61 ${path.name}: an accepted start never drawn stops at the deadline with a named diagnostic, and Try again reruns it`, async t => {
     const {openAppLogContext, captureAppLog} = await import('../src/platform/app-log.ts');
     const closeLog = openAppLogContext(() => true); t.after(closeLog);
     const f = setup(t, {}, {}, undefined, undefined, {homeFence: false}), life = new AbortController();
@@ -3520,7 +3537,91 @@ for (const path of startPaths) {
     assert.equal(posts(), before + 1, 'the same start ran again');
     assert.equal(f.runtime.getSnapshot().startTimedOut, undefined); assert.ok(f.runtime.getSnapshot().presentation, 'and drew its real dock');
   });
+  const slowLiveToBound = async (t: TestContext) => {
+    const f = setup(t, {}, {}, undefined, undefined, {homeFence: false}), life = new AbortController();
+    t.mock.timers.enable({apis: ['setTimeout', 'Date'], now: Date.now()});
+    slowChannel(f, {ready: false});
+    const run = path.run(f, life.signal).catch(() => {});
+    await spinUntil(f, () => !!f.runtime.getSnapshot().starting);
+    assert.ok(f.runtime.getSnapshot().starting, 'the starting dock is drawn on acceptance');
+    // Past the 20 s watchdog with no stream: still starting, never timed out.
+    await tickLive(t, f, 25_000, () => {
+      const s = f.runtime.getSnapshot();
+      assert.ok(s.starting, 'the starting dock stays'); assert.equal(s.startTimedOut, undefined);
+    });
+    // Past the channel's own 60 s bound.
+    await tickLive(t, f, 40_000);
+    await run;
+    return f;
+  };
+  if (path.live) test(`P2-61 ${path.name}: a Live tune never trips the 20 s watchdog and is ended at the channel's 60 s bound`, async t => {
+    const f = await slowLiveToBound(t), s = f.runtime.getSnapshot();
+    assert.equal(s.startTimedOut, undefined, 'it is the channel bound, not the watchdog');
+    assert.equal(s.presentation, undefined);
+    assert.ok(f.log.some(r => r.method === 'DELETE' && r.path.startsWith('/v1/playback/sessions/live')), 'the tuner is freed');
+  });
+  if (path.live) test(`P2-61 ${path.name}: channel_start_timeout ends the starting dock and is reported`, async t => {
+    const f = await slowLiveToBound(t), s = f.runtime.getSnapshot();
+    assert.equal(s.starting, undefined, 'the start ended');
+  });
 }
+
+/** A Live tune answered at generation 0 with no url, as the live server does: reads stay without a
+ * url (generation 1) until `ready` is set, then the real session shows. `reason` makes reads say
+ * the source is recoverable. Only the channel's own polling is on the (mocked) real timers. */
+function slowChannel(f: ReturnType<typeof setup>, state: {ready: boolean; reason?: string}) {
+  const early = (body: any, generation: number) => ({...body, presentation: {...body.presentation, generation, url: '',
+    linear: {...body.presentation.linear, windowEndMs: 0, liveEdgeMs: 0, state: state.reason ? 'recoverable' : 'preparing', ...(state.reason ? {errorCode: state.reason} : {})}}});
+  f.intercept(async (request, response) => {
+    if (!/^\/v1\/playback\/sessions(\/live_session_\d+.*)?$/.test(request.path) || !response.body) return response;
+    if (request.method === 'POST' && request.path === '/v1/playback/sessions') return {...response, body: early(response.body, 0)};
+    if (state.ready) return response;
+    if (request.method === 'GET') return {...response, body: early(response.body, 1)};
+    if (request.method === 'PUT') { const b = response.body as {session?: unknown}; return b.session ? {...response, body: {...b, session: early(b.session, 1)}} : response; }
+    return response;
+  });
+}
+/** Moves the mocked channel clock and the runtime's manual clock together in 500 ms polls. */
+async function tickLive(t: TestContext, f: ReturnType<typeof setup>, totalMs: number, each?: () => void) {
+  for (let elapsed = 0; elapsed < totalMs; elapsed += 500) { t.mock.timers.tick(500); f.clock.advance(500); await settle(); each?.(); }
+}
+
+test('P2-61 Live: a slow stream keeps the starting dock with no watchdog, then the real dock replaces it', async t => {
+  const f = setup(t, {}, {}, undefined, undefined, {homeFence: false}), life = new AbortController();
+  t.mock.timers.enable({apis: ['setTimeout', 'Date'], now: Date.now()});
+  const state = {ready: false};
+  slowChannel(f, state);
+  const run = f.runtime.playFromGuide(homeChannel.channel, {signal: life.signal, isCurrent: () => true}).catch(() => {});
+  await spin();
+  assert.ok(f.runtime.getSnapshot().starting, 'starting from acceptance');
+  await tickLive(t, f, 8_000, () => {
+    const s = f.runtime.getSnapshot();
+    assert.ok(s.starting, 'the starting dock stays while the stream is absent'); assert.equal(s.startTimedOut, undefined);
+    assert.equal(s.presentation, undefined);
+  });
+  state.ready = true;
+  await tickLive(t, f, 1_500);
+  await f.arriveLive(); await run;
+  const s = f.runtime.getSnapshot();
+  assert.equal(s.starting, undefined, 'the start clears');
+  assert.equal(s.startTimedOut, undefined);
+  assert.ok(s.presentation, 'the real dock arrives');
+  assert.equal(f.log.filter(r => r.method === 'PATCH' && (r.body as {seek?: {live?: boolean}})?.seek?.live === true).length, 1, 'exactly one go-live');
+});
+
+test('P2-61 Live: a recoverable session reads as waiting on the channel source within one poll', async t => {
+  const f = setup(t, {}, {}, undefined, undefined, {homeFence: false}), life = new AbortController();
+  t.mock.timers.enable({apis: ['setTimeout', 'Date'], now: Date.now()});
+  const state: {ready: boolean; reason?: string} = {ready: false};
+  slowChannel(f, state);
+  const run = f.runtime.playFromGuide(homeChannel.channel, {signal: life.signal, isCurrent: () => true}).catch(() => {});
+  await spin();
+  assert.equal(f.runtime.getSnapshot().starting?.waiting, undefined, 'no reason is claimed before the server gives one');
+  state.reason = 'source_unavailable';
+  await tickLive(t, f, 500);
+  assert.equal(f.runtime.getSnapshot().starting?.waiting, 'channel_source');
+  f.runtime.getSnapshot().starting!.stop(); await tickLive(t, f, 1_000); await run;
+});
 
 test('P2-61 local queue: the stored title is drawn at once, replaced in place, Stopped and watched', async t => {
   const {openAppLogContext, captureAppLog} = await import('../src/platform/app-log.ts');
@@ -3578,5 +3679,40 @@ test('P2-61 local queue: the stored title is drawn at once, replaced in place, S
       assert.ok(captureAppLog().entries.some(entry => /^playback_not_drawn_(session|offers|presentation)$/.test(entry.code)));
     }
     assert.equal(released, 1, `${how}: the preparation is released exactly once`);
+  }
+});
+
+test('P2-61 local queue: Try again after the watchdog re-acquires a fresh resource and never replays the released one', async t => {
+  const lifetime = () => ({signal: new AbortController().signal, isCurrent: () => true});
+  const stall = async () => {
+    const port = new ControlledLocalMedia(), f = setup(t, {}, {createPlayer: () => port, createRender: null}, localScope);
+    const observed = port.observe.bind(port); port.observe = () => ({...observed(), state: 'loading'});
+    return {port, f};
+  };
+  const expire = async (f: ReturnType<typeof setup>) => {for (let step = 0; step < 10; step++) {f.clock.advance?.(2500); await spin();}};
+  // 1. reacquire supplies resource #2, which is what plays; #1 is released once and never re-attached.
+  {
+    const {port, f} = await stall();
+    const log: string[] = [];
+    const second = {preparation: {...localPreparation(), preparationId: 'fresh_preparation'}, release: async () => {log.push('release2');}};
+    const first = {preparation: localPreparation(), release: async () => {log.push('release1');}, reacquire: async () => {log.push('reacquire'); return second;}};
+    await f.runtime.playLocalQueue(first, lifetime()); await spin(); await expire(f);
+    const timedOut = f.runtime.getSnapshot().startTimedOut;
+    assert.ok(timedOut); assert.deepEqual(log, ['release1']);
+    port.observe = ControlledLocalMedia.prototype.observe.bind(port);
+    await timedOut!.retry(); await spin();
+    assert.deepEqual(log, ['release1', 'reacquire'], 'resource #1 is released once and not touched again; #2 is live');
+    assert.equal(f.runtime.getSnapshot().startTimedOut, undefined);
+    assert.equal(f.runtime.getSnapshot().local?.preparation.preparationId, 'fresh_preparation');
+  }
+  // 2. No reacquire: Try again fails with the named error, not a silent no-op.
+  {
+    const {f} = await stall();
+    let released = 0;
+    await f.runtime.playLocalQueue({preparation: localPreparation(), release: async () => {released++;}}, lifetime()); await spin(); await expire(f);
+    const timedOut = f.runtime.getSnapshot().startTimedOut;
+    assert.ok(timedOut);
+    await assert.rejects(timedOut!.retry(), /local_playback_unavailable/);
+    assert.equal(released, 1);
   }
 });

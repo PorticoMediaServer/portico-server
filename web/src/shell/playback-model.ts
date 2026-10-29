@@ -24,7 +24,7 @@ export function retainedPlaybackNotice<Runtime>(notice: Readonly<{runtime: Runti
  * identity and art; the bar adds the pending ring and Stop only. */
 export function startingDock(starting: NonNullable<WebPlaybackRuntimeSnapshot['starting']>, environment: TextEnvironment, artwork: ShellArtwork): DockStarting {
   const subject = starting.display.subject, kind = subject.kind === 'music' || subject.kind === 'audiobook' ? subject.kind : 'video', audio = kind !== 'video';
-  return {key: starting.key, kind, identity: playbackIdentity(subject, 'dock', environment), stop: starting.stop,
+  return {key: starting.key, kind, identity: playbackIdentity(subject, 'dock', environment), stop: starting.stop, ...(starting.waiting ? {waiting: starting.waiting} : {}),
     artwork: artwork.foreground(starting.display.posterUrl, (audio ? 64 : 98) * (globalThis.devicePixelRatio || 1), audio ? 1 : 16 / 9, {group: 'playback', priority: 'high'})};
 }
 export function playbackPresentation(snapshot: WebPlaybackRuntimeSnapshot, environment: TextEnvironment, artwork: ShellArtwork, skips: {back: number; forward: number}): DockPresentation | undefined {
