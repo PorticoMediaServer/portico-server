@@ -38,60 +38,69 @@ func (h *ClaimHandler) CurrentManagedHTTPS(ctx context.Context) (origin string, 
 func managedHTTPSAbsent(err error) bool {
 	return errors.Is(err, sql.ErrNoRows) || errors.Is(err, ErrStale) || errors.Is(err, ErrUnavailable) || errors.Is(err, ErrCancelled)
 }
+
+// currentManagedHTTPSTx is the serving managed HTTPS origin, or "" when there is none.
 func (h *ClaimHandler) currentManagedHTTPSTx(ctx context.Context, tx *sql.Tx) (string, error) {
+	origin, _, err := h.managedHTTPSTx(ctx, tx)
+	return origin, err
+}
+
+// managedHTTPSTx also names, without any value, why there is no serving origin, so a
+// setup or owner return waiting on it can say what it is waiting for.
+func (h *ClaimHandler) managedHTTPSTx(ctx context.Context, tx *sql.Tx) (origin, reason string, err error) {
 	var kind string
 	var enabled bool
 	if e := tx.QueryRowContext(ctx, "SELECT s.sign_in_kind,m.enabled FROM identity_state s JOIN identity_managed_route m ON m.singleton=s.singleton WHERE s.singleton=1").Scan(&kind, &enabled); e != nil {
-		return "", e
+		return "", "", e
 	}
 	if kind != "portico" || !enabled {
-		return "", nil
+		return "", "sign-in kind not portico or managed route off", nil
 	}
 	m := h.certificates
 	if m.environment != "production" || m.bootError != "" || !m.listening.Load() || m.listenPort.Load() < 1 {
-		return "", nil
+		return "", "certificate environment, boot error or listener not ready", nil
 	}
 	q, e := m.servingSnapshotTx(ctx, tx)
 	if e != nil {
-		return "", e
+		return "", "", e
 	}
 	var publicAddress string
 	var publicPort int
 	// Do not call snapshotTx/readCertificateConfigTx here: those initialize or
 	// repair configuration. The public observation never enters a writer.
 	if e = tx.QueryRowContext(ctx, "SELECT public_address,public_port FROM networking_certificate_settings WHERE singleton=1").Scan(&publicAddress, &publicPort); e != nil {
-		return "", e
+		return "", "", e
 	}
 	if publicAddress == "" || q.RouteAddress != publicAddress || q.RoutePort != publicPort || q.RouteErrorCode != "" || !strings.HasPrefix(q.RouteURL, "https://") || !RouteOrigin(q.RouteURL) {
-		return "", nil
+		return "", "route address or port differs from the public setting, or route error or non-https route", nil
 	}
 	u, e := url.Parse(q.RouteURL)
 	if e != nil || u.Hostname() != q.RouteHostname || !validManagedRouteName(q.RouteHostname, q.Namespace, m.directDomain) {
-		return "", nil
+		return "", "route url or hostname invalid", nil
 	}
 	port := 443
 	if u.Port() != "" {
 		port, e = strconv.Atoi(u.Port())
 		if e != nil {
-			return "", nil
+			return "", "route port invalid", nil
 		}
 	}
 	if port != publicPort {
-		return "", nil
+		return "", "route port differs from the public port", nil
 	}
 	var authority, raw, digest string
 	var revision, generation int64
 	var remoteEnabled bool
 	var remotePort int
 	if e = tx.QueryRowContext(ctx, "SELECT r.authority,r.revision,r.enabled,r.public_port,s.generation,s.route_digest,s.status FROM networking_remote_settings r JOIN networking_remote_state s ON s.singleton=r.singleton WHERE r.singleton=1").Scan(&authority, &revision, &remoteEnabled, &remotePort, &generation, &digest, &raw); e != nil {
-		return "", e
+		return "", "", e
 	}
 	if !remoteEnabled || authority != q.Scope.ID || remotePort != publicPort || generation < 1 || digest == "" || len(raw) > 1<<20 {
-		return "", nil
+		return "", "remote access off or remote state stale", nil
 	}
 	var observation RemoteStatus
 	if json.Unmarshal([]byte(raw), &observation) != nil || observation.AuthorityID != authority || observation.Generation != generation || observation.Config.Revision != revision || !observation.Config.Enabled || observation.Config.PublicPort != remotePort || observation.State != "reachable" {
-		return "", nil
+		return "", "remote observation not reachable or stale", nil
 	}
 	observed := false
 	for _, candidate := range observation.Candidates {
@@ -101,7 +110,7 @@ func (h *ClaimHandler) currentManagedHTTPSTx(ctx context.Context, tx *sql.Tx) (s
 		}
 	}
 	if !observed {
-		return "", nil
+		return "", "route not observed as a verified reachable public candidate", nil
 	}
 	valid := false
 	for _, id := range []string{q.ActiveID, q.PreviousID} {
@@ -113,7 +122,7 @@ func (h *ClaimHandler) currentManagedHTTPSTx(ctx context.Context, tx *sql.Tx) (s
 			continue
 		}
 		if e != nil {
-			return "", e
+			return "", "", e
 		}
 		now := time.Now()
 		if material.State != "issued" || now.Before(material.NotBefore) || !now.Before(material.NotAfter) {
@@ -126,7 +135,7 @@ func (h *ClaimHandler) currentManagedHTTPSTx(ctx context.Context, tx *sql.Tx) (s
 		}
 	}
 	if !valid || !m.listening.Load() || m.listenPort.Load() < 1 {
-		return "", nil
+		return "", "no issued certificate valid for the route", nil
 	}
 	// Use the same installed authority as the TLS serving path, including the
 	// current key/reset/credential tuple and sticky terminal denials. A historical
@@ -134,9 +143,9 @@ func (h *ClaimHandler) currentManagedHTTPSTx(ctx context.Context, tx *sql.Tx) (s
 	// a prerequisite for observing this genuinely serving address. Neither that
 	// row nor the remote display observation grants membership or a registration.
 	if e = GuardInstalledClaim(ctx, tx, q.Scope.Intent); e != nil {
-		return "", e
+		return "", "", e
 	}
-	return q.RouteURL, nil
+	return q.RouteURL, "", nil
 }
 
 func validManagedRouteName(host, namespace, domain string) bool {

@@ -17,12 +17,12 @@ import (
 // its ID from the actual installed-server-authenticated Hosted resolver.
 func (h *ClaimHandler) setupReturnRouteTx(ctx context.Context, tx *sql.Tx, v Intent) (serverreturn.Registration, int64, error) {
 	var none serverreturn.Registration
-	origin, err := h.currentManagedHTTPSTx(ctx, tx)
+	origin, reason, err := h.managedHTTPSTx(ctx, tx)
 	if err != nil {
 		return none, 0, err
 	}
 	if origin == "" {
-		return none, 0, ErrUnavailable
+		return none, 0, stepFailure("setup return route: "+reason, ErrUnavailable)
 	}
 	var generation int64
 	if err = tx.QueryRowContext(ctx, `SELECT generation FROM networking_remote_state WHERE singleton=1`).Scan(&generation); err != nil {
@@ -54,11 +54,11 @@ func (h *ClaimHandler) setupReturnRoute(ctx context.Context, v Intent) (serverre
 // just retired to authorize that denial. No new registration is published.
 func (h *ClaimHandler) BindSetupReturn(parent context.Context, guard ClaimRequestGuard, bind func(context.Context, *sql.Tx, serverreturn.Registration, int64) (bool, error)) (registration serverreturn.Registration, generation int64, err error) {
 	if h == nil || h.store == nil || h.runner == nil || h.certificates == nil || guard == nil || bind == nil {
-		return registration, 0, ErrUnavailable
+		return registration, 0, stepFailure("setup return not configured", ErrUnavailable)
 	}
 	transport, ok := h.transport.(*HTTPTransport)
 	if !ok {
-		return registration, 0, ErrUnavailable
+		return registration, 0, stepFailure("setup return not configured", ErrUnavailable)
 	}
 	err = h.runner.Do(parent, func(ctx context.Context) error {
 		ctx, e := guardedClaimRequest(ctx, h.store, guard)
@@ -78,7 +78,7 @@ func (h *ClaimHandler) BindSetupReturn(parent context.Context, guard ClaimReques
 		}
 		var actual serverreturn.Registration
 		if e = transport.CallServer(ctx, v, ResolveReturnRegistration, serverreturn.RegistrationRequest{Origin: want.Origin}, &actual); e != nil {
-			return e
+			return stepFailure("setup return resolver", e)
 		}
 		if actual != want {
 			return ErrStale

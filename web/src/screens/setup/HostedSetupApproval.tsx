@@ -9,7 +9,7 @@ import styles from './setup.module.css';
 const t = defaultI18n.t;
 
 export type HostedSetupApprovalProps = Readonly<{
-  phase?: 'loading' | 'review' | 'approved' | 'denied' | 'returning' | 'error' | 'expired';
+  phase?: 'loading' | 'review' | 'approved' | 'finishing' | 'denied' | 'returning' | 'error' | 'expired';
   serverName: string;
   address: string;
   accountName: string;
@@ -63,7 +63,8 @@ export function HostedSetupApproval({phase, serverName, address, accountName, re
       <p className={styles.lede}>{t('web.claim.connected', {server: serverName})} {t('web.claim.nextFirstLibrary')}</p>
       {/* The approval stands even when the completion step failed: the same Return retries it. */}
       {Boolean(error) && <HostedError error={error}/>}
-      <div className={styles.btnRow}><Button variant="primary" size="hero" autoFocus loading={busy} disabled={busy} onClick={onReturn}>{t('web.claim.returnTo', {server: serverName})}</Button></div>
+      {phase === 'finishing' && !error && <p role="status">{t('web.claim.finishingSecure')}</p>}
+      <div className={styles.btnRow}><Button variant="primary" size="hero" autoFocus loading={busy} disabled={busy} onClick={onReturn}>{phase === 'finishing' ? t('web.claim.tryAgain') : t('web.claim.returnTo', {server: serverName})}</Button></div>
       <ServicesQuiet>{t('web.claim.signedInAs', {account: accountName})}</ServicesQuiet>
     </AuthStage>
     {steps}

@@ -642,6 +642,8 @@ export const webMessages = {
   'web.claim.loading': 'Looking up this server',
   'web.claim.connected': '{server} is connected to your Portico Account. It is getting its secure connection now and finishes setting up on its own.',
   'web.claim.connectedTitle': 'Connected',
+  'web.claim.finishingSecure': 'Finishing secure connection…',
+  'web.claim.tryAgain': 'Try again',
   'web.claim.denied': 'You declined. {server} isn’t connected.',
   'web.claim.returnTo': 'Return to {server}',
   'web.claim.expired': 'This connection request has expired or was already answered. Start again from the server.',
