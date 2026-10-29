@@ -99,6 +99,12 @@ jobs:
             exit 0
           fi
           if [[ ! -s 'runtime/ffmpeg-build/${{ matrix.target }}/portico-ffmpeg-${{ matrix.target }}.tar.xz' ]]; then
+            # Name the checked disc pins from the canonical lock; the build
+            # refuses an implicit or unrelated source commit.
+            read -r PORTICO_DISC_SOURCE_COMMIT PORTICO_DISC_FIXTURES PORTICO_DISC_FIXTURES_SHA256 <<<"$(
+              python3 -c 'import json;h=json.load(open("third_party/ffmpeg/sources.lock.json"))["discHelper"];print(h["sourceCommit"],h["fixtureManifest"],h["fixtureManifestSHA256"])')"
+            export PORTICO_DISC_SOURCE_COMMIT PORTICO_DISC_FIXTURES_SHA256
+            export PORTICO_DISC_FIXTURES="$PWD/$PORTICO_DISC_FIXTURES"
             ./scripts/build-ffmpeg.sh '${{ matrix.target }}'
           fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
