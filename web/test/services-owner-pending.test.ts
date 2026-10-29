@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {captureHostedOwnerClaim} from '../src/services/owner-claim.ts';
-import {hostedOwnerPendingStore, hostedClaimExpired, restoreHostedOwnerPending, forgetHostedOwnerPending, scopedHostedOwnerClaim,
+import {ApiError} from '@core/index.ts';
+import {hostedApprovalPurpose, hostedOwnerPendingStore, hostedClaimExpired, restoreHostedOwnerPending, forgetHostedOwnerPending, scopedHostedOwnerClaim,
   type HostedOwnerPending, type HostedOwnerPendingStore} from '../src/services/owner-pending.ts';
 import type {ServicesAccount} from '../src/services/session.ts';
 
@@ -54,6 +55,14 @@ test('a 25-minute-old setup capture restores; a 31-minute-old one is honestly ex
 test('a malformed capture is still invalid, never expired', async () => {
   const f = vault();
   await assert.rejects(restoreHostedOwnerPending(f.store, origin, {} as never), (error: unknown) => !hostedClaimExpired(error) && (error as {code?: string}).code === 'invalid_return');
+});
+test('Hosted lookup 409 claim_expired is the honest expiry; claim_stale is not', async () => {
+  for (const [serverCode, expired] of [['claim_expired', true], ['claim_stale', false]] as const) {
+    const f = vault(), pending = await restoreHostedOwnerPending(f.store, origin, capture());
+    const fixture = accountFixture(), send = fixture.account.api.send;
+    fixture.account.api.send = (async () => {throw new ApiError(409, serverCode, serverCode, false);}) as typeof send;
+    await assert.rejects(hostedApprovalPurpose(fixture.account, f.store, pending!, new AbortController().signal), (error: unknown) => hostedClaimExpired(error) === expired && (error as {code?: string}).code === serverCode);
+  }
 });
 test('secure storage refusal happens before pending read/write', async () => {
   let effects = 0;
