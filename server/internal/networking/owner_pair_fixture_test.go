@@ -46,7 +46,7 @@ func OwnerPairHTTPSForTest(t *testing.T, h *ClaimHandler) (origin string, genera
 		if err != nil {
 			return err
 		}
-		host := "c-0123456789abcdef0123456789abcdef." + fixtureCertificateNamespace + ".direct.getportico.tv"
+		host := "188-68-34-120." + fixtureCertificateNamespace + ".portico.direct"
 		origin = "https://" + host + ":" + strconv.Itoa(config.PublicPort)
 		if err = m.publishRoute(ctx, q, config, certificateRoute{Hostname: host, BaseURL: origin, Namespace: q.Namespace}); err != nil {
 			return err

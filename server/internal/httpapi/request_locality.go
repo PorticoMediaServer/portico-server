@@ -46,7 +46,17 @@ func (d Dependencies) requestIsRemote(r *http.Request) bool {
 	if setting != nil {
 		policy = setting.locality
 	}
-	return remoteClient(r, d.trustedProxyPrefixes(r.Context()), policy)
+	remote := remoteClient(r, d.trustedProxyPrefixes(r.Context()), policy)
+	if remote && len(policy.lan) > 0 && d.Networking != nil {
+		if client, ok := networkpolicy.Client(r, d.trustedProxyPrefixes(r.Context())); ok {
+			for _, own := range d.Networking.PublicAddresses() {
+				if client.Unmap() == own.Unmap() {
+					return false
+				}
+			}
+		}
+	}
+	return remote
 }
 func remoteClient(r *http.Request, proxies []netip.Prefix, policy localityPolicy) bool {
 	client, ok := networkpolicy.Client(r, proxies)

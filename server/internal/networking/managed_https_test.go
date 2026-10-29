@@ -34,7 +34,7 @@ func managedHTTPSFixture(t *testing.T) (*sqlFixture, *ClaimHandler, context.Cont
 	if e != nil {
 		t.Fatal(e)
 	}
-	host := "c-0123456789abcdef0123456789abcdef." + fixtureCertificateNamespace + ".direct.getportico.tv"
+	host := "188-68-34-120." + fixtureCertificateNamespace + ".portico.direct"
 	origin := "https://" + host + ":32500"
 	if e = m.publishRoute(ctx, q, config, certificateRoute{Hostname: host, BaseURL: origin, Namespace: q.Namespace}); e != nil {
 		t.Fatal(e)

@@ -20,6 +20,7 @@ import (
 // registry. Its revision is the settings document revision, so a write here and
 // a write on the settings page cannot silently overwrite each other.
 type Policy struct {
+	SecureConnections       string   `json:"secureConnections"`
 	OwnAddressEnabled       bool     `json:"ownAddressEnabled"`
 	ConnectionLimit         int      `json:"connectionLimit"`
 	AdvertiseURL            string   `json:"advertiseUrl"`
@@ -42,10 +43,13 @@ type Policy struct {
 // ProjectPolicy reads the connectivity rows out of a settings document.
 func ProjectPolicy(document operations.SettingsDocument) Policy {
 	v := document.Effective
-	out := Policy{OwnAddressEnabled: v.OwnAddressEnabled, ConnectionLimit: v.ConnectionLimit, AdvertiseURL: v.AdvertiseURL, Revision: document.Revision, RemoteSignIn: v.RemoteSignInPolicy, RemoteBitrateLimitKbps: v.RemoteBitrateLimitKbps,
+	out := Policy{SecureConnections: v.SecureConnections, OwnAddressEnabled: v.OwnAddressEnabled, ConnectionLimit: v.ConnectionLimit, AdvertiseURL: v.AdvertiseURL, Revision: document.Revision, RemoteSignIn: v.RemoteSignInPolicy, RemoteBitrateLimitKbps: v.RemoteBitrateLimitKbps,
 		LANNetworks: v.LANNetworks, AccessURLs: v.AccessURLs, LANDiscoveryEnabled: v.LANDiscoveryEnabled, DLNAEnabled: v.DLNAEnabled,
 		TrustedProxies: v.TrustedProxies, UploadCapacityKbps: v.UploadCapacityKbps, PausedSessionTimeout: v.PausedSessionTimeoutMinutes,
 		AdvertisedInterface: v.AdvertisedInterface, CustomCertificatePath: v.CustomCertificatePath, CustomCertificateKey: v.CustomCertificateKeyPath, CustomCertificateDomain: v.CustomCertificateDomain}
+	if out.SecureConnections == "" {
+		out.SecureConnections = "preferred"
+	}
 	if out.TrustedProxies == nil {
 		out.TrustedProxies = []string{}
 	}

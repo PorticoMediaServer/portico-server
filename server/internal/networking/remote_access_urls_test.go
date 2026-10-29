@@ -45,11 +45,6 @@ func accessURLsFixture(t *testing.T, list func(context.Context) []string) (*sqlF
 func captureAccessURLs(t *testing.T, m *RemoteManager, ctx context.Context) *accessURLsCapture {
 	t.Helper()
 	capture := &accessURLsCapture{}
-	_, q, _, e := m.h.certificates.snapshot(ctx)
-	if e != nil {
-		t.Fatal(e)
-	}
-	namespace := q.Namespace
 	m.h.certificates.transport.client.Transport = claimRoundTrip(func(r *http.Request) (*http.Response, error) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/routes/prove"):
@@ -73,10 +68,7 @@ func captureAccessURLs(t *testing.T, m *RemoteManager, ctx context.Context) *acc
 				Generation int64 `json:"generation,string"`
 			}{in.Generation})
 			return reply(http.StatusOK, string(body)), nil
-		case strings.HasSuffix(r.URL.Path, "/direct-route"):
-			host := "c-0123456789abcdef0123456789abcdef." + namespace + ".direct.getportico.tv"
-			body, _ := json.Marshal(certificateRoute{Namespace: namespace, Hostname: host, BaseURL: "https://" + host + ":32500", CertificateDNSName: "*." + namespace + ".direct.getportico.tv"})
-			return reply(http.StatusOK, string(body)), nil
+
 		}
 		t.Errorf("unexpected Hosted call %s", r.URL.Path)
 		return reply(http.StatusNotFound, `{"code":"unexpected"}`), nil
@@ -222,7 +214,7 @@ func remoteStatusCandidates(t *testing.T, f *sqlFixture) RouteObservation {
 	status := remoteStatusOf(t, f)
 	out := RouteObservation{}
 	for _, c := range status.Candidates {
-		out.Candidates = append(out.Candidates, PublishedCandidate{c.BaseURL, c.Class})
+		out.Candidates = append(out.Candidates, PublishedCandidate{BaseURL: c.BaseURL, Class: c.Class, Insecure: c.Insecure, Address: c.Address, Port: c.Port})
 	}
 	return out
 }
@@ -253,5 +245,29 @@ func TestAccessURLsDedupedOrderedAndCapped(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("order at %d: got %v want %v", i, got, want)
 		}
+	}
+}
+
+func TestManualHTTPPublishedWithAutomaticRemoteDisabled(t *testing.T) {
+	f, m, _, ctx := accessURLsFixture(t, func(context.Context) []string {
+		return []string{"http://owner.example.com:8080", "https://owner.example.com"}
+	})
+	if _, err := f.db.Exec(`UPDATE networking_remote_settings SET enabled=0`); err != nil {
+		t.Fatal(err)
+	}
+	capture := captureAccessURLs(t, m, ctx)
+	if err := m.step(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(capture.observations) != 1 || len(capture.observations[0].Candidates) != 2 || capture.observations[0].RemoteEnabled {
+		t.Fatalf("observation %+v", capture.observations)
+	}
+	for i, c := range capture.observations[0].Candidates {
+		if c.Class != "manual" || c.Insecure != (i == 0) || c.Address != "" || c.Port != 0 {
+			t.Fatalf("candidate %+v", c)
+		}
+	}
+	if len(capture.proves) != 0 {
+		t.Fatal("manual URL dialed by Hosted", capture.proves)
 	}
 }

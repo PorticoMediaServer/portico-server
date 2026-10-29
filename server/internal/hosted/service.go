@@ -13,7 +13,6 @@ import (
 	"net/url"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	trust "portico.local/server/internal/hostedtrust"
@@ -69,9 +68,7 @@ type Service struct {
 	// anything had been written to it; an idle server now makes no query at all
 	// between one due deadline and the next.
 	wake chan struct{}
-	// routeLabel receives the members-only label from each check-in answer
-	// (A86). Atomic: wiring may happen after the control loop has started.
-	routeLabel atomic.Pointer[func(context.Context, string) error]
+
 	// The server name Hosted last saw (A61): bootName at start, then each queued rename.
 	nameMu        sync.Mutex
 	bootName      string

@@ -1418,6 +1418,9 @@ func New(d Dependencies) http.Handler {
 	routeMux = mux
 	routeMuxMu.Unlock()
 	d.self.h = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !d.allowTransport(w, r) {
+			return
+		}
 		r = detachCanceledConnection(w, r)
 		if d.self != nil && d.self.registry != nil {
 			if m, ok := d.self.registry.Lookup(r.Method, r.URL.EscapedPath()); ok && m.Protocol == apikit.ProtocolCompatibility {
