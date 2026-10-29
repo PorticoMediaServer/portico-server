@@ -24,7 +24,7 @@ import type {GroupSessionService} from '@core/group-session.ts';
 import type {GroupTransportCommand} from '@core/social-playback.ts';
 import {bindRuntimeGroup, type RuntimeGroupBinding} from './group-binding.ts';
 import {localPlaybackScope, sameLocalScope, type LocalPlaybackFence, type SkipMode} from '../../../../packages/player-core/src/index.ts';
-import {WebLocalQueue, captureLocalQueue, type WebLocalQueuePreparation, type WebLocalQueueResource} from './local-queue.ts';
+import {WebLocalQueue, captureLocalQueue, type WebLocalQueuePreparation, type WebLocalQueueResource, type WebLocalQueueMember} from './local-queue.ts';
 import {listeningRates, audiobookRates} from '@core/listening.ts';
 import {idempotencyKey, type V1Http} from '@core/playback-v1/http.ts';
 import {CapabilityPublisher, PlaybackOptionsClient} from '@core/playback-v1/options.ts';
@@ -78,6 +78,7 @@ type OfferBinding = {
   readonly sessionId: string; readonly generation: number; readonly playbackRun: number;
   detailFence?: string;
 };
+type Starting = {attach(stack: Stack): void; identify(next: WebPlaybackStartDisplay): void; stopWith(stop: () => void): void; accepted(): void; end(): void};
 type StartingState = {key: string; display?: WebPlaybackStartDisplay; accepted: boolean; stack?: Stack; stop: () => void; retry: () => Promise<void>; timer: unknown; view?: WebPlaybackStarting};
 type Stack = {
   airPlay?: {key: string; abort: AbortController; receipt?: Awaited<ReturnType<SessionsClient["prepareAirPlay"]>>; failed?: boolean};
@@ -125,6 +126,21 @@ function problem(code: string): never { throw new Error(code); }
 const startStopped = () => new DOMException('Playback start stopped', 'AbortError');
 const validSeconds = (value: number) => Number.isFinite(value) && value >= 0 && value <= 1e9;
 const compatibleVideo = (value: VideoLike): value is VideoLike & SubtitleHost => typeof (value as Partial<SubtitleHost>).addTextTrack === 'function' && !!(value as Partial<SubtitleHost>).textTracks;
+
+/** A downloaded title's own stored facts, as the playback subject its dock names. */
+function localMemberSubject(member: WebLocalQueueMember): Exclude<PlaybackSubject, {kind: 'channel'}> {
+  const title = member.title, kind = title.kind as 'movie' | 'episode' | 'extra' | 'song' | 'audiobook_file';
+  const item = {id: member.itemId, kind, title: title.title, durationSeconds: member.durationMs / 1000,
+    ...(title.year > 0 ? {year: title.year} : {}), ...(title.artist ? {artist: title.artist} : {}),
+    ...(kind === 'song' && title.parentTitle ? {album: title.parentTitle} : {}),
+    ...(kind === 'episode' ? {show: {id: title.parentId, title: title.parentTitle}, episode: {mode: 'seasonal' as const,
+      ...(title.groupNumber === null ? {} : {season: title.groupNumber}), ...(title.number === null ? {} : {episode: title.number})}} : {})};
+  return {kind: kind === 'song' ? 'music' : kind === 'audiobook_file' ? 'audiobook' : 'video', item};
+}
+/** The first downloaded title is the one the start loads; a kind this client doesn't know isn't named. */
+function localStartDisplay(member: WebLocalQueueMember | undefined): WebPlaybackStartDisplay | undefined {
+  return member && member.title.title && ['movie', 'episode', 'extra', 'song', 'audiobook_file'].includes(member.title.kind) ? {subject: localMemberSubject(member)} : undefined;
+}
 
 /** Actual playback owner. The shell keeps the video node mounted once outside destinations;
  * this class binds the real port and applies the accepted dock's effects to real services. */
@@ -527,8 +543,13 @@ export class WebShellPlaybackRuntime {
     if (!aggregate && input.entry.id !== input.target.itemId) problem('invalid_playback_target');
     const serial = ++this.operation;
     const finishRetention = this.retainMediaStart(this.life.signal, () => serial === this.operation);
+    const starting = this.beginStarting(entryStartDisplay(input.entry), () => this.start(input)), stopped = new AbortController();
+    starting.stopWith(() => stopped.abort());
     try {
       const stack = this.replace();
+      starting.attach(stack);
+      const cancel = () => this.abandon(stack, serial);
+      starting.stopWith(() => {stopped.abort(); cancel();});
       if (input.entry.id === input.target.itemId) {
         stack.itemId = input.target.itemId; stack.libraryId = input.entry.libraryId;
         stack.subject = entrySubject(input.entry); stack.posterUrl = input.entry.posterUrl; stack.backdropUrl = input.entry.backdropUrl;
@@ -541,28 +562,39 @@ export class WebShellPlaybackRuntime {
       } else {
         await stack.service.play(input.target.itemId, input.target.startSeconds);
       }} finally {if (stack.capacityCurrent === current) stack.capacityCurrent = undefined;}
-      if (!this.current(stack) || serial !== this.operation) return;
+      if (stopped.signal.aborted) throw startStopped();
+      if (!this.current(stack) || serial !== this.operation) {starting.end(); return;}
+      if (this.sessionAccepted(stack)) {starting.accepted(); starting.stopWith(cancel);} else starting.end();
       this.sync();
-    } finally {finishRetention();}
+    } catch (error) {starting.end(); if (stopped.signal.aborted) throw startStopped(); throw error;}
+    finally {finishRetention();}
   }
 
   /** PlaybackService-shaped Home effect. The real item supplies display metadata; no fixture or
    * invented title is installed while that read is outstanding. */
-  async play(itemId: string, startSeconds?: number, choices?: Readonly<{versionId?: string}>): Promise<void> {
+  async play(itemId: string, startSeconds?: number, choices?: Readonly<{versionId?: string}>, display?: WebPlaybackStartDisplay): Promise<void> {
     this.assertCurrent();
     if (!/^[A-Za-z0-9_.-]{1,128}$/.test(itemId) || startSeconds !== undefined && !validSeconds(startSeconds)
       || choices?.versionId !== undefined && !/^[A-Za-z0-9._:-]{1,128}$/.test(choices.versionId)) problem('invalid_playback_target');
     const serial = ++this.operation;
     const finishRetention = this.retainMediaStart(this.life.signal, () => serial === this.operation);
+    const starting = this.beginStarting(display, () => this.play(itemId, startSeconds, choices, display)), stopped = new AbortController();
+    starting.stopWith(() => stopped.abort());
     try {
       const stack = this.replace();
+      starting.attach(stack);
       stack.expanded = true;
+      const cancel = () => this.abandon(stack, serial);
+      starting.stopWith(() => {stopped.abort(); cancel();});
       const current = () => this.current(stack) && serial === this.operation;
       stack.capacityCurrent = current;
       try {await stack.service.play(itemId, startSeconds, undefined, undefined, undefined, choices?.versionId ? {versionId: choices.versionId} : undefined);} finally {if (stack.capacityCurrent === current) stack.capacityCurrent = undefined;}
-      if (!this.current(stack) || serial !== this.operation) return;
+      if (stopped.signal.aborted) throw startStopped();
+      if (!this.current(stack) || serial !== this.operation) {starting.end(); return;}
+      if (this.sessionAccepted(stack)) {starting.accepted(); starting.stopWith(cancel);} else starting.end();
       this.sync();
-    } finally {finishRetention();}
+    } catch (error) {starting.end(); if (stopped.signal.aborted) throw startStopped(); throw error;}
+    finally {finishRetention();}
   }
 
   /** A real screen action retains its captured authority and cancellation through POST/adopt.
@@ -705,7 +737,8 @@ export class WebShellPlaybackRuntime {
   /** Complete receipt-verified native preparation, not a server queue or a first-item alias.
    * The app transfers ownership of its exact preparation through this call, including failure. */
   async playLocalQueue(resource: WebLocalQueueResource, context: WebPlaybackScreenLifetime): Promise<void> {
-    let lease: LocalQueueLease | undefined, stack: Stack | undefined, serial = this.operation;
+    let lease: LocalQueueLease | undefined, stack: Stack | undefined, serial = this.operation, starting: Starting | undefined;
+    const stopped = new AbortController();
     const finishRetention = this.retainMediaStart(context.signal, () => serial === this.operation);
     try {
       try {
@@ -715,16 +748,24 @@ export class WebShellPlaybackRuntime {
         if (!scope || !this.canPlayLocalQueue()) problem('local_playback_unavailable');
         const preparation = captureLocalQueue(resource.preparation, scope);
         lease = {preparation, release: () => resource.release(), retired: false, released: false};this.localLeases.add(lease);
-        serial = ++this.operation;stack = this.replace('local');
+        serial = ++this.operation;
+        starting = this.beginStarting(localStartDisplay(preparation.items[0]), () => this.playLocalQueue(resource, this.retryLifetime()));
+        starting.stopWith(() => stopped.abort());
+        stack = this.replace('local');
+        starting.attach(stack);
+        const owned = stack, mine = lease, owner = serial;
+        const cancel = () => {this.abandon(owned, owner); mine.retired = true; this.trimLocalLeases();};
         const controller = this.bindLocalQueue(stack, lease);
-        await controller.start({signal: context.signal, isCurrent: () => this.current(stack!) && serial === this.operation && context.isCurrent()});
+        await controller.start({signal: AbortSignal.any([context.signal, stopped.signal]), isCurrent: () => this.current(stack!) && serial === this.operation && context.isCurrent()});
         if (!this.current(stack) || serial !== this.operation || context.signal.aborted || !context.isCurrent()) problem('stale_selection_context');
+        starting.accepted(); starting.stopWith(cancel);
         this.sync();
       } catch (error) {
+        starting?.end();
         if (stack && this.current(stack) && serial === this.operation) {this.replacing = true;this.retire(stack);this.stack = this.makeStack();this.activate(this.stack);this.replacing = false;this.sync();}
         if (lease) {lease.retired = true;this.trimLocalLeases();}
         else await resource.release();
-        throw error;
+        throw stopped.signal.aborted ? startStopped() : error;
       }
     } finally {finishRetention();}
   }
@@ -798,26 +839,47 @@ export class WebShellPlaybackRuntime {
       else { if (!isCurrent) problem('stale_selection_context'); this.selectionCurrent(request.context, signal, isCurrent); }
     };
     check();
+    await this.startVersion({itemId, versionId, signal, check, selection, failedVersionId: selection?.failedVersionId,
+      // The accepted new output intentionally retires the old chooser fence. Only its original
+      // read/action lifetime and genuine parent authority remain command prerequisites here.
+      valid: lifetime => {
+        if ('choices' in request) return true;
+        try { this.selectionCurrent(request.context, lifetime, isCurrent!); return true; } catch { return false; }
+      },
+      accepted: lifetime => {
+        if ('choices' in request) { if (lifetime.aborted) problem('stale_playback_command'); }
+        else this.selectionCurrent(request.context, signal, isCurrent!);
+      }});
+  }
+  private async startVersion(a: Readonly<{itemId: string; versionId: string; signal: AbortSignal; check: () => void; selection?: Readonly<{signal: AbortSignal}>; failedVersionId?: string;
+    valid: (lifetime: AbortSignal) => boolean; accepted: (lifetime: AbortSignal) => void}>): Promise<void> {
+    const {itemId, versionId, signal, check} = a;
     if (![itemId, versionId].every(id => /^[A-Za-z0-9_.-]{1,128}$/.test(id))) problem('invalid_playback_target');
     const serial = ++this.operation, previous = this.stack;
     const finishRetention = this.retainMediaStart(signal, () => serial === this.operation);
+    // A different version of the title already playing is the same title: its facts are truthful.
+    // Anything else is named by its own queue entry once one exists; no title is invented.
+    const playing = previous.itemId === itemId && previous.subject && previous.subject.kind !== 'channel' ? previous.subject : undefined;
+    const posterUrl = previous.posterUrl ?? previous.backdropUrl;
+    const retry = async () => {
+      const life = this.retryLifetime();
+      await this.startVersion({itemId, versionId, signal: life.signal, check: () => {this.assertCurrent(); if (life.signal.aborted || !life.isCurrent()) problem('stale_playback_command');},
+        valid: () => true, accepted: lifetime => {if (lifetime.aborted) problem('stale_playback_command');}});
+    };
+    const starting = this.beginStarting(playing && {subject: playing, ...(posterUrl ? {posterUrl} : {})}, retry), stopped = new AbortController();
+    starting.stopWith(() => stopped.abort());
     try {
-      const options = await previous.optionsClient.options(itemId, {}, AbortSignal.any([signal, previous.life.signal]));
+      const options = await previous.optionsClient.options(itemId, {}, AbortSignal.any([signal, previous.life.signal, stopped.signal]));
       check();
       if (serial !== this.operation || !this.current(previous)) problem('stale_selection_context');
       // options.versions is readAssets(available=1) grouped by versionsOf on the server.
-      if (options.itemId !== itemId || !options.versions.some(version => version.id === versionId) || versionId === selection?.failedVersionId) problem('playback_version_unavailable');
+      if (options.itemId !== itemId || !options.versions.some(version => version.id === versionId) || versionId === a.failedVersionId) problem('playback_version_unavailable');
       const startSeconds = options.resume ? options.resume.positionMs / 1000 : 0;
       if (!validSeconds(startSeconds)) problem('invalid_playback_position');
       const stack = this.replace(); stack.expanded = true;
-      const lifetime = AbortSignal.any([signal, ...(selection ? [selection.signal] : []), stack.life.signal]);
-      const current = () => {
-        if (lifetime.aborted || !this.current(stack) || serial !== this.operation) return false;
-        // The accepted new output intentionally retires the old chooser fence. Only its original
-        // read/action lifetime and genuine parent authority remain command prerequisites here.
-        if ('choices' in request) return true;
-        try { this.selectionCurrent(request.context, lifetime, isCurrent!); return true; } catch { return false; }
-      };
+      starting.attach(stack);
+      const lifetime = AbortSignal.any([signal, ...(a.selection ? [a.selection.signal] : []), stack.life.signal, stopped.signal]);
+      const current = () => lifetime.aborted || !this.current(stack) || serial !== this.operation ? false : a.valid(lifetime);
       const cancel = () => { if (this.current(stack) && serial === this.operation) {
         this.replacing = true; this.retire(stack); this.stack = this.makeStack(); this.activate(this.stack); this.replacing = false; this.sync();
       } };
@@ -825,16 +887,17 @@ export class WebShellPlaybackRuntime {
       try {
         stack.capacityCurrent = current;
         await stack.queue.playItem(itemId, startSeconds, undefined, undefined, undefined, {versionId}, {signal: lifetime, isCurrent: current});
-        if ('choices' in request) { if (lifetime.aborted) problem('stale_playback_command'); }
-        else this.selectionCurrent(request.context, signal, isCurrent!);
+        a.accepted(lifetime);
         if (!this.current(stack) || serial !== this.operation) problem('stale_selection_context');
         const started = stack.service.getSnapshot(), session = stack.queue.currentSession();
         if (started.phase === 'error' || !session || session.itemId !== itemId || session.versionId !== versionId
           || started.session?.id !== session.id || started.session.generation !== session.presentation.generation) problem('playback_version_failed');
+        starting.accepted(); starting.stopWith(cancel);
         this.sync();
       } catch (error) { cancel(); throw error; }
       finally {if (stack.capacityCurrent === current) stack.capacityCurrent = undefined; lifetime.removeEventListener('abort', cancel);}
-    } finally {finishRetention();}
+    } catch (error) {starting.end(); if (stopped.signal.aborted) throw startStopped(); throw error;}
+    finally {finishRetention();}
   }
 
   /** Start the whole genuine browse/resource selection. Never expand a visible page locally.
@@ -1043,12 +1106,19 @@ export class WebShellPlaybackRuntime {
     const value = Object.freeze({...channel}), reference = Object.freeze({kind: value.provenance, sourceId: value.sourceId, channelId: value.id, generation: value.generation});
     const serial = ++this.operation;
     const finishRetention = this.retainMediaStart(context.signal, () => serial === this.operation);
+    // The channel's own name is the only fact a guide start has; no art is invented.
+    const subject = {kind: 'channel' as const, id: value.id, sourceId: value.sourceId, channelName: value.name};
+    const starting = this.beginStarting({subject}, () => this.playFromGuide(value, this.retryLifetime())), stopped = new AbortController();
+    starting.stopWith(() => stopped.abort());
     try {
       const stack = this.replace();
+      starting.attach(stack);
       stack.expanded = true;
       stack.channel = {channel: value};
-      stack.subject = {kind: 'channel', id: value.id, sourceId: value.sourceId, channelName: value.name};
-      const lifetime = AbortSignal.any([context.signal, stack.life.signal, this.life.signal]);
+      stack.subject = subject;
+      const abandon = () => this.abandon(stack, serial);
+      starting.stopWith(() => {stopped.abort(); abandon();});
+      const lifetime = AbortSignal.any([context.signal, stack.life.signal, this.life.signal, stopped.signal]);
       const current = () => {if (lifetime.aborted || !this.current(stack) || serial !== this.operation) return false;try {check();return true;} catch {return false;}};
       const cancel = () => {if (this.current(stack) && serial === this.operation) stack.service.leave();};
       lifetime.addEventListener('abort', cancel, {once: true});
@@ -1057,10 +1127,12 @@ export class WebShellPlaybackRuntime {
         if (!current()) problem('stale_selection_context');
         const state = stack.service.getSnapshot();
         if (state.phase === 'error' || !state.channel) problem('channel_playback_failed');
+        starting.accepted(); starting.stopWith(abandon);
         this.sync();
       } catch (error) { cancel(); throw error; }
       finally {lifetime.removeEventListener('abort', cancel);}
-    } finally {finishRetention();}
+    } catch (error) {starting.end(); if (stopped.signal.aborted) throw startStopped(); throw error;}
+    finally {finishRetention();}
   }
 
   private offers(stack: Stack, playback: PlaybackSnapshot): PlayerOffersData | null {
@@ -1102,13 +1174,7 @@ export class WebShellPlaybackRuntime {
     const state = stack.local?.controller.getSnapshot(), member = state?.preparation.items[state.index], title = member?.title, fence = state?.fence, observed = state?.observation;
     let presentation: WebPlaybackPresentation | undefined;
     if (title && member) {
-      const kind = title.kind as 'movie' | 'episode' | 'extra' | 'song' | 'audiobook_file';
-      const item = {id: member.itemId, kind, title: title.title, durationSeconds: member.durationMs / 1000,
-        ...(title.year > 0 ? {year: title.year} : {}), ...(title.artist ? {artist: title.artist} : {}),
-        ...(kind === 'song' && title.parentTitle ? {album: title.parentTitle} : {}),
-        ...(kind === 'episode' ? {show: {id: title.parentId, title: title.parentTitle}, episode: {mode: 'seasonal' as const,
-          ...(title.groupNumber === null ? {} : {season: title.groupNumber}), ...(title.number === null ? {} : {episode: title.number})}} : {})};
-      const subject: Exclude<PlaybackSubject, {kind: 'channel'}> = {kind: kind === 'song' ? 'music' : kind === 'audiobook_file' ? 'audiobook' : 'video', item};
+      const subject = localMemberSubject(member);
       stack.subject = subject;
       if (subject.kind === 'music') stack.expanded = false;
       if (fence && observed && !['idle', 'loading'].includes(observed.state)) {
@@ -1359,7 +1425,7 @@ export class WebShellPlaybackRuntime {
    * that is still not drawable at START_DEADLINE_MS is stopped, recorded and offered again; slow
    * buffering never trips it, because a drawn dock ends the watch. Before acceptance the start's
    * own deadline (startDeadline) reports as it always has. */
-  private beginStarting(display: WebPlaybackStartDisplay | undefined, retry: () => Promise<void>) {
+  private beginStarting(display: WebPlaybackStartDisplay | undefined, retry: () => Promise<void>): Starting {
     this.endStarting(); this.startTimedOut = undefined;
     const state: StartingState = {key: String(++this.startingKeys), display, accepted: false, stop: () => {}, retry, timer: undefined};
     state.timer = this.setTimer(() => this.expireStarting(state), START_DEADLINE_MS);
@@ -1376,6 +1442,16 @@ export class WebShellPlaybackRuntime {
   }
   /** A Try again after the watchdog belongs to this runtime, not to a page that may be gone. */
   private retryLifetime(): WebPlaybackScreenLifetime {return {signal: this.life.signal, isCurrent: () => !this.disposed && this.source.isCurrent()};}
+  /** The idle stack a Stop (or the watchdog) leaves behind: this start's stack retired, nothing half-started. */
+  private abandon(stack: Stack, serial: number): void {
+    if (!this.current(stack) || serial !== this.operation) return;
+    this.replacing = true; this.retire(stack); this.stack = this.makeStack(); this.activate(this.stack); this.replacing = false; this.sync();
+  }
+  /** A start whose service call has no accept hook of its own is accepted once its session exists. */
+  private sessionAccepted(stack: Stack): boolean {
+    const state = stack.service.getSnapshot();
+    return this.current(stack) && state.phase !== 'error' && !!state.session;
+  }
   private endStarting(): void {
     const state = this.startingState;
     if (!state) return;
