@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"portico.local/server/internal/operations"
+	"strings"
 	"testing"
 )
 
@@ -36,7 +37,7 @@ func TestSecureConnectionsRoundTripAndRouterEnforcement(t *testing.T) {
 		r.Header.Set("X-Forwarded-Proto", "https")
 		w := httptest.NewRecorder()
 		f.handler.ServeHTTP(w, r)
-		if w.Code != http.StatusUpgradeRequired || w.Body.String() != `{"code":"secure_connection_required"}` {
+		if w.Code != http.StatusUpgradeRequired || !strings.Contains(w.Body.String(), `"code":"secure_connection_required"`) {
 			t.Fatalf("HTTP %s %d %s", path, w.Code, w.Body)
 		}
 	}

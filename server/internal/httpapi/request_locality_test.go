@@ -30,6 +30,8 @@ func TestRemoteClientLocality(t *testing.T) {
 	}{
 		{"configured private peer is LAN", "192.168.1.20:5000", nil, nil, newLocalityPolicy(settings), nil, false},
 		{"loopback peer is LAN by default", "127.0.0.1:5000", nil, nil, newLocalityPolicy(settings), nil, false},
+		{"overlay remains remote", "100.64.1.20:5000", nil, nil, newLocalityPolicy(settings), nil, true},
+		{"explicit owner overlay is local", "100.64.1.20:5000", nil, nil, localityPolicy{lan: []netip.Prefix{netip.MustParsePrefix("100.64.0.0/10")}}, nil, false},
 		{"public peer is remote", "198.51.100.7:5000", nil, nil, newLocalityPolicy(settings), nil, true},
 		{"unparsable peer is remote", "garbage", nil, nil, newLocalityPolicy(settings), nil, true},
 		{"untrusted peer's forwarded header is ignored", "198.51.100.7:5000", []string{"192.168.1.20"}, nil, newLocalityPolicy(settings), nil, true},

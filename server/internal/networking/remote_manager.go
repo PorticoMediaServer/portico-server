@@ -320,8 +320,8 @@ func (m *RemoteManager) step(ctx context.Context) error {
 }
 
 // All observations are refreshed after entering the same mutation lane used by
-// certificate route naming. Withdrawal's remote acknowledgement and local
-// publication remain inside this lane, without retaining a database writer.
+// certificate route construction and publication. No database writer is
+// retained across the Hosted effect.
 func (m *RemoteManager) stepRouteLocked(ctx context.Context) error {
 	c, q, authority, state, key, e := m.snapshot(ctx)
 	if e != nil {
@@ -400,6 +400,34 @@ func (m *RemoteManager) stepRouteLocked(ctx context.Context) error {
 		}
 	}
 	lanTLSReady := cert.TLSReady && cert.PubliclyTrusted && cert.ListenerBound
+	access := m.accessURLs(ctx)
+	// A valid certificate can precede its listener binding during boot. This
+	// local startup gap is not a changed route or an owner withdrawal. Preserve
+	// the durable candidates and mapping leases until the listener is ready.
+	if cert.TLSReady && cert.PubliclyTrusted && !cert.ListenerBound && cert.Config.Enabled && (c.Enabled || c.LANSharing) {
+		var raw string
+		if err := m.h.store.db.QueryRowContext(ctx, `SELECT status FROM networking_remote_state WHERE singleton=1`).Scan(&raw); err != nil {
+			return err
+		}
+		var old RemoteStatus
+		if json.Unmarshal([]byte(raw), &old) == nil && old.AuthorityID == authority && old.Generation == state.Generation && old.Config == c {
+			manual := []string{}
+			automatic := false
+			for _, candidate := range old.Candidates {
+				if candidate.Class == "manual" {
+					manual = append(manual, candidate.BaseURL)
+				} else {
+					automatic = true
+				}
+			}
+			if automatic && strings.Join(manual, "\x00") == strings.Join(access, "\x00") {
+				old.CheckedAt = &now
+				old.Warnings = remoteWarnings(c.PublicPort, access)
+				return m.saveState(ctx, authority, c, state, old)
+			}
+		}
+	}
+
 	lanCandidates := []RemoteCandidate{}
 	for _, raw := range topo.LAN {
 		if !lanTLSReady || !c.Enabled && !c.LANSharing {
@@ -425,6 +453,18 @@ func (m *RemoteManager) stepRouteLocked(ctx context.Context) error {
 	mappings = append(mappings, pinholes...)
 	addresses := map[string]int{}
 	observed := map[string]int{}
+	// Locality observes our real public interfaces even when automatic remote
+	// publication is disabled or TLS is still loading. Saved WAN hints are not
+	// fresh observations.
+	for _, raw := range topo.Public {
+		if ip, err := netip.ParseAddr(raw); err == nil && publicAddress(ip) {
+			observed[ip.String()] = port
+		}
+	}
+	if freshWAN != "" {
+		observed[freshWAN] = cert.Config.PublicPort
+	}
+
 	if c.Enabled && ready {
 		for _, raw := range topo.Public {
 			// Every allowed family is offered for an exact inbound proof.
@@ -468,11 +508,10 @@ func (m *RemoteManager) stepRouteLocked(ctx context.Context) error {
 			}
 		}
 	}
-	m.recordPublic(addresses, observed, cert.Config.PublicAddress)
+	m.recordPublic(observed)
 	status.ErrorCode = mapError
 	// The published access URLs are resolved once per route step (the loop is
 	// already rate-limited); a settings read error keeps the last good list.
-	access := m.accessURLs(ctx)
 	status.Warnings = remoteWarnings(c.PublicPort, access)
 	if !c.Enabled {
 		status.State = "disabled"

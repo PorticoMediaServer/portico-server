@@ -2,6 +2,7 @@ package networking
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"testing"
 )
@@ -140,5 +141,17 @@ func TestAllPhysicalLANAddressesExcludeBridgesAndVPN(t *testing.T) {
 		if !got[ip] {
 			t.Fatal("missing real LAN address", ip, topo.LAN)
 		}
+	}
+}
+
+func TestAutomaticLANRetainsMoreThanEightRealAddresses(t *testing.T) {
+	addresses := []string{}
+	for i := 1; i <= 20; i++ {
+		addresses = append(addresses, fmt.Sprintf("10.0.0.%d/24", i))
+	}
+	stubTopology(t, []ifaceAddrs{topoIface("eth0", addresses...)}, "10.0.0.254", "10.0.0.1")
+	topo, err := observeTopology(context.Background(), "[::]:32500", "10.0.0.254", "")
+	if err != nil || len(topo.LAN) != 20 {
+		t.Fatalf("LAN len=%d incomplete=%v %v", len(topo.LAN), topo.Incomplete, err)
 	}
 }

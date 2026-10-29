@@ -7,8 +7,8 @@ import (
 
 // PublicAddresses reports this server's own public addresses as the remote
 // route step last observed them: routable interface addresses, the detected
-// WAN address and mapped external addresses. Empty until a step has run with
-// remote access on. Request locality uses it to count a LAN device that the
+// WAN address and mapped external addresses. Physical interface observations
+// also work while automatic remote publication is off. Request locality uses it to count a LAN device that the
 // router sends through the public address (hairpin NAT) as local.
 func (h *ClaimHandler) PublicAddresses() []netip.Addr {
 	if h == nil || h.remote == nil {
@@ -20,7 +20,7 @@ func (h *ClaimHandler) PublicAddresses() []netip.Addr {
 	return nil
 }
 
-func (m *RemoteManager) recordPublic(addresses, observed map[string]int, configured string) {
+func (m *RemoteManager) recordPublic(observed map[string]int) {
 	seen := map[netip.Addr]bool{}
 	add := func(raw string) {
 		if ip, err := netip.ParseAddr(raw); err == nil && publicAddress(ip.Unmap()) {
