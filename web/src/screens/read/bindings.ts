@@ -4,9 +4,10 @@ import {ReadingError, type HttpLocalApi, type LocalSession, type PreferenceSnaps
 import type {ReadPreferenceSource} from './preferences';
 import type {ReaderMountAuthority} from './mount';
 import {libraryAccessEnded} from '../../shell/library-route-proof';
+import {routePath} from '../../../../packages/contracts/src/routes.ts';
 
 export type ReadBindingContext = Readonly<{
-  api: Pick<HttpLocalApi, 'reading'>; session: () => Pick<LocalSession, 'viewer' | 'sessionFamilyId'>;
+  api: Pick<HttpLocalApi, 'reading'> & Partial<Pick<HttpLocalApi, 'farewell'>>; session: () => Pick<LocalSession, 'viewer' | 'sessionFamilyId'>;
   isCurrent: () => boolean; preferences?: Omit<ReadPreferenceSource, 'getSnapshot'> & Readonly<{getSnapshot: () => PreferenceSnapshot | undefined}>;
   facts: Readonly<{preferences: PreferenceSnapshot}>; factsSource?: ShellFactsSource; libraryRouteSignal?: AbortSignal;
 }>;
@@ -73,8 +74,19 @@ export function createReadBindings(context: ReadBindingContext): ReadBindings {
     if (!current() || pending !== operation) throw new ReadingError('cancelled');
     pending = undefined; session = opened; return opened;
   };
+  // A hard leave (reload, tab close) never runs the cleanup below, so each one left a session held until it
+  // expired, and about ten reloads reached the profile's cap (P2-74 E-web-33). The held session gets a farewell the
+  // browser delivers after the page is gone. A page kept for Back (bfcache) may return, so it keeps its session.
+  const page = typeof window === 'undefined' ? undefined : window;
+  const pageGone = (event: Event) => {
+    const held = session;
+    if ((event as PageTransitionEvent).persisted || !held || !viewerMatches()) return;
+    context.api.farewell?.(routePath('delete_reading_sessions_sessionId', {sessionId: held.manifest.sessionId}), 'DELETE');
+  };
+  page?.addEventListener('pagehide', pageGone);
   const dispose = () => {
     if (disposal) return disposal;
+    page?.removeEventListener('pagehide', pageGone);
     // Keep captured authority valid through explicit Close, then retire it.
     const stopped = close(); retiring = true;
     disposal = stopped.finally(() => {alive = false; context.libraryRouteSignal?.removeEventListener('abort', stopRoute);life.abort(); owner.dispose();});
