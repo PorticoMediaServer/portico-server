@@ -82,9 +82,10 @@ type Write struct {
 	beforeCommit []func() error
 	// plan, meter and site measure this transaction against its WritePlan
 	// once it commits; see plan.go.
-	plan  WritePlan
-	meter *writeMeter
-	site  callSite
+	plan          WritePlan
+	meter         *writeMeter
+	site          callSite
+	accountingWAL AccountingWALPhase
 }
 
 // Begin acquires the write gate for class and opens a transaction. It is the
@@ -313,8 +314,11 @@ func (w *Write) Commit() error {
 		// Last, with the gate already released: nothing here can hold a writer.
 		cost, measured := w.meter.cost(max(changesAtEnd-w.changesAtStart, 0))
 		w.mu.Lock()
-		plan := w.plan
+		plan, accounting := w.plan, w.accountingWAL
 		w.mu.Unlock()
+		if accounting != 0 {
+			noteAccountingWAL(accounting, accountingWALSample{bytes: w.meter.walBytesWritten, frames: w.meter.walFrames, pages: cost.Pages, writtenKnown: w.meter.walWrittenKnown, framesKnown: w.meter.walFramesKnown, pagesKnown: measured && cost.Pages >= 0})
+		}
 		notePlan(w.owned.class, plan, cost, measured, w.site)
 	}
 	return err

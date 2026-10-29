@@ -130,12 +130,15 @@ func planFor(ctx context.Context, class Class) WritePlan {
 // writeMeter is one transaction's VM and page counters at BEGIN and at its
 // end, filled in by the observed driver on the writer connection.
 type writeMeter struct {
-	vmStart, pagesStart int64
-	vmEnd, pagesEnd     int64
-	started, ended      bool
-	walStart            uint64
-	walKnown            bool
-	wal                 *walRequest
+	vmStart, pagesStart             int64
+	vmEnd, pagesEnd                 int64
+	started, ended                  bool
+	walStart                        uint64
+	walKnown                        bool
+	walIOStart                      sqlitedrv.WALIOStats
+	walBytesWritten, walFrames      uint64
+	walFramesKnown, walWrittenKnown bool
+	wal                             *walRequest
 }
 
 type meterKey struct{}
@@ -167,7 +170,10 @@ func (m *writeMeter) begin(inner any) {
 	if c, ok := inner.(*observedConn); ok {
 		inner = c.inner
 	}
-	if counter, ok := inner.(interface{ WALWriteBytes() (uint64, bool) }); ok {
+	if counter, ok := inner.(interface{ WALIO() sqlitedrv.WALIOStats }); ok {
+		m.walIOStart = counter.WALIO()
+		m.walStart, m.walKnown = m.walIOStart.AttemptedBytes, m.walIOStart.Qualified
+	} else if counter, ok := inner.(interface{ WALWriteBytes() (uint64, bool) }); ok {
 		m.walStart, m.walKnown = counter.WALWriteBytes()
 	}
 }
@@ -182,7 +188,11 @@ func (m *writeMeter) end(inner any) {
 	}
 	var attempted uint64
 	var known bool
-	if counter, ok := inner.(interface{ WALWriteBytes() (uint64, bool) }); ok {
+	var native sqlitedrv.WALIOStats
+	if counter, ok := inner.(interface{ WALIO() sqlitedrv.WALIOStats }); ok {
+		native = counter.WALIO()
+		attempted, known = native.AttemptedBytes, native.Qualified
+	} else if counter, ok := inner.(interface{ WALWriteBytes() (uint64, bool) }); ok {
 		attempted, known = counter.WALWriteBytes()
 	}
 	known = known && m.walKnown && attempted >= m.walStart
@@ -190,10 +200,14 @@ func (m *writeMeter) end(inner any) {
 		attempted -= m.walStart
 	}
 	m.wal.measured(attempted, known)
-	if counter, ok := inner.(interface{ WALIO() sqlitedrv.WALIOStats }); ok {
-		stats := counter.WALIO()
-		if stats.Qualified {
-			m.wal.retained(stats.CurrentEnd)
+	if native.Qualified {
+		m.wal.retained(native.CurrentEnd)
+	}
+	if m.walIOStart.Qualified && native.Qualified && native.Errors == m.walIOStart.Errors && native.WrittenBytes >= m.walIOStart.WrittenBytes && native.HeaderWrites >= m.walIOStart.HeaderWrites {
+		m.walWrittenKnown = true
+		m.walBytesWritten = native.WrittenBytes - m.walIOStart.WrittenBytes
+		if m.wal != nil && m.wal.ledger != nil {
+			m.walFrames, m.walFramesKnown = observedWALFrames(m.walBytesWritten, native.HeaderWrites-m.walIOStart.HeaderWrites, m.wal.ledger.pageSize)
 		}
 	}
 }
@@ -302,7 +316,8 @@ type PlanOverrun struct {
 // PlanStats is the process-wide picture of write budgets.
 type PlanStats struct {
 	// Measured counts committed gated transactions whose cost was read.
-	Measured uint64 `json:"measured"`
+	Measured       uint64              `json:"measured"`
+	MusicBrainzWAL *AccountingWALStats `json:"musicBrainzWal,omitempty"`
 	// Overruns counts those that exceeded their plan, in total, by class and
 	// by dimension (rows, pages, vmOps).
 	Overruns            uint64            `json:"overruns"`
@@ -330,7 +345,8 @@ var plans struct {
 
 // Plans snapshots write-budget telemetry.
 func Plans() PlanStats {
-	out := PlanStats{Measured: plans.measured.Load(), Overruns: plans.overruns.Load(), OverrunsByClass: map[string]uint64{}, OverrunsByDimension: map[string]uint64{}}
+	accounting := AccountingWAL()
+	out := PlanStats{Measured: plans.measured.Load(), Overruns: plans.overruns.Load(), OverrunsByClass: map[string]uint64{}, OverrunsByDimension: map[string]uint64{}, MusicBrainzWAL: &accounting}
 	plans.mu.Lock()
 	defer plans.mu.Unlock()
 	for class, count := range plans.byClass {
@@ -346,6 +362,7 @@ func Plans() PlanStats {
 
 // ResetPlans zeroes write-budget telemetry, for tests and the load harness.
 func ResetPlans() {
+	resetAccountingWAL()
 	plans.measured.Store(0)
 	plans.overruns.Store(0)
 	plans.mu.Lock()

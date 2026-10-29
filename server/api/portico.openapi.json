@@ -32421,6 +32421,167 @@
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "musicBrainzWal": {
+                "properties": {
+                  "flip": {
+                    "properties": {
+                      "maxCachePages": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "maxFrames": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "maxWalBytes": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "peakCachePages": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "peakFrames": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "peakWalBytes": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "samples": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "unknownCachePages": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "unknownFrames": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "unknownWal": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "windowSamples": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "samples",
+                      "unknownWal",
+                      "unknownFrames",
+                      "unknownCachePages",
+                      "windowSamples",
+                      "maxWalBytes",
+                      "maxFrames",
+                      "maxCachePages",
+                      "peakWalBytes",
+                      "peakFrames",
+                      "peakCachePages"
+                    ],
+                    "type": "object"
+                  },
+                  "fold": {
+                    "properties": {
+                      "maxCachePages": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "maxFrames": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "maxWalBytes": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "peakCachePages": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "peakFrames": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "peakWalBytes": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "samples": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "unknownCachePages": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "unknownFrames": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "unknownWal": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "windowSamples": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "samples",
+                      "unknownWal",
+                      "unknownFrames",
+                      "unknownCachePages",
+                      "windowSamples",
+                      "maxWalBytes",
+                      "maxFrames",
+                      "maxCachePages",
+                      "peakWalBytes",
+                      "peakFrames",
+                      "peakCachePages"
+                    ],
+                    "type": "object"
+                  },
+                  "window": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "window",
+                  "flip",
+                  "fold"
+                ],
+                "type": "object"
+              },
               "overruns": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -408214,6 +408375,167 @@
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
+                        },
+                        "musicBrainzWal": {
+                          "properties": {
+                            "flip": {
+                              "properties": {
+                                "maxCachePages": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "maxFrames": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "maxWalBytes": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "peakCachePages": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "peakFrames": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "peakWalBytes": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "samples": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "unknownCachePages": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "unknownFrames": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "unknownWal": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "windowSamples": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "samples",
+                                "unknownWal",
+                                "unknownFrames",
+                                "unknownCachePages",
+                                "windowSamples",
+                                "maxWalBytes",
+                                "maxFrames",
+                                "maxCachePages",
+                                "peakWalBytes",
+                                "peakFrames",
+                                "peakCachePages"
+                              ],
+                              "type": "object"
+                            },
+                            "fold": {
+                              "properties": {
+                                "maxCachePages": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "maxFrames": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "maxWalBytes": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "peakCachePages": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "peakFrames": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "peakWalBytes": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "samples": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "unknownCachePages": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "unknownFrames": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "unknownWal": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "windowSamples": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "samples",
+                                "unknownWal",
+                                "unknownFrames",
+                                "unknownCachePages",
+                                "windowSamples",
+                                "maxWalBytes",
+                                "maxFrames",
+                                "maxCachePages",
+                                "peakWalBytes",
+                                "peakFrames",
+                                "peakCachePages"
+                              ],
+                              "type": "object"
+                            },
+                            "window": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "window",
+                            "flip",
+                            "fold"
+                          ],
+                          "type": "object"
                         },
                         "overruns": {
                           "maximum": 9007199254740991,

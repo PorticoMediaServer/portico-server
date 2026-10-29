@@ -17,7 +17,8 @@ import (
 // Private preparation changes <=11 count facts plus its state/lease points;
 // accepted folding changes <=11 base rows +11 private rows +1 state row. The
 // pin flip has only point trigger effects; it never updates the release tracks.
-// Pages remains telemetry: no MB pager profile is qualified for enforcement.
+// MB WAL enforcement is intentionally off; actual flip/fold WAL writes are
+// observed telemetry, with checkpointing and reserved WAL recovery as protection.
 var entityPinDrainPlan = dbwork.WritePlan{Name: "catalog-one-mb-pin", Rows: 24, Pages: 2048, VMOps: 4_000_000, Why: "one staged raw11 accounting quantum, one exact pin flip, or one <=11-fact fold; custody/source-read cost remains separately fenced and measured"}
 
 func MutationWriteContext(ctx context.Context) context.Context {

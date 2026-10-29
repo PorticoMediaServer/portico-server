@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"portico.local/server/internal/dbwork"
 )
 
 var (
@@ -306,6 +308,7 @@ func FlipTx(ctx context.Context, tx *sql.Tx, c Change, apply func() error, check
 	if !same(s, c) || s.Phase != "ready" || s.ExpiresMS <= nowMS(ctx) || apply == nil || checkCaps == nil {
 		return ErrStale
 	}
+	dbwork.ObserveAccountingWAL(tx, dbwork.AccountingFlip)
 	if _, e = tx.ExecContext(ctx, `UPDATE mb_accounting_state SET phase='flip' WHERE singleton=1 AND phase='ready' AND transition_id=?`, s.ID); e != nil {
 		return e
 	}
@@ -355,6 +358,7 @@ func FoldTx(ctx context.Context, tx *sql.Tx) (done bool, err error) {
 	if s.Phase != "fold" {
 		return false, ErrBusy
 	}
+	dbwork.ObserveAccountingWAL(tx, dbwork.AccountingFold)
 	rows, e := tx.QueryContext(ctx, `SELECT revision_id,direct_refs,release_refs FROM mb_recording_accounting_next WHERE transition_id=? ORDER BY revision_id LIMIT 11`, s.ID)
 	if e != nil {
 		return false, e

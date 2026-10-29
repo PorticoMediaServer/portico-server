@@ -252,6 +252,7 @@ func TestP252bOnePinCompleteWriterHold(t *testing.T) {
 	drainEvidence(t, c, "large", 10000)
 	drainPin(t, c, songs[0], "large", false)
 	dbwork.WriteGate().ResetPeak()
+	dbwork.ResetPlans()
 	var ref compactcatalog.MutationRef
 	start := time.Now()
 	c.Write(func(ctx context.Context, tx *sql.Tx) error {
@@ -271,6 +272,11 @@ func TestP252bOnePinCompleteWriterHold(t *testing.T) {
 			t.Fatalf("complete mutation writer exceeded 250ms: %s", elapsed)
 		}
 		if step.Complete {
+			observed := dbwork.AccountingWAL()
+			t.Logf("10k actual writer WAL telemetry: %+v (observed, not a bound)", observed)
+			if observed.Flip.Samples != 1 || observed.Fold.Samples == 0 {
+				t.Fatal("actual phases not observed", observed)
+			}
 			return
 		}
 	}
