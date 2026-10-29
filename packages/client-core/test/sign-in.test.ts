@@ -70,13 +70,28 @@ test('injected value and explicitly bound fetch transports preserve their invoca
   }
 });
 
-test('a server of another API level is refused before sign-in (P2-66 G-2)', async () => {
-  const {parseServerSignIn, assertSameApiLevel, API_LEVEL_MISMATCH} = await import('../src/sign-in.ts');
-  const {API_LEVEL} = await import('../../contracts/src/api-level.ts');
+// O-159, Justin's rule: if a server and a client can talk, allow the connection.
+test('negotiation connects on any shared API major, gates on capabilities, and refuses only with no overlap', async () => {
+  const {parseServerSignIn, negotiateServer, API_LEVEL_MISMATCH, APP_UPDATE_REQUIRED, CLIENT_API} = await import('../src/sign-in.ts');
+  const {API_LEVEL, CAPABILITIES} = await import('../../contracts/src/api-level.ts');
   const raw = {id: 'server', name: 'Study', version: '1', signIn: 'portico', move: null, setupRequired: false, hostedConfigured: true, hostedAttached: true};
   for (const apiLevel of [undefined, 0, -1, 1.5, '1', null]) assert.throws(() => parseServerSignIn({...raw, apiLevel}), /did not report how to sign in/);
-  assert.doesNotThrow(() => assertSameApiLevel(parseServerSignIn({...raw, apiLevel: API_LEVEL})));
-  for (const apiLevel of [API_LEVEL - 1 || 2, API_LEVEL + 1]) assert.throws(() => assertSameApiLevel(parseServerSignIn({...raw, apiLevel})), (error: {code?: string}) => error.code === API_LEVEL_MISMATCH);
+  // A server without the negotiation facts is `apiLevel`.0 with the 1.0 floor and no capabilities.
+  const older = parseServerSignIn({...raw, apiLevel: API_LEVEL});
+  assert.equal(older.apiVersion, `${API_LEVEL}.0`); assert.deepEqual(older.apiMajors, [API_LEVEL]); assert.deepEqual(older.capabilities, []);
+  assert.equal(negotiateServer(older).major, API_LEVEL); assert.equal(negotiateServer(older).can('anything'), false);
+  // Unreadable optional facts fall back rather than refusing the server (tier two).
+  const odd = parseServerSignIn({...raw, apiLevel: API_LEVEL, apiVersion: 'one', apiMajors: ['1'], capabilities: 'x'});
+  assert.deepEqual([odd.apiVersion, odd.apiMajors, odd.capabilities], [`${API_LEVEL}.0`, [API_LEVEL], []]);
+  // A newer minor with unknown capabilities connects; known ones gate, unknown ones are ignored.
+  const newer = negotiateServer(parseServerSignIn({...raw, apiLevel: API_LEVEL, apiVersion: `${API_LEVEL}.7`, apiMajors: [API_LEVEL], capabilities: ['future.thing', 'future.thing', 'alpha']}));
+  assert.equal(newer.version, `${API_LEVEL}.7`); assert.deepEqual(newer.capabilities, ['alpha', 'future.thing']); assert.equal(newer.can('alpha'), true);
+  // A server that also serves a newer major is opened on the newest major both speak.
+  assert.equal(negotiateServer(parseServerSignIn({...raw, apiLevel: API_LEVEL + 1, apiMajors: [API_LEVEL, API_LEVEL + 1]})).major, API_LEVEL);
+  // No overlap is the only refusal, named for whoever must update.
+  assert.throws(() => negotiateServer(parseServerSignIn({...raw, apiLevel: API_LEVEL + 1, apiMajors: [API_LEVEL + 1]})), (error: {code?: string}) => error.code === APP_UPDATE_REQUIRED);
+  assert.throws(() => negotiateServer(older, {min: API_LEVEL + 1, max: API_LEVEL + 2}), (error: {code?: string}) => error.code === API_LEVEL_MISMATCH);
+  assert.deepEqual(CLIENT_API, {min: 1, max: API_LEVEL}); assert.deepEqual(CAPABILITIES, [], '1.0 is the capability-free floor');
 });
 
 test('the move window comes from the server and is counted in whole days on this calendar (P2-66)', async () => {
