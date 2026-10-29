@@ -54,6 +54,21 @@ export class BrowseController {
     return this.current() && this.state.phase === 'ready' && !!this.state.revision && !!this.session?.owns(entry)
       && this.collection.residentItems().some(member => member.entry === entry);
   }
+  /** The same title in the list this controller holds now. A press that crossed a re-read of the
+   * list (a stale selection query re-browses it) acts on this, never silently on nothing. */
+  resident(entry: ContentEntry): ContentEntry | undefined {
+    if (!this.current() || this.state.phase !== 'ready' || !this.state.revision) return undefined;
+    return this.collection.residentItems().find(member => member.entry.id === entry.id && member.entry.libraryId === entry.libraryId)?.entry;
+  }
+  /** Resolves once the list is ready again, or after `ms`; never rejects. */
+  settled(signal: AbortSignal, ms: number): Promise<void> {
+    if (this.state.phase === 'ready' && this.state.revision) return Promise.resolve();
+    return new Promise(resolve => {
+      const done = () => {clearTimeout(timer); off(); signal.removeEventListener('abort', done); resolve();};
+      const off = this.subscribe(() => {if (this.state.phase !== 'loading' && this.state.revision) done();});
+      const timer = setTimeout(done, ms); signal.addEventListener('abort', done, {once: true});
+    });
+  }
   /** The server's exact whole-view descriptor for the page this controller holds.
    * It is present only while that same page revision is the current one; any
    * invalidate, retry or revision change drops it before a new one can arrive. */

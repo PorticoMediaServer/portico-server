@@ -50,7 +50,7 @@ import {createDrawnSubtitleSurface, type DrawnSubtitleSurface} from './subtitles
 import {decodeSubtitleText, subtitleFileLimits, type DrawnSubtitleSource, type ReadSubtitleFile} from './subtitles/types.ts';
 import {assPlainCues} from './subtitles/ass-text.ts';
 import {SUBTITLE_CJK_FONT_PATH, forcedChoiceOf, parseSubtitleLines, readSubtitleFile, readSubtitleFontList, selectedSubtitleOriginal, type SubtitleLines, type SubtitleOriginal} from '@core/subtitle-originals.ts';
-import {entrySubject, itemSubject} from './subject.ts';
+import {entrySubject, itemSubject, queueEntrySubject} from './subject.ts';
 import {playbackEnvironment} from './environment.ts';
 import {browserClientProfile} from './client-profile.ts';
 import {selectionSegments, selectionStartSeconds} from './selection.ts';
@@ -64,6 +64,9 @@ import {currentPolicyQueue, type WebPlaybackPolicyAction} from './policy.ts';
 import type {WebPlaybackVersionChoices, WebPlaybackVersionChoice} from './versions.ts';
 import type {VideoLike} from './web-media-player.ts';
 import type {WebPlaybackInfoRead, WebPlaybackAction, WebPlaybackAuthority, WebPlaybackEnvironment, WebPlaybackPresentation, WebPlaybackRuntimeSnapshot, WebPlaybackSource, WebPlaybackStart, WebPlaybackVersionStart, WebPlaybackScreenTarget, WebPlaybackScreenLifetime} from './types.ts';
+
+/** How long a Play may wait for its playback to start before it is a reported failure. */
+const START_DEADLINE_MS = 20_000;
 
 type ChannelTarget = Readonly<{channel: GuideChannel}>;
 type LocalQueueLease = {preparation: WebLocalQueuePreparation; release(): Promise<void>; retired: boolean; released: boolean};
@@ -600,7 +603,8 @@ export class WebShellPlaybackRuntime {
       if (pending?.subtitle !== undefined && version) stack.preplay = {versionId: version.id, progress: {choice: {...pending, audioStreamIndex: undefined}}};
       stack.itemId = item.id; stack.libraryId = item.libraryId; stack.subject = subject;
       stack.posterUrl = item.posterUrl; stack.backdropUrl = item.backdropUrl; stack.expanded = subject.kind !== 'music';
-      const lifetime = AbortSignal.any([context.signal, stack.life.signal, this.life.signal]);
+      const deadline = this.startDeadline();
+      const lifetime = AbortSignal.any([context.signal, stack.life.signal, this.life.signal, deadline.signal]);
       const current = () => {
         if (lifetime.aborted || !this.current(stack) || serial !== this.operation) return false;
         try {check();return true;} catch {return false;}
@@ -613,13 +617,13 @@ export class WebShellPlaybackRuntime {
         stack.capacityCurrent = current;
         await stack.queue.playItem(item.id, startSeconds, undefined, undefined, undefined,
           {...(versionId ? {versionId} : {}), ...(audio ? {audioTrackId: audio.id} : {})}, {signal: lifetime, isCurrent: current});
-        if (!current()) problem('stale_selection_context');
+        if (!current()) problem(deadline.expired() && !context.signal.aborted ? 'playback_start_timeout' : 'stale_selection_context');
         const session = stack.queue.currentSession();
         if (stack.service.getSnapshot().phase === 'error' || session?.itemId !== item.id
           || versionId !== undefined && session.versionId !== versionId) problem('playback_start_failed');
         this.sync();
-      } catch (error) {cancel();throw error;}
-      finally {if (stack.capacityCurrent === current) stack.capacityCurrent = undefined; lifetime.removeEventListener('abort', cancel);}
+      } catch (error) {cancel(); if (deadline.expired() && !context.signal.aborted) problem('playback_start_timeout'); throw error;}
+      finally {deadline.clear(); if (stack.capacityCurrent === current) stack.capacityCurrent = undefined; lifetime.removeEventListener('abort', cancel);}
     } finally {finishRetention();}
   }
 
@@ -896,8 +900,11 @@ export class WebShellPlaybackRuntime {
     const finishRetention = this.retainMediaStart(context.signal, () => serial === this.operation);
     try {
       const stack = this.replace();
-      stack.expanded = true; // Actual metadata collapses music to its real dock in selectSource.
-      const lifetime = AbortSignal.any([context.signal, stack.life.signal, this.life.signal]);
+      // Actual metadata collapses music to its real dock in selectSource. A queue that is only ever
+      // music (an album, an artist, a radio) starts in the dock: it never waits on that read to show.
+      stack.expanded = !segments.every(segment => 'container' in segment.source && ['album', 'artist', 'radio'].includes(segment.source.container.kind));
+      const deadline = this.startDeadline();
+      const lifetime = AbortSignal.any([context.signal, stack.life.signal, this.life.signal, deadline.signal]);
       const current = () => {
         if (lifetime.aborted || !this.current(stack) || serial !== this.operation || stack.capabilityRejected) return false;
         try {check();return true;} catch {return false;}
@@ -909,7 +916,7 @@ export class WebShellPlaybackRuntime {
       try {
         stack.capacityCurrent = current;
         const queue = await stack.queue.playSegments(segments, {startSeconds, signal: lifetime, isCurrent: current});
-        if (!current()) problem('stale_selection_context');
+        if (!current()) problem(deadline.expired() && !context.signal.aborted ? 'playback_start_timeout' : 'stale_selection_context');
         const session = stack.queue.currentSession(), started = stack.service.getSnapshot();
         if (started.phase === 'error' || !session || session.queue?.queueId !== queue.id || started.session?.id !== session.id || started.session.generation !== session.presentation.generation) problem('playback_start_failed');
         this.sync();return queue;
@@ -920,9 +927,10 @@ export class WebShellPlaybackRuntime {
         }
         cancel();
         if (admissionFailed) problem('playback_start_failed');
+        if (deadline.expired() && !context.signal.aborted) problem('playback_start_timeout');
         throw error;
       }
-      finally {if (stack.capacityCurrent === current) stack.capacityCurrent = undefined; lifetime.removeEventListener('abort', cancel);}
+      finally {deadline.clear(); if (stack.capacityCurrent === current) stack.capacityCurrent = undefined; lifetime.removeEventListener('abort', cancel);}
     } finally {finishRetention();}
   }
 
@@ -951,19 +959,22 @@ export class WebShellPlaybackRuntime {
       const cancel = () => { if (this.current(stack) && serial === this.operation) {
         this.replacing = true; this.retire(stack); this.stack = this.makeStack(); this.activate(this.stack); this.replacing = false; this.sync();
       } };
-      request.signal.addEventListener('abort', cancel, {once: true});
-      const originalCurrent = () => this.current(stack) && serial === this.operation && !request.signal.aborted && current(request.context);
+      const deadline = this.startDeadline(), signal = AbortSignal.any([request.signal, deadline.signal]);
+      signal.addEventListener('abort', cancel, {once: true});
+      const originalCurrent = () => this.current(stack) && serial === this.operation && !signal.aborted && current(request.context);
       try {
         stack.capacityCurrent = originalCurrent;
-        const queue = await stack.queue.playSegments(segments, {startSeconds: selectionStartSeconds(request.items), signal: request.signal, isCurrent: originalCurrent});
+        const queue = await stack.queue.playSegments(segments, {startSeconds: selectionStartSeconds(request.items), signal, isCurrent: originalCurrent});
+        if (deadline.expired() && !request.signal.aborted) problem('playback_start_timeout');
         this.selectionCurrent(request.context, request.signal, current);
         if (!this.current(stack) || serial !== this.operation) problem('stale_selection_context');
         this.sync();
         return {queue};
       } catch (error) {
         if (this.current(stack) && serial === this.operation) cancel();
+        if (deadline.expired() && !request.signal.aborted) problem('playback_start_timeout');
         throw error;
-      } finally {if (stack.capacityCurrent === originalCurrent) stack.capacityCurrent = undefined;request.signal.removeEventListener('abort', cancel);}
+      } finally {deadline.clear(); if (stack.capacityCurrent === originalCurrent) stack.capacityCurrent = undefined;signal.removeEventListener('abort', cancel);}
     } finally {finishRetention();}
   }
   private async enqueueSelection(request: HomeSelectionPlaybackRequest & {placement: 'next' | 'end'}, current: (context: SelectionContext) => boolean) {
@@ -1266,16 +1277,26 @@ export class WebShellPlaybackRuntime {
     const current = () => this.current(stack) && stack.sessionKey === key && !abort.signal.aborted;
     const read = async () => {
       if (stack.metadataItemId !== itemId || !stack.libraryId || !stack.subject) {
-        const raw = await this.source.api.request<ItemResponse>(encodedRoutePath('get_items_id', {id: encodeURIComponent(itemId)}), 'GET', undefined, AbortSignal.any([abort.signal, stack.life.signal]));
-        const item = parseMediaItem(raw);
-        if (!current()) return;
-        if (item.id !== itemId || !item.available || raw.missing) problem('invalid_playback_item');
-        stack.subject = itemSubject(raw); stack.itemId = itemId; stack.metadataItemId = itemId; stack.libraryId = item.libraryId;
-        stack.posterUrl = item.posterUrl; stack.backdropUrl = item.backdropUrl;
-        stack.showId = raw.episode?.showId; stack.seasonId = raw.episode?.seasonId;
-        if (stack.subject.kind === 'music') stack.expanded = false;
+        const raw = await this.readItemBounded(itemId, AbortSignal.any([abort.signal, stack.life.signal]), current)
+          .catch(error => this.queueFactsInstead(stack, itemId, current, error));
+        if (raw) {
+          const item = parseMediaItem(raw);
+          if (!current()) return;
+          if (item.id !== itemId || !item.available || raw.missing) problem('invalid_playback_item');
+          stack.subject = itemSubject(raw); stack.itemId = itemId; stack.metadataItemId = itemId; stack.libraryId = item.libraryId;
+          stack.posterUrl = item.posterUrl; stack.backdropUrl = item.backdropUrl;
+          stack.showId = raw.episode?.showId; stack.seasonId = raw.episode?.seasonId;
+          if (stack.subject.kind === 'music') stack.expanded = false;
+        }
       }
-      if (!current() || !stack.libraryId) return;
+      if (!current()) return;
+      if (!stack.libraryId) {
+        // Queue facts stood in and named no library: the item's offers name it.
+        await stack.offers.select({itemId, sessionId: session.id});
+        const learned = stack.offers.getSnapshot().data?.scope.libraryId;
+        if (!current() || !learned) return;
+        stack.libraryId = learned;
+      }
       stack.offerBinding = {api: this.source.api, authority: this.authority, sessionKey: key, libraryId: stack.libraryId, itemId, sessionId: session.id, generation: session.presentation.generation, playbackRun: playback.playbackRun};
       await stack.offers.select({libraryId: stack.libraryId, itemId, sessionId: session.id});
       if (!current()) return;
@@ -1288,6 +1309,51 @@ export class WebShellPlaybackRuntime {
       this.sync();
     };
     void read().catch(() => { if (current()) { this.runtimeProblem = 'playback_metadata_failed'; this.sync(); } });
+  }
+
+  /** The item's own facts did not answer. An audio queue entry carries its real kind, title,
+   * album, poster and library: play on with those, so the dock draws and Pause is there (P2-74
+   * E-web-14); the next source change reads the item again. Anything else keeps the failure. */
+  private queueFactsInstead(stack: Stack, itemId: string, current: () => boolean, error: unknown): undefined {
+    if (!current()) return undefined;
+    const entry = this.currentQueueEntry(stack, itemId), fallback = entry && queueEntrySubject(entry);
+    if (!entry || !fallback) throw error;
+    stack.subject = fallback; stack.itemId = itemId; stack.libraryId = entry.libraryId; stack.posterUrl = entry.posterUrl; stack.backdropUrl = undefined;
+    if (fallback.kind === 'music') stack.expanded = false;
+    return undefined;
+  }
+  /** A start the server never answers must not stall Play silently (P2-74 E-web-17): after
+   * START_DEADLINE_MS the start is retired through its ordinary lifetime and reported. */
+  private startDeadline() {
+    const controller = new AbortController(), timer = this.setTimer(() => controller.abort(), START_DEADLINE_MS);
+    return {signal: controller.signal, expired: () => controller.signal.aborted, clear: () => this.clearTimer(timer)};
+  }
+  /** The queue's own entry for the item now playing, when the loaded window holds it. */
+  private currentQueueEntry(stack: Stack, itemId: string) {
+    const view = stack.queue.getSnapshot().view;
+    return view?.items.find(entry => entry.entryId === view.queue.currentEntryId && entry.itemId === itemId);
+  }
+  /** The playing item's facts draw its dock and its Now playing. A passing failure (a 503
+   * burst) is read again twice, after 1 s and 3 s, before the start reports it: music must
+   * never play on with nothing drawn (P2-74 E-web-14). */
+  private async readItemBounded(itemId: string, signal: AbortSignal, current: () => boolean): Promise<ItemResponse> {
+    const path = encodedRoutePath('get_items_id', {id: encodeURIComponent(itemId)});
+    for (let attempt = 0; ; attempt++) {
+      // A read that hangs is a failure too: each attempt gets 8 s.
+      const attemptLife = new AbortController(), expiry = this.setTimer(() => attemptLife.abort(), 8000);
+      try { return await this.source.api.request<ItemResponse>(path, 'GET', undefined, AbortSignal.any([signal, attemptLife.signal])); }
+      catch (error) {
+        const failure = error as {name?: string; status?: number; retryable?: boolean} | undefined;
+        const timedOut = attemptLife.signal.aborted && !signal.aborted;
+        const passing = timedOut || failure?.retryable === true || (failure?.status ?? 0) >= 500;
+        if (attempt >= 2 || !passing || failure?.name === 'AbortError' && !timedOut || signal.aborted || !current()) throw error;
+        await new Promise<void>((resolve, reject) => {
+          const timer = this.setTimer(() => {signal.removeEventListener('abort', stop); resolve();}, attempt ? 3000 : 1000);
+          const stop = () => {this.clearTimer(timer); reject(new DOMException('Playback metadata read stopped', 'AbortError'));};
+          signal.addEventListener('abort', stop, {once: true});
+        });
+      } finally { this.clearTimer(expiry); }
+    }
   }
 
   private clearSourceResources(stack: Stack): void {

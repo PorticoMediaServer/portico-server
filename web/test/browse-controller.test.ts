@@ -337,3 +337,23 @@ test('a first page refused as stale while a library imports is read once more, a
   assert.equal(controller.getSnapshot().revision, 'revision-one', 'a new query earns its own single re-read');
  } finally {controller.dispose();}
 });
+test('P2-74 E-web-02: after the list re-reads under a press, the same title is found in the fresh list', async () => {
+ const predicate = {field: 'watched', operator: 'equals' as const, value: false};
+ const scoped = {...caps, fields: [{id: 'watched', labelKey: 'watched', type: 'boolean', operators: ['equals'], controlHint: 'toggle', applicableKinds: ['movie']}]};
+ const controller = new BrowseController({async request<T>(path: string, _method?: string, body?: unknown) {
+  return (path.includes('capabilities') ? scoped : payload((body as {range: {start: number}}).range.start, 3)) as T;
+ }}, {libraryId: 'lib', pivot: 'movies'}, () => true);
+ try {
+  await controller.load();await settle();
+  const pressed = controller.collection.itemAt(1)!.entry;
+  assert.equal(controller.contains(pressed), true);
+  controller.setQuery([predicate]);
+  const waiting = controller.settled(new AbortController().signal, 5000);
+  await settle();await waiting;
+  assert.equal(controller.contains(pressed), false, 'the row object the press held is gone');
+  const fresh = controller.resident(pressed);
+  assert.ok(fresh && fresh !== pressed && fresh.id === pressed.id, 'the same title, from the fresh list');
+  assert.equal(controller.contains(fresh!), true, 'and it is current, so Play acts on it');
+  assert.equal(controller.resident({...pressed, id: 'gone'}), undefined, 'a title that left the list is not invented');
+ } finally {controller.dispose();}
+});

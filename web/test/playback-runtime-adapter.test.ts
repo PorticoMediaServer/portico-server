@@ -3262,3 +3262,49 @@ test('P1: the player is the session\'s, not Home\'s: with no Home document it pl
   assert.deepEqual((created.body as {segments: unknown[]}).segments, [{source: {container: {kind: 'album', id: 'ordered_release'}}, order: {mode: 'source'}}]);
   assert.equal(f.runtime.getSnapshot().session!.itemId, 'ordered_release-0', 'Play on an album page starts the album');
 });
+
+test('P2-74 E-web-14: music whose item facts never answer still mounts its dock, named from the queue entry', async t => {
+  const {dockView} = await import('../src/kit/dock/model.ts');
+  const {playbackPresentation} = await import('../src/shell/playback-model.ts');
+  const f = setup(t, {}, {}, undefined, undefined, {homeFence: false}), life = new AbortController();
+  let itemReads = 0;
+  f.intercept(async (request, response) => /^\/v1\/items\/[^/?]+$/.test(request.path) && request.method === 'GET'
+    ? (itemReads++, {status: 503, headers: {}, body: {error: {code: 'server_unavailable', retryable: true}}}) : response);
+  await f.runtime.playFromQueue({container: {kind: 'album', id: 'song_album'}}, {signal: life.signal, isCurrent: () => true});
+  for (let step = 0; step < 6; step++) { await f.clock.advance?.(3000); await f.arrive(); }
+  const s = f.runtime.getSnapshot();
+  assert.equal(itemReads, 3, 'a passing failure is read again twice, then the start stops waiting for it');
+  assert.equal(s.presentation?.kind, 'music');
+  assert.equal(s.presentation?.subject.kind === 'music' ? s.presentation.subject.item.title : undefined, 'Title song_album-0', 'named from the queue\'s own entry');
+  assert.equal(s.dock.local?.expanded, false, 'music sits in the dock');
+  const environment = {t: (key: string) => key, locale: 'en-US'} as never, artwork = {foreground: () => undefined, ambient: () => undefined} as never;
+  const presentation = playbackPresentation(s, environment, artwork, {back: 10, forward: 30});
+  assert.ok(presentation && dockView(s.dock, [presentation]), 'the dock mounts: DockHost has a view to draw, with Pause there');
+});
+
+test('P2-74 E-web-14: one 503 on the item facts is read again and the real facts draw the dock', async t => {
+  const f = setup(t, {}, {}, undefined, undefined, {homeFence: false}), life = new AbortController();
+  let itemReads = 0;
+  f.intercept(async (request, response) => /^\/v1\/items\/[^/?]+$/.test(request.path) && request.method === 'GET' && itemReads++ === 0
+    ? {status: 503, headers: {}, body: {error: {code: 'server_unavailable', retryable: true}}} : response);
+  await f.runtime.playFromQueue({container: {kind: 'album', id: 'song_album'}}, {signal: life.signal, isCurrent: () => true});
+  for (let step = 0; step < 3; step++) { await f.clock.advance?.(1500); await f.arrive(); }
+  const s = f.runtime.getSnapshot();
+  assert.equal(itemReads, 2);
+  assert.equal(s.presentation?.kind, 'music');
+  assert.equal(s.dock.local?.expanded, false);
+  assert.ok(!s.problem, 'recovered, nothing to report');
+});
+
+test('P2-74 E-web-17: a playback start the server never answers is reported after the deadline, never a silent stall', async t => {
+  const f = setup(t, {}, {}, undefined, undefined, {homeFence: false}), life = new AbortController();
+  f.intercept(async (request, response) => request.method === 'POST' && request.path.startsWith('/v1/playback/sessions')
+    ? new Promise<never>((_, reject) => {const stop = () => reject(Object.assign(new Error('aborted'), {name: 'AbortError'})); if (request.signal?.aborted) stop(); else request.signal?.addEventListener('abort', stop, {once: true});})
+    : response);
+  const start = f.runtime.playFromScreen({libraryId: 'library', itemId: 'movie', startSeconds: 0}, {signal: life.signal, isCurrent: () => true});
+  const outcome = start.then(() => 'started', (error: Error) => error.message);
+  // The deadline arms once the start reaches its session request; let that happen, then pass 20 s.
+  for (let step = 0; step < 10; step++) { for (let spin = 0; spin < 20; spin++) await new Promise(setImmediate); f.clock.advance?.(2500); }
+  assert.equal(await outcome, 'playback_start_timeout');
+  assert.equal(f.runtime.getSnapshot().session, undefined, 'the stalled start is retired, nothing half-started is left');
+});

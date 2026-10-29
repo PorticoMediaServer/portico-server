@@ -106,3 +106,10 @@ test('quiet retry of an unreadable new title cannot resurrect the previous title
 });
 // B-16.10: a stream of a kind newer than this app (an attachment, a data track) costs only that stream.
 test('a stream this app cannot read is left out and the offer stays usable',async()=>{const d=data();d.sources[0].streams.push({index:7,type:'attachment',codec:'ttf',default:false,forced:false,enabled:false,reason:'track_selection_unavailable'});const s=service(async()=>d);await s.select(q);assert.equal(s.getSnapshot().phase,'ready');assert.deepEqual(s.getSnapshot().data!.sources[0].streams.map(x=>x.index),[1]);s.dispose();});
+
+test('P2-74 E-web-14: a player that only knows the item takes the library the answer names; a known library still must match',async()=>{
+ const s=service(async()=>data());await s.select({itemId:'item',sessionId:'session'});
+ assert.equal(s.getSnapshot().phase,'ready');assert.equal(s.getSnapshot().data?.scope.libraryId,'library');s.dispose();
+ const wrong=service(async()=>data());await wrong.select({...q,libraryId:'another'});assert.equal(wrong.getSnapshot().phase,'error','a known library is still checked');wrong.dispose();
+ const bad=service(async()=>{const d=data();d.scope.libraryId='';return d;});await bad.select({itemId:'item',sessionId:'session'});assert.equal(bad.getSnapshot().phase,'error','an answer without a valid library is refused');bad.dispose();
+});

@@ -24,3 +24,14 @@ export function itemSubject(raw: ItemResponse): PlaybackSubject {
   };
   return {kind: raw.kind === 'song' ? 'music' : raw.kind === 'audiobook_file' ? 'audiobook' : 'video', item};
 }
+
+/** A queue entry's own facts, for audio only: what the dock names while the item's facts are
+ * unavailable. Video waits for its item (its screen needs more than a title). */
+export function queueEntrySubject(entry: Readonly<{itemId: string; kind: string; title: string; album?: string; artist?: string}>): PlaybackSubject | undefined {
+  // A queue names a song a "track".
+  const music = entry.kind === 'track' || entry.kind === 'song';
+  if ((!music && entry.kind !== 'audiobook_file') || !entry.itemId || !entry.title) return undefined;
+  const item: CardSubject = {id: entry.itemId, kind: music ? 'song' : 'audiobook_file', title: entry.title, ...(entry.album ? {album: entry.album} : {}),
+    ...(entry.artist ? {artist: entry.artist} : {})};
+  return {kind: music ? 'music' : 'audiobook', item};
+}

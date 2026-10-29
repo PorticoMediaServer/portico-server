@@ -385,11 +385,26 @@ function CommittedLibrary({captured, library, search, readingMarkAll, frame, res
   const navigate = (value: LibraryScreenSearch, id = library.id) => {if (resources.life.current() && context.isCurrent()) void router.navigate({to: '/library/$libraryId', params: {libraryId: id}, search: value}).catch(context.effects.reportError);};
   const actions = (entry: ContentEntry, witness = () => !browse || resources.controller.contains(entry)) => {
     const current = () => resources.life.current() && witness();
-    return {onOpen: () => {if (current()) context.effects.openEntry(entry);},
-      onPlay: entry.playback && entry.libraryId && entry.available !== false && !entry.missing ? () => {
-        if (!current()) return;
-        void context.effects.play({libraryId: entry.libraryId!, itemId: entry.playback!.itemId, startSeconds: entry.playback!.startSeconds ?? 0}, resources.life.signal(), current).catch(context.effects.reportError);
-      } : undefined};
+    /** P2-74 E-web-02: a press that crossed a re-read of the list (a stale selection query
+     * re-browses it) waits once for the fresh list and acts on the same title there; if the title
+     * is gone it says so. It never does nothing. */
+    const act = (run: (target: ContentEntry, isCurrent: () => boolean) => void | Promise<unknown>) => {
+      if (!resources.life.current()) return;
+      if (current()) {void Promise.resolve(run(entry, current)).catch(context.effects.reportError); return;}
+      if (!browse) return;
+      void (async () => {
+        const controller = resources.controller;
+        await controller.settled(resources.life.signal(), 5000);
+        const fresh = controller.resident(entry);
+        if (!resources.life.current()) return;
+        if (!fresh) throw Object.assign(new Error('library_entry_changed'), {code: 'operation_unavailable'});
+        await run(fresh, () => resources.life.current() && controller.contains(fresh));
+      })().catch(context.effects.reportError);
+    };
+    return {onOpen: () => act(target => context.effects.openEntry(target)),
+      onPlay: entry.playback && entry.libraryId && entry.available !== false && !entry.missing ? () => act((target, isCurrent) => target.playback
+        ? context.effects.play({libraryId: target.libraryId!, itemId: target.playback.itemId, startSeconds: target.playback.startSeconds ?? 0}, resources.life.signal(), isCurrent)
+        : Promise.reject(Object.assign(new Error('library_entry_changed'), {code: 'operation_unavailable'}))) : undefined};
   };
   const discoveryActions = (section: ContentSection, entry: ContentEntry) => {
     const projection = resources.service.getSnapshot().projection, seed = entry.radioSeed, playRadio = context.effects.playRadio;
@@ -527,7 +542,7 @@ function LibraryRouteScreen() {
   const guard = useLibraryRouteGuard(protectedContext?.context, opening, () => router.state.location === opening, {libraryId}, error => protectedContext?.binding.home.effects.reportError(error));
   const context = useGuardedLibraryContext(protectedContext?.context, guard);
   const captured = protectedContext && context ? {...protectedContext, context} : undefined;
-  useShellFacts(captured?.context);
+  const facts = useShellFacts(captured?.context);
   const search = parseLibraryScreenSearch(useSearch({from: '/library/$libraryId'}));
   const destination = useMusicLibrarySummary(captured, libraryId, search.section === 'mixes');
   const routeLibrary = useRouteLibrary(captured?.context, libraryId);
@@ -537,6 +552,10 @@ function LibraryRouteScreen() {
     primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: destination.retry}}/>;
   return !captured?.context.isCurrent() ? null : library ? isReadingLibrary(library.kind) ? <ReadingLibrary key={`${libraryId}:${readingGeneration}`} captured={captured} library={library} search={search} onMarked={() => setReadingGeneration(value => value + 1)}/>
     : <BoundLibrary key={libraryId} captured={captured} library={library} search={search} musicLookup={search.section === 'mixes' ? destination : undefined}/>
-    : <StateView title={t('next.states.notFound')} body={t('next.states.notFoundBody')}/>;
+    // P2-74 E-web-16: a library directory that did not answer (a 503) is not a missing library.
+    // It is the library's retry state, laid out as every page state on the standard backdrop.
+    : facts?.identity.librariesUnavailable ? <StateView variant="page" title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
+      primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => {if (captured.context.isCurrent()) captured.context.retryLibraries?.();}}}/>
+    : <StateView variant="page" title={t('next.states.notFound')} body={t('next.states.notFoundBody')}/>;
 }
 export default defineWebScreen({id: 'library', component: LibraryRouteScreen, validateSearch: parseLibraryScreenSearch});
