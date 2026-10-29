@@ -76,6 +76,29 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz'|
     return format==='pdf'&&preferences.pdfView==='automatic'&&zoom?.kind!=='fit'?{...layout,fit:layout.spread?'spread' as const:'page' as const}:layout;
   };
   const clean=()=>{for(const fn of cleanup.splice(0))fn();};
+  // motion.html 5.1: a tap or key turn slides the outgoing and incoming spreads together (slow 320,
+  // out); reduced motion cross-fades them in 160 ms. The outgoing surfaces are released only when the
+  // slide ends, and a new turn first finishes the running one. Zoom, resize and continuous scrolling
+  // keep the immediate swap.
+  let turning:{finish:()=>void;defer:(fn:()=>void)=>void}|undefined;
+  const reducedMotion=()=>{try{return matchMedia('(prefers-reduced-motion: reduce)').matches||document.documentElement.dataset.reduceMotion==='true';}catch{return true;}};
+  const swap=(next:HTMLDivElement,releases:(()=>void)[],turn:number)=>{
+    turning?.finish();
+    const previous=turn?host.firstElementChild as HTMLElement|null:null;
+    if(!previous||typeof next.animate!=='function'||typeof previous.animate!=='function'){clean();cleanup=releases;host.replaceChildren(next);return;}
+    const outgoing=cleanup.splice(0);cleanup=releases;
+    const from=previous.getBoundingClientRect(),box=host.getBoundingClientRect();
+    Object.assign(previous.style,{position:'absolute',left:`${from.left-box.left+host.scrollLeft}px`,top:`${from.top-box.top+host.scrollTop}px`,margin:'0',pointerEvents:'none'});
+    host.append(next);
+    const reduce=reducedMotion(),width=host.clientWidth||box.width;
+    const timing={duration:reduce?160:320,easing:reduce?'linear':'cubic-bezier(.2,.8,.2,1)'};
+    const leaving=previous.animate(reduce?[{opacity:1},{opacity:0}]:[{transform:'none'},{transform:`translateX(${-turn*width}px)`}],timing);
+    const arriving=next.animate(reduce?[{opacity:0},{opacity:1}]:[{transform:`translateX(${turn*width}px)`},{transform:'none'}],timing);
+    let done=false;
+    const handle={finish:()=>{if(done)return;done=true;leaving.cancel();arriving.cancel();previous.remove();for(const fn of outgoing)fn();if(turning===handle)turning=undefined;},defer:(fn:()=>void)=>{if(done)fn();else outgoing.push(fn);}};
+    turning=handle;arriving.onfinish=handle.finish;
+  };
+  const turnFrom=(at:number,vertical:boolean)=>vertical||at===page||!host.firstElementChild?0:Math.sign(at-page)*(direction()==='rtl'?-1:1);
   async function render(at:number,taskSignal:AbortSignal,anchorOffset?:number):Promise<void>{
     if(closed)throw new Error('reader_closed');throwIfAborted(taskSignal);
     if(!Number.isInteger(at)||at<0||at>=pageCount)throw new Error('page_invalid');
@@ -124,7 +147,7 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz'|
         }
         if(!(applied>0))throw new Error('page_invalid');
         if(closed||current!==version)throw new DOMException('','AbortError');
-        clean();cleanup=releases;host.replaceChildren(next);foldPanes=panesById;page=at;scale=applied;fittedScale=fittedCurrent;verticalWidth=undefined;pageGeometry=undefined;
+        swap(next,releases,turnFrom(at,false));foldPanes=panesById;page=at;scale=applied;fittedScale=fittedCurrent;verticalWidth=undefined;pageGeometry=undefined;
       }else{
       const width=vertical?(verticalWidth??surfaces[visualPages.indexOf(at)].width):surfaces.reduce((sum,s)=>sum+s.width,0),height=vertical?surfaces.reduce((sum,s)=>sum+s.height*width/s.width,0):Math.max(...surfaces.map(s=>s.height));
       const currentSurface=surfaces[visualPages.indexOf(at)],fitHeight=vertical?currentSurface.height*width/currentSurface.width:height;
@@ -138,11 +161,11 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz'|
         releases.push(await surface.mount(target,renderScale,operation));throwIfAborted(operation);
       }
       if(closed||current!==version)throw new DOMException('','AbortError');
-      clean();cleanup=releases;host.replaceChildren(next);foldPanes=undefined;page=at;scale=requested;fittedScale=fitted;if(vertical)verticalWidth=width;
+      swap(next,releases,turnFrom(at,vertical));foldPanes=undefined;page=at;scale=requested;fittedScale=fitted;if(vertical)verticalWidth=width;
       pageGeometry=!vertical&&surfaces.length===1?{page:at,width:surfaces[0].width,height:surfaces[0].height,scale:requested,fittedScale:fitted}:undefined;
       }
       for(const [index,surface]of created)surfacesByPage.set(index,surface);
-      for(const [index,surface]of surfacesByPage)if(!visualPages.includes(index)){surface.dispose();surfacesByPage.delete(index);}
+      for(const [index,surface]of surfacesByPage)if(!visualPages.includes(index)){const owner=turning;surfacesByPage.delete(index);if(owner)owner.defer(()=>surface.dispose());else surface.dispose();}
       if(foldPanes){for(const {clip} of foldPanes.values()){clip.scrollLeft=0;clip.scrollTop=0;}}
       else{host.scrollLeft=direction()==='rtl'?host.scrollWidth-host.clientWidth:0;host.scrollTop=vertical?(next.querySelector<HTMLElement>(`[data-reader-page="${at}"]`)!.offsetTop+(anchorOffset??0)):0;}
       location=locate();options.onLocation(location);
@@ -219,7 +242,7 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz'|
     getZoom(){return {scale,...zoom?.kind==='scale'?{}:{fit:plan().fit}};},
     canTurnAtFit(){return zoom?.kind!=='scale'||Math.abs(scale-fittedScale)<=1e-6;},
     async pan(position,taskSignal){throwIfAborted(taskSignal);if(closed||!Number.isFinite(position.x)||!Number.isFinite(position.y))throw new Error('pan_invalid');scrollTo(position.x,position.y,page);publishViewport();},
-    dispose(){if(closed)return;closed=true;version++;clearTap();if(viewportFrame!==undefined){cancelAnimationFrame(viewportFrame);viewportFrame=undefined;}pending?.abort();lifetime.abort();scope.dispose();clean();for(const surface of surfacesByPage.values())surface.dispose();surfacesByPage.clear();paneStyle.remove();host.remove();}
+    dispose(){if(closed)return;closed=true;version++;turning?.finish();clearTap();if(viewportFrame!==undefined){cancelAnimationFrame(viewportFrame);viewportFrame=undefined;}pending?.abort();lifetime.abort();scope.dispose();clean();for(const surface of surfacesByPage.values())surface.dispose();surfacesByPage.clear();paneStyle.remove();host.remove();}
   };
   const onScroll=()=>{
     clearTap();if(closed||rendering||scrolling)return;options.onSurfaceInput?.({kind:'activity'});scheduleViewport();

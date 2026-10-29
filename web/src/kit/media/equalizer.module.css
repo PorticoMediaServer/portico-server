@@ -108,3 +108,4 @@
 .equalizer[data-layout=tv] .up { transform:translateY(calc(-100% - 32px)); }
 .equalizer[data-layout=tv] .down { transform:translateY(32px); }
 @media (prefers-reduced-motion:reduce) { .equalizer * { transition:none!important; } }
+:global([data-reduce-motion="true"]) .equalizer * { transition:none!important; }

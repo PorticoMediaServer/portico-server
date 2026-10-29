@@ -10,6 +10,7 @@
 .speeds.speeds > button:hover { color: var(--color-text); background: color-mix(in srgb, var(--color-text) 6%, transparent); }
 .speeds.speeds > button[data-state='checked'] { background: var(--color-text); color: var(--color-ink); }
 @media (prefers-reduced-motion: reduce) { .speeds.speeds > button { transition: none; } }
+:global([data-reduce-motion='true']) .speeds.speeds > button { transition: none; }
 .row { width: 100%; display: flex; align-items: center; gap: 12px; min-height: 42px; padding: 6px 12px; border: 0; border-radius: 10px; text-align: left; font: inherit; font-size: var(--type-body-size); font-weight: var(--type-body-strong-weight); color: var(--color-text-secondary); background: transparent; cursor: pointer; }
 .row > span { flex: 1; min-width: 0; }
 .row small { display: block; margin-top: 1px; font-size: calc(var(--type-caption-size) * 25 / 26); font-weight: var(--type-micro-weight); color: var(--color-text-tertiary); }
@@ -82,3 +83,11 @@
 .landscapeHeader { padding: 14px 48px 8px 18px; }
 @media (pointer: coarse) { .timingStep button { min-width: 44px; min-height: 44px; } }
 @media (prefers-reduced-transparency: reduce) { .landscapeOptions.landscapeOptions[data-placement='right'] { background: var(--color-raised); backdrop-filter: none; } }
+
+/* motion.html 3.7-3.9: the panel arrives with a fade and a 8px rise over standard 180 (out);
+   reduced motion keeps the fade. Its exit is still immediate: the panel is unmounted by its owner. */
+.options { animation: options-arrive var(--motion-standard) var(--ease-out) both; }
+@keyframes options-arrive { from { opacity: 0; transform: translateY(8px); } }
+@media (prefers-reduced-motion: reduce) { .options { animation: options-arrive-fade var(--motion-reduced) linear both; } }
+:global([data-reduce-motion='true']) .options { animation: options-arrive-fade var(--motion-reduced) linear both; }
+@keyframes options-arrive-fade { from { opacity: 0; } }

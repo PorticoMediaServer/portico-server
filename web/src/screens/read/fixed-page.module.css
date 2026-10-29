@@ -1,5 +1,5 @@
 /* desktop-read 9/10: the file's own pages above the reader's progress line. */
-.strip { display: flex; align-items: flex-end; gap: 8px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; }
+.strip { display: flex; align-items: flex-end; gap: 8px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; padding-block: 8px; margin-block: -8px; }
 .page { position: relative; flex: none; width: 62px; padding: 0; border-radius: 6px; overflow: hidden; background: color-mix(in srgb, var(--color-text) 8%, transparent);
   box-shadow: 0 1px 0 color-mix(in srgb, var(--color-text) 12%, transparent); opacity: .72; transition: opacity 140ms var(--ease-out), box-shadow 140ms var(--ease-out); }
 .page:hover { opacity: 1; }
@@ -39,7 +39,7 @@
 .panelWindow .page.large img { height: 100%; object-fit: contain; }
 
 /* Comic footer: the real page window is grouped into the same spreads as the renderer. */
-.comicStrip { display: flex; align-items: flex-end; gap: 14px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; padding: 4px; }
+.comicStrip { display: flex; align-items: flex-end; gap: 14px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; padding: 8px; margin: -4px; }
 .comicStrip > :first-child { margin-inline-start: auto; }
 .comicStrip > :last-child { margin-inline-end: auto; }
 .comicStrip .spread { display: flex; align-items: flex-end; flex: none; gap: 2px; padding: 3px; border-radius: 6px; background: transparent; opacity: .72; transition: opacity 160ms var(--ease-out); }

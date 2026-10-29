@@ -12,6 +12,7 @@ import {dispatchWatch, watchClock, watchIsPortrait, watchSeek, watchSeekBounds, 
 import {settledPlaybackChanged, settledPlaybackKey, type SettledPlayback} from './screen-state';
 import type {WatchPanel, WatchRect, WatchScreenProps} from './types';
 import {revealVideoControlsOnTab, videoControlsMayHide} from './video-controls-focus';
+import {useReducedMotion} from '../../kit/overlays/shared';
 import styles from './watch.module.css';
 import {PlaybackWaiting} from '../../kit/states/PlaybackWaiting';
 import {fenceKey} from '../../shell/playback-model';
@@ -48,6 +49,14 @@ function Control({icon, label, action, disabled, main, skip, large, buttonRef, a
   </button>;
 }
 
+/** The "Ends 4:48 PM" clock formatter, one per locale rather than one per progress tick. */
+const endClocks = new Map<string, Intl.DateTimeFormat>();
+const endClock = (locale: string) => {
+  let format = endClocks.get(locale);
+  if (!format) { format = new Intl.DateTimeFormat(locale, {hour: 'numeric', minute: '2-digit'}); endClocks.set(locale, format); }
+  return format;
+};
+
 /** Only drawn controls and geometry targets. The parent's MediaSurface remains its sole video. */
 export function WatchScreen({binding, snapshot, expanded, onCollapse, onControlsVisibleChange, publishDockPanels, dockPanelsCurrent, subscribeDockPanels, surfaceSlotRef, surfaces, live, windowPort, geometry, videoGesture}: WatchScreenProps) {
   const size = useSyncExternalStore(subscribeWindow, windowSize, serverSize).split(':').map(Number), width = size[0]!, height = size[1]!;
@@ -61,9 +70,13 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   const bodyScroll = useRef<{identity?: string; top: number; left: number; anchor?: HTMLElement; offset?: number}>({top: 0, left: 0});
   const [panel, setPanel] = useState<WatchPanel | null>(null), [more, setMore] = useState(false), [shortcuts, setShortcuts] = useState(false), [visible, setVisible] = useState(true), [fullWindow, setFullWindow] = useState(false), [liveGuideOpen, setLiveGuideOpen] = useState(false);
   const [controlsExit, setControlsExit] = useState<'idle' | 'tap'>('idle');
+  // motion.html 3.5/3.6: the controls arrive after the picture lands and leave (quick 120) as it starts to go.
+  const [landing, setLanding] = useState(false), [leaving, setLeaving] = useState(false);
+  const reducedMotion = useReducedMotion();
   type Scrub = {snapshot: WatchScreenProps['snapshot']; fence: PlaybackFence; seconds: number; pointerId: number};
   const [scrub, setScrub] = useState<Scrub | null>(null), [hoverSeconds, setHoverSeconds] = useState<number | null>(null);
   const scrubDrag = useRef<Scrub | null>(null);
+  const liveDrag = useRef(false);
   const [pictureInput] = useState(() => new WatchPictureInput());
   const pointerKind = useRef('mouse');
   const [tapFeedback, setTapFeedback] = useState<{direction: 'left' | 'right'; seconds: number; x: number; y: number; sequence: number} | null>(null);
@@ -89,8 +102,19 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   const externalPanel = surfaces?.playOn?.active === true;
   // Playback info f1: the film keeps playing with no player controls under the panel.
   const infoHidesChrome = panel === 'info' && !mobile;
-  const chromeVisible = (visible || permanent || liveGuideOpen) && !infoHidesChrome;
   const open = expanded && valid && presentation.kind === 'video' && snapshot.dock.remote?.phase !== 'playing';
+  const chromeVisible = (visible || permanent || liveGuideOpen) && !infoHidesChrome && !landing && !leaving;
+  const openedBefore = useRef(open), leavingNow = useRef(false); leavingNow.current = leaving;
+  const gesturePreview = !!videoGesture?.preview;
+  useLayoutEffect(() => {
+    if (open === openedBefore.current) return;
+    openedBefore.current = open;
+    // A reopen inside the close fade is a source-change blink, not a new opening: no landing hold.
+    if (open) { const blink = leavingNow.current; setLeaving(false); if (!blink && !gesturePreview) setLanding(true); }
+    else { setLanding(false); setLeaving(true); }
+  }, [open, gesturePreview]);
+  useEffect(() => { if (!landing) return; const timer = setTimeout(() => setLanding(false), reducedMotion ? 160 : 400); return () => clearTimeout(timer); }, [landing, reducedMotion]);
+  useEffect(() => { if (!leaving) return; const timer = setTimeout(() => setLeaving(false), reducedMotion ? 160 : 120); return () => clearTimeout(timer); }, [leaving, reducedMotion]);
   useLayoutEffect(() => {
     const element = body.current;
     if (!element) return;
@@ -116,7 +140,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   const clearTimer = useCallback(() => { if (timer.current !== undefined) clearTimeout(timer.current); timer.current = undefined; }, []);
   const revealFor = useCallback((milliseconds: number) => {
     clearTimer(); setVisible(true);
-    if (!open || permanent || panel || externalPanel || more || shortcuts || liveGuideOpen || scrubDrag.current || !presentation?.playing) return;
+    if (!open || permanent || panel || externalPanel || more || shortcuts || liveGuideOpen || scrubDrag.current || liveDrag.current || !presentation?.playing) return;
     timer.current = setTimeout(() => {
       if (!videoControlsMayHide(chrome.current, document.activeElement)) return;
       if (chrome.current?.contains(document.activeElement) && document.activeElement instanceof HTMLElement) document.activeElement.blur();
@@ -258,7 +282,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   const trickplay = surfaces?.trickplay;
   const preview = open && chromeVisible && !panel && !more && !shortcuts ? watchPreviewFrame(snapshot, trickplay, previewSeconds) : null;
   const endsAt = presentation?.playing && duration > position && presentation.rate > 0
-    ? new Intl.DateTimeFormat(binding.environment.locale ?? 'en-US', {hour: 'numeric', minute: '2-digit'}).format(new Date(Date.now() + (duration - position) / presentation.rate * 1000)) : undefined;
+    ? endClock(binding.environment.locale ?? 'en-US').format(new Date(Date.now() + (duration - position) / presentation.rate * 1000)) : undefined;
   const mainKind = presentation?.finished ? 'replay' : presentation?.playing ? 'pause' : 'play';
   const episode = identity?.subtitle.some(part => part.id === 'episode-label');
   // desktop-player f1: Previous and Next follow the queue and name the title they would play.
@@ -331,7 +355,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   const promptHost = useMemo<PromptFocusHost | undefined>(() => promptSource ? {...promptSource, source: promptSource, seekPresent,
     controlsVisible: chromeVisible, focusAllowed: promptFocusAllowed} : undefined,
   [promptSource, seekPresent, chromeVisible, promptFocusAllowed]);
-  return <div ref={attachRoot} className={styles.watch} hidden={!open && !videoGesture?.preview} inert={!open || undefined} aria-hidden={!open || undefined} data-video-preview={!open && videoGesture?.preview || undefined} tabIndex={-1} data-watch-screen data-mode={mode} data-still-watching={stillWatching || undefined} data-touch-expanded={coarsePointer && width >= 1024 || undefined} data-controls-visible={chromeVisible} data-controls-exit={controlsExit} data-panel-open={!!panel} data-scrubbing={!!activeScrub && mobile}
+  return <div ref={attachRoot} className={styles.watch} hidden={!open && !leaving && !videoGesture?.preview} inert={!open || undefined} aria-hidden={!open || undefined} data-video-preview={!open && videoGesture?.preview || undefined} tabIndex={-1} data-watch-screen data-mode={mode} data-still-watching={stillWatching || undefined} data-touch-expanded={coarsePointer && width >= 1024 || undefined} data-controls-visible={chromeVisible} data-controls-exit={leaving ? 'close' : controlsExit} data-panel-open={!!panel} data-scrubbing={!!activeScrub && mobile}
     onBlurCapture={event => {if (!chrome.current?.contains(event.relatedTarget as Node | null)) reveal();}}
     onPointerMove={event => { if (event.pointerType === 'mouse') reveal(); }} onFocusCapture={reveal}>
     <div ref={surfaceSlotRef} className={styles.pictureSlot} style={rectStyle(geometry?.picture)} data-watch-picture-slot data-media-slot="expanded" aria-hidden="true" />
@@ -390,11 +414,12 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
         <Icon name={tapFeedback.direction === 'left' ? 'i-back' : 'i-fwd'} size={40} />
         <span>{t('duration.long.seconds', {seconds: tapFeedback.seconds})}</span>
       </div>}
-      {liveChrome ? open && <div className={styles.liveOverlay} data-visible={chromeVisible} inert={!chromeVisible || videoGesture?.active || undefined}>
+      {liveChrome ? (open || leaving) && <div className={styles.liveOverlay} data-visible={chromeVisible} inert={!chromeVisible || videoGesture?.active || undefined}>
         <LiveChrome port={liveChrome} playing={!!presentation?.playing} onCollapse={onCollapse} onStop={() => send({kind: 'stop'})}
           onPlayPause={() => send({kind: mainKind})} onSkip={skip} onSeek={seconds => {if (can('seek')) send({kind: 'seek', seconds});}}
           onMore={anchor => {moreAnchor.current = anchor;setPanel(null);setMore(value => !value);}}
-          right={liveRight} onMiniGuideOpenChange={setLiveGuideOpen} canPlayPause={can(mainKind)} canSeek={can('seek')} reportError={binding.reportError}/>
+          right={liveRight} onMiniGuideOpenChange={setLiveGuideOpen}
+          onDragChange={dragging => {liveDrag.current = dragging; if (dragging) {clearTimer(); setVisible(true);} else reveal();}} canPlayPause={can(mainKind)} canSeek={can('seek')} reportError={binding.reportError}/>
       </div> : <>
         <div className={styles.shade} />
         {endCard?.backdrop && <><div className={styles.endAmbient} aria-hidden="true"><Artwork source={endCard.backdrop} alt="" width="100%" height="100%" /></div><div className={styles.endVeil} aria-hidden="true" /></>}

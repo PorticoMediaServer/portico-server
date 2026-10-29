@@ -6,6 +6,7 @@ import {devicePlatform} from '@core/server-admin/people-words.ts';
 import {Button} from '../../kit/controls';
 import {Icon} from '../../kit/Icon';
 import {Dialog} from '../../kit/overlays/Dialog';
+import {useRetained} from '../../kit/overlays';
 import {SettingsGroup} from '../../kit/settings';
 import {SettingsRow} from '../../kit/shell/SettingsSurfaces';
 import {profileDeviceIcon} from './account-profile/device-icon';
@@ -47,6 +48,7 @@ function PeopleDevicesView({source, isCurrent, canSignOut, onError}: PeopleDevic
   };
   const reload = (more = false) => {void source.load(more).catch(error => {if (alive.current && mountedSource.current === source && isCurrent()) onError(error);});};
   const opening = target?.source === source && active.current === target ? target : undefined;
+  const shownOpening = useRetained(opening);
   return <SettingsGroup plain>
     {state.loading && !state.loaded ? <p role="status">{t('next.settings.loading')}</p> : null}
     {state.error ? <div role="alert"><p>{t('next.states.pageFailedBody')}</p><Button size="small" disabled={state.loading || state.busy} onClick={() => reload()}>{t('action.tryAgain')}</Button></div> : null}
@@ -58,9 +60,9 @@ function PeopleDevicesView({source, isCurrent, canSignOut, onError}: PeopleDevic
     </li>)}</ul>
     {state.nextCursor && <Button size="small" loading={state.loading} disabled={state.busy} onClick={() => reload(true)}>{t('next.settings.loadMore')}</Button>}
     <SettingsRow label={t(allRow.label)}><Button size="small" disabled={!canSignOut || !state.loaded || state.loading || state.busy} onClick={event => ask(event.currentTarget)}>{t(allRow.control.label!)}</Button></SettingsRow>
-    {opening && <Dialog open size="sm" title={opening.device ? t('confirm.signOutDevice.title', {device: opening.device.name}) : t(allRow.label)}
-      description={t(opening.device ? devicesRow.control.itemAction!.confirm! : allRow.control.confirm!)} returnFocusRef={trigger}
+    {shownOpening && <Dialog open={!!opening} size="sm" title={shownOpening.device ? t('confirm.signOutDevice.title', {device: shownOpening.device.name}) : t(allRow.label)}
+      description={t(shownOpening.device ? devicesRow.control.itemAction!.confirm! : allRow.control.confirm!)} returnFocusRef={trigger}
       onOpenChange={open => {if (!open) close();}} dismissOnOutsidePress={!state.busy} dismissOnBack={!state.busy} showCloseButton={!state.busy}
-      footer={<><Button size="small" disabled={state.busy} onClick={close}>{t('action.cancel')}</Button><Button size="small" variant="primary" loading={state.busy} onClick={() => void confirm()}>{t(opening.device ? devicesRow.control.itemAction!.label : allRow.control.label!)}</Button></>}>{null}</Dialog>}
+      footer={<><Button size="small" disabled={state.busy} onClick={close}>{t('action.cancel')}</Button><Button size="small" variant="primary" loading={state.busy} onClick={() => void confirm()}>{t(shownOpening.device ? devicesRow.control.itemAction!.label : allRow.control.label!)}</Button></>}>{null}</Dialog>}
   </SettingsGroup>;
 }

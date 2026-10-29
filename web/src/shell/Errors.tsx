@@ -29,7 +29,7 @@ function describeCrash(error: unknown): CrashDetails {
   const version = import.meta.env.VITE_APP_VERSION;
   const message = error instanceof Error ? error.message : typeof error === 'string' ? error : '';
   return Object.freeze({
-    when: new Date().toLocaleString(),
+    when: defaultI18n.dateTime(new Date()),
     app: version ? t('next.states.appVersion', {version}) : t('next.states.appUnversioned'),
     browser: browserLabel(),
     where: window.location.pathname + window.location.search,

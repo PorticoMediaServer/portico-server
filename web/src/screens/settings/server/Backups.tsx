@@ -4,6 +4,7 @@ import {backupProgressFraction, type BackupSummary} from '@core/administration.t
 import type {LibraryContentApi} from '@core/library-content.ts';
 import {Button} from '../../../kit/controls';
 import {Dialog} from '../../../kit/overlays/Dialog';
+import {useRetained} from '../../../kit/overlays';
 import {BackupConfirmationDialog, BackupList, BackupPassphraseDialog, ServerFolderPicker, SettingsAction} from '../../../kit/settings';
 import type {SettingsBackupSource, SettingsRestoreSelection} from '../backup-source';
 import {isAuthenticationFailure} from '@core/backups.ts';
@@ -77,6 +78,7 @@ export function StorageBackups(props: BackupSurfaceProps) {
   const [protectedBackup, setProtectedBackup] = useState<ProtectedSelection>();
   const confirmation = confirm?.view === view && view.active && view.confirmation === confirm ? confirm : undefined;
   const protectedCurrent = protectedBackup && view.active && view.protected === protectedBackup ? protectedBackup : undefined;
+  const retainedConfirmation = useRetained(confirmation);
   const closeConfirmation = () => {if (view.confirmation === confirm) view.confirmation = undefined;setConfirm(undefined);};
   const closeProtected = () => {if (protectedCurrent) {protectedCurrent.controller.abort();props.source.cancelRestoreSelection(protectedCurrent.selection);view.protected = undefined;}setProtectedBackup(undefined);};
   const submit = async (backup: BackupSummary, signal: AbortSignal) => {
@@ -104,7 +106,7 @@ export function StorageBackups(props: BackupSurfaceProps) {
     <BackupList backups={document.backups} busy={state.busy || !!document.running || !!document.restore && !document.restore.errorCode} scopeKey={props.scopeKey}
       isCurrent={props.isCurrent} subscribeAuthority={props.subscribe} format={defaultI18n}
       requestRestore={backup => open('restore', backup)} requestDelete={backup => open('delete', backup)} />
-    {confirmation && <BackupConfirmationDialog open mode={confirmation.mode} backup={confirmation.backup} scopeKey={props.scopeKey} isCurrent={props.isCurrent}
+    {retainedConfirmation && <BackupConfirmationDialog open={!!confirmation} mode={retainedConfirmation.mode} backup={retainedConfirmation.backup} scopeKey={props.scopeKey} isCurrent={props.isCurrent}
       subscribeAuthority={props.subscribe} format={defaultI18n} submit={submit} onClose={closeConfirmation} onFailure={error => {closeConfirmation();if (isAuthenticationFailure(error)) props.reportError(error);}} />}
     <BackupPassphraseDialog open={!!protectedCurrent} mode="restore" scopeKey={props.scopeKey} isCurrent={props.isCurrent} subscribeAuthority={props.subscribe}
       submit={openPassphrase} onDone={closeProtected} onFailure={() => {if (!props.source.getSnapshot().settings) props.reportError(new Error('backup_scope_ended'));}} onClose={closeProtected} />

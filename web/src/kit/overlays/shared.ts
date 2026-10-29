@@ -141,6 +141,13 @@ export function usePresence(open: boolean, milliseconds: number) {
   return open || held;
 }
 
+/** The last non-null value, so a surface can keep its content on screen while it plays its exit. */
+export function useRetained<T>(value: T | null | undefined): T | undefined {
+  const last = useRef<T | undefined>(undefined);
+  if (value !== null && value !== undefined) last.current = value;
+  return last.current;
+}
+
 /** Cancel and retarget from the painted value, including a reversal during entry. */
 export function useSurfaceMotion(open: boolean, kind: 'dialog' | 'menu' | 'panel' | 'fade' | 'toast' | 'banner', exitTransform?: RefObject<string | null>) {
   const [element, setElement] = useState<HTMLElement | null>(null);

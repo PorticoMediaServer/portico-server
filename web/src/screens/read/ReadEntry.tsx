@@ -8,7 +8,7 @@ import {createComicAdapter, createEpubAdapter, createPdfAdapter, createReadingPu
   type ReadingController, type ReadingPublication, type ReaderLocation, type ReaderContentsTarget} from '@portico/reader-core';
 import {useProtectedWebScreenContext} from '../../route-registry-view';
 import {router} from '../../router';
-import {Skeleton, StateView} from '../../kit/states';
+import {StateView} from '../../kit/states';
 import {Button} from '../../kit/controls';
 import {createReadBindings, type ReadBindingContext} from './bindings';
 import {bindReadPreferences} from './preferences';
@@ -93,7 +93,7 @@ export function ReadEntry(props: ReadEntryProps) {
       : location.pathname === '/settings') ? published : undefined;
   const leave = onClose ?? (() => router.history.back());
   return receiver ? <ReadEntryBody key={receiver.key} {...props} receiver={receiver}/>
-    : <div className={styles.loading}><span className={styles.escape}><Button variant="glass" icon="i-left" iconOnly aria-label={t('next.reader.back')} onClick={leave}/></span><Skeleton height="100dvh"/></div>;
+    : <div className={styles.loading} aria-busy="true"><span className={styles.escape}><Button variant="glass" icon="i-left" iconOnly aria-label={t('next.reader.back')} onClick={leave}/></span><span className={styles.loadingRing} aria-hidden="true"/></div>;
 }
 function ReadEntryBody({captured, itemId, sourceId, active = true, onClose, receiver}: ReadEntryProps & {receiver: ReceiverOpening}) {
   const [state, setState] = useState<Readonly<{book?: OpenBook; failed?: boolean}>>({});
@@ -179,5 +179,5 @@ function ReadEntryBody({captured, itemId, sourceId, active = true, onClose, rece
   if (state.failed) return <StateView variant="page" title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
     primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => {if (currentReading()) setRetry(value => value + 1);}}}
     secondary={{id: 'back', label: t('next.reader.back'), onPress: leave}}/>;
-  return <div className={styles.loading}><span className={styles.escape}><Button variant="glass" icon="i-left" iconOnly aria-label={t('next.reader.back')} onClick={leave}/></span><Skeleton height="100dvh"/></div>;
+  return <div className={styles.loading} aria-busy="true"><span className={styles.escape}><Button variant="glass" icon="i-left" iconOnly aria-label={t('next.reader.back')} onClick={leave}/></span><span className={styles.loadingRing} aria-hidden="true"/></div>;
 }

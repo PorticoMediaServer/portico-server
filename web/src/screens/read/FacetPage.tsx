@@ -49,10 +49,10 @@ export function FacetPage({libraryId, field, pivot, request, onSelect}: {
       .catch(() => {if (!operation.signal.aborted && (request.isCurrent?.() ?? true)) setFailed(true);})
       .finally(() => {if (!operation.signal.aborted && (request.isCurrent?.() ?? true)) {pending.current = false; setMore(false);}});
   };
-  if (basis.current?.scope !== scope || basis.current.request !== request) return <Skeleton height={320}/>;
+  if (basis.current?.scope !== scope || basis.current.request !== request) return <Skeleton quiet height={320}/>;
   if (values.length === 0 && (failed || page !== undefined)) return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
     primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => setRetry(value => value + 1)}}/>;
-  if (!page) return <Skeleton height={320}/>;
+  if (!page) return <Skeleton quiet height={320}/>;
   return <div className={styles.facet}>
     {values.map(entry => onSelect ? <button key={entry.value} type="button" className={styles.value} onClick={() => onSelect(entry)}>
       <span className={styles.label}>{entry.label}</span>

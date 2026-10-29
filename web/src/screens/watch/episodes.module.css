@@ -14,7 +14,7 @@
 .track::-webkit-scrollbar { display: none; }
 .ep { width: 316px; flex: none; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .still { position: relative; display: block; aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden; background: var(--color-raised);
-  transition: transform var(--motion-standard) var(--ease-out), box-shadow var(--motion-standard) var(--ease-out); }
+  transition: transform var(--motion-standard) var(--ease-out); }
 .ep:hover .still, .ep:focus-visible .still { transform: scale(1.03); box-shadow: 0 22px 40px -16px color-mix(in srgb, var(--color-shadow) 85%, transparent); }
 .ep:focus-visible { outline: none; }
 .ep:focus-visible .still { outline: 3px solid var(--color-focus); outline-offset: 3px; }
@@ -47,3 +47,13 @@
   .still { transition: none; }
   .ep:hover .still, .ep:focus-visible .still { transform: none; }
 }
+:global([data-reduce-motion='true']) .still { transition: none; }
+:global([data-reduce-motion='true']) .ep:hover .still, :global([data-reduce-motion='true']) .ep:focus-visible .still { transform: none; }
+
+/* motion.html 3.7-3.9: the panel arrives with a fade and a 24px rise over standard 180 (out);
+   reduced motion keeps the fade. Its exit is still immediate: the panel is unmounted by its owner. */
+.drawer { animation: drawer-arrive var(--motion-standard) var(--ease-out) both; }
+@keyframes drawer-arrive { from { opacity: 0; transform: translateY(24px); } }
+@media (prefers-reduced-motion: reduce) { .drawer { animation: drawer-arrive-fade var(--motion-reduced) linear both; } }
+:global([data-reduce-motion='true']) .drawer { animation: drawer-arrive-fade var(--motion-reduced) linear both; }
+@keyframes drawer-arrive-fade { from { opacity: 0; } }

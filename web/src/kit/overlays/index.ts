@@ -8,3 +8,4 @@ export type {OverlayDismissReason, OverlayChange, OverlaySurfaceProps, OverlayCo
 
 export {Tooltip, type TooltipProps} from './Tooltip';
 export {FileInfo, type FileInfoProps, type FileInfoAction} from './FileInfo';
+export {useRetained} from './shared';
