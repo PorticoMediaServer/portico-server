@@ -41,7 +41,6 @@ export function decodeDeviceAuthorizationCreateResponse(input: unknown): types.D
 export function decodeDeviceAuthorizationDecideResponse(input: unknown): types.DeviceAuthorizationDecideResponse { return decode("DeviceAuthorizationDecideResponse", input) as types.DeviceAuthorizationDecideResponse; }
 export function decodeDeviceAuthorizationReviewResponse(input: unknown): types.DeviceAuthorizationReviewResponse { return decode("DeviceAuthorizationReviewResponse", input) as types.DeviceAuthorizationReviewResponse; }
 export function decodeDeviceAuthorizationTokenResponse(input: unknown): types.DeviceAuthorizationTokenResponse { return decode("DeviceAuthorizationTokenResponse", input) as types.DeviceAuthorizationTokenResponse; }
-export function decodeDnsAddressesListResponse(input: unknown): types.DnsAddressesListResponse { return decode("DnsAddressesListResponse", input) as types.DnsAddressesListResponse; }
 export function decodeEmailLinkConfirmResponse(input: unknown): types.EmailLinkConfirmResponse { return decode("EmailLinkConfirmResponse", input) as types.EmailLinkConfirmResponse; }
 export function decodeIdentityAppleNotificationResponse(input: unknown): types.IdentityAppleNotificationResponse { return decode("IdentityAppleNotificationResponse", input) as types.IdentityAppleNotificationResponse; }
 export function decodeIdentityCancelResponse(input: unknown): types.IdentityCancelResponse { return decode("IdentityCancelResponse", input) as types.IdentityCancelResponse; }
@@ -81,8 +80,6 @@ export function decodeServerClaimLookupResponse(input: unknown): types.ServerCla
 export function decodeServerClaimNonceResponse(input: unknown): types.ServerClaimNonceResponse { return decode("ServerClaimNonceResponse", input) as types.ServerClaimNonceResponse; }
 export function decodeServerClaimPendingResponse(input: unknown): types.ServerClaimPendingResponse { return decode("ServerClaimPendingResponse", input) as types.ServerClaimPendingResponse; }
 export function decodeServerClaimResultResponse(input: unknown): types.ServerClaimResultResponse { return decode("ServerClaimResultResponse", input) as types.ServerClaimResultResponse; }
-export function decodeServerDirectRouteIssueResponse(input: unknown): types.ServerDirectRouteIssueResponse { return decode("ServerDirectRouteIssueResponse", input) as types.ServerDirectRouteIssueResponse; }
-export function decodeServerDirectRouteWithdrawResponse(input: unknown): types.ServerDirectRouteWithdrawResponse { return decode("ServerDirectRouteWithdrawResponse", input) as types.ServerDirectRouteWithdrawResponse; }
 export function decodeServerEndpointRegisterResponse(input: unknown): types.ServerEndpointRegisterResponse { return decode("ServerEndpointRegisterResponse", input) as types.ServerEndpointRegisterResponse; }
 export function decodeServerEventResponse(input: unknown): types.ServerEventResponse { return decode("ServerEventResponse", input) as types.ServerEventResponse; }
 export function decodeServerHeartbeatResponse(input: unknown): types.ServerHeartbeatResponse { return decode("ServerHeartbeatResponse", input) as types.ServerHeartbeatResponse; }

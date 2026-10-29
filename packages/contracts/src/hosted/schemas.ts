@@ -2402,59 +2402,6 @@ export const schemas = {
     ],
     "type": "object"
   },
-  "DnsAddressesListRequest": {
-    "properties": {},
-    "required": [],
-    "type": "object"
-  },
-  "DnsAddressesListResponse": {
-    "properties": {
-      "items": {
-        "items": {
-          "properties": {
-            "ipv4": {
-              "type": "string"
-            },
-            "ipv6": {
-              "type": "string"
-            },
-            "label": {
-              "type": "string"
-            },
-            "lanIpv4": {
-              "type": "string"
-            },
-            "lanIpv6": {
-              "type": "string"
-            },
-            "namespace": {
-              "type": "string"
-            },
-            "previousLabel": {
-              "type": "string"
-            },
-            "previousLabelUntil": {
-              "type": "string"
-            },
-            "sequence": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "label",
-            "sequence",
-            "namespace"
-          ],
-          "type": "object"
-        },
-        "type": "array"
-      }
-    },
-    "required": [
-      "items"
-    ],
-    "type": "object"
-  },
   "EmailLinkConfirmRequest": {
     "properties": {
       "token": {
@@ -4448,80 +4395,6 @@ export const schemas = {
     ],
     "type": "object"
   },
-  "ServerDirectRouteIssueRequest": {
-    "properties": {
-      "address": {
-        "type": "string"
-      },
-      "port": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      }
-    },
-    "required": [
-      "address",
-      "port"
-    ],
-    "type": "object"
-  },
-  "ServerDirectRouteIssueResponse": {
-    "properties": {
-      "baseUrl": {
-        "type": "string"
-      },
-      "certificateDnsName": {
-        "type": "string"
-      },
-      "dns01Target": {
-        "type": "string"
-      },
-      "hostname": {
-        "type": "string"
-      },
-      "namespace": {
-        "type": "string"
-      }
-    },
-    "required": [
-      "hostname",
-      "baseUrl",
-      "namespace",
-      "certificateDnsName",
-      "dns01Target"
-    ],
-    "type": "object"
-  },
-  "ServerDirectRouteWithdrawRequest": {
-    "properties": {
-      "family": {
-        "type": "string"
-      }
-    },
-    "required": [
-      "family"
-    ],
-    "type": "object"
-  },
-  "ServerDirectRouteWithdrawResponse": {
-    "properties": {
-      "family": {
-        "type": "string"
-      },
-      "namespace": {
-        "type": "string"
-      },
-      "withdrawn": {
-        "type": "boolean"
-      }
-    },
-    "required": [
-      "family",
-      "namespace",
-      "withdrawn"
-    ],
-    "type": "object"
-  },
   "ServerEndpointRegisterRequest": {
     "properties": {
       "baseUrl": {
@@ -4637,9 +4510,6 @@ export const schemas = {
       },
       "presenceExpiresAt": {
         "format": "date-time",
-        "type": "string"
-      },
-      "routeLabel": {
         "type": "string"
       },
       "signingCertificate": {
@@ -5561,6 +5431,9 @@ export const schemas = {
       "candidates": {
         "items": {
           "properties": {
+            "address": {
+              "type": "string"
+            },
             "baseUrl": {
               "type": "string"
             },
@@ -5570,12 +5443,21 @@ export const schemas = {
             "generation": {
               "type": "string"
             },
+            "insecure": {
+              "type": "boolean"
+            },
+            "port": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
             "quality": {
               "type": "string"
             }
           },
           "required": [
             "baseUrl",
+            "insecure",
             "class"
           ],
           "type": "object"
@@ -5668,6 +5550,12 @@ export const schemas = {
               "type": "string"
             },
             "challengeId": {
+              "type": "string"
+            },
+            "claimGeneration": {
+              "type": "string"
+            },
+            "credentialGeneration": {
               "type": "string"
             },
             "endpointVerified": {
