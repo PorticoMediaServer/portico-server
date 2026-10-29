@@ -40,7 +40,7 @@ async function fixture(t: TestContext) {
     if(path==='/v1/setup'){initializes++;return {serverId:pin.serverId,requestId:draft!.requestId,authMode:'hosted',claimRequired:true,revision:'1'};}
     throw new Error('unexpected setup request '+path);
   }) as HttpLocalApi['request'];
-  const target:SetupTarget={server:{id:pin.serverId,name:'Actual server',version:'1',signIn:'local',move:null,setupRequired:true,hostedConfigured:true,hostedAttached:false, apiLevel: 1},api,pin,draft:store,dispose:()=>{}};
+  const target:SetupTarget={server:{id:pin.serverId,name:'Actual server',version:'1',signIn:'local',move:null,setupRequired:true,hostedConfigured:true,hostedAttached:false, apiLevel: 1, apiVersion: '1.0', apiMajors: [1], capabilities: []},api,pin,draft:store,dispose:()=>{}};
   type Ports=NonNullable<ConstructorParameters<typeof BrowserSetupComposition>[2]>;
   const ports:Ports={sessions:()=>sessions,environment:()=>({storage:sessions.connectionStorage(pin.serverId)}),restore:async()=>({api,session}),remember:rememberNativeSession,
     draft:()=>({...store,assertAvailable:()=>{if(!secure)throw new Error('secure storage required');}}),

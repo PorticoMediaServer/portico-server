@@ -23,7 +23,7 @@ import {AudiobookHost} from './listening/AudiobookHost';
 import {WatchMusicNowPlaying} from './music/NowPlaying';
 import {MusicExpansionSurface, useMusicExpansion} from './music/expansion-owner';
 import {WatchCapacityWait} from './CapacityWait';
-import {WatchStartFailure} from './StartFailure';
+import {WatchStartFailure, WatchStartTimedOut} from './StartFailure';
 import {StartPreparationNotice} from './StartPreparationNotice';
 import type {WatchBindings, WatchSurfaces, WatchGeometry} from './types';
 import type {WatchDockPanelOffer} from './dock-panel-opening';
@@ -34,7 +34,7 @@ import {router} from '../../router';
 import {settingsPlatform} from '../../platform/settings-platform';
 import {feedbackAvailable, subscribeFeedback, openFeedback} from '../account/feedback';
 import {dispatchWatchFeedback, watchFeedbackTarget} from './feedback';
-import {fenceKey, localVideoSurfaceActive, playbackPresentation, PlaybackPresentations, retainedPlaybackNotice} from '../../shell/playback-model';
+import {fenceKey, localVideoSurfaceActive, playbackPresentation, PlaybackPresentations, retainedPlaybackNotice, startingDock} from '../../shell/playback-model';
 import {PlaybackMediaOwner} from '../../shell/playback-media-owner';
 import {useShellWidth} from '../../shell/viewport';
 import {ExpandedPlaybackFocus} from './expanded-focus';
@@ -212,6 +212,7 @@ export function WatchPlayback({binding, context, surfaces, geometry, live}: Watc
   const presentations = useMemo(() => snapshot && binding ? cache.update(snapshot, playbackPresentation(snapshot, binding.environment, binding.artwork, binding.skips)).map(value =>
     snapshot.fence && fenceKey(value.fence) === fenceKey(snapshot.fence) ? {...value, controls: [...new Set([...value.controls,
       ...(castAvailable ? ['play-on' as const] : []), ...listeningControls,...(dockPanels?.panels ?? [])])]} : value) : noPresentations, [snapshot, binding, cache, castAvailable, dockPanels,listeningControls]);
+  const starting = useMemo(() => snapshot?.starting && binding ? startingDock(snapshot.starting, binding.environment, binding.artwork) : undefined, [snapshot?.starting, binding]);
   const dockBinding: DockBinding | undefined = useMemo(() => runtime && binding ? {
     getSnapshot: () => runtime.dock.getSnapshot(), onAction: action => {
       if(!action.remote&&['lyrics','queue','chapters','speed','sleep'].includes(action.kind)){
@@ -390,7 +391,7 @@ export function WatchPlayback({binding, context, surfaces, geometry, live}: Watc
   const videoGesture = useVideoGesture(binding, snapshot, phone && activeVideo && !snapshot?.nativeVideoSurfaceActive
     && !fullscreen && !pipActive && !drawnSurfaces.modal && !remoteState?.remote, videoCurrent, dockSlot, expandedSlot, musicBar);
   return <div ref={host} className={styles.dock} data-phone={phone} data-shell-dock data-watch-playback-host data-music-expanded={!phone && expanded && !remotePlaying && snapshot?.presentation?.kind === 'music' ? 'true' : undefined}>
-    {snapshot && dockBinding && <div ref={musicBar} className={styles.localDock} data-covered={!!remote} data-music-retained={!!musicMotion.scope || undefined} data-video-retained={videoGesture.retain && expanded || undefined} inert={expanded && !remotePlaying || undefined} aria-hidden={expanded && !remotePlaying || undefined}><DockHost state={snapshot.dock} presentations={presentations} binding={dockBinding} layout={phone ? 'phone' : 'desktop'} artSlotRef={dockSlot} videoSurface={!!activeVideo} artworkSurface={!!musicMotion.scope} retainExpandedMusic={!!musicMotion.scope} retainExpandedVideo={videoGesture.retain} videoGesture={videoGesture.port} videoGestureActive={videoGesture.active} />
+    {snapshot && dockBinding && <div ref={musicBar} className={styles.localDock} data-covered={!!remote} data-music-retained={!!musicMotion.scope || undefined} data-video-retained={videoGesture.retain && expanded || undefined} inert={expanded && !remotePlaying || undefined} aria-hidden={expanded && !remotePlaying || undefined}><DockHost state={snapshot.dock} presentations={presentations} binding={dockBinding} layout={phone ? 'phone' : 'desktop'} artSlotRef={dockSlot} videoSurface={!!activeVideo} artworkSurface={!!musicMotion.scope} retainExpandedMusic={!!musicMotion.scope} retainExpandedVideo={videoGesture.retain} videoGesture={videoGesture.port} videoGestureActive={videoGesture.active} starting={starting} />
       {!expanded && !remote && noticeIdentity && <CurrentListeningNotice key={noticeIdentity} snapshot={snapshot} phone={phone}/>}
       <DockNotice notice={currentNotice} nowMs={now} binding={dockBinding} phone={phone} /></div>}
     <MediaSurface gesturePaint={videoGesture.paint} finished={snapshot?.presentation?.finished} expanded={expanded} dockSlot={dockSlot} expandedSlot={expandedSlot} hidden={!activeVideo} nativeRenderActive={snapshot?.nativeVideoSurfaceActive} className={styles.surface}>
@@ -398,6 +399,7 @@ export function WatchPlayback({binding, context, surfaces, geometry, live}: Watc
     </MediaSurface>
     {snapshot?.capacityWait && <WatchCapacityWait wait={snapshot.capacityWait} />}
     {snapshot && <StartPreparationNotice preparation={currentStartPreparation(snapshot, remotePlaying)} />}
+    {binding && snapshot?.startTimedOut && <WatchStartTimedOut timedOut={snapshot.startTimedOut} reportError={binding.reportError}/>}
     {binding && snapshot?.startFailure && <WatchStartFailure failure={snapshot.startFailure} authority={snapshot.authority} context={context} reportError={binding.reportError}/>}
     <MusicExpansionSurface motion={musicMotion}/>
     {binding && snapshot && <WatchMusicNowPlaying context={context} playOn={listeningPlayOn} listening={listening} motion={musicMotion} isCurrent={dockPanelsCurrent} binding={binding} snapshot={snapshot} expanded={expanded && !remotePlaying} onCollapse={collapse} phone={phone} />}

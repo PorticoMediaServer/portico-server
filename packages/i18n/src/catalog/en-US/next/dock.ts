@@ -8,6 +8,7 @@ export const dockMessages = {
   'next.dock.pause': 'Pause',
   'next.dock.replay': 'Replay',
   'next.dock.stop': 'Stop',
+  'next.dock.starting': 'Starting…',
   'next.dock.stopConnecting': 'Stop connecting',
   'next.dock.stopClose': 'Stop and close',
   'next.dock.close': 'Close',

@@ -19,7 +19,7 @@ export const direct = () => ({authority:'local', serverId:'server', canManage:tr
   capabilities:{manageAccount:true,managePeople:true,manageServer:true,manageSignIn:true},
   account:{id:'account',username:'viewer',primaryProfileId:'profile',role:'owner',revision:1,disabled:false,allowedLibraries:[]},
   profiles:[{id:'profile',name:'Evening',primary:true,position:0,art:'mint',revision:1,pinRevision:1,pinRequired:false}]});
-export const system = () => ({id:'server',name:'Study',version:'1',signIn:'local' as const,move:null,setupRequired:false,hostedConfigured:false,hostedAttached:false, apiLevel: 1});
+export const system = () => ({id:'server',name:'Study',version:'1',signIn:'local' as const,move:null,setupRequired:false,hostedConfigured:false,hostedAttached:false, apiLevel: 1, apiVersion: '1.0', apiMajors: [1], capabilities: []});
 export function harness(readonlyAccess=false) {
   const time=clock(), hub=new FreshnessHub(time.env), session={sessionFamilyId:'family',accessToken:'private-test-token',viewer:{serverId:'server',authority:'local',accountId:'account',profileId:'profile',role:'owner'}} as LocalSession;
   let record:unknown=direct(), info=system(), libraries=[{id:'library',name:'Films',kind:'movies'}], guideError:unknown, systemError:unknown, preferenceError:unknown, homeError:unknown, retired=0, permission=0, manifests=0;

@@ -157,3 +157,31 @@ test('desktop paused music punctuates the canonical artist and omits punctuation
     assert.match(html, /Resume music/);
   }
 });
+
+// O-159: the starting dock is the same bar in the connecting look: title, art under a pending
+// ring, "Starting…", Stop only. It never claims playing (no Pause, no progress, no expand).
+test('a starting dock draws the pressed title with a pending ring and only Stop, on desktop and phone', async () => {
+  registerHooks({load(url, context, next) {
+    if (url.endsWith('.module.css')) return {format: 'module', source: 'export default new Proxy({}, {get: (_, key) => String(key)});', shortCircuit: true};
+    if (url.endsWith('.tsx')) return {format: 'module', source: transformTsx(url), shortCircuit: true};
+    return next(url, context);
+  }});
+  const {DockHost} = await import('../../src/kit/dock/DockHost.tsx');
+  const dock = new PlaybackDock(scope);
+  let stopped = 0;
+  const starting = {key: '1', kind: 'video' as const, identity: {id: 'item', kind: 'movie' as const, title: 'The pressed film', subtitle: []}, stop: () => {stopped++;}};
+  for (const layout of ['desktop', 'phone'] as const) {
+    const html = renderToStaticMarkup(createElement(DockHost, {state: dock.getSnapshot(), presentations: [], binding: {getSnapshot: dock.getSnapshot, onAction() {}}, layout, starting}));
+    assert.match(html, /The pressed film/, layout);
+    assert.match(html, /Starting…/, layout);
+    assert.match(html, /data-pending/, layout);
+    assert.match(html, layout === 'phone' ? /aria-label="Stop"/ : />Stop</, layout);
+    assert.doesNotMatch(html, /aria-label="(Pause|Play|Next|Previous|Expand)"/, layout);
+    assert.doesNotMatch(html, /progress|slider/i, layout);
+  }
+  // The real occupant always wins: a starting dock never draws over an actual dock.
+  dock.start(playback('music'));
+  const html = renderToStaticMarkup(createElement(DockHost, {state: dock.getSnapshot(), presentations: [presentation()], binding: {getSnapshot: dock.getSnapshot, onAction() {}}, layout: 'desktop', videoSurface: true, starting}));
+  assert.doesNotMatch(html, /The pressed film/);
+  assert.equal(stopped, 0);
+});

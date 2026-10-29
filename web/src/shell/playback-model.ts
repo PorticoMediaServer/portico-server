@@ -1,6 +1,6 @@
 import {playbackIdentity, type TextEnvironment} from '@core/presentation/kit-model/index.ts';
 import type {WebPlaybackRuntimeSnapshot} from '../platform/playback';
-import type {DockNoticeData, DockPresentation} from '../kit/dock';
+import type {DockNoticeData, DockPresentation, DockStarting} from '../kit/dock';
 import type {ShellArtwork} from './artwork';
 import {playbackFence} from '../../../packages/player-core/src/index.ts';
 
@@ -20,6 +20,13 @@ export function retainedPlaybackNotice<Runtime>(notice: Readonly<{runtime: Runti
   return bookmark && fenceKey(bookmark.fence) === key && presentations.some(value => fenceKey(value.fence) === key) ? notice.value : null;
 }
 
+/** O-159: the starting dock from the pressed card's own facts, drawn like the real dock's
+ * identity and art; the bar adds the pending ring and Stop only. */
+export function startingDock(starting: NonNullable<WebPlaybackRuntimeSnapshot['starting']>, environment: TextEnvironment, artwork: ShellArtwork): DockStarting {
+  const subject = starting.display.subject, kind = subject.kind === 'music' || subject.kind === 'audiobook' ? subject.kind : 'video', audio = kind !== 'video';
+  return {key: starting.key, kind, identity: playbackIdentity(subject, 'dock', environment), stop: starting.stop,
+    artwork: artwork.foreground(starting.display.posterUrl, (audio ? 64 : 98) * (globalThis.devicePixelRatio || 1), audio ? 1 : 16 / 9, {group: 'playback', priority: 'high'})};
+}
 export function playbackPresentation(snapshot: WebPlaybackRuntimeSnapshot, environment: TextEnvironment, artwork: ShellArtwork, skips: {back: number; forward: number}): DockPresentation | undefined {
   const current = snapshot.presentation;
   if (!current) return undefined;
