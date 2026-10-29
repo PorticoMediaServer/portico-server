@@ -3,7 +3,7 @@ import type {SetupClaimHandoff} from './setup-claim-client.ts';
 import type {verifySetupClaimStart} from './setup-claim-start.ts';
 import type {SetupDraft} from './setup-onboarding.ts';
 import type {DirectSignIn} from './profile-management.ts';
-import {routeBase64, routeBytes, routeOrigin, sameServerPin, type RouteCrypto, type ServerPin} from './route-identity.ts';
+import {routeBase64, routeBytes, sameServerPin, type RouteCrypto, type ServerPin} from './route-identity.ts';
 
 /** The pure predicates of one initial Portico setup claim, shared by web and native.
  * Each platform keeps its own custody around them: protected journal reads and
@@ -79,9 +79,9 @@ export async function setupProofMatches(record: SetupAttempt & {handoff: SetupCl
 }
 
 /** What the original server says about this attempt's continuation. Only an exact
- * installed shape names a return registration; prepared and cancelled are explicit
+ * installed shape (no registration) completes admission; prepared and cancelled are explicit
  * non-grant outcomes; anything else that claims this operation is invalid. */
-export type SetupContinuation = Readonly<{phase: 'installed'; registrationId: string}> | Readonly<{phase: 'pending'}> | Readonly<{phase: 'cancelled'}> | Readonly<{phase: 'invalid'}>;
+export type SetupContinuation = Readonly<{phase: 'installed'}> | Readonly<{phase: 'pending'}> | Readonly<{phase: 'cancelled'}> | Readonly<{phase: 'invalid'}>;
 export function setupContinuation(raw: unknown, status: ClaimStatus, record: SetupAttempt & {handoff: SetupClaimHandoff; expected: ClaimExpected}): SetupContinuation {
   const expected = record.expected, handoff = record.handoff, setup = object(raw) ? raw.setupContinuation : undefined;
   const sameOperation = status.identity.localGeneration === expected.localGeneration && status.operation?.operationId === expected.operationId
@@ -94,11 +94,8 @@ export function setupContinuation(raw: unknown, status: ClaimStatus, record: Set
   // The installed claim can still be provisioning its real TLS/route/return
   // registration. That exact pending shape grants nothing and retains PKCE.
   if (setup.phase === 'prepared' && keys(setup) === 'expiresAt,phase,transactionId') return {phase: 'pending'};
-  const registration = setup.returnRegistration;
-  if (setup.phase !== 'installed' || keys(setup) !== 'expiresAt,phase,returnRegistration,transactionId'
-    || !object(registration) || keys(registration) !== 'id,origin' || typeof registration.id !== 'string' || !/^ret_[A-Za-z0-9_-]{43}$/.test(registration.id)
-    || typeof registration.origin !== 'string' || !registration.origin.startsWith('https://') || routeOrigin(registration.origin) !== registration.origin) return {phase: 'invalid'};
-  return {phase: 'installed', registrationId: registration.id};
+  if (setup.phase !== 'installed' || keys(setup) !== 'expiresAt,phase,transactionId') return {phase: 'invalid'};
+  return {phase: 'installed'};
 }
 
 /** The exchange named this server's enabled owner account and its primary profile,

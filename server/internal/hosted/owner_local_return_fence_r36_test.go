@@ -107,7 +107,7 @@ func TestPorticoOrdinaryReturnKeepsCodeAndCredentialFreeTransport(t *testing.T) 
 	if e != nil {
 		t.Fatal(e)
 	}
-	q := RegisteredReturnExchange{Code: strings.Repeat("c", 43), TransactionID: "return_transaction", Verifier: strings.Repeat("v", 43), RegistrationID: "ret_valid_shape", InstallationID: installation, ServerChallenge: challenge, Purpose: "setup"}
+	q := RegisteredReturnExchange{Code: strings.Repeat("c", 43), TransactionID: "return_transaction", Verifier: strings.Repeat("v", 43), RegistrationID: "ret_valid_shape", InstallationID: installation, ServerChallenge: challenge, Purpose: "sign-in"}
 	now := time.Now().UTC()
 	c := serverReturnAssertion{Kind: "portico.server-return.v1", AccountID: f.installed.AccountID, Username: "verified_owner", ServerID: f.id.ID(), Challenge: challenge, Nonce: identity.Token(), IssuedAt: now, ExpiresAt: now.Add(time.Minute), Purpose: q.Purpose, InstallationID: q.InstallationID, RegistrationID: q.RegistrationID, ClaimOperationID: f.installed.OperationID, ClaimGeneration: 1, CredentialGeneration: 1}
 	raw, _ := json.Marshal(c)
@@ -128,7 +128,7 @@ func TestPorticoOrdinaryReturnKeepsCodeAndCredentialFreeTransport(t *testing.T) 
 		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(bytes.NewReader(grant))}, nil
 	})}
 	who, e := f.service.ExchangeRegisteredReturn(ctx, q)
-	if e != nil || requests != 1 || who.AccountID != f.installed.AccountID || who.Return == nil || who.Return.Purpose != "setup" {
+	if e != nil || requests != 1 || who.AccountID != f.installed.AccountID || who.Return == nil || who.Return.Purpose != "sign-in" {
 		t.Fatal("ordinary Portico return refused", e)
 	}
 }

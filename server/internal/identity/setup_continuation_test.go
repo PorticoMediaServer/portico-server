@@ -170,23 +170,22 @@ func (f setupContinuationFixture) install(t *testing.T) {
 		t.Fatal("real signed approval/install", err)
 	}
 }
-func (f setupContinuationFixture) bound(t *testing.T) (serverreturn.SetupExchange, identity.SetupReturnRoute) {
+// installed marks the captured setup installed, as the claim's install does (O-163): no
+// certificate, HTTPS route or return registration is involved.
+func (f setupContinuationFixture) installed(t *testing.T) serverreturn.SetupExchange {
 	t.Helper()
-	if _, err := f.db.Exec(`INSERT INTO networking_remote_state(singleton,generation) VALUES(1,7) ON CONFLICT(singleton) DO UPDATE SET generation=7`); err != nil {
-		t.Fatal(err)
-	}
-	route := identity.SetupReturnRoute{Registration: serverreturn.Registration{Origin: "https://current.server.example"}, Generation: 7}
-	route.Registration.ID = serverreturn.RegistrationID(f.s.ID(), f.intent.OperationID, 1, 1, 7, route.Registration.Origin)
 	if err := f.write(func(tx *sql.Tx) error {
-		bound, err := f.s.BindSetupReturnRegistrationTx(context.Background(), tx, f.pending, f.proofHash, f.intent.OperationID, route)
-		if err == nil && !bound {
-			t.Fatal("first route not bound")
-		}
-		return err
+		return f.s.MarkSetupInstalledTx(context.Background(), tx, f.pending, f.proofHash, f.intent.OperationID)
 	}); err != nil {
 		t.Fatal(err)
 	}
-	return serverreturn.SetupExchange{TransactionID: "actual_setup_transaction", State: f.start.State, Verifier: f.verifier, InstallationID: f.start.InstallationID, ServerChallenge: f.start.ServerChallenge, RegistrationID: route.Registration.ID, Purpose: "setup"}, route
+	// Marking again is a no-op, not a conflict.
+	if err := f.write(func(tx *sql.Tx) error {
+		return f.s.MarkSetupInstalledTx(context.Background(), tx, f.pending, f.proofHash, f.intent.OperationID)
+	}); err != nil {
+		t.Fatal("re-marking an installed setup", err)
+	}
+	return serverreturn.SetupExchange{TransactionID: "actual_setup_transaction", State: f.start.State, Verifier: f.verifier, InstallationID: f.start.InstallationID, ServerChallenge: f.start.ServerChallenge, Purpose: "setup"}
 }
 
 func TestCapturedSetupReturnOriginRetainsFrozenAuthority(t *testing.T) {
@@ -272,28 +271,28 @@ func TestSetupContinuationFrozenCaptureAndCurrentAuthority(t *testing.T) {
 	}
 }
 func TestSetupContinuationInstalledExchangeCreatesOnlyMatchingOwner(t *testing.T) {
-	for _, mode := range []string{"success", "wrong account", "wrong purpose", "replaced setup", "route changed", "expired"} {
+	for _, mode := range []string{"success", "wrong account", "wrong purpose", "replaced setup", "credential replaced", "registration named", "expired"} {
 		t.Run(mode, func(t *testing.T) {
 			f := newSetupContinuationFixture(t)
 			f.capture(t)
 			f.install(t)
-			q, route := f.bound(t)
+			q := f.installed(t)
 			ctx := context.Background()
 			var operation, attempt string
 			if err := f.write(func(tx *sql.Tx) error {
 				var e error
-				operation, attempt, e = f.s.BeginSetupReturnTx(ctx, tx, f.pending, f.proofHash, q, route)
+				operation, attempt, e = f.s.BeginSetupReturnTx(ctx, tx, f.pending, f.proofHash, q)
 				return e
 			}); err != nil {
 				t.Fatal(err)
 			}
 			if err := f.write(func(tx *sql.Tx) error {
-				_, _, e := f.s.BeginSetupReturnTx(ctx, tx, f.pending, f.proofHash, q, route)
+				_, _, e := f.s.BeginSetupReturnTx(ctx, tx, f.pending, f.proofHash, q)
 				return e
 			}); err == nil {
 				t.Fatal("consumed attempt restarted")
 			}
-			who := identity.PorticoIdentity{AccountID: "account-approved", Username: "actual_setup_owner", DisplayName: "Actual setup owner", Consent: "verified-identity-fixture", SignerKeyID: "current-document-key", Return: &identity.PorticoReturnBinding{Purpose: "setup", InstallationID: q.InstallationID, RegistrationID: q.RegistrationID, OperationID: operation, ClaimGeneration: 1, CredentialGeneration: 1, ExpiresAt: time.Now().Add(45 * time.Second)}}
+			who := identity.PorticoIdentity{AccountID: "account-approved", Username: "actual_setup_owner", DisplayName: "Actual setup owner", Consent: "verified-identity-fixture", SignerKeyID: "current-document-key", Return: &identity.PorticoReturnBinding{Purpose: "setup", InstallationID: q.InstallationID, RegistrationID: "", OperationID: operation, ClaimGeneration: 1, CredentialGeneration: 1, ExpiresAt: time.Now().Add(45 * time.Second)}}
 			switch mode {
 			case "wrong account":
 				who.AccountID = "another-account"
@@ -301,8 +300,12 @@ func TestSetupContinuationInstalledExchangeCreatesOnlyMatchingOwner(t *testing.T
 				who.Return.Purpose = "switch"
 			case "replaced setup":
 				f.db.Exec(`UPDATE onboarding_state_v1 SET revision=revision+1`)
-			case "route changed":
-				f.db.Exec(`UPDATE networking_remote_state SET generation=generation+1`)
+			case "credential replaced":
+				// The installed claim and credential generations still bind setup (O-163).
+				f.db.Exec(`UPDATE networking_claim_intents SET credential_generation='2' WHERE operation_id=?`, operation)
+			case "registration named":
+				// Setup names no registration; an assertion naming one is not this setup's.
+				who.Return.RegistrationID = "ret_" + strings.Repeat("r", 43)
 			case "expired":
 				f.db.Exec(`UPDATE identity_setup_completions SET expires_ms=created_ms+1`)
 			}
@@ -310,7 +313,7 @@ func TestSetupContinuationInstalledExchangeCreatesOnlyMatchingOwner(t *testing.T
 			nonce := identity.Token()
 			err := f.write(func(tx *sql.Tx) error {
 				var e error
-				out, e = f.s.CompleteSetupReturnTx(ctx, tx, f.pending, f.proofHash, operation, attempt, q, route, who, nonce)
+				out, e = f.s.CompleteSetupReturnTx(ctx, tx, f.pending, f.proofHash, operation, attempt, q, who, nonce)
 				return e
 			})
 			if mode != "success" {
@@ -330,7 +333,7 @@ func TestSetupContinuationInstalledExchangeCreatesOnlyMatchingOwner(t *testing.T
 				t.Fatal("completed setup retained authority")
 			}
 			if err = f.write(func(tx *sql.Tx) error {
-				_, e := f.s.CompleteSetupReturnTx(ctx, tx, f.pending, f.proofHash, operation, attempt, q, route, who, nonce)
+				_, e := f.s.CompleteSetupReturnTx(ctx, tx, f.pending, f.proofHash, operation, attempt, q, who, nonce)
 				return e
 			}); err == nil {
 				t.Fatal("setup completion replayed")
