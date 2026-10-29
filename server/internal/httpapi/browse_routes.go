@@ -26,6 +26,12 @@ import (
 // browseFailure answers a validation error with the offending path so a client
 // can attach the message to the control that produced it.
 func browseFailure(w http.ResponseWriter, e error) {
+	var revision *catalog.ReadingRevisionMismatch
+	if errors.As(e, &revision) && revision.Revision != "" {
+		w.Header().Set("ETag", strconv.Quote(revision.Revision))
+		policyError(w, "revision_mismatch")
+		return
+	}
 	if isBrowseSelectionPreparationError(e) {
 		browseSelectionPreparationFailure(w, e)
 		return

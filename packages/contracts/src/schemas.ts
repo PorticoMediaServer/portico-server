@@ -7510,6 +7510,9 @@ export const schemas = {
         },
         "type": "array"
       },
+      "importing": {
+        "type": "boolean"
+      },
       "pageInfo": {
         "properties": {
           "durationIsLowerBound": {
@@ -9943,6 +9946,9 @@ export const schemas = {
               "type": "object"
             },
             "type": "array"
+          },
+          "importing": {
+            "type": "boolean"
           },
           "pageInfo": {
             "properties": {
@@ -40290,6 +40296,9 @@ export const schemas = {
           "type": "object"
         },
         "type": "array"
+      },
+      "importing": {
+        "type": "boolean"
       },
       "library": {
         "properties": {
@@ -118487,6 +118496,9 @@ export const schemas = {
         },
         "type": "array"
       },
+      "importing": {
+        "type": "boolean"
+      },
       "library": {
         "properties": {
           "defaultView": {
@@ -134584,6 +134596,9 @@ export const schemas = {
               "type": "object"
             },
             "type": "array"
+          },
+          "importing": {
+            "type": "boolean"
           },
           "pageInfo": {
             "properties": {
@@ -161071,6 +161086,9 @@ export const schemas = {
               "type": "object"
             },
             "type": "array"
+          },
+          "importing": {
+            "type": "boolean"
           },
           "pageInfo": {
             "properties": {

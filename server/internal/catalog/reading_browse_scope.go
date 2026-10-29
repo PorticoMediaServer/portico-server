@@ -21,6 +21,7 @@ type readingBrowseScope struct {
 	// point is used only by the bounded count reducer, whose raw driver has
 	// already selected one entity. Never materialize a whole attribution set.
 	point      bool
+	importing  bool
 	mobi       bool
 	library    int64
 	kind       string
@@ -30,6 +31,13 @@ type readingBrowseScope struct {
 // ErrReadingProjectionChanged preserves the existing catalog stale cause while
 // the HTTP boundary uses the registered revision_mismatch refusal for Reading.
 var ErrReadingProjectionChanged = fmt.Errorf("%w: Reading projection changed", ErrStaleContinuation)
+
+// ReadingRevisionMismatch carries the current authorized page revision on a
+// conditional refusal. HTTP exposes it as ETag, without another error DTO.
+type ReadingRevisionMismatch struct{ Revision string }
+
+func (e *ReadingRevisionMismatch) Error() string { return ErrReadingProjectionChanged.Error() }
+func (e *ReadingRevisionMismatch) Unwrap() error { return ErrReadingProjectionChanged }
 
 func isReadingLibrary(kind string) bool { return kind == "book" || kind == "comic" }
 
@@ -51,7 +59,7 @@ func (s *Service) bindReadingBrowse(library string, c *browseCompiler) (string, 
 	}
 	c.reading = r
 	c.count, c.ids = nil, nil
-	return r.eligibleSQL("e.entity_id"), nil
+	return r.eligibleSQL("e.entity_id") + ` AND EXISTS(SELECT 1 FROM reading_attribution_members m WHERE ` + r.memberScope() + ` AND m.item_id=e.entity_id)`, nil
 }
 
 func (s *Service) readingBrowseScope(library string) (*readingBrowseScope, error) {
@@ -69,14 +77,23 @@ func (s *Service) readingBrowseScope(library string) (*readingBrowseScope, error
 	err = s.read().QueryRow(`SELECT c.id,a.namespace,a.input_generation,a.ready_generation,a.publication_rule_version
  FROM catalog_libraries c JOIN reading_attribution_state a ON a.library_id=c.id
  WHERE c.library_id=? AND c.retired=0`, library).Scan(&out.library, &out.generation.Namespace, &out.generation.Input, &out.generation.Ready, &rule)
-	if errors.Is(err, sql.ErrNoRows) || err == nil && (out.generation.Ready == 0 || out.generation.Input != out.generation.Ready || rule != compactcatalog.ReadingProjectionRuleVersion) {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrReadingProjectionChanged
+	}
+	if err == nil {
+		// A classifier-rule change genuinely invalidates the old image. Expose
+		// building, rather than serving that image or refusing an unconditional
+		// read as though it carried a stale precondition.
+		if rule != compactcatalog.ReadingProjectionRuleVersion {
+			out.generation.Ready = 0
+		}
+		out.importing = out.generation.Ready == 0 || out.generation.Input != out.generation.Ready
 	}
 	return out, err
 }
 
 func (r *readingBrowseScope) fence() string {
-	value := fmt.Sprintf("reading:%d:%d:%d:%s", r.generation.Namespace, r.generation.Input, r.generation.Ready, r.kind)
+	value := fmt.Sprintf("reading:%d:%d:%d:%s", r.generation.Namespace, r.generation.Ready, r.generation.Ready, r.kind)
 	if r.mobi {
 		value += ":mobi-v1"
 	}

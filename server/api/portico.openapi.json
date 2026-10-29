@@ -7613,6 +7613,9 @@
             },
             "type": "array"
           },
+          "importing": {
+            "type": "boolean"
+          },
           "pageInfo": {
             "properties": {
               "durationIsLowerBound": {
@@ -10104,6 +10107,9 @@
                   "type": "object"
                 },
                 "type": "array"
+              },
+              "importing": {
+                "type": "boolean"
               },
               "pageInfo": {
                 "properties": {
@@ -42768,6 +42774,9 @@
               "type": "object"
             },
             "type": "array"
+          },
+          "importing": {
+            "type": "boolean"
           },
           "library": {
             "properties": {
@@ -122312,6 +122321,9 @@
             },
             "type": "array"
           },
+          "importing": {
+            "type": "boolean"
+          },
           "library": {
             "properties": {
               "defaultView": {
@@ -138721,6 +138733,9 @@
                   "type": "object"
                 },
                 "type": "array"
+              },
+              "importing": {
+                "type": "boolean"
               },
               "pageInfo": {
                 "properties": {
@@ -165541,6 +165556,9 @@
                   "type": "object"
                 },
                 "type": "array"
+              },
+              "importing": {
+                "type": "boolean"
               },
               "pageInfo": {
                 "properties": {
@@ -456449,6 +456467,9 @@
                       },
                       "type": "array"
                     },
+                    "importing": {
+                      "type": "boolean"
+                    },
                     "pageInfo": {
                       "properties": {
                         "durationIsLowerBound": {
@@ -456940,6 +456961,9 @@
                         "type": "object"
                       },
                       "type": "array"
+                    },
+                    "importing": {
+                      "type": "boolean"
                     },
                     "library": {
                       "properties": {
@@ -592951,6 +592975,9 @@
                       },
                       "type": "array"
                     },
+                    "importing": {
+                      "type": "boolean"
+                    },
                     "pageInfo": {
                       "properties": {
                         "durationIsLowerBound": {
@@ -593508,6 +593535,9 @@
                         "type": "object"
                       },
                       "type": "array"
+                    },
+                    "importing": {
+                      "type": "boolean"
                     },
                     "library": {
                       "properties": {
@@ -605963,6 +605993,9 @@
                         "type": "object"
                       },
                       "type": "array"
+                    },
+                    "importing": {
+                      "type": "boolean"
                     },
                     "pageInfo": {
                       "properties": {
@@ -692615,6 +692648,9 @@
                             "type": "object"
                           },
                           "type": "array"
+                        },
+                        "importing": {
+                          "type": "boolean"
                         },
                         "pageInfo": {
                           "properties": {
