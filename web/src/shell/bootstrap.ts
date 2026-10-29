@@ -23,7 +23,7 @@ import {routePath} from '../../../packages/contracts/src/routes.ts';
 import {browserViewerStorage} from '../platform/viewer-selection-storage';
 import {browserServerDisplay} from '../platform/server-display';
 import {motionTier} from '../platform/motion-tier';
-import {assertSameApiLevel,parseServerSignIn,signInLabelKey} from '@core/sign-in.ts';
+import {negotiateServer,parseServerSignIn,signInLabelKey} from '@core/sign-in.ts';
 import {defaultI18n} from '@i18n';
 import {lastKnownShell, rememberShell} from './last-known';
 import {browserAppSessionActions,signOutBrowserPorticoAccount,type BrowserAppSessionActions} from '../platform/app-sessions';
@@ -140,7 +140,7 @@ export async function readShellIdentity(api: HttpLocalApi, session: LocalSession
     }),
   ]);
   if (system.id !== session.viewer.serverId) throw new Error('The server identity changed.');
-  assertSameApiLevel(system);
+  negotiateServer(system);
   return {libraries: libraries ?? [], ...(libraries ? {} : {librariesUnavailable: true as const}), direct: profile, profile: shellAccount(profile, session.viewer.profileId), system, guide, liveAvailable: !!guide?.sources.length};
 }
 async function readFacts(api: HttpLocalApi, session: LocalSession, preferences: PreferencesReader, inbox: InboxService, signal: AbortSignal): Promise<{facts: ShellFacts; witnesses: ShellFactWitnesses}> {
