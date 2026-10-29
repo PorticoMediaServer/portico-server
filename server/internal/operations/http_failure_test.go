@@ -1,6 +1,7 @@
 package operations
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,6 +12,32 @@ import (
 	"testing"
 	"time"
 )
+
+func TestClientClosedRequestsDoNotBecomeTimeoutAlerts(t *testing.T) {
+	m := NewMeasurements(nil, "")
+	var lines []string
+	m.failLog = func(format string, args ...any) { lines = append(lines, fmt.Sprintf(format, args...)) }
+	for i := 0; i < 25; i++ {
+		ctx, cancel := context.WithCancel(context.Background())
+		rec := httptest.NewRecorder()
+		m.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			cancel() // The incoming transport, not an operation's child lease.
+			w.WriteHeader(http.StatusServiceUnavailable)
+			if n, err := w.Write([]byte(`{"error":{"code":"timeout"}}`)); n != 0 || err != context.Canceled {
+				t.Fatalf("closed client was sent a body: %d %v", n, err)
+			}
+		})).ServeHTTP(rec, httptest.NewRequest("GET", "/v1/probe", nil).WithContext(ctx))
+		if rec.Code != 499 {
+			t.Fatalf("client cancellation recorded as %d, want499", rec.Code)
+		}
+	}
+	if len(lines) != 1 || !strings.Contains(lines[0], "client closed (499)") || strings.Contains(lines[0], "warn") {
+		t.Fatal("client closes polluted failure logs", lines)
+	}
+	if len(m.timeouts) != 0 || m.timeoutOpen || m.Inflight.Load() != 0 || m.Sent.Load() != 0 {
+		t.Fatal("client closes polluted timeout/overload accounting")
+	}
+}
 
 // Item 1: the wrapper's 5xx report is rate-limited by (pattern, status,
 // code) — the first at once, then at most one line per minute with the

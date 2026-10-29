@@ -8,6 +8,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+
+	"portico.local/apikit/httpclientclose"
 	"portico.local/server/internal/apiwire"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/storagepaths"
@@ -247,6 +249,14 @@ func (m *Measurements) reportHTTPFailure(route string, status int, code string) 
 		logf = log.Printf
 	}
 	m.failMu.Unlock()
+	if status == httpclientclose.Status {
+		if suppressed > 0 {
+			logf("[http] info: %s client closed (499); %d more like this since the last report", route, suppressed)
+		} else {
+			logf("[http] info: %s client closed (499)", route)
+		}
+		return
+	}
 	if suppressed > 0 {
 		logf("[http] warn: %s answered %d %s; %d more like this since the last report", route, status, code, suppressed)
 		return
@@ -387,18 +397,28 @@ func (m *Measurements) mediaVolumes(ctx context.Context) Fact {
 
 type countedWriter struct {
 	http.ResponseWriter
-	m      *Measurements
-	status int
-	sample []byte
+	m       *Measurements
+	status  int
+	request context.Context
+	sample  []byte
 }
 
 func (w *countedWriter) WriteHeader(status int) {
+	if httpclientclose.Context(w.request) {
+		status = httpclientclose.Status
+	}
 	if w.status == 0 {
 		w.status = status
 	}
 	w.ResponseWriter.WriteHeader(status)
 }
 func (w *countedWriter) Write(p []byte) (int, error) {
+	if httpclientclose.Context(w.request) {
+		if w.status == 0 {
+			w.WriteHeader(httpclientclose.Status)
+		}
+		return 0, w.request.Err()
+	}
 	if w.status == 0 {
 		w.status = http.StatusOK
 	}
@@ -409,8 +429,9 @@ func (w *countedWriter) Write(p []byte) (int, error) {
 	w.m.Sent.Add(int64(n))
 	return n, e
 }
-func (w *countedWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
-func (w *countedWriter) Flush()                      { _ = http.NewResponseController(w.ResponseWriter).Flush() }
+func (w *countedWriter) Unwrap() http.ResponseWriter     { return w.ResponseWriter }
+func (w *countedWriter) RequestContext() context.Context { return w.request }
+func (w *countedWriter) Flush()                          { _ = http.NewResponseController(w.ResponseWriter).Flush() }
 
 type countedBody struct {
 	io.ReadCloser
@@ -430,8 +451,15 @@ func (m *Measurements) Wrap(next http.Handler) http.Handler {
 		if r.Body != nil {
 			r.Body = countedBody{r.Body, m}
 		}
-		counted := &countedWriter{ResponseWriter: w, m: m}
+		counted := &countedWriter{ResponseWriter: w, m: m, request: r.Context()}
 		next.ServeHTTP(counted, r)
+		if httpclientclose.Context(r.Context()) {
+			// The race loser is an ordinary disconnect, even if a handler
+			// attempted its usual unavailable/timeout response after cancellation.
+			counted.status = httpclientclose.Status
+			m.reportHTTPFailure(m.requestPattern(r), httpclientclose.Status, "client_closed")
+			return
+		}
 		if counted.status >= 500 {
 			m.reportHTTPFailure(m.requestPattern(r), counted.status, httpFailureCode(counted.sample))
 		}

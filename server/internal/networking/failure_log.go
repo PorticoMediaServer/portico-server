@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+
+	"portico.local/apikit/httpclientclose"
 	"portico.local/server/internal/hostlimits"
 	"strconv"
 	"strings"
@@ -251,6 +253,10 @@ func (l *failureLog) report(route string, status int, request context.Context, e
 		return
 	}
 	s := summarizeFailure(request, err)
+	clientClosed := httpclientclose.Context(request)
+	if clientClosed {
+		status, s.Class, s.Detail, s.keyDetail = httpclientclose.Status, "client closed", "", ""
+	}
 	key := route + "\x00" + s.Step + "\x00" + s.Class + "\x00" + s.keyDetail
 	l.mu.Lock()
 	now := l.now()
@@ -280,7 +286,11 @@ func (l *failureLog) report(route string, status int, request context.Context, e
 	logf := l.logf
 	l.mu.Unlock()
 	var b strings.Builder
-	fmt.Fprintf(&b, "[network] warn: %s answered %d: ", route, status)
+	level := "warn"
+	if clientClosed {
+		level = "info"
+	}
+	fmt.Fprintf(&b, "[network] %s: %s answered %d: ", level, route, status)
 	if s.Step != "" {
 		fmt.Fprintf(&b, "step %s, ", s.Step)
 	}

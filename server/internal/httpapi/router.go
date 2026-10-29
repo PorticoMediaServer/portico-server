@@ -22,6 +22,7 @@ import (
 
 	"portico.local/apikit"
 	"portico.local/apikit/apierror"
+	"portico.local/apikit/httpclientclose"
 	"portico.local/server/internal/access"
 	"portico.local/server/internal/administration"
 	"portico.local/server/internal/backup"
@@ -296,6 +297,10 @@ func writerRefused(w http.ResponseWriter, e error) bool {
 }
 
 func failure(w http.ResponseWriter, e error) {
+	if httpclientclose.Writer(w) {
+		w.WriteHeader(httpclientclose.Status)
+		return
+	}
 	if err := userMutationError(e); err != nil {
 		policyErrors.Write(w, w.Header().Get("X-Request-Id"), err)
 		return

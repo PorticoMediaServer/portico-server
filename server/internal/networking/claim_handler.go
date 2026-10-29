@@ -13,6 +13,8 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+
+	"portico.local/apikit/httpclientclose"
 	"portico.local/server/internal/serverreturn"
 	"strings"
 	"sync"
@@ -566,6 +568,10 @@ func (s claimExpectedStore) Load(ctx context.Context, id string) (Intent, error)
 	return v, nil
 }
 func writeClaimFailure(w http.ResponseWriter, status int, code, message string, retry bool) {
+	if httpclientclose.Writer(w) {
+		w.WriteHeader(httpclientclose.Status)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"code": code, "message": message, "retryable": retry}})

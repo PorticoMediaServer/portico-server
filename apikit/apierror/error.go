@@ -8,6 +8,8 @@ import (
 	"errors"
 	"log"
 	"net/http"
+
+	"portico.local/apikit/httpclientclose"
 	"regexp"
 	"strconv"
 	"strings"
@@ -128,6 +130,11 @@ func (r *Registry) Definitions() []Definition {
 	return out
 }
 func (r *Registry) Write(w http.ResponseWriter, requestID string, err error) {
+	if httpclientclose.Writer(w) {
+		w.WriteHeader(httpclientclose.Status)
+		return
+	}
+
 	d := r.codes["internal"]
 	out := Error{}
 	var public *Error

@@ -10,6 +10,7 @@ import (
 	"sync"
 	"testing"
 
+	"portico.local/apikit/apierror"
 	"portico.local/server/internal/operations"
 )
 
@@ -40,6 +41,44 @@ func (b *lockedLogBuffer) warned() []string {
 		}
 	}
 	return out
+}
+
+func TestClientClosedFailureIsNotAServerFault(t *testing.T) {
+	capture := &lockedLogBuffer{}
+	log.SetOutput(capture)
+	defer log.SetOutput(os.Stderr)
+	m := operations.NewMeasurements(nil, "")
+	for _, reply := range []func(http.ResponseWriter, *http.Request){
+		func(w http.ResponseWriter, r *http.Request) { failure(w, r.Context().Err()) },
+		func(w http.ResponseWriter, r *http.Request) {
+			policyErrors.Write(w, "cancelled-request", &apierror.Error{Code: "internal", Cause: r.Context().Err()})
+		},
+	} {
+		ctx, cancel := context.WithCancel(context.Background())
+		handler := m.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			cancel()
+			reply(w, r)
+		}))
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest("GET", "/v1/probe", nil).WithContext(ctx))
+		if rec.Code != 499 || rec.Body.Len() != 0 {
+			t.Fatalf("closed client received a server failure: %d %s", rec.Code, rec.Body.String())
+		}
+	}
+	for _, line := range capture.buf {
+		if strings.Contains(line, "request failed") || strings.Contains(line, "warn:") || strings.Contains(line, "503") || strings.Contains(line, "500") {
+			t.Fatal("closed client was reported as a server fault", line)
+		}
+	}
+	// A canceled authority/operation under a still-live request remains a
+	// genuine server failure; checking the error alone would hide it.
+	rec := httptest.NewRecorder()
+	m.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		failure(w, context.Canceled)
+	})).ServeHTTP(rec, httptest.NewRequest("GET", "/v1/live-request", nil))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("live-request cancellation was hidden: %d", rec.Code)
+	}
 }
 
 // Item 1: a route whose handler fails with a server fault answers 503 and the
