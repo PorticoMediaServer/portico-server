@@ -286,7 +286,7 @@ func (d Dependencies) writeFileInfoWindow(w http.ResponseWriter, r *http.Request
 		w.Header().Set("Cache-Control", "private, no-store")
 		w.Header().Set("Location", "/v1/file-info-queries/"+preparing.QueryID)
 		w.Header().Set("Retry-After", strconv.Itoa(max(1, (preparing.RetryAfterMs+999)/1000)))
-		write(w, http.StatusAccepted, preparing)
+		write(w, http.StatusAccepted, fileInfoKindVariant{preparing})
 		return
 	}
 	page, err := fileInfoReadyPage(out)
@@ -294,7 +294,7 @@ func (d Dependencies) writeFileInfoWindow(w http.ResponseWriter, r *http.Request
 		failure(w, err)
 		return
 	}
-	raw, err := json.Marshal(page)
+	raw, err := json.Marshal(fileInfoKindVariant{page})
 	if err != nil {
 		failure(w, err)
 		return
@@ -312,6 +312,23 @@ func (d Dependencies) writeFileInfoWindow(w http.ResponseWriter, r *http.Request
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(raw)
+}
+
+// fileInfoKindVariant tags a page or preparation carrier with its own `kind`.
+type fileInfoKindVariant struct{ body any }
+
+func (v fileInfoKindVariant) MarshalJSON() ([]byte, error) {
+	raw, err := json.Marshal(v.body)
+	if err != nil {
+		return nil, err
+	}
+	var head struct {
+		Kind string `json:"kind"`
+	}
+	if err := json.Unmarshal(raw, &head); err != nil || head.Kind == "" {
+		return nil, errors.New("file information body has no kind")
+	}
+	return spliceTag(raw, "variant", strings.TrimPrefix(head.Kind, "file-info-"))
 }
 
 func fileInfoReadyPage(out catalog.FileInfoWindowResult) (any, error) {
@@ -642,9 +659,16 @@ func (r fileInfoDiscResponse) JSONSchemaForStatus(status int) map[string]any {
 type fileInfoQueryResponse struct{}
 
 func fileInfoReadySchemas() []any {
+	// An item's own schema is two alternatives (a known duration, or an
+	// unrepresentable one); each becomes a member of this union.
+	item, _ := facetSchema[catalog.Item]()["anyOf"].([]any)
+	if len(item) != 2 {
+		panic("item schema is not its two duration alternatives")
+	}
 	return []any{
-		facetSchema[catalog.Detail](),
-		facetSchema[catalog.Item](),
+		withFileInfoVariant(facetSchema[catalog.Detail](), "detail"),
+		withFileInfoVariant(item[0].(map[string]any), "item"),
+		withFileInfoVariant(item[1].(map[string]any), "item-unrepresentable"),
 		fileInfoFilesResponse{}.page(),
 		fileInfoGroupsResponse{}.page(),
 		fileInfoMembersResponse{}.page(),
@@ -687,10 +711,15 @@ func fileInfoPageSchema[P any](kind string) map[string]any {
 		panic("file information page schema has no properties")
 	}
 	properties["kind"] = map[string]any{"type": "string", "const": kind}
+	withFileInfoVariant(schema, strings.TrimPrefix(kind, "file-info-"))
 	properties["basis"] = fileInfoBasisSchema()
 	properties["window"] = fileInfoWindowSchema()
 	fileInfoSchemaText(schema)
 	return schema
+}
+
+func withFileInfoVariant(schema map[string]any, variant string) map[string]any {
+	return withTag(schema, "variant", variant)
 }
 
 func fileInfoTrackPageSchema[P any](kind string) map[string]any {
@@ -704,6 +733,7 @@ func fileInfoPreparingSchema(detailRequired bool) map[string]any {
 	schema := facetSchema[catalog.FileInfoPreparing]()
 	properties, _ := schema["properties"].(map[string]any)
 	properties["kind"] = map[string]any{"type": "string", "const": "file-info-preparing"}
+	withFileInfoVariant(schema, "preparing")
 	properties["state"] = map[string]any{"type": "string", "const": "preparing"}
 	if detailRequired {
 		// A lane window always names the exact 338-character private window id.

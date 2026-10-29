@@ -43,6 +43,15 @@ const read = (release: string, name: string): Recorded | undefined => {
 const KNOWN_THROWS: Readonly<Record<string, string>> = {
   // 648 answers get_items_id_file_info in its pre-P2-29 flat shape. parseFileInfoFilesPage requires, in order:
   '648/file-info-files: parseFileInfoFilesPage': 'src/file-info-pages.ts: kind === "file-info-files" (:96; 648 sends the item kind, "song"), detail {scope, revision} (:96/:90; 648 has a top-level revision), basis (:96), window {queryId, limit, returned} (:75-76), surface {fileCount, eligibleFileCount, groupCount, canSplit, hasDiscColumns} (:109-111; 648 has a top-level manage), itemKind (:196), and per file: occurrence (:150), audioCount and subtitleCount (:151; 648 has audio and subtitles arrays)',
+  // R-09b: main's recorded File info pages predate the required `variant` tag. Re-record the corpus from a current server.
+  'main/file-info-files: parseFileInfoFilesPage': 'src/file-info-pages.ts requireVariant: the recording predates the required const variant (R-09b)',
+  'main/file-info-files-preparing: parseFileInfoPreparing': 'src/file-info-pages.ts requireVariant: the recording predates the required const variant (R-09b)',
+  'main/file-info-groups: parseFileInfoGroupsPage': 'src/file-info-pages.ts requireVariant: the recording predates the required const variant (R-09b)',
+  'main/file-info-sources: parseFileInfoSourcesPage': 'src/file-info-pages.ts requireVariant: the recording predates the required const variant (R-09b)',
+  'main/file-info-members: parseFileInfoMembersPage': 'src/file-info-pages.ts requireVariant: the recording predates the required const variant (R-09b)',
+  'main/file-info-tracks-audio: parseFileInfoTracksPage': 'src/file-info-pages.ts requireVariant: the recording predates the required const variant (R-09b)',
+  'main/file-info-tracks-subtitles: parseFileInfoTracksPage': 'src/file-info-pages.ts requireVariant: the recording predates the required const variant (R-09b)',
+  'main/file-info-head-tracks-audio: parseFileInfoHeadTracksPage': 'src/file-info-pages.ts requireVariant: the recording predates the required const variant (R-09b)',
 };
 
 function check(release: string, name: string, run: (recorded: Recorded) => void | Promise<void>, options: {file?: string} = {}) {
