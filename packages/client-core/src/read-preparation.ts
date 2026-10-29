@@ -60,11 +60,11 @@ export type ReadPreparationOptions<Descriptor, Ready, Intermediate = never> = Re
 }>;
 
 export class PreparationProtocolError extends Error {
-  constructor(
-    readonly code: 'invalid_path' | 'invalid_preparing' | 'invalid_ready_handle' | 'unexpected_location' | 'invalid_retry_after',
-    readonly response?: PreparationResponse,
-  ) {
+  readonly code: 'invalid_path' | 'invalid_preparing' | 'invalid_ready_handle' | 'unexpected_location' | 'invalid_retry_after';
+  readonly response?: PreparationResponse;
+  constructor(code: PreparationProtocolError['code'], response?: PreparationResponse) {
     super(code);
+    this.code = code;this.response = response;
     this.name = 'PreparationProtocolError';
   }
 }

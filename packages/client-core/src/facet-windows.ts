@@ -48,11 +48,11 @@ const field = (v: unknown): v is SimpleFacetField => typeof v === 'string' && fi
 const only = (v: Record<string, unknown>, keys: readonly string[]): boolean => Object.keys(v).every(key => keys.includes(key));
 
 export class FacetWindowError extends Error {
-  constructor(
-    readonly code: 'invalid_facet_window' | 'invalid_facet_request' | 'facet_continuation_unavailable' | 'stale_continuation',
-    readonly response?: PreparationResponse,
-  ) {
+  readonly code: 'invalid_facet_window' | 'invalid_facet_request' | 'facet_continuation_unavailable' | 'stale_continuation';
+  readonly response?: PreparationResponse;
+  constructor(code: FacetWindowError['code'], response?: PreparationResponse) {
     super(code === 'invalid_facet_window' ? unreadableServerResponse : code);
+    this.code = code;this.response = response;
     this.name = 'FacetWindowError';
   }
 }

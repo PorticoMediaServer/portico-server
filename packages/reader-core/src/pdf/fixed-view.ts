@@ -83,7 +83,10 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz'|
   // keep the immediate swap. A released swipe instead continues from the finger: both spreads settle
   // on the settle spring at the finger's speed (reduced motion: the same 160 ms cross-fade).
   let turning:{finish:()=>void;defer:(fn:()=>void)=>void}|undefined;
-  const reducedMotion=()=>{try{return matchMedia('(prefers-reduced-motion: reduce)').matches||document.documentElement.dataset.reduceMotion==='true';}catch{return true;}};
+  // Lite (the host's data-motion-tier, a performance tier) takes the reduced path for now, behind its
+  // own test so it can diverge. The finger is tracked in every tier.
+  const liteMotion=()=>document.documentElement.dataset.motionTier==='lite';
+  const reducedMotion=()=>{try{return matchMedia('(prefers-reduced-motion: reduce)').matches||document.documentElement.dataset.reduceMotion==='true'||liteMotion();}catch{return true;}};
   // Moving spreads sit outside the host; it clips them instead of growing scrollbars mid-motion.
   const moving=(on:boolean)=>{if(on)host.style.overflow='hidden';else if(!gesture&&!turning&&!settling)host.style.overflow='auto';};
   const swap=(next:HTMLDivElement,releases:(()=>void)[],turn:number)=>{

@@ -43,7 +43,9 @@ export class Interest implements FreshnessInterest {
   private retryAt = 0;
   private deferred = false;
   private readonly source = {};
-  constructor(private hub: FreshnessHub, private options: FreshnessInterestOptions) {}
+  private hub: FreshnessHub;
+  private options: FreshnessInterestOptions;
+  constructor(hub: FreshnessHub, options: FreshnessInterestOptions) {this.hub = hub;this.options = options;}
   dependencies(): readonly FreshnessDependency[] {
     const d = this.options.dependencies;
     try { return typeof d === 'function' ? d() : d; } catch { return []; }

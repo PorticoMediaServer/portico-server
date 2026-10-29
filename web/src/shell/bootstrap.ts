@@ -21,6 +21,7 @@ import {fetchGuideSourceSummaries} from '@core/guide/directory.ts';
 import {routePath} from '../../../packages/contracts/src/routes.ts';
 import {browserViewerStorage} from '../platform/viewer-selection-storage';
 import {browserServerDisplay} from '../platform/server-display';
+import {motionTier} from '../platform/motion-tier';
 import {assertSameApiLevel,parseServerSignIn,signInLabelKey} from '@core/sign-in.ts';
 import {defaultI18n} from '@i18n';
 import {lastKnownShell, rememberShell} from './last-known';
@@ -451,7 +452,10 @@ export class ShellBootstrap {
     cleanups.push(bindShellFactWake(globalThis.document, window, {isCurrent,
       retained: () => assembly.retainsMedia?.() ?? assembly.busy(), wakeAuth: () => auth.wake(), invalidate: () => factOwner?.all()}));
     const motion = globalThis.matchMedia('(prefers-reduced-motion: reduce)');
-    const applyMotion = () => { globalThis.document.documentElement.dataset.reduceMotion = String(appearancePreferences(preferences.getSnapshot('web') ?? facts().preferences, motion.matches).reducedMotion); };
+    const applyMotion = () => {
+      const root = globalThis.document.documentElement, reduced = appearancePreferences(preferences.getSnapshot('web') ?? facts().preferences, motion.matches).reducedMotion;
+      root.dataset.reduceMotion = String(reduced); root.dataset.motionTier = motionTier(reduced);
+    };
     applyMotion(); motion.addEventListener('change', applyMotion);
     cleanups.push(preferences.subscribe(applyMotion));
     cleanups.push(() => motion.removeEventListener('change', applyMotion));

@@ -57,7 +57,9 @@ export class UserMutationRecoveryModel {
  private state:UserMutationRecoverySnapshot=Object.freeze({revision:0,rows:emptyRows});
  private readonly unsubscribe:()=>void;
  private readonly ready:Promise<void>;
- constructor(private readonly options:{api:UserMutationRecoveryApi;coordinator:UserMutationCoordinator;scope:()=>UserMutationScope|undefined}) {
+ private readonly options:{api:UserMutationRecoveryApi;coordinator:UserMutationCoordinator;scope:()=>UserMutationScope|undefined};
+ constructor(options:UserMutationRecoveryModel['options']) {
+  this.options=options;
   const scope=options.scope();this.originalScope=scope?Object.freeze({...scope}):undefined;
   this.unsubscribe=options.coordinator.subscribe(this.refresh);this.refresh();
   this.ready=options.api.awaitUserMutationsReady?.()??Promise.resolve();

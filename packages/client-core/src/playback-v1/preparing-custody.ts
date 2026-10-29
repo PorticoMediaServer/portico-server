@@ -72,7 +72,8 @@ export class PreparingStartCustody {
     }
   }
   /** `current` is the registry owner's own authority, when it has one. */
-  constructor(private readonly owner: () => boolean = () => true) {}
+  private readonly owner: () => boolean;
+  constructor(owner: () => boolean = () => true) {this.owner = owner;}
   private current = () => !this.disposed && valid(this.owner);
 
   attach(installed: (id: string) => boolean = () => false): PreparingRegistration {

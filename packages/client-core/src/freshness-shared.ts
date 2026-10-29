@@ -4,7 +4,9 @@ import {positiveDeadline, serverDeadline} from './freshness-deadline.ts';
 export type SharedReadKey = 'guide' | 'preferences:web';
 const keys: readonly SharedReadKey[] = ['guide', 'preferences:web'];
 class SharedReadSuperseded extends Error {
-  constructor(readonly retryError?: unknown, readonly nextAllowedAt?: number) { super('The shared read was superseded.'); }
+  readonly retryError?: unknown;
+  readonly nextAllowedAt?: number;
+  constructor(retryError?: unknown, nextAllowedAt?: number) { super('The shared read was superseded.'); this.retryError = retryError; this.nextAllowedAt = nextAllowedAt; }
 }
 /** Adapters must propagate this core-owned control outcome, preserving independent inputs. */
 export function isSharedReadSuperseded(error: unknown): boolean { return error instanceof SharedReadSuperseded; }
@@ -32,7 +34,9 @@ export class FreshnessSharedReads {
   private serverNotBefore: Record<SharedReadKey, number> = {guide: 0, 'preferences:web': 0};
   private planned = new Map<object, number>();
   private flights = new Map<SharedReadKey, Flight>();
-  constructor(private now: () => number, private gatherMs: () => number) {}
+  private now: () => number;
+  private gatherMs: () => number;
+  constructor(now: () => number, gatherMs: () => number) {this.now = now;this.gatherMs = gatherMs;}
   reserve(token: object, dueAt: number): void { this.planned.set(token, dueAt); }
   witness(): SharedWitness { return {...this.versions}; }
   notBefore(key: SharedReadKey): number { return this.serverNotBefore[key]; }
