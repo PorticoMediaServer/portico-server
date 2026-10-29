@@ -14,10 +14,13 @@ import (
 // exactly NULL values; SQLite never runs a child-key check for a NULL child, and
 // the guard below asserts the planner still selects that index for `col=?`.
 var partialFKIndexAllow = map[string]string{
-	`catalog_browse_rows(item_id)`:      `catalog_browse_item is item_id IS NOT NULL; FK checks skip NULL item_id and the planner uses it`,
-	`catalog_entities(parent_id)`:       `catalog_entities_parent is parent_id IS NOT NULL; FK checks skip NULL parent_id and the planner uses it`,
-	`catalog_episodes(season_id)`:       `catalog_episodes_season is season_id IS NOT NULL; FK checks skip NULL season_id and the planner uses it`,
-	`catalog_playlist_entries(item_id)`: `catalog_playlist_entries_item is item_id IS NOT NULL; FK checks skip NULL item_id and the planner uses it`,
+	`catalog_asset_links(info_pending_change)`:  `catalog_info_pending_links excludes only NULL pointers; FK checks skip NULL and the planner uses it`,
+	`catalog_assets(info_owner_object)`:         `catalog_info_owner_object excludes only NULL pins; FK checks skip NULL and the planner uses it`,
+	`catalog_info_changes(target_owner_object)`: `catalog_info_target_owner_object excludes only NULL target pins; FK checks skip NULL and the planner uses it`,
+	`catalog_browse_rows(item_id)`:              `catalog_browse_item is item_id IS NOT NULL; FK checks skip NULL item_id and the planner uses it`,
+	`catalog_entities(parent_id)`:               `catalog_entities_parent is parent_id IS NOT NULL; FK checks skip NULL parent_id and the planner uses it`,
+	`catalog_episodes(season_id)`:               `catalog_episodes_season is season_id IS NOT NULL; FK checks skip NULL season_id and the planner uses it`,
+	`catalog_playlist_entries(item_id)`:         `catalog_playlist_entries_item is item_id IS NOT NULL; FK checks skip NULL item_id and the planner uses it`,
 }
 
 // Every foreign key in the baseline must have an indexed child side, or say why

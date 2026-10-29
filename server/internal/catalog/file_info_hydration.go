@@ -140,7 +140,7 @@ func (r *FileInfoRuntime) fileDiscFacts(ctx context.Context, asset, size, modifi
 	var out DiscMediaFacts
 	e := dbwork.ReadHandle(ctx, r.db).QueryRowContext(ctx, `SELECT d.kind,d.packaging,t.title_number,
  COALESCE((SELECT c.chapter_order+1 FROM inventory_disc_chapters c WHERE c.object_id=t.object_id AND c.title_key=t.title_key ORDER BY c.chapter_order DESC LIMIT 1),0)
- FROM catalog_assets a JOIN inventory_disc_facts d ON d.object_id=a.info_owner_object AND d.source_revision=a.info_owner_revision AND d.asset_id=a.token
+ FROM catalog_assets a NOT INDEXED CROSS JOIN inventory_disc_facts d ON d.object_id=a.info_owner_object AND d.source_revision=a.info_owner_revision AND d.asset_id=a.token
  JOIN inventory_disc_titles t ON t.object_id=d.object_id AND t.title_key=d.media_title_key
  JOIN asset_stream_facts st ON st.asset_id=a.token AND st.revision=d.media_stream_revision AND st.size=? AND st.modified_ns=?
  JOIN asset_chapter_facts ch ON ch.asset_id=a.token AND ch.revision=d.media_chapter_revision AND ch.size=? AND ch.modified_ns=? AND ch.status='known'
@@ -155,7 +155,7 @@ func (r *FileInfoRuntime) fileDiscFacts(ctx context.Context, asset, size, modifi
 }
 func (r *FileInfoRuntime) discCandidate(ctx context.Context, coord fileInfoOccurrence) (bool, error) {
 	var yes bool
-	e := dbwork.ReadHandle(ctx, r.db).QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_asset_links l JOIN catalog_assets a ON a.id=l.asset_id JOIN inventory_disc_facts d ON d.object_id=a.info_owner_object AND d.source_revision=a.info_owner_revision AND d.asset_id=a.token WHERE l.entity_id=? AND l.asset_id=? AND d.encryption='none' AND EXISTS(SELECT 1 FROM inventory_disc_titles t WHERE t.object_id=d.object_id))`, coord.Item, coord.Asset).Scan(&yes)
+	e := dbwork.ReadHandle(ctx, r.db).QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_asset_links l CROSS JOIN catalog_assets a NOT INDEXED ON a.id=l.asset_id CROSS JOIN inventory_disc_facts d ON d.object_id=a.info_owner_object AND d.source_revision=a.info_owner_revision AND d.asset_id=a.token WHERE l.entity_id=? AND l.asset_id=? AND d.encryption='none' AND EXISTS(SELECT 1 FROM inventory_disc_titles t WHERE t.object_id=d.object_id))`, coord.Item, coord.Asset).Scan(&yes)
 	return yes, e
 }
 

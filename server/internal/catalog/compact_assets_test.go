@@ -52,9 +52,10 @@ func TestCompactFilmSourcesFenceAndKeepWireFacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Sources) != 2 || got.Sources[0].ID != tokenB || got.Sources[1].ID != tokenA ||
-		got.Sources[0].Container != "matroska" || got.Sources[1].VideoCodec != "h265" ||
-		math.Float64bits(got.Sources[0].Duration) != math.Float64bits(stored(assetB)) ||
+	sources := fileInfoSourcesForTest(t, s, "viewer", film.Public)
+	if len(got.Sources) != 0 || len(sources) != 2 || sources[0].ID != tokenB || sources[1].ID != tokenA ||
+		sources[0].Container != "matroska" || sources[1].VideoCodec != "h265" ||
+		sources[0].Duration == nil || math.Float64bits(*sources[0].Duration) != math.Float64bits(stored(assetB)) ||
 		math.Float64bits(got.Duration) != math.Float64bits(stored(assetA)) {
 		t.Fatalf("film source order or exact facts changed: %+v", got)
 	}
@@ -70,22 +71,29 @@ func TestCompactFilmSourcesFenceAndKeepWireFacts(t *testing.T) {
 	if err != nil || got.Available {
 		t.Fatalf("film was available after both source grants were removed: %+v %v", got, err)
 	}
-	// Assets are written synchronously; update the same path through the
-	// catalogue writer and preserve the probed duration's full precision.
+	// Raw NEW facts stay behind the accepted OLD frame until the bounded
+	// producer publishes them; neither read loses the duration precision.
+	oldDuration := got.Duration
 	c.Write(func(ctx context.Context, tx *sql.Tx) error {
 		_, _, err := compactcatalog.UpsertAssetTx(ctx, tx, compactcatalog.Asset{Path: "/films/a.mkv", Size: 1, ModifiedNS: 1, Container: "mp4", VideoCodec: "h265", AudioCodec: "ac3", Width: 3840, Height: 2160, Duration: 34.567890123456789})
 		return err
 	})
 	got, err = s.Get("viewer", film.Public)
+	if err != nil || math.Float64bits(got.Duration) != math.Float64bits(oldDuration) {
+		t.Fatalf("raw source update replaced accepted OLD: %+v %v", got, err)
+	}
+	c.Drain()
+	got, err = s.Get("viewer", film.Public)
 	if err != nil || math.Float64bits(got.Duration) != math.Float64bits(stored(assetA)) {
-		t.Fatalf("updated source duration lost precision: %+v %v", got, err)
+		t.Fatalf("published source duration lost precision: %+v %v", got, err)
 	}
 	c.Write(func(ctx context.Context, tx *sql.Tx) error {
 		return compactcatalog.UnlinkAssetTx(ctx, tx, film.ID, assetB)
 	})
 	c.Drain()
 	got, err = s.Get("viewer", film.Public)
-	if err != nil || len(got.Sources) != 1 || got.Sources[0].ID != tokenA {
+	sources = fileInfoSourcesForTest(t, s, "viewer", film.Public)
+	if err != nil || len(got.Sources) != 0 || len(sources) != 1 || sources[0].ID != tokenA {
 		t.Fatalf("removed source remained in film detail: %+v %v", got, err)
 	}
 }
@@ -99,11 +107,12 @@ func TestCompactAssetReadsCoverNonFilmAndEmptyMembership(t *testing.T) {
 	c.Drain()
 	s := New(c.DB)
 	got, err := s.Get("viewer", extra.Public)
-	if err != nil || len(got.Sources) != 1 || got.Sources[0].ID != token || got.Duration != 10.125 {
+	sources := fileInfoSourcesForTest(t, s, "viewer", extra.Public)
+	if err != nil || len(got.Sources) != 0 || len(sources) != 1 || sources[0].ID != token || got.Duration != 10.125 {
 		t.Fatalf("non-film source did not come from compact facts: %+v %v", got, err)
 	}
 	noSources, err := s.Get("viewer", empty.Public)
-	if err != nil || noSources.Sources == nil || len(noSources.Sources) != 0 || noSources.Available || noSources.Duration != 0 {
+	if err != nil || len(noSources.Sources) != 0 || noSources.Available || noSources.Duration != 0 || len(fileInfoSourcesForTest(t, s, "viewer", empty.Public)) != 0 {
 		t.Fatalf("empty membership changed wire shape: %+v %v", noSources, err)
 	}
 }

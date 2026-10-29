@@ -13480,6 +13480,7 @@ CREATE TABLE catalog_info_input_families(
  PRIMARY KEY(change_id,family),
  FOREIGN KEY(change_id,witness_ordinal) REFERENCES catalog_info_input_witnesses(change_id,ordinal)
 ) WITHOUT ROWID, STRICT;
+CREATE INDEX catalog_info_input_families_witness ON catalog_info_input_families(change_id,witness_ordinal);
 
 -- A logical payload cap, NOT reserved disk space or memory, and not a query
 -- cache. Source input/OLD text and cursor bytes must be charged before acceptance.
@@ -13587,6 +13588,7 @@ CREATE TABLE catalog_info_new_subtitles(
  PRIMARY KEY(change_id,id),
  UNIQUE(change_id,input_ordinal)
 ) WITHOUT ROWID, STRICT;
+CREATE INDEX catalog_info_new_subtitles_sidecar ON catalog_info_new_subtitles(change_id,sidecar_id);
 
 -- source shape: subtitle_inventory_evidence
 CREATE TABLE catalog_info_new_subtitle_inventory_evidence(

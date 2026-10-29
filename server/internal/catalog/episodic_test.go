@@ -184,7 +184,7 @@ func TestEpisodeHierarchySharedAssetsAndManualCorrections(t *testing.T) {
 	commit("Show/Season 1/Show S01E01 alternate.mp4")
 	episodicDrain(t, db)
 	first, err = s.Get("", first.ID)
-	if err != nil || len(first.Sources) != 2 {
+	if err != nil || len(first.Sources) != 0 || len(fileInfoSourcesForTest(t, s, "", first.ID)) != 2 {
 		t.Fatal("alternate source not linked", first, err)
 	}
 	if err = s.RemoveTitle(context.Background(), second.ID); err != nil {
@@ -195,7 +195,7 @@ func TestEpisodeHierarchySharedAssetsAndManualCorrections(t *testing.T) {
 		t.Fatal("shared bytes deleted", err)
 	}
 	first, err = s.Get("", first.ID)
-	if err != nil || len(first.Sources) != 2 || first.Episode.SourceBoundary != "unknown_multi_episode" {
+	if err != nil || len(first.Sources) != 0 || len(fileInfoSourcesForTest(t, s, "", first.ID)) != 2 || first.Episode.SourceBoundary != "unknown_multi_episode" {
 		t.Fatal(first, err)
 	}
 	commit("Show/Season 2/Show S01E03 S02E04.mp4")

@@ -22,7 +22,7 @@ func (s *fileInfoDiscSource) Check(ctx context.Context) error {
 	return s.check(dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia))
 }
 func (s *fileInfoDiscSource) Next(ctx context.Context, has bool, after int64) (int64, bool, bool, error) {
-	query := `SELECT title_number FROM inventory_disc_titles WHERE object_id=(SELECT a.info_owner_object FROM catalog_assets a JOIN inventory_disc_facts d ON d.object_id=a.info_owner_object AND d.source_revision=a.info_owner_revision AND d.asset_id=a.token WHERE a.id=? AND d.encryption='none')`
+	query := `SELECT title_number FROM inventory_disc_titles WHERE object_id=(SELECT a.info_owner_object FROM catalog_assets a NOT INDEXED CROSS JOIN inventory_disc_facts d ON d.object_id=a.info_owner_object AND d.source_revision=a.info_owner_revision AND d.asset_id=a.token WHERE a.id=? AND d.encryption='none')`
 	args := []any{s.asset}
 	if has {
 		query += ` AND title_number>?`
@@ -41,7 +41,7 @@ func (r *FileInfoRuntime) hydrateDiscTitle(ctx context.Context, asset, number in
 	var kind FileInfoDiscKind
 	e := dbwork.ReadHandle(ctx, r.db).QueryRowContext(ctx, `SELECT d.kind,t.title_number,t.duration_ms,t.angle_count,
  COALESCE((SELECT c.chapter_order+1 FROM inventory_disc_chapters c WHERE c.object_id=t.object_id AND c.title_key=t.title_key ORDER BY c.chapter_order DESC LIMIT 1),0)
- FROM catalog_assets a JOIN inventory_disc_facts d ON d.object_id=a.info_owner_object AND d.source_revision=a.info_owner_revision AND d.asset_id=a.token
+ FROM catalog_assets a NOT INDEXED CROSS JOIN inventory_disc_facts d ON d.object_id=a.info_owner_object AND d.source_revision=a.info_owner_revision AND d.asset_id=a.token
  JOIN inventory_disc_titles t ON t.object_id=d.object_id AND t.title_number=?
  WHERE a.id=? AND d.encryption='none'`, number, asset).Scan(&kind, &out.Number, &out.DurationMs, &out.Angles, &out.Chapters)
 	if errors.Is(e, sql.ErrNoRows) {

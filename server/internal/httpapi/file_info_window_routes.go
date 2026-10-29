@@ -802,3 +802,16 @@ func fileInfoSchemaText(node any) {
 		}
 	}
 }
+
+// The registry authorizer invokes this before generic query validation. The
+// item must be concealed even when a request has unknown or malformed fields.
+func fileInfoLaneRoute(m apikit.Metadata) bool {
+	if m.Method != http.MethodGet {
+		return false
+	}
+	switch m.ID {
+	case "get_items_id_file_info", "get_item_file_info_groups", "get_item_file_info_members", "get_item_file_info_tracks", "get_item_file_info_head_tracks", "get_item_file_info_sources", "get_item_file_info_disc_titles":
+		return true
+	}
+	return false
+}
