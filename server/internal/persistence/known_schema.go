@@ -1454,7 +1454,6 @@ table music_sonic_embeddings
 table music_sonic_tags
 table music_technical_facts
 table music_virtual_tracks
-table networking_address_absence
 table networking_certificate_settings
 table networking_certificate_state
 table networking_certificates
@@ -1468,7 +1467,6 @@ table networking_control_schedule
 table networking_mappings
 table networking_remote_settings
 table networking_remote_state
-table networking_route_names
 table networking_server_identities
 table networking_web_claims
 table notice_broadcast_work

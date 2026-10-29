@@ -51,6 +51,12 @@ func validateAdministration(v *Settings) []string {
 	if !oneOf(v.LogLevel, LogLevels) {
 		fields = append(fields, "values.logLevel")
 	}
+	if v.SecureConnections == "" {
+		v.SecureConnections = "preferred"
+	}
+	if v.SecureConnections != "preferred" && v.SecureConnections != "required" {
+		fields = append(fields, "values.secureConnections")
+	}
 	if v.LANNetworks == nil {
 		v.LANNetworks = []string{}
 	}
@@ -68,8 +74,8 @@ func validateAdministration(v *Settings) []string {
 	if v.AccessURLs == nil {
 		v.AccessURLs = []string{}
 	}
-	// Access URLs are bounded origins for local clients. Hosted publication
-	// filters this list to HTTPS; it never advertises plaintext routes.
+	// Owner-entered HTTP/HTTPS origins are published as entered; HTTP is
+	// explicitly marked insecure for clients to apply their own policy.
 	if len(v.AccessURLs) > MaxAccessURLs {
 		fields = append(fields, "values.accessUrls")
 	}

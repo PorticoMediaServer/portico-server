@@ -27,13 +27,10 @@ func (m *RemoteManager) recordPublic(addresses, observed map[string]int, configu
 			seen[ip.Unmap()] = true
 		}
 	}
-	for raw := range addresses {
-		add(raw)
-	}
+
 	for raw := range observed {
 		add(raw)
 	}
-	add(configured)
 	out := make([]netip.Addr, 0, len(seen))
 	for ip := range seen {
 		out = append(out, ip)

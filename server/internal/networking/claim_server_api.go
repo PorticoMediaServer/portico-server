@@ -51,6 +51,9 @@ func (t *HTTPTransport) CallServer(ctx context.Context, v Intent, operation Serv
 	}
 	defer secret.Clear()
 	requestBound := claimHTTPBound
+	if operation == PublishRoutes {
+		requestBound = 64 << 10
+	}
 	if operation == PushMembers {
 		// Hosted's body limit for a membership push (MemberPushBody).
 		requestBound = 1 << 20

@@ -10,7 +10,6 @@ import (
 	"math/rand/v2"
 	"net"
 	"net/netip"
-	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/operations"
 	"sort"
 	"strconv"
@@ -428,10 +427,8 @@ func (m *RemoteManager) stepRouteLocked(ctx context.Context) error {
 	observed := map[string]int{}
 	if c.Enabled && ready {
 		for _, raw := range topo.Public {
-			// A global IPv6 address is a route only when inbound connections reach
-			// it: a live pinhole or an open firewall (the mapping loop below adds
-			// those), or the owner saying so. Publishing it otherwise sends
-			// dual-stack clients to an address the router drops.
+			// Every allowed family is offered for an exact inbound proof.
+			// Hosted signs it only after that proof succeeds.
 			if ip, err := netip.ParseAddr(raw); err == nil && ip.Is6() && !ip.Is4In6() && !c.IPv6Open {
 				status.IPv6 = "disabled"
 				continue
@@ -476,6 +473,7 @@ func (m *RemoteManager) stepRouteLocked(ctx context.Context) error {
 	// The published access URLs are resolved once per route step (the loop is
 	// already rate-limited); a settings read error keeps the last good list.
 	access := m.accessURLs(ctx)
+	status.Warnings = remoteWarnings(c.PublicPort, access)
 	if !c.Enabled {
 		status.State = "disabled"
 		status.ErrorCode = ""
@@ -495,7 +493,7 @@ func (m *RemoteManager) stepRouteLocked(ctx context.Context) error {
 			status.Candidates = append(status.Candidates, RemoteCandidate{BaseURL: u, Class: "manual", State: "probe_required", Insecure: strings.HasPrefix(u, "http://")})
 		}
 	}
-	// Naming is fetched only on a changed address/port/namespace. A WAN transition
+	// Names encode each literal address locally. A WAN transition
 	// reuses the existing wildcard and never initiates another certificate order.
 	addressKeys := make([]string, 0, len(addresses))
 	for raw := range addresses {
@@ -669,7 +667,7 @@ func (m *RemoteManager) reconcileMappings(ctx context.Context, c RemoteConfig, a
 	kept := []Mapping{}
 	chosen := map[string]bool{"pcp": c.PCP, "natpmp": c.NATPMP, "upnp": c.UPnP}
 	for _, row := range rows {
-		valid := row.State != "cleanup_pending" && enabled && chosen[row.Protocol] && row.Authority == authority && row.Topology == topology && row.Revision == c.Revision && row.Gateway == t.Gateway && row.Client == t.LocalAddress
+		valid := row.State != "cleanup_pending" && !BrowserRestrictedPort(row.ExternalPort) && enabled && chosen[row.Protocol] && row.Authority == authority && row.Topology == topology && row.Revision == c.Revision && row.Gateway == t.Gateway && row.Client == t.LocalAddress
 		if !valid {
 			expiry := row.ExpiresAt
 			if row.PotentialUntil.After(expiry) {
@@ -747,7 +745,7 @@ func (m *RemoteManager) reconcileMappings(ctx context.Context, c RemoteConfig, a
 			if len(kept) >= 12 {
 				return kept, "mapping_cleanup_pending", nil
 			}
-			row = Mapping{ID: hex.EncodeToString([]byte(mappingNonce())), Authority: authority, Topology: topology, Network: mappingNetwork(t), Revision: c.Revision, Protocol: protocol, Gateway: t.Gateway, Client: t.LocalAddress, InternalPort: port, ExternalPort: c.PublicPort, Nonce: mappingNonce(), State: "preparing"}
+			row = Mapping{ID: hex.EncodeToString([]byte(mappingNonce())), Authority: authority, Topology: topology, Network: mappingNetwork(t), Revision: c.Revision, Protocol: protocol, Gateway: t.Gateway, Client: t.LocalAddress, InternalPort: port, ExternalPort: automaticMappingPort(c.PublicPort), Nonce: mappingNonce(), State: "preparing"}
 			row.Description = "Portico-" + row.ID[:16]
 		}
 		beforeAttempt := row
@@ -767,6 +765,12 @@ func (m *RemoteManager) reconcileMappings(ctx context.Context, c RemoteConfig, a
 			}
 			prepared, err = m.mapper.Map(ctx, row, mappingLifetime)
 			row = prepared // Preserve actual grant/epoch even on an unsupported lease.
+			if err == nil && BrowserRestrictedPort(row.ExternalPort) {
+				// Retain the actual grant for ownership-safe cleanup; never publish it.
+				row.State = "cleanup_pending"
+				row.NextAttempt = now
+				err = errMappingBrowserPort
+			}
 			if errors.Is(err, errMappingUnsupported) || errors.Is(err, errMappingDenied) || errors.Is(err, errMappingConflict) {
 				row.MutationPending = beforeAttempt.MutationPending
 				row.PotentialUntil = beforeAttempt.PotentialUntil

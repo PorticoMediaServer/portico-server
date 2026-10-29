@@ -3619,8 +3619,6 @@ CREATE TABLE identity_unknown_attempts(
 CREATE TABLE "networking_remote_settings"(singleton INTEGER PRIMARY KEY CHECK(singleton=1),authority TEXT NOT NULL DEFAULT '',revision INTEGER NOT NULL DEFAULT 1,enabled INTEGER NOT NULL DEFAULT 0,lan_sharing INTEGER NOT NULL DEFAULT 0,mapping INTEGER NOT NULL DEFAULT 0,pcp INTEGER NOT NULL DEFAULT 1,natpmp INTEGER NOT NULL DEFAULT 1,upnp INTEGER NOT NULL DEFAULT 1,public_port INTEGER NOT NULL DEFAULT 32500,gateway TEXT NOT NULL DEFAULT '',manual_url TEXT NOT NULL DEFAULT '',signature_key BLOB NOT NULL, ipv6_open INTEGER NOT NULL DEFAULT 0) STRICT;
 CREATE TABLE networking_remote_state(singleton INTEGER PRIMARY KEY CHECK(singleton=1),generation INTEGER NOT NULL DEFAULT 1,topology_digest TEXT NOT NULL DEFAULT '',route_digest TEXT NOT NULL DEFAULT '',next_attempt INTEGER NOT NULL DEFAULT 0,attempts INTEGER NOT NULL DEFAULT 0,retry_after INTEGER NOT NULL DEFAULT 0,status TEXT NOT NULL DEFAULT '{}') STRICT;
 CREATE TABLE networking_mappings(id TEXT PRIMARY KEY,authority TEXT NOT NULL,protocol TEXT NOT NULL,expires_at INTEGER NOT NULL,next_attempt INTEGER NOT NULL,payload TEXT NOT NULL) STRICT;
-CREATE TABLE networking_route_names(authority TEXT NOT NULL,address TEXT NOT NULL,port INTEGER NOT NULL,url TEXT NOT NULL,PRIMARY KEY(authority,address,port)) STRICT;
-CREATE TABLE networking_address_absence(authority TEXT NOT NULL,family TEXT NOT NULL,since INTEGER NOT NULL,observations INTEGER NOT NULL,PRIMARY KEY(authority,family)) STRICT;
 CREATE TABLE networking_certificate_settings (
  singleton INTEGER PRIMARY KEY CHECK(singleton=1),enabled INTEGER NOT NULL DEFAULT 1,
  public_port INTEGER NOT NULL DEFAULT 32500 CHECK(public_port BETWEEN 1 AND 65535),
@@ -9565,6 +9563,7 @@ CREATE TABLE backup_destinations(path TEXT PRIMARY KEY) STRICT;
 INSERT INTO backup_destinations(path) VALUES('');
 
 CREATE TABLE server_settings(singleton INTEGER PRIMARY KEY CHECK(singleton=1), updated_ms INTEGER NOT NULL DEFAULT 0,
+ "secureConnections" TEXT CHECK("secureConnections" IS NULL OR "secureConnections" IN ('preferred','required')),
  "analysisStorageGiB" INTEGER,
  "analysisStageStorageMiB" INTEGER,
  "subtitleTrackLimit" INTEGER,

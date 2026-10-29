@@ -42,9 +42,7 @@ func contactFixture(t *testing.T) (*sqlFixture, *RemoteManager, *Topology, *cont
 				Generation int64 `json:"generation,string"`
 			}{in.Generation})
 			return reply(http.StatusOK, string(body)), nil
-		case strings.HasSuffix(r.URL.Path, "/direct-route"):
-			counts.names++
-			return reply(http.StatusOK, `{}`), nil
+
 		}
 		t.Errorf("unexpected Hosted call %s", r.URL.Path)
 		return reply(http.StatusNotFound, `{"code":"unexpected"}`), nil

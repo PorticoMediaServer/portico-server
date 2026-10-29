@@ -5,13 +5,11 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"net/netip"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/directname"
 	"portico.local/server/internal/usermutation"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -29,6 +27,7 @@ type RemoteConfig struct {
 	IPv6Open bool `json:"ipv6Open"`
 }
 type RemoteStatus struct {
+	Warnings    []RemoteWarning   `json:"warnings"`
 	AuthorityID string            `json:"authorityId"`
 	Config      RemoteConfig      `json:"config"`
 	Generation  int64             `json:"generation,string"`
@@ -37,8 +36,7 @@ type RemoteStatus struct {
 	Topology    Topology          `json:"topology"`
 	Candidates  []RemoteCandidate `json:"candidates"`
 	Mappings    []MappingSummary  `json:"mappings"`
-	// IPv6 says why the global IPv6 address is or isn't published: pinhole,
-	// firewall_open, owner_confirmed, or unverified (not published).
+	// IPv6 reports disabled, unverified, or verified after inbound proof.
 	IPv6        string     `json:"ipv6,omitempty"`
 	CheckedAt   *time.Time `json:"checkedAt,omitempty"`
 	NextAttempt *time.Time `json:"nextAttempt,omitempty"`

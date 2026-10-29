@@ -4145,10 +4145,6 @@ music_virtual_tracks.end_seconds
 music_virtual_tracks.entity_id
 music_virtual_tracks.ordinal
 music_virtual_tracks.start_seconds
-networking_address_absence.authority
-networking_address_absence.family
-networking_address_absence.observations
-networking_address_absence.since
 networking_certificate_settings.enabled
 networking_certificate_settings.incarnation
 networking_certificate_settings.local_generation
@@ -4289,10 +4285,6 @@ networking_remote_state.route_digest
 networking_remote_state.singleton
 networking_remote_state.status
 networking_remote_state.topology_digest
-networking_route_names.address
-networking_route_names.authority
-networking_route_names.port
-networking_route_names.url
 networking_server_identities.created_at
 networking_server_identities.key_incarnation
 networking_server_identities.public_key
@@ -6396,6 +6388,7 @@ server_settings.playHistoryDays
 server_settings.playedRetentionMs
 server_settings.remoteBitrateLimitKbps
 server_settings.remoteSignInPolicy
+server_settings.secureConnections
 server_settings.segments.animeMode
 server_settings.segments.automaticConfidencePercent
 server_settings.segments.creditsWindow

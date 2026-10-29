@@ -63,7 +63,7 @@ func (h *ClaimHandler) proveRoute(ctx context.Context, v Intent, generation int6
 
 const maxPublishedCandidates = 80
 
-// The directory is TLS-only. Local discovery remains available over HTTP.
+// Automatic candidates use TLS. Owner-entered HTTP candidates are insecure.
 // Manual routes arrive first, in the owner's chosen order, ahead of automatic
 // public and LAN candidates. Deduplicate before consuming the shared budget.
 func boundedRouteCandidates(candidates []RemoteCandidate) []RemoteCandidate {

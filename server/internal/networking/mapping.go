@@ -14,6 +14,7 @@ const mappingLifetime = 3600
 var errMappingUnsupported = errors.New("mapping protocol unsupported")
 var errMappingDenied = errors.New("mapping denied by gateway")
 var errMappingConflict = errors.New("mapping belongs to another service")
+var errMappingBrowserPort = errors.New("browser restricted mapping port")
 var errMappingResponse = errors.New("invalid gateway response")
 
 type Mapping struct {
@@ -168,6 +169,8 @@ func gatewayDatagram(ctx context.Context, m Mapping, request []byte, min int, ma
 }
 func mappingError(err error) string {
 	switch {
+	case errors.Is(err, errMappingBrowserPort):
+		return "browser_restricted_port"
 	case errors.Is(err, errMappingUnsupported):
 		return "mapping_unsupported"
 	case errors.Is(err, errMappingDenied):

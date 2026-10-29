@@ -7,13 +7,13 @@ import (
 )
 
 func TestVirtualInterfacePrefixes(t *testing.T) {
-	for _, name := range []string{"docker0", "br-1a2b3c", "veth9f2a", "virbr0", "vmnet8", "vboxnet0", "cni0", "flannel.1", "caliabc", "lxcbr0", "lxdbr0", "podman0", "zt0", "wg0", "tun0", "tap0", "utun3"} {
+	for _, name := range []string{"docker0", "br-1a2b3c", "br0", "veth9f2a", "virbr0", "vmnet8", "vboxnet0", "cni0", "flannel.1", "caliabc", "lxcbr0", "lxdbr0", "podman0", "zt0", "wg0", "tun0", "tap0", "utun3", "tailscale0"} {
 		if !VirtualInterface(name) {
 			t.Fatalf("VirtualInterface(%q)=false, want true", name)
 		}
 	}
-	// br0 is a real Linux bridge on NAS boxes and must not match (br- has the dash).
-	for _, name := range []string{"br0", "eth0", "en0", "enp3s0", "wlan0", "lo"} {
+	// Physical interface names remain eligible.
+	for _, name := range []string{"eth0", "en0", "enp3s0", "wlan0", "lo"} {
 		if VirtualInterface(name) {
 			t.Fatalf("VirtualInterface(%q)=true, want false", name)
 		}
@@ -90,15 +90,15 @@ func TestAdvertisedInterfaceMissingFallsBack(t *testing.T) {
 	if !got["192.168.1.20"] || !got["192.168.1.21"] {
 		t.Fatalf("a missing interface falls back to automatic: %v", topo.LAN)
 	}
-	if !got["172.17.0.1"] {
-		t.Fatalf("automatic includes attached interfaces: %v", topo.LAN)
+	if got["172.17.0.1"] {
+		t.Fatalf("automatic included container interface: %v", topo.LAN)
 	}
 	if topo.ErrorCode != "advertised_interface_missing" {
 		t.Fatalf("error code: %q", topo.ErrorCode)
 	}
 }
 
-func TestGatewayInterfaceNeverSkipped(t *testing.T) {
+func TestVirtualGatewayInterfaceIsExcluded(t *testing.T) {
 	stubTopology(t, []ifaceAddrs{
 		topoIface("eth0", "192.168.1.20/24"),
 		topoIface("docker0", "172.17.0.1/16"),
@@ -109,16 +109,36 @@ func TestGatewayInterfaceNeverSkipped(t *testing.T) {
 		t.Fatal(e)
 	}
 	got := lanSet(t, topo.LAN)
-	if !got["172.17.0.1"] {
-		t.Fatalf("the gateway interface is never skipped: %v", topo.LAN)
+	if got["172.17.0.1"] {
+		t.Fatalf("virtual gateway interface included: %v", topo.LAN)
 	}
 	if !got["192.168.1.20"] {
 		t.Fatalf("a physical interface stays: %v", topo.LAN)
 	}
-	if !got["10.5.0.2"] {
-		t.Fatalf("an attached interface was skipped: %v", topo.LAN)
+	if got["10.5.0.2"] {
+		t.Fatalf("virtual interface included: %v", topo.LAN)
 	}
-	if topo.LocalAddress != "172.17.0.1" {
+	if topo.LocalAddress != "" {
 		t.Fatalf("local address: %q", topo.LocalAddress)
+	}
+}
+
+func TestAllPhysicalLANAddressesExcludeBridgesAndVPN(t *testing.T) {
+	stubTopology(t, []ifaceAddrs{
+		topoIface("eth0", "192.168.1.20/24", "192.168.1.21/24", "fd00::20/64", "fd00::21/64"),
+		topoIface("eth1", "10.0.0.2/24"), topoIface("docker0", "172.17.0.1/16"), topoIface("br0", "172.18.0.1/16"), topoIface("tailscale0", "100.64.0.1/10", "fd7a:115c:a1e0::1/48"), topoIface("wg0", "10.9.0.1/24"),
+	}, "192.168.1.1", "192.168.1.20")
+	topo, err := observeTopology(context.Background(), "[::]:32500", "192.168.1.1", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := lanSet(t, topo.LAN)
+	if len(got) != 5 {
+		t.Fatalf("LAN addresses %+v", topo.LAN)
+	}
+	for _, ip := range []string{"192.168.1.20", "192.168.1.21", "fd00::20", "fd00::21", "10.0.0.2"} {
+		if !got[ip] {
+			t.Fatal("missing real LAN address", ip, topo.LAN)
+		}
 	}
 }
