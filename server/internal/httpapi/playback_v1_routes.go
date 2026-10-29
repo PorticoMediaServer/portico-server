@@ -258,7 +258,11 @@ func newPlaybackV1(d Dependencies) *playbackv1.Service {
 			m.Summary = &summary
 		}
 		// The playlists route's own authorization: the caller, and every item's library.
-		out, err := d.Catalog.MutatePlaylist(resourceActor(p), "", "create", "", m, func(tx *sql.Tx) error {
+		// Bind the catalogue to this request so its write waits and statements
+		// carry the request deadline. The root service falls back to the
+		// background context, and a save whose catalogue write waited on a busy
+		// write gate would then outlive its own budget and the client's request.
+		out, err := d.Catalog.WithContext(ctx).MutatePlaylist(resourceActor(p), "", "create", "", m, func(tx *sql.Tx) error {
 			for _, item := range items {
 				var library string
 				if err := tx.QueryRow(`SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.public_id=pid_blob(?)`, item).Scan(&library); err != nil {

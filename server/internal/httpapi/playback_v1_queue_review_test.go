@@ -1,7 +1,10 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"net/http/httptest"
 	"strconv"
 	"strings"
 	"sync"
@@ -10,6 +13,53 @@ import (
 
 	"portico.local/server/internal/playbackv1"
 )
+
+// reviewRequestBudget bounds one request in the save-as-playlist review tests.
+// It sits above the default lane's 5s budget, so a healthy machine still gets
+// the route's own deadline first, and below the tests' 20s poll windows and far
+// below the package timeout, so a request that blocks reports a status instead
+// of hanging the package. The deadline is carried by the request context the
+// handler (and the catalogue write it makes) reads, so the blocked operation
+// itself ends; no goroutine is left waiting for a reply.
+const reviewRequestBudget = 10 * time.Second
+
+func callWithReviewDeadline(t *testing.T, f *v1Fixture, token, method, path string, headers map[string]string, body any, want int, out any) *httptest.ResponseRecorder {
+	t.Helper()
+	var data []byte
+	if body != nil {
+		var err error
+		if data, err = json.Marshal(body); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), reviewRequestBudget)
+	defer cancel()
+	r := httptest.NewRequest(method, path, bytes.NewReader(data)).WithContext(ctx)
+	if token != "" {
+		r.Header.Set("Authorization", "Bearer "+token)
+	}
+	if body != nil {
+		contentType := "application/json"
+		if method == "PATCH" {
+			contentType = "application/merge-patch+json"
+		}
+		r.Header.Set("Content-Type", contentType)
+	}
+	for k, v := range headers {
+		r.Header.Set(k, v)
+	}
+	w := httptest.NewRecorder()
+	f.handler.ServeHTTP(w, r)
+	if want != 0 && w.Code != want {
+		t.Fatalf("%s %s: status %d, want %d: %s", method, path, w.Code, want, w.Body.String())
+	}
+	if out != nil && w.Body.Len() > 0 {
+		if err := json.Unmarshal(w.Body.Bytes(), out); err != nil {
+			t.Fatalf("%s %s: %v: %s", method, path, err, w.Body.String())
+		}
+	}
+	return w
+}
 
 // Review P21: an advance moves only onto an entry the viewer can play. A
 // restriction that arrives after the queue was built is skipped by next; a
@@ -320,14 +370,14 @@ func TestPlaybackV1SaveAsPlaylistSurvivesARevisionThatKeepsTheOrder(t *testing.T
 	f, _, _ := queueAccessFixture(t)
 	bigCollection(t, f, 1001)
 	var big playbackv1.QueueReply
-	f.call("POST", "/v1/queues", map[string]string{"Idempotency-Key": "save-queue-rep-00001"}, map[string]any{"segments": []any{map[string]any{"source": containerSource("collection", f.names["big"].Public)}}}, 201, &big)
+	callWithReviewDeadline(t, f, f.owner.AccessToken, "POST", "/v1/queues", map[string]string{"Idempotency-Key": "save-queue-rep-00001"}, map[string]any{"segments": []any{map[string]any{"source": containerSource("collection", f.names["big"].Public)}}}, 201, &big)
 	f.v1.HoldQueueBuilds()
 	path := "/v1/queues/" + big.Queue.ID + ":save-as-playlist"
 	headers := map[string]string{"Idempotency-Key": "save-playlist-rep01"}
 	var saved playbackv1.SavedPlaylist
-	f.call("POST", path, headers, map[string]any{"name": "Repeating"}, 201, &saved)
+	callWithReviewDeadline(t, f, f.owner.AccessToken, "POST", path, headers, map[string]any{"name": "Repeating"}, 201, &saved)
 	var repeated playbackv1.QueueReply
-	f.call("PATCH", "/v1/queues/"+big.Queue.ID, map[string]string{"If-Match": big.Queue.Revision}, map[string]any{"repeat": "all"}, 200, &repeated)
+	callWithReviewDeadline(t, f, f.owner.AccessToken, "PATCH", "/v1/queues/"+big.Queue.ID, map[string]string{"If-Match": big.Queue.Revision}, map[string]any{"repeat": "all"}, 200, &repeated)
 	if repeated.Queue.Revision == big.Queue.Revision {
 		t.Fatal("the setting didn't move the revision; the test proves nothing")
 	}
@@ -338,7 +388,7 @@ func TestPlaybackV1SaveAsPlaylistSurvivesARevisionThatKeepsTheOrder(t *testing.T
 			t.Fatalf("the copy never finished: %+v", saved)
 		}
 		time.Sleep(50 * time.Millisecond)
-		f.call("POST", path, headers, map[string]any{"name": "Repeating"}, 201, &saved)
+		callWithReviewDeadline(t, f, f.owner.AccessToken, "POST", path, headers, map[string]any{"name": "Repeating"}, 201, &saved)
 	}
 	if saved.State != playbackv1.SaveStateSaved || saved.Entries != 1001 {
 		t.Fatalf("a revision without a new order: %+v", saved)
@@ -356,12 +406,12 @@ func TestPlaybackV1SaveAsPlaylistStopsWhenTheQueueChangesAfterTheRead(t *testing
 	svc.SaveReadCheck = func() { once.Do(func() { close(reached); <-proceed }) }
 	bigCollection(t, f, 1001)
 	var big playbackv1.QueueReply
-	f.call("POST", "/v1/queues", map[string]string{"Idempotency-Key": "save-after-read-01"}, map[string]any{"segments": []any{map[string]any{"source": containerSource("collection", f.names["big"].Public)}}}, 201, &big)
+	callWithReviewDeadline(t, f, f.owner.AccessToken, "POST", "/v1/queues", map[string]string{"Idempotency-Key": "save-after-read-01"}, map[string]any{"segments": []any{map[string]any{"source": containerSource("collection", f.names["big"].Public)}}}, 201, &big)
 	svc.HoldQueueBuilds()
 	path := "/v1/queues/" + big.Queue.ID + ":save-as-playlist"
 	headers := map[string]string{"Idempotency-Key": "save-after-read-save"}
 	var saved playbackv1.SavedPlaylist
-	f.call("POST", path, headers, map[string]any{"name": "After the read"}, 201, &saved)
+	callWithReviewDeadline(t, f, f.owner.AccessToken, "POST", path, headers, map[string]any{"name": "After the read"}, 201, &saved)
 	if saved.State != playbackv1.SaveStateSaving || saved.Entries != 0 {
 		t.Fatalf("paused save %+v", saved)
 	}
@@ -372,7 +422,7 @@ func TestPlaybackV1SaveAsPlaylistStopsWhenTheQueueChangesAfterTheRead(t *testing
 		t.Fatalf("the copy never read its windows: %+v", saved)
 	}
 	var changed playbackv1.QueueReply
-	f.call("POST", "/v1/queues/"+big.Queue.ID+"/segments", map[string]string{"If-Match": big.Queue.Revision}, map[string]any{"placement": "end", "source": queueItems(f.names["big0000000"].Public)}, 200, &changed)
+	callWithReviewDeadline(t, f, f.owner.AccessToken, "POST", "/v1/queues/"+big.Queue.ID+"/segments", map[string]string{"If-Match": big.Queue.Revision}, map[string]any{"placement": "end", "source": queueItems(f.names["big0000000"].Public)}, 200, &changed)
 	close(proceed)
 	deadline := time.Now().Add(20 * time.Second)
 	for saved.State == playbackv1.SaveStateSaving {
@@ -380,7 +430,7 @@ func TestPlaybackV1SaveAsPlaylistStopsWhenTheQueueChangesAfterTheRead(t *testing
 			t.Fatalf("the copy never stopped: %+v", saved)
 		}
 		time.Sleep(50 * time.Millisecond)
-		f.call("POST", path, headers, map[string]any{"name": "After the read"}, 201, &saved)
+		callWithReviewDeadline(t, f, f.owner.AccessToken, "POST", path, headers, map[string]any{"name": "After the read"}, 201, &saved)
 	}
 	if saved.State != playbackv1.SaveStateFailed || saved.ErrorCode != "queue_changed" || saved.Entries != 0 {
 		t.Fatalf("a queue changed after the read: %+v", saved)
