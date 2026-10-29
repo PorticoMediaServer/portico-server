@@ -409,7 +409,6 @@ func TestFacetRuntimeTerminalDemandIsNeverRearmedOrDue(t *testing.T) {
 	demand := f.r.demands[scope]
 	base := demand.ready
 	c.reset()
-	publications := dbwork.Publications()
 
 	// The shape maintenanceFailure produces for a non-retryable read: the ready
 	// basis stays, the result becomes fixed.
@@ -427,6 +426,13 @@ func TestFacetRuntimeTerminalDemandIsNeverRearmedOrDue(t *testing.T) {
 		_, err := tx.ExecContext(ctx, `UPDATE catalog_facet_source_state SET source_epoch=source_epoch+1,policy_epoch=policy_epoch+1 WHERE singleton=1`)
 		return err
 	})
+	// The baseline is taken after this fixture's own invalidation write: that
+	// gated transaction commits one batch and so legitimately publishes
+	// (dbwork.Publications counts committed gated writes). It is not runtime
+	// work. Baseline and assertion still bracket the entire no-work window —
+	// writer guard, schedule, due check and both selections below — so any
+	// capture, quantum or publication performed there still fails the test.
+	publications := dbwork.Publications()
 	if err := f.r.writerReady(context.Background()); err != nil {
 		t.Fatal(err)
 	}
