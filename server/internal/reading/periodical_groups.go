@@ -78,7 +78,7 @@ func (s *Service) PeriodicalGroups(ctx context.Context, p identity.Principal, li
 	if err != nil || len(key) != 32 {
 		return out, ErrChanged
 	}
-	current := seriesCursor{Namespace: generation.Namespace, Input: generation.Input, Ready: generation.Ready, Catalog: scope.Catalog, Viewer: scope.Viewer, Expiry: time.Now().Add(30 * time.Minute).Unix(), Scope: digest}
+	current := seriesCursor{Namespace: generation.Namespace, Input: generation.Ready, Ready: generation.Ready, Catalog: scope.Catalog, Viewer: scope.Viewer, Expiry: time.Now().Add(30 * time.Minute).Unix(), Scope: digest}
 	var after *string
 	if cursor != "" {
 		captured, e := decodeSeriesCursor(cursor, key, time.Now())
