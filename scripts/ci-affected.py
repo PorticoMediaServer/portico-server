@@ -48,15 +48,38 @@ def tag_args():
     return ["-tags", value] if value else []
 
 
+def _env_seconds(name, default):
+    """Read one whole-second override, or the official value when it is unset.
+
+    The override exists for an explicit diagnostic lane that must run real
+    media bodies past the 780 s package deadline. CI leaves both variables
+    unset, so the official constants below are unchanged there.
+    """
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        raise RuntimeError(f"{name} must be whole seconds, not {raw!r}") from None
+    if value < 0:
+        raise RuntimeError(f"{name} must not be negative")
+    return value
+
+
 # Per-package deadline passed to `go test -timeout`. This is the hang guard for
 # one package, not a scope filter: the slowest package measured on mini-1
 # (cmd/server) took 248 s, so three times that, rounded up, still finishes every
 # real package while a hang is named inside the package that hung.
-GO_TEST_TIMEOUT = 13 * 60  # 780 s
+# PORTICO_GO_TEST_TIMEOUT=0 (diagnostic lanes only) passes `-timeout=0s`.
+GO_TEST_TIMEOUT = _env_seconds("PORTICO_GO_TEST_TIMEOUT", 13 * 60)  # 780 s
 # Outer watchdog for one package invocation. go test's own deadline fires first
 # and prints every running test; only a go test that cannot exit reaches this,
-# and that package is then terminated on its own.
-GO_PACKAGE_BACKSTOP = GO_TEST_TIMEOUT + 2 * 60  # 900 s
+# and that package is then terminated on its own. A 0 deadline needs its own
+# explicit backstop, because only this watchdog can stop such a run.
+GO_PACKAGE_BACKSTOP = _env_seconds(
+    "PORTICO_GO_PACKAGE_BACKSTOP",
+    GO_TEST_TIMEOUT + 2 * 60 if GO_TEST_TIMEOUT else 4 * 60 * 60)  # 900 s
 # Packages run as separate processes, as `go test ./...` did with -p=3. A hung
 # package holds its own lane only; other lanes and the rest of the inventory
 # keep producing results in this run.
@@ -1436,8 +1459,9 @@ def go_test(module, selection, shard_index=0, shard_total=1):
     try:
         print_tool_versions(report)
         limit_cores(report)
+        deadline = "none" if not GO_TEST_TIMEOUT else f"{GO_TEST_TIMEOUT}s"
         report.note(f"{len(selection)} package(s) in this shard; {GO_PACKAGE_JOBS} lane(s); "
-                    f"package deadline {GO_TEST_TIMEOUT}s; watchdog {GO_PACKAGE_BACKSTOP}s")
+                    f"package deadline {deadline}; watchdog {GO_PACKAGE_BACKSTOP}s")
         queue_ = list(selection)
         lock = threading.Lock()
 

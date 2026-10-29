@@ -1,0 +1,323 @@
+{
+  "$comment": "Source-only plan for one opt-in diagnostic lane. Nothing here executes on its own; root reviews the branch and runs the private one-shot runner.",
+  "id": "full-media-e2e-20261030",
+  "kind": "one-off opt-in diagnostic, source only",
+  "provenance": {
+    "upstreamDocs": [
+      "_program/v3/astra-integration/P2-59-FULL-E2E-SKIP-CATEGORIES.md",
+      "_program/v3/astra-integration/P2-59-OPTIN-PREREQUISITES.md"
+    ],
+    "rowSource": ".private/P2-59/full-e2e-20261029/audit/skip-categories.csv (282 rows) and skips.csv",
+    "auditedRun": "40903788813",
+    "auditedHead": "2f165d167394dde80945b9a64770bbc5de1d181b",
+    "auditedBranch": "ci/full-e2e-2026-10-29 (untouched; not read in place, not edited)",
+    "diagnosticBranch": "ci/full-media-e2e-2026-10-30",
+    "baseCommit": "63d869a7143d281ccc86ad98e22bca7fb50b6d40",
+    "sourceWorktree": ".worktrees/astra/P2-59-ci-media-e2e",
+    "privatePlanDir": ".private/P2-59/full-media-e2e-20261030"
+  },
+  "host": {
+    "name": "mini-1 (ehler-personal)",
+    "role": "target for the official local CI command shape",
+    "cores": 12,
+    "ramGiB": 30,
+    "homeFreeGiB": 363,
+    "tmp": "tmpfs 9.9 GiB; extraction and verifier scratch must stay on /home",
+    "actionsRunners": 0,
+    "actionsRunnersConsequence": "No GitHub workflow and no runs-on label is added. A hosted job cannot be assumed to exist, so the lane is a local one-shot runner only.",
+    "postgres": "18 at /usr/lib/postgresql/18/bin (initdb/pg_ctl not on PATH; psql/pg_isready are)",
+    "bwrap": "/usr/bin/bwrap present; kernel.apparmor_restrict_unprivileged_userns=1 leaves the sandbox unproven until probed",
+    "renderDevice": "/dev/dri/renderD128 and card1 on Intel 8086:9bc8 (i915)",
+    "systemMedia": "/usr/bin/ffmpeg and /usr/bin/ffprobe exist and are NOT qualified; PORTICO_REQUIRE_QUALIFIED_FFMPEG=1 makes a PATH fallback fatal"
+  },
+  "policy": {
+    "noWorkflow": true,
+    "noRunnerLabels": true,
+    "noQueueOrFramework": true,
+    "oneShotRunner": ".private/P2-59/full-media-e2e-20261030/full-media-e2e-runner.sh",
+    "originalsUntouched": [
+      "refs/heads/ci/full-e2e-2026-10-29 = 2f165d167394dde80945b9a64770bbc5de1d181b",
+      ".worktrees/astra/P2-59-ci-full-e2e (clean)",
+      ".private/P2-59/full-e2e-20261029/audit/*"
+    ],
+    "mainChange": "none; the only source change is branch-local",
+    "continuesAfterTestFailure": true
+  },
+  "selection": {
+    "command": "python3 scripts/ci-affected.py go --module server",
+    "env": {
+      "CI_FULL_TREE": "1",
+      "CI_SHARD_INDEX": "0..3 (one sequential run per shard)",
+      "CI_SHARD_TOTAL": "4",
+      "CI_GO_RESULTS": "run/shard-<n>/go-results-server-<n>.jsonl",
+      "PORTICO_GO_TAGS": "python3 scripts/release-build-tags.py --capability (exit 2 when empty)"
+    },
+    "unchangedInScript": [
+      "catalog and httpapi anchored parent partitions",
+      "GO_PACKAGE_JOBS=3 package lanes",
+      "GO_RUN_CORES=10 affinity, derived GOMAXPROCS",
+      "vet-go.sh after each shard's tests",
+      "per-package -count=1 -json"
+    ],
+    "shardsSequential": true,
+    "shardsSequentialReason": "One host, one 10-core campaign budget. Running the four shard invocations one after another preserves each shard's official selection and affinity without oversubscribing mini-1."
+  },
+  "timeoutOverride": {
+    "file": "scripts/ci-affected.py",
+    "variables": ["PORTICO_GO_TEST_TIMEOUT", "PORTICO_GO_PACKAGE_BACKSTOP"],
+    "diagnosticValues": {"PORTICO_GO_TEST_TIMEOUT": "0", "PORTICO_GO_PACKAGE_BACKSTOP": "14400"},
+    "defaultsWhenUnset": {"GO_TEST_TIMEOUT": 780, "GO_PACKAGE_BACKSTOP": 900},
+    "scope": "Branch-local only. With the variables unset the constants and the two python-regression assertions (780/900) are unchanged.",
+    "why": "Real media bodies (multi-minute encodes, 2 h copy timelines, the 1M-key queue and soak) do not fit the 780 s package deadline that was measured for the non-media suite. -timeout=0 is paired with an explicit 4 h outer backstop so a hung package is still named and stopped."
+  },
+  "bundlePreflight": {
+    "archive": ".artifacts/release-r40/runtime-f3ef43fa/portico-ffmpeg-linux-x64.tar.xz",
+    "archiveSha256": "1dac38d5877469fb2752cc5a2e2b7ce7421a1ea5577cb9c04b316cd54993ae06",
+    "archivePreserved": "read-only use; hashed before and after extraction; never modified or moved",
+    "extractionTarget": "<diagnostic worktree>/third_party/ffmpeg/bundle (task-owned ancestor of every package CWD; ignored by third_party/ffmpeg/.gitignore)",
+    "extractionGuards": [
+      "refuse a non-empty stage or an existing bundle",
+      "reject absolute paths, .. components, symlinks, hardlinks and non-regular entries in the tar listing",
+      "tar --no-same-owner -xJf into a private stage on /home, then rename into place",
+      "TMPDIR on disk (never tmpfs) and >25 GiB free before extraction"
+    ],
+    "verification": [
+      "scripts/verify-ffmpeg-bundle.sh $BUNDLE full (manifest, ABI, features, disc bundle, recipes)",
+      "toolchain-manifest.json sha256 = ec9305343d192a338721a8ba73468712644bc76ab027c1891a684a87009bb307",
+      "metadata: schemaVersion 1, licenseMode gpl3, target linux-x64; file count recorded (713 expected from the archive inspection; identity is the sha256 above)",
+      "fixtures/discs/manifest.json sha256 = d531e2332adb16261add1fca78f3670be0b4ec2385453018a45fa96c6add77fa",
+      "PORTICO_FFMPEG_TEST_FONT present (packages/reader-core/assets/Literata[opsz,wght].ttf)",
+      "bin/portico-disc executable",
+      "feature census greps recorded as smoke only; the recipe/manifest verifier is the contract"
+    ],
+    "stopRule": "If full verification fails, no media body runs. A system or apt pair is never substituted."
+  },
+  "environment": {
+    "always": {
+      "PORTICO_TEST_TIER": "all",
+      "PORTICO_PERFORMANCE_TIER": "release",
+      "PORTICO_REQUIRE_QUALIFIED_FFMPEG": "1",
+      "PORTICO_TEST_QUALIFIED_BUNDLE": "<bundle>",
+      "PORTICO_FFMPEG": "<bundle>/bin/ffmpeg",
+      "PORTICO_FFPROBE": "<bundle>/bin/ffprobe",
+      "PATH": "<bundle>/bin first",
+      "PORTICO_PLAYBACK_TEST_HELPER": "<helpers>/portico-server (built cmd/server; media httpapi tests t.Fatal without it)",
+      "PORTICO_EPISODE_TEST_FFMPEG": "<bundle>/bin/ffmpeg",
+      "PORTICO_EPISODE_TEST_FFPROBE": "<bundle>/bin/ffprobe",
+      "PORTICO_DISC_TEST_BINARY": "<bundle>/bin/portico-disc",
+      "PORTICO_DISC_TEST_FFMPEG": "<bundle>/bin/ffmpeg",
+      "PORTICO_DISC_TEST_FFPROBE": "<bundle>/bin/ffprobe",
+      "PORTICO_TEST_DATABASE_URL_FILE": "<private>/pg/postgres.url (mode 600)",
+      "PORTICO_RETURN_HOSTED_CHECKOUT": "<private>/hosted-src (isolated copy; only when prepared)",
+      "PORTICO_OWNER_CONTINUATION_BINARY": "<helpers>/owner-continuation.test (only when built)",
+      "PORTICO_QUEUE_SCALE": "1",
+      "PORTICO_TASTE_SCALE": "1",
+      "PORTICO_TASTE_5K": "1",
+      "PORTICO_SCAN_COST": "1",
+      "PORTICO_LC_COST": "1",
+      "PORTICO_FACET_COLD_SCALE": "1",
+      "PORTICO_SOURCE_VERIFICATION_SCALE": "1",
+      "PORTICO_ARTWORK_BENCH": "1",
+      "PORTICO_ARTWORK_SCALE": "1000000",
+      "PORTICO_LISTENING_BENCH": "200000",
+      "PORTICO_LISTENING_GROUPS_BENCH": "50000",
+      "PORTICO_RELATED_SCALE": "200000",
+      "PORTICO_P2_63_LARGE_LINKS": "100000",
+      "PORTICO_R01_SLOW_TEST": "1",
+      "PORTICO_P228_SHOW_SIZE": "1",
+      "PORTICO_SCALE_DIR": "<private>/fixtures/scale-100k (empty; TestContentScale100K seeds it)",
+      "PORTICO_SEGMENT_MEDIA_OUT": "<private>/out/segment-media",
+      "PORTICO_METADATA_BROWSER_FIXTURE": "<private>/fixtures/metadata-review (empty; the test creates it; port 19422 must be free)",
+      "PORTICO_VOD_TEST_SOURCE": "<worktree>/fixtures/library-layout/synthetic-master.mp4"
+    },
+    "conditional": {
+      "PORTICO_REQUIRE_DECODER_SANDBOX": "1 only after the bwrap user+mount namespace probe exits 0",
+      "PORTICO_PERFORMANCE_TIER=soak": "soak invocation only; the shard run keeps release",
+      "PORTICO_FACET_SCAN_WRITER_COMPARISON": "1 for the alone invocation only",
+      "PORTICO_TEST_HARDWARE_FFMPEG": "<bundle>/bin/ffmpeg, only when its sha256 is e45b7688... and renderD128 is present",
+      "PORTICO_TEST_HARDWARE_BACKEND": "vaapi (S201 rejects every other backend)"
+    },
+    "perFlagPackages": {
+      "rule": "Custom test flags are passed with -args to the one package that declares them; they are never added to the shard invocations.",
+      "flags": {
+        "-bulk-scale": "./internal/catalog (bulk_jobs_test.go)",
+        "-recscale": "./internal/catalog (rec_scale_test.go)",
+        "-data2-plans": "./internal/catalog (related_plan_test.go)",
+        "-download-scale": "./internal/downloads (requests_test.go)"
+      }
+    }
+  },
+  "hostedCrossRepo": {
+    "rows": 21,
+    "rowsDetail": "S110-S124 internal/hosted, S126-S131 internal/networking",
+    "isolatedSource": "copy of portico-internal/hosted-services/hosted only (never the live checkout root, never its deployment config); the copy's config/ example JSON is removed because the module does not read it",
+    "database": "disposable local PostgreSQL 18 cluster under <private>/pg on 127.0.0.1, URL file mode 600",
+    "executable": "owner-continuation.test built with `go test -c ./internal/postgres` in the isolated copy",
+    "never": [
+      "read the live Hosted config or secrets",
+      "connect the global/shared database",
+      "call a live Hosted service"
+    ]
+  },
+  "invocations": [
+    {
+      "id": "shard-0",
+      "stage": "official selection",
+      "cwd": "<worktree>",
+      "argv": ["python3", "scripts/ci-affected.py", "go", "--module", "server"],
+      "env": {"CI_FULL_TREE": "1", "CI_SHARD_INDEX": "0", "CI_SHARD_TOTAL": "4", "CI_GO_RESULTS": "<run>/shard-0/go-results-server-0.jsonl"},
+      "rows": "every skips.csv row whose package lands in this shard, including tier, ffmpeg, opt-in and hosted bodies"
+    },
+    {
+      "id": "shard-1",
+      "stage": "official selection",
+      "cwd": "<worktree>",
+      "argv": ["python3", "scripts/ci-affected.py", "go", "--module", "server"],
+      "env": {"CI_FULL_TREE": "1", "CI_SHARD_INDEX": "1", "CI_SHARD_TOTAL": "4", "CI_GO_RESULTS": "<run>/shard-1/go-results-server-1.jsonl"}
+    },
+    {
+      "id": "shard-2",
+      "stage": "official selection",
+      "cwd": "<worktree>",
+      "argv": ["python3", "scripts/ci-affected.py", "go", "--module", "server"],
+      "env": {"CI_FULL_TREE": "1", "CI_SHARD_INDEX": "2", "CI_SHARD_TOTAL": "4", "CI_GO_RESULTS": "<run>/shard-2/go-results-server-2.jsonl"},
+      "rows": "includes internal/hosted and internal/networking (the 21 cross-repo rows)"
+    },
+    {
+      "id": "shard-3",
+      "stage": "official selection",
+      "cwd": "<worktree>",
+      "argv": ["python3", "scripts/ci-affected.py", "go", "--module", "server"],
+      "env": {"CI_FULL_TREE": "1", "CI_SHARD_INDEX": "3", "CI_SHARD_TOTAL": "4", "CI_GO_RESULTS": "<run>/shard-3/go-results-server-3.jsonl"},
+      "rows": "includes internal/decoder (S215 qualified bundle, sandbox rows) and internal/mediaexec"
+    },
+    {
+      "id": "extra-catalog-bulk",
+      "stage": "targeted flag bodies",
+      "cwd": "<worktree>/server",
+      "argv": ["go", "test", "-tags", "<tags>", "-json", "-count=1", "-timeout=0", "-run", "^TestBulkFiveThousandEpisodes$", "./internal/catalog", "-args", "-bulk-scale"],
+      "rows": ["S102"]
+    },
+    {
+      "id": "extra-catalog-recscale",
+      "stage": "targeted flag bodies",
+      "cwd": "<worktree>/server",
+      "argv": ["go", "test", "-tags", "<tags>", "-json", "-count=1", "-timeout=0", "-run", "^TestRecScale$", "./internal/catalog", "-args", "-recscale=100000"],
+      "rows": ["S105"]
+    },
+    {
+      "id": "extra-catalog-data2plans",
+      "stage": "targeted flag bodies",
+      "cwd": "<worktree>/server",
+      "argv": ["go", "test", "-tags", "<tags>", "-json", "-count=1", "-timeout=0", "-run", "^TestRelatedRecommendationSmokePlans$", "./internal/catalog", "-args", "-data2-plans"],
+      "rows": ["S003"]
+    },
+    {
+      "id": "extra-downloads-scale",
+      "stage": "targeted flag bodies",
+      "cwd": "<worktree>/server",
+      "argv": ["go", "test", "-tags", "<tags>", "-json", "-count=1", "-timeout=0", "-run", "^TestContainerDownloads500Runner$", "./internal/downloads", "-args", "-download-scale"],
+      "rows": ["S221"]
+    },
+    {
+      "id": "extra-httpapi-facet-alone",
+      "stage": "targeted alone body",
+      "cwd": "<worktree>/server",
+      "argv": ["go", "test", "-tags", "<tags>", "-json", "-count=1", "-timeout=0", "-run", "^TestFacetScanWriterComparisonSmallFixture$", "./internal/httpapi"],
+      "env": {"PORTICO_FACET_SCAN_WRITER_COMPARISON": "1"},
+      "rows": ["S231"]
+    },
+    {
+      "id": "extra-decoder-hardware",
+      "stage": "hardware target probe",
+      "cwd": "<worktree>/server",
+      "argv": ["go", "test", "-tags", "<tags>", "-json", "-count=1", "-timeout=0", "-run", "^TestHardwareDecodeTargetRuntime$", "./internal/decoder"],
+      "env": {"PORTICO_TEST_HARDWARE_FFMPEG": "<bundle>/bin/ffmpeg", "PORTICO_TEST_HARDWARE_BACKEND": "vaapi"},
+      "rows": ["S201"],
+      "gate": "only when sha256(bin/ffmpeg) = e45b7688... and /dev/dri/renderD128 exists; the test itself logs the probe posture"
+    },
+    {
+      "id": "extra-httpapi-soak",
+      "stage": "soak tier",
+      "cwd": "<worktree>/server",
+      "argv": ["go", "test", "-tags", "<tags>", "-json", "-count=1", "-timeout=0", "-run", "^TestSoakUnderFaultsAndRealMediaBytes$", "./internal/httpapi"],
+      "env": {"PORTICO_PERFORMANCE_TIER": "soak"},
+      "rows": ["S062"]
+    }
+  ],
+  "coverage": {
+    "records": 282,
+    "distinctNames": 271,
+    "attemptedRecords": 260,
+    "attemptedDistinct": 249,
+    "unconditionalDistinct": 242,
+    "probeGated": 7,
+    "unrunRecords": 22,
+    "duplicateRecords": 11,
+    "duplicateNote": "S272-S282 are the same 11 internal/mediaexec tests already recorded as S246-S256 in go-shards(server,3,4); they are one proof, not two.",
+    "byPrimary": {
+      "qualified-ffmpeg": 124,
+      "gpu-hardware": 1,
+      "real-media-or-large-fixture": 12,
+      "opt-in-env": 94,
+      "platform-specific": 0,
+      "other": 51
+    },
+    "probeGatedRows": {
+      "hardware": ["S201"],
+      "sandbox": ["S011", "S162", "S195", "S205", "S207", "S252"],
+      "note": "The probe is the mechanism's own precondition, not a waiver: bwrap user+mount namespaces for the six sandbox rows, the pinned f3 binary plus renderD128 for S201. A negative probe is recorded with the probe's own error."
+    },
+    "reconciliation": "The seven bodies that need a package flag, an alone run, the soak tier or the hardware switch also appear once as ordinary skips inside their shard (the switch is deliberately not global). The named extra stage is the executed proof; join the two records by package+test name and count the row once. If the sandbox or hardware probe is negative, the corresponding rows stay unrun and the shard skip is the recorded reason, not a pass.",
+    "unrun": [
+      {"ids": ["S032", "S185"], "reason": "PORTICO_HOME_ROWS_DB needs a scalebench fixture; none exists on mini-1 and scripts/batch-round/scalebench.sh refuses to execute on any host but mini-2/portico-runner."},
+      {"ids": ["S035"], "reason": "PORTICO_SCALE_PROFILE_DB must be an existing _program/scratch/scale-check-2 profile copy; none on this host."},
+      {"ids": ["S036"], "reason": "PORTICO_SCALE_WRITE_DB needs an existing _program/scratch/scale-check fixture; none on this host."},
+      {"ids": ["S182"], "reason": "PORTICO_HOME_SCALE_DB needs an isolated scale fixture DB; none present. (The audit named the general prerequisite; the env key is PORTICO_HOME_SCALE_DB.)"},
+      {"ids": ["S093"], "reason": "PORTICO_STARTUP_FIXTURE_STATE needs a writable copy of a large state directory; no same-pin large state exists here."},
+      {"ids": ["S125"], "reason": "PORTICO_RETENTION_DB needs a copy of a real state database with live-channel generations; not available."},
+      {"ids": ["S133"], "reason": "PORTICO_STATE_COPY needs a copy of a state folder from this line; the archived 2026-09 demo state is not a same-pin copy and is not substituted."},
+      {"ids": ["S258"], "reason": "PORTICO_STORAGE_DB needs a state DB; same missing input as S125/S133."},
+      {"ids": ["S084"], "reason": "PORTICO_PROBE_FIXTURE_CONFIG needs an allocated executable/libraries/identity/fixture configuration; no generator or checked config exists in-tree or privately."},
+      {"ids": ["S082", "S083"], "reason": "Tier is satisfied, but PORTICO_SONIC_HELPER_TEST and PORTICO_SONIC_MODEL_TEST point at artefacts from the runtime conformance job and are absent (third_party/musicnn holds a lock file, not the model)."},
+      {"ids": ["S012", "S091"], "reason": "Campaign public live-stream reproductions need the live public fixture; no live network or fake stream substituted."},
+      {"ids": ["S087", "S089"], "reason": "Live MusicBrainz/TVDB provider probes need public network; not run."},
+      {"ids": ["S132"], "reason": "Live WAN observer needs public address services; not run."},
+      {"ids": ["S022", "S023", "S024"], "reason": "PORTICO_SONIC_REFERENCE_DIR and PORTICO_SONIC_HELPER_TEST/PORTICO_SONIC_MODEL_TEST artefacts are produced by the model conformance job and are absent."},
+      {"ids": ["S061", "S243"], "reason": "Cross-repo repair drivers need the external Node journey and a live claim database; not run."}
+    ],
+    "childRowsViaParents": {
+      "S010": "TestApplyMemoryLimitStartup",
+      "S039": "TestReadingCompleteRestartEveryDurablePhase",
+      "S068": "TestReadingClosureCrashRestart",
+      "S097": "TestServerIdleStatementBudget",
+      "S099": "TestStartingServerAnswersFromBindOnOneConnection",
+      "rule": "Never selected with -run as standalone; the parent body executes them."
+    }
+  },
+  "corrections": [
+    "S182's real gate is PORTICO_HOME_SCALE_DB, not the audit's generic 'isolated scale fixture database'.",
+    "S103's real gate is PORTICO_P228_SHOW_SIZE=1 (facet_base_source_show_test.go).",
+    "S062 and S231 must not inherit a shard-wide switch: soak is its own tier, and the facet comparison says 'run alone'.",
+    "PORTICO_PLAYBACK_TEST_HELPER is mandatory for several media httpapi rows; without the built cmd/server they t.Fatal, so the helper is a preflight requirement, not an optional nicety.",
+    "S237 (TestPlaybackV1QueueOneMillionKeys) projects 1,000,000 synthetic metadata keys through bigCollection and measures queue build/order. It reads no media and performs no physical file scan, so it does not conflict with the P2-65 300k real-file scan direction; it is run at the full 1,000,000, not capped.",
+    "S052's fixture root is $PRIV/fixtures/metadata-review, but the test hard-links <root>/../../fixtures/library-layout/synthetic-master.mp4. That committed file is copied into $PRIV/fixtures/library-layout/ so the test's own relative path resolves; no synthetic substitute is made.",
+    "The scale env values (artwork 1M rows, listening 200k, groups 50k, related 200k) are the documented runner values in each test's own header; they are synthetic catalogue projections, not physical media.",
+    "S215 asserts VulkanAvailable=false and OpenCLAvailable=false by actually probing the bundle. mini-1 has libvulkan and Intel ICDs, so a true result is a host-capability finding to record, not a bundle defect and not a reason to skip."
+  ],
+  "evidence": {
+    "perStage": ["command.txt", "stdout.log", "stderr.log", "status", "events.jsonl where the stage emits go test -json"],
+    "shards": "CI_GO_RESULTS jsonl per shard plus ci-affected.py's own full log and summary",
+    "counts": "pass/fail/skip event counts printed per stage and in the final table",
+    "verification": "verify.log and the verifier reports (written beside the bundle, then moved into preflight/ so only the ignored bundle stays in the worktree)",
+    "retention": "kept under the private run directory; no external artifact service is used",
+    "failFast": "none; a failing stage is recorded and the remaining stages still run"
+  },
+  "notDoneByThisChange": [
+    "no workflow file and no runner label",
+    "no change to main or to scripts/ci-affected.py behaviour when the new variables are unset",
+    "no edit to ci/full-e2e-2026-10-29, its worktree, its run or its audit",
+    "no test, build, vet, verifier, extraction, database, media tool or network executed while preparing this plan",
+    "no fake media, model, database, state copy or live provider substitute"
+  ]
+}
