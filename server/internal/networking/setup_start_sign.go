@@ -66,6 +66,19 @@ func (k *ProtectedKeys) signSetupStart(ctx context.Context, binding Binding, ori
 	if current.ServerID != binding.ServerID || current.ResetGeneration != binding.LocalGeneration || !bytes.Equal(current.PublicKey, binding.PublicKey) || !active.Valid || active.String != binding.OperationID || !stage || pending != "" || !sameBinding(unbound, binding) || intent.Purpose != "setup" || intent.CurrentOwnerAccountID != "" || intent.PreviousOwnerRole != "" || intent.ReturnRegistrationID != "" || intent.owner.SetupOperationID != start.SetupRequestID || intent.owner.Epoch != start.SetupRevision {
 		return none, ErrStale
 	}
+	if renewal {
+		// Defence in depth: the signer itself requires an expired, unconsumed start of this setup
+		// and a server nobody owns yet, whatever its caller decided.
+		var lapsed bool
+		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM identity_setup_completions c JOIN onboarding_state_v1 o ON o.singleton=1 AND o.ready=0
+ WHERE c.operation_id=? AND c.phase IN('prepared','installed') AND c.attempt_id='' AND c.consumed_ms=0 AND c.expires_ms<=? AND c.setup_request_id=? AND c.setup_revision=?)`,
+			binding.OperationID, time.Now().UnixMilli(), start.SetupRequestID, start.SetupRevision).Scan(&lapsed); err != nil {
+			return none, err
+		}
+		if !lapsed {
+			return none, ErrStale
+		}
+	}
 	key, err := k.read(current.KeyIncarnation)
 	if err != nil {
 		return none, err

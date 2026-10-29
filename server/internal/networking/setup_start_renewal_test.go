@@ -277,6 +277,19 @@ func TestSetupStartRenewalProducerAgainstStubHosted(t *testing.T) {
 	if _, err = begin(installed, s3, c3, i3); err == nil {
 		t.Fatal("another browser took over a live renewed start")
 	}
+	// Defence in depth: the renewal signer itself refuses a live start, whatever its caller decided.
+	unbound := installed.Binding
+	unbound.AccountID = UnboundAccount
+	if err = runner.Do(ctx, func(ctx context.Context) error {
+		guarded, err := guardedClaimRequest(ctx, store, guard)
+		if err != nil {
+			return err
+		}
+		_, err = keys.SignRenewedSetupStart(guarded, unbound, renewed.raw.Original(), renewed.start)
+		return err
+	}); err == nil {
+		t.Fatal("the renewal signer signed for a live start")
+	}
 	// A bad Hosted answer binds nothing.
 	answer = ""
 	if _, err = db.Exec(`UPDATE identity_setup_completions SET created_ms=created_ms-1200000,expires_ms=expires_ms-1200000`); err != nil {
