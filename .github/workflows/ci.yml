@@ -1,7 +1,7 @@
 name: CI
 on:
   schedule:
-    - cron: '13 * * * *'
+    - cron: '13 7 * * *'  # nightly, ~04:13 Atlantic; branch CI covers every change
   workflow_dispatch:
   workflow_call:
     inputs:
