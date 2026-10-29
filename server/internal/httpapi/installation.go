@@ -15,7 +15,14 @@ import (
 	"portico.local/server/internal/mediaexec"
 )
 
-const webContentSecurityPolicy = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://www.gstatic.com/cv/js/sender/ https://www.gstatic.com/eureka/clank/ https://www.gstatic.com/cast/sdk/libs/sender/; style-src 'self'; connect-src 'self' https://*.direct.getportico.tv https://web.getportico.tv; img-src 'self' blob: data: https://*.direct.getportico.tv; media-src 'self' blob:; worker-src 'self' blob:; frame-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; object-src 'none'; form-action 'self'"
+// A reading book renders in a same-origin blob iframe. Its rewritten
+// stylesheets and deobfuscated fonts arrive as blob URLs made by this document,
+// and a blob document inherits the policy of the document that made it, so
+// style-src and font-src have to name those local schemes here. Nothing else
+// moves: the app's own stylesheet still needs its per-response nonce, inline
+// style and script sources stay unnamed, and fonts come from this origin, a
+// blob or inline data only.
+const webContentSecurityPolicy = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://www.gstatic.com/cv/js/sender/ https://www.gstatic.com/eureka/clank/ https://www.gstatic.com/cast/sdk/libs/sender/; style-src 'self' blob:; font-src 'self' blob: data:; connect-src 'self' https://*.direct.getportico.tv https://web.getportico.tv; img-src 'self' blob: data: https://*.direct.getportico.tv; media-src 'self' blob:; worker-src 'self' blob:; frame-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; object-src 'none'; form-action 'self'"
 
 const styleNoncePlaceholder = "__PORTICO_STYLE_NONCE__"
 const maximumWebDocumentBytes = 1 << 20
