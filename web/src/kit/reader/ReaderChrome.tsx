@@ -96,6 +96,18 @@ export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingIn
   const held = holdOpen || textSelectionActive || Boolean(panel) || Boolean(hint) || focusWithin;
   const shown = visible || held;
   const show = useCallback(() => setVisible(true), []);
+  // W09: the docked panel starts at the measured bottom of the top bar. The bar's height changes with the comic and
+  // tablet layouts (96 px, wrapped 132 px), so a fixed offset covered the bar and its Contents button.
+  useLayoutEffect(() => {
+    const element = root.current, bar = element?.querySelector<HTMLElement>('[data-reader-chrome-layer="top"]');
+    if (!element || !bar) return;
+    const publish = () => element.style.setProperty('--reader-bar-bottom', `${bar.offsetTop + bar.offsetHeight}px`);
+    publish();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(publish);
+    observer.observe(bar);
+    return () => observer.disconnect();
+  }, []);
   const showControls = useCallback(() => {setVisible(true); requestFocus(value => value + 1);}, []);
   useLayoutEffect(() => {
     if (!shown || focusedRequest.current === focusRequest) return;

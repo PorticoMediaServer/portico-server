@@ -1,5 +1,5 @@
 /* 69f2d45 desktop-read .rside/.ptabs/.toc/.hlit and tablet-read 7; phone uses kit sheet. */
-.panel { position: absolute; z-index: var(--layer-tv-focus); top: 72px; right: 0; bottom: 0; width: 452px; display: flex; flex-direction: column; color: var(--color-text); background: rgba(16,33,45,.97); backdrop-filter: blur(30px); box-shadow: -40px 0 80px -30px rgba(0,0,0,.75),-1px 0 0 rgba(237,245,250,.07); }
+.panel { position: absolute; z-index: var(--layer-tv-focus); top: var(--reader-bar-bottom, 72px); right: 0; bottom: 0; width: 452px; display: flex; flex-direction: column; color: var(--color-text); background: rgba(16,33,45,.97); backdrop-filter: blur(30px); box-shadow: -40px 0 80px -30px rgba(0,0,0,.75),-1px 0 0 rgba(237,245,250,.07); }
 .tabs { display: flex; gap: 4px; margin: 16px 16px 6px; padding: 4px; border-radius: 12px; background: rgba(237,245,250,.08); }
 .tabs button { flex: 1; min-width: 0; height: 38px; border: 0; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font: inherit; font-size: 14px; font-weight: 700; color: var(--color-text-secondary); background: transparent; cursor: pointer; white-space: nowrap; }
 .tabs button:hover { color: var(--color-text); }

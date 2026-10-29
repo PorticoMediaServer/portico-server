@@ -100,19 +100,31 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz'|
     Object.assign(previous.style,{position:'absolute',left:`${from.left-box.left+host.scrollLeft}px`,top:`${from.top-box.top+host.scrollTop}px`,margin:'0',pointerEvents:'none'});
     host.append(next);
     const reduce=reducedMotion(),width=host.clientWidth||box.width,offset=swiped?.offset??0;
-    let leaving:Animation,arriving:Animation;
-    if(swiped&&!reduce){
-      const {values,duration}=settleFrames(offset,-turn*width,swiped.velocity),timing={duration,easing:'linear'};
-      leaving=previous.animate(values.map(x=>({transform:`translateX(${x}px)`})),timing);
-      arriving=next.animate(values.map(x=>({transform:`translateX(${x+turn*width}px)`})),timing);
-    }else{
-      const timing={duration:reduce?160:320,easing:reduce?'linear':'cubic-bezier(.2,.8,.2,1)'},held=`translateX(${offset}px)`;
-      leaving=previous.animate(reduce?[{transform:held,opacity:1},{transform:held,opacity:0}]:[{transform:held},{transform:`translateX(${-turn*width}px)`}],timing);
-      arriving=next.animate(reduce?[{opacity:0},{opacity:1}]:[{transform:`translateX(${offset+turn*width}px)`},{transform:'none'}],timing);
+    let leaving:Animation|undefined,arriving:Animation|undefined,done=false,timer:ReturnType<typeof setTimeout>|undefined,armed:number|undefined;
+    // W14: the incoming spread sits at its first keyframe and is painted (two frames: raster, then upload of its
+    // canvases) before the outgoing one starts to leave, so the slide never shows a blank between them. A swipe
+    // already shows the neighbour beside the finger, so it starts at once; a hidden page falls back to the timer.
+    const start=()=>{
+      if(done||arriving)return;
+      if(armed!==undefined)cancelAnimationFrame(armed);clearTimeout(timer);if(!swiped||reduce){next.style.transform='';next.style.opacity='';}
+      if(swiped&&!reduce){
+        const {values,duration}=settleFrames(offset,-turn*width,swiped.velocity),timing={duration,easing:'linear'};
+        leaving=previous.animate(values.map(x=>({transform:`translateX(${x}px)`})),timing);
+        arriving=next.animate(values.map(x=>({transform:`translateX(${x+turn*width}px)`})),timing);
+      }else{
+        const timing={duration:reduce?160:320,easing:reduce?'linear':'cubic-bezier(.2,.8,.2,1)'},held=`translateX(${offset}px)`;
+        leaving=previous.animate(reduce?[{transform:held,opacity:1},{transform:held,opacity:0}]:[{transform:held},{transform:`translateX(${-turn*width}px)`}],timing);
+        arriving=next.animate(reduce?[{opacity:0},{opacity:1}]:[{transform:`translateX(${offset+turn*width}px)`},{transform:'none'}],timing);
+      }
+      arriving.onfinish=handle.finish;
+    };
+    const handle={finish:()=>{if(done)return;done=true;if(armed!==undefined)cancelAnimationFrame(armed);clearTimeout(timer);leaving?.cancel();arriving?.cancel();next.style.transform='';next.style.opacity='';previous.remove();for(const fn of outgoing)fn();if(turning===handle)turning=undefined;moving(false);},defer:(fn:()=>void)=>{if(done)fn();else outgoing.push(fn);}};
+    if(swiped&&!reduce)start();
+    else{
+      if(reduce)next.style.opacity='0';else next.style.transform=`translateX(${offset+turn*width}px)`;
+      armed=requestAnimationFrame(()=>{armed=requestAnimationFrame(()=>{armed=undefined;start();});});timer=setTimeout(start,120);
     }
-    let done=false;
-    const handle={finish:()=>{if(done)return;done=true;leaving.cancel();arriving.cancel();previous.remove();for(const fn of outgoing)fn();if(turning===handle)turning=undefined;moving(false);},defer:(fn:()=>void)=>{if(done)fn();else outgoing.push(fn);}};
-    turning=handle;arriving.onfinish=handle.finish;
+    turning=handle;
   };
   const turnFrom=(at:number,vertical:boolean)=>vertical||at===page||!host.firstElementChild?0:Math.sign(at-page)*(direction()==='rtl'?-1:1);
   type Composed={next:HTMLDivElement;releases:(()=>void)[];created:Map<number,PageSurface>;visualPages:readonly number[];vertical:boolean;

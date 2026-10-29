@@ -107,6 +107,10 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   const panelPresence = useLeavingPresence(open ? panel : null);
   const openedBefore = useRef(open), leavingNow = useRef(false); leavingNow.current = leaving;
   const gesturePreview = !!videoGesture?.preview;
+  // W02: the commit that closes the player already counts as leaving. The layout effect below sets `leaving`
+  // after that commit, and a style flush in between would see the root hidden (display: none), which drops the
+  // controls' opacity transition and paints the close with no fade.
+  const closing = leaving || (!open && openedBefore.current);
   // The commit that shows the root already holds the controls back: the landing state below is
   // set after that commit, and a style read in between would paint them at full opacity and fade
   // them out (A-03). A closed root carries no visible controls either (a gesture preview keeps its own).
@@ -361,7 +365,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   const promptHost = useMemo<PromptFocusHost | undefined>(() => promptSource ? {...promptSource, source: promptSource, seekPresent,
     controlsVisible: chromeVisible, focusAllowed: promptFocusAllowed} : undefined,
   [promptSource, seekPresent, chromeVisible, promptFocusAllowed]);
-  return <div ref={attachRoot} className={styles.watch} hidden={!open && !leaving && !videoGesture?.preview} inert={!open || undefined} aria-hidden={!open || undefined} data-video-preview={!open && videoGesture?.preview || undefined} tabIndex={-1} data-watch-screen data-mode={mode} data-still-watching={stillWatching || undefined} data-touch-expanded={coarsePointer && width >= 1024 || undefined} data-controls-visible={chromeVisible} data-live-guide-open={liveGuideOpen || undefined} data-controls-exit={leaving ? 'close' : controlsExit} data-panel-open={!!panel} data-scrubbing={!!activeScrub && mobile}
+  return <div ref={attachRoot} className={styles.watch} hidden={!open && !closing && !videoGesture?.preview} inert={!open || undefined} aria-hidden={!open || undefined} data-video-preview={!open && videoGesture?.preview || undefined} tabIndex={-1} data-watch-screen data-mode={mode} data-still-watching={stillWatching || undefined} data-touch-expanded={coarsePointer && width >= 1024 || undefined} data-controls-visible={chromeVisible} data-live-guide-open={liveGuideOpen || undefined} data-controls-exit={closing ? 'close' : controlsExit} data-panel-open={!!panel} data-scrubbing={!!activeScrub && mobile}
     onBlurCapture={event => {if (!chrome.current?.contains(event.relatedTarget as Node | null)) reveal();}}
     onPointerMove={event => { if (event.pointerType === 'mouse') reveal(); }} onFocusCapture={reveal}>
     <div ref={surfaceSlotRef} className={styles.pictureSlot} style={rectStyle(geometry?.picture)} data-watch-picture-slot data-media-slot="expanded" aria-hidden="true" />
@@ -420,7 +424,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
         <Icon name={tapFeedback.direction === 'left' ? 'i-back' : 'i-fwd'} size={40} />
         <span>{t('duration.long.seconds', {seconds: tapFeedback.seconds})}</span>
       </div>}
-      {liveChrome ? (open || leaving) && <div className={styles.liveOverlay} data-visible={chromeVisible} inert={!chromeVisible || videoGesture?.active || undefined}>
+      {liveChrome ? (open || closing) && <div className={styles.liveOverlay} data-visible={chromeVisible} inert={!chromeVisible || videoGesture?.active || undefined}>
         <LiveChrome port={liveChrome} playing={!!presentation?.playing} onCollapse={onCollapse} onStop={() => send({kind: 'stop'})}
           onPlayPause={() => send({kind: mainKind})} onSkip={skip} onSeek={seconds => {if (can('seek')) send({kind: 'seek', seconds});}}
           onMore={anchor => {moreAnchor.current = anchor;setPanel(null);setMore(value => !value);}}
