@@ -333,7 +333,7 @@ var separateFolderIndexedColumns = []string{
 func separateFolderObjectCensus(statements []productionStatement) (writes []separateFolderObjectWrite, problems []string) {
 	for _, statement := range statements {
 		text := separateFolderText(statement.text)
-		for _, match := range ownerWalkInsert.FindAllStringSubmatchIndex(text, -1) {
+		for _, match := range separateFolderSQLInsert.FindAllStringSubmatchIndex(text, -1) {
 			if strings.ToLower(text[match[2]:match[3]]) != "inventory_objects" {
 				continue
 			}
@@ -341,29 +341,29 @@ func separateFolderObjectCensus(statements []productionStatement) (writes []sepa
 			if match[4] < 0 {
 				problems = append(problems, fmt.Sprintf("%s: INSERT INTO inventory_objects writes without a column list: %s", statement.where, text))
 			} else {
-				write.columns = ownerWalkColumnList(text[match[4]:match[5]])
+				write.columns = separateFolderSQLColumnList(text[match[4]:match[5]])
 			}
 			writes = append(writes, write)
 		}
-		for _, match := range ownerWalkUpdate.FindAllStringSubmatchIndex(text, -1) {
+		for _, match := range separateFolderSQLUpdate.FindAllStringSubmatchIndex(text, -1) {
 			if strings.ToLower(text[match[2]:match[3]]) != "inventory_objects" {
 				continue
 			}
 			write := separateFolderObjectWrite{kind: "update", where: statement.where, text: text}
-			write.columns = ownerWalkAssignedColumns(text[match[1]:])
+			write.columns = separateFolderSQLAssignedColumns(text[match[1]:])
 			if len(write.columns) == 0 {
 				problems = append(problems, fmt.Sprintf("%s: UPDATE inventory_objects has no readable SET list: %s", statement.where, text))
 			}
 			writes = append(writes, write)
 		}
-		for _, match := range ownerWalkConflict.FindAllStringSubmatchIndex(text, -1) {
-			if ownerWalkInsertTableBefore(text, match[0]) != "inventory_objects" {
+		for _, match := range separateFolderSQLConflict.FindAllStringSubmatchIndex(text, -1) {
+			if separateFolderSQLInsertTableBefore(text, match[0]) != "inventory_objects" {
 				// No production upsert names inventory_objects today. A future
 				// one is censused here by its try statement, never guessed.
 				continue
 			}
 			write := separateFolderObjectWrite{kind: "conflict update", where: statement.where, text: text}
-			write.columns = ownerWalkAssignedColumns(text[match[1]:])
+			write.columns = separateFolderSQLAssignedColumns(text[match[1]:])
 			if len(write.columns) == 0 {
 				problems = append(problems, fmt.Sprintf("%s: ON CONFLICT DO UPDATE on inventory_objects has no readable SET list: %s", statement.where, text))
 			}
@@ -456,11 +456,11 @@ func TestSeparateFolderIndexCensusClassifiesInventoryObjectWrites(t *testing.T) 
 			// may keep its declared '.' default. A named retired column would
 			// make the one-entry claim conditional.
 			for _, column := range []string{"id", "asset_id", "source_id", "root_incarnation"} {
-				if !ownerWalkHasColumn(write.columns, column) {
+				if !separateFolderSQLHasColumn(write.columns, column) {
 					t.Errorf("%s: INSERT INTO inventory_objects does not name key column %s: %s", write.where, column, write.text)
 				}
 			}
-			if ownerWalkHasColumn(write.columns, "retired") {
+			if separateFolderSQLHasColumn(write.columns, "retired") {
 				t.Errorf("%s: INSERT INTO inventory_objects names retired, so not every insert writes an index entry: %s", write.where, write.text)
 			}
 			continue
@@ -528,11 +528,11 @@ func TestSeparateFolderIndexCensusClassifiesInventoryObjectWrites(t *testing.T) 
 	healthWrites := 0
 	for _, statement := range statements {
 		text := separateFolderText(statement.text)
-		for _, match := range ownerWalkUpdate.FindAllStringSubmatchIndex(text, -1) {
+		for _, match := range separateFolderSQLUpdate.FindAllStringSubmatchIndex(text, -1) {
 			if strings.ToLower(text[match[2]:match[3]]) != "library_sources" {
 				continue
 			}
-			if ownerWalkHasColumn(ownerWalkAssignedColumns(text[match[1]:]), "health") {
+			if separateFolderSQLHasColumn(separateFolderSQLAssignedColumns(text[match[1]:]), "health") {
 				healthWrites++
 			}
 		}
@@ -651,4 +651,148 @@ func TestSeparateFolderIndexCostsOneInsertEntryAndNoHotWrite(t *testing.T) {
 	t.Logf("schema indexes on inventory_objects: %d without %s, %d with it; one INSERT: IdxInsert %d->%d (+1 entry), IdxDelete %d->%d; hot analysis_state UPDATE: IdxInsert %d->%d, IdxDelete %d->%d; hot analysis_revision UPDATE: IdxInsert %d->%d, IdxDelete %d->%d",
 		without, name, with, insertBefore, insertAfter, insertDeletesBefore, insertDeletesAfter,
 		hotBefore, hotAfter, hotDeletesBefore, hotDeletesAfter, revisionBefore, revisionAfter, revisionDeletesBefore, revisionDeletesAfter)
+}
+
+// SQL census parsing is shared with the retained-state index proof; keep its
+// complete assignment parsing while this regression is composed independently.
+var (
+	separateFolderSQLInsert   = regexp.MustCompile(`(?is)\bINSERT\s+(?:OR\s+(?:ABORT|FAIL|IGNORE|REPLACE|ROLLBACK)\s+)?INTO\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:\(([^()]*)\))?`)
+	separateFolderSQLUpdate   = regexp.MustCompile(`(?is)\bUPDATE\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+(?:AS\s+)?[A-Za-z_][A-Za-z0-9_]*)?\s+SET\s+`)
+	separateFolderSQLConflict = regexp.MustCompile(`(?is)\bON\s+CONFLICT\s*(?:\([^()]*\))?\s+DO\s+UPDATE\s+SET\s+`)
+)
+
+func separateFolderSQLInsertTableBefore(text string, before int) string {
+	table := ""
+	for _, match := range separateFolderSQLInsert.FindAllStringSubmatchIndex(text, -1) {
+		if match[0] >= before {
+			break
+		}
+		table = strings.ToLower(text[match[2]:match[3]])
+	}
+	return table
+}
+
+func separateFolderSQLColumnList(list string) []string {
+	var columns []string
+	for _, column := range strings.Split(list, ",") {
+		column = strings.ToLower(strings.Trim(strings.TrimSpace(column), "\"`[]"))
+		if column != "" {
+			columns = append(columns, column)
+		}
+	}
+	return columns
+}
+
+// separateFolderSQLAssignedColumns reads the left-hand sides of a SET list up to the
+// first top-level WHERE or RETURNING. It deliberately discards the right-hand
+// side, so item_id=item_id and item_id=excluded.item_id both count.
+func separateFolderSQLAssignedColumns(text string) []string {
+	text = separateFolderSQLUntil(text, "WHERE", "RETURNING")
+	var columns []string
+	for _, part := range separateFolderSQLSplit(text) {
+		part = strings.TrimSpace(part)
+		equals := strings.Index(part, "=")
+		if equals < 0 {
+			continue
+		}
+		left := strings.TrimSpace(part[:equals])
+		if dot := strings.LastIndex(left, "."); dot >= 0 {
+			left = left[dot+1:]
+		}
+		left = strings.ToLower(strings.Trim(strings.TrimSpace(left), "\"`[]"))
+		if left != "" {
+			columns = append(columns, left)
+		}
+	}
+	return columns
+}
+
+// separateFolderSQLUntil cuts at the first keyword outside parentheses and quoted
+// literals, so a subquery's WHERE cannot end the assignment list early.
+func separateFolderSQLUntil(text string, keywords ...string) string {
+	depth := 0
+	var quote byte
+	for i := 0; i < len(text); i++ {
+		c := text[i]
+		if quote != 0 {
+			if c == quote {
+				quote = 0
+			}
+			continue
+		}
+		switch c {
+		case '\'', '"', '`':
+			quote = c
+			continue
+		case '(':
+			depth++
+			continue
+		case ')':
+			if depth > 0 {
+				depth--
+			}
+			continue
+		}
+		if depth != 0 {
+			continue
+		}
+		for _, keyword := range keywords {
+			end := i + len(keyword)
+			if end > len(text) || !strings.EqualFold(text[i:end], keyword) {
+				continue
+			}
+			if i > 0 && separateFolderSQLWordByte(text[i-1]) {
+				continue
+			}
+			if end < len(text) && separateFolderSQLWordByte(text[end]) {
+				continue
+			}
+			return text[:i]
+		}
+	}
+	return text
+}
+
+func separateFolderSQLWordByte(c byte) bool {
+	return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+}
+
+func separateFolderSQLSplit(text string) []string {
+	var parts []string
+	start, depth := 0, 0
+	var quote byte
+	for i := 0; i < len(text); i++ {
+		c := text[i]
+		if quote != 0 {
+			if c == quote {
+				quote = 0
+			}
+			continue
+		}
+		switch c {
+		case '\'', '"', '`':
+			quote = c
+		case '(':
+			depth++
+		case ')':
+			if depth > 0 {
+				depth--
+			}
+		case ',':
+			if depth == 0 {
+				parts = append(parts, text[start:i])
+				start = i + 1
+			}
+		}
+	}
+	return append(parts, text[start:])
+}
+
+func separateFolderSQLHasColumn(columns []string, want string) bool {
+	for _, column := range columns {
+		if column == want {
+			return true
+		}
+	}
+	return false
 }
