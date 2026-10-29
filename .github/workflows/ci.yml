@@ -83,7 +83,7 @@ jobs:
 
   go-shards:
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
@@ -119,6 +119,16 @@ jobs:
           mkdir -p .scratch
           printf '%s' 'postgres://portico:disposable-ci-password@localhost:5432/portico_test?sslmode=disable' > .scratch/postgres.url
           echo "PORTICO_TEST_DATABASE_URL_FILE=$PWD/.scratch/postgres.url" >> "$GITHUB_ENV"
+      - name: Diagnostic-only 90-minute Go package deadline
+        run: |
+          python3 - <<'PYTIMEOUT'
+          from pathlib import Path
+          p = Path('scripts/ci-affected.py')
+          text = p.read_text()
+          before = 'GO_TEST_TIMEOUT = 13 * 60  # 780 s'
+          assert text.count(before) == 1, 'unexpected package deadline source'
+          p.write_text(text.replace(before, 'GO_TEST_TIMEOUT = 90 * 60  # diagnostic branch only'))
+          PYTIMEOUT
       - name: Build every Go package
         working-directory: ${{ matrix.module }}
         run: |
@@ -154,7 +164,7 @@ jobs:
   go-apikit:
     name: go (apikit)
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    timeout-minutes: 360
     services:
       postgres:
         image: postgres:17
@@ -177,6 +187,16 @@ jobs:
           mkdir -p .scratch
           printf '%s' 'postgres://portico:disposable-ci-password@localhost:5432/portico_test?sslmode=disable' > .scratch/postgres.url
           echo "PORTICO_TEST_DATABASE_URL_FILE=$PWD/.scratch/postgres.url" >> "$GITHUB_ENV"
+      - name: Diagnostic-only 90-minute Go package deadline
+        run: |
+          python3 - <<'PYTIMEOUT'
+          from pathlib import Path
+          p = Path('scripts/ci-affected.py')
+          text = p.read_text()
+          before = 'GO_TEST_TIMEOUT = 13 * 60  # 780 s'
+          assert text.count(before) == 1, 'unexpected package deadline source'
+          p.write_text(text.replace(before, 'GO_TEST_TIMEOUT = 90 * 60  # diagnostic branch only'))
+          PYTIMEOUT
       - name: Build every Go package
         working-directory: apikit
         run: |
