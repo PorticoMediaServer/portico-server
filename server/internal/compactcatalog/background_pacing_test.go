@@ -23,6 +23,12 @@ func TestDerivedWorkerCompletesWithForegroundPressure(t *testing.T) {
 	dbwork.RegisterForegroundProbe(t.Name(), func() bool { return true })
 	defer dbwork.RegisterForegroundProbe(t.Name(), nil)
 	ctx, cancel := context.WithCancel(context.Background())
+	started := time.Now()
+	pressureBefore := dbwork.Pressure()
+	defer func() {
+		pressureAfter := dbwork.Pressure()
+		t.Logf("worker running window=%s yield-boundaries=%d foreground-wait=%dms", time.Since(started), pressureAfter.Yields-pressureBefore.Yields, pressureAfter.YieldWaitMillis-pressureBefore.YieldWaitMillis)
+	}()
 	done := make(chan struct{})
 	go func() {
 		defer close(done)

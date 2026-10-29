@@ -364,10 +364,12 @@ func TestSourceAssetEvidenceIgnoresUnrelatedImportsAndFencesConfig(t *testing.T)
 			token := availabilityToken(t, db, asset)
 			cc1Exec(t, db, `INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns,state)
    SELECT 'object',id,?,incarnation,'file.mkv','r','{}',1,1,'missing' FROM library_sources WHERE id='config'`, token)
-			facetTestTurn(t, db, 41, 1)
+			facetTestTurn(t, db, 41, 1) // capture frontiers and one raw missing object
 			epoch := cc1Scalar(t, db, `SELECT availability_epoch FROM catalog_facet_source_state`)
-			facetTestTurn(t, db, 41, 1) // the missing object
 			facetTestTurn(t, db, 41, 1) // EOF
+			if phase := cc1Scalar(t, db, `SELECT phase FROM catalog_upstream_sources WHERE domain=41 AND source_id=?`, asset); phase != 2 {
+				t.Fatalf("configuration edit must precede publication, got phase %d", phase)
+			}
 			if change == "config" {
 				cc1Exec(t, db, `UPDATE library_sources SET enabled=0 WHERE id='config'`)
 			} else {
